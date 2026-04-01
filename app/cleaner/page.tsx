@@ -130,6 +130,61 @@ function isAcceptedStatus(status: string | null) {
   return (status || "").toLowerCase().trim() === "accepted";
 }
 
+function getResponseWindowHours(jobDate: string | null, now: Date) {
+  if (!jobDate) return 8;
+
+  const job = new Date(`${jobDate}T12:00:00`);
+  const diffHours = (job.getTime() - now.getTime()) / (1000 * 60 * 60);
+
+  if (diffHours > 24 * 7) return 48;
+  if (diffHours > 48) return 8;
+  return 2;
+}
+
+function getDeadline(job: CalendarJob, now: Date) {
+  if (!job.offered_at) return null;
+
+  const offered = new Date(job.offered_at);
+  if (Number.isNaN(offered.getTime())) return null;
+
+  const hours = getResponseWindowHours(job.jobDate, now);
+  return new Date(offered.getTime() + hours * 60 * 60 * 1000);
+}
+
+function getTimeRemainingMs(job: CalendarJob, now: Date) {
+  const deadline = getDeadline(job, now);
+  if (!deadline) return null;
+  return deadline.getTime() - now.getTime();
+}
+
+function formatRemaining(ms: number) {
+  const totalSeconds = Math.floor(ms / 1000);
+  const absSeconds = Math.abs(totalSeconds);
+
+  const days = Math.floor(absSeconds / 86400);
+  const hours = Math.floor((absSeconds % 86400) / 3600);
+  const minutes = Math.floor((absSeconds % 3600) / 60);
+  const seconds = absSeconds % 60;
+
+  if (days > 0) return `${days}d ${hours}h ${minutes}m`;
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+}
+
+function getCountdownTone(ms: number | null) {
+  if (ms === null) {
+    return "text-[#e7c98a]";
+  }
+  if (ms < 0) {
+    return "text-red-400";
+  }
+  if (ms <= 2 * 60 * 60 * 1000) {
+    return "text-amber-300";
+  }
+  return "text-[#e7c98a]";
+}
+
 function sortCalendarJobsNearestFirst(items: CalendarJob[]) {
   return [...items].sort((a, b) => {
     const aAccepted = isAcceptedStatus(a.status) && !!a.accepted_at;
@@ -201,10 +256,19 @@ export default function CleanerPage() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [jobsCollapsed, setJobsCollapsed] = useState(true);
+  const [now, setNow] = useState(() => new Date());
 
   const selectedJobPanelRef = useRef<HTMLElement | null>(null);
   const jobsSectionRef = useRef<HTMLElement | null>(null);
   const hasAutoSelectedInitialJob = useRef(false);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setNow(new Date());
+    }, 1000);
+
+    return () => window.clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -1040,15 +1104,32 @@ export default function CleanerPage() {
                       </p>
                     </div>
 
-                    {isAcceptedStatus(selectedJob.status) && selectedJob.accepted_at ? (
-                      <span className="inline-flex w-fit rounded-full border border-emerald-400/40 bg-emerald-500/20 px-3 py-1 text-xs uppercase tracking-[0.16em] text-emerald-200">
-                        Accepted
-                      </span>
-                    ) : (
-                      <span className="inline-flex w-fit rounded-full border border-red-400/70 bg-red-500 px-3 py-1 text-xs uppercase tracking-[0.16em] text-white animate-pulse">
-                        Unaccepted
-                      </span>
-                    )}
+                    <div>
+                      {isAcceptedStatus(selectedJob.status) && selectedJob.accepted_at ? (
+                        <span className="inline-flex w-fit rounded-full border border-emerald-400/40 bg-emerald-500/20 px-3 py-1 text-xs uppercase tracking-[0.16em] text-emerald-200">
+                          Accepted
+                        </span>
+                      ) : (
+                        <span className="inline-flex w-fit rounded-full border border-red-400/70 bg-red-500 px-3 py-1 text-xs uppercase tracking-[0.16em] text-white animate-pulse">
+                          Unaccepted
+                        </span>
+                      )}
+
+                      {!isAcceptedStatus(selectedJob.status) && !selectedJob.accepted_at && (() => {
+                        const remainingMs = getTimeRemainingMs(selectedJob, now);
+                        if (remainingMs === null) return null;
+
+                        const tone = getCountdownTone(remainingMs);
+
+                        return (
+                          <div className={`mt-3 text-sm font-semibold ${tone}`}>
+                            {remainingMs < 0
+                              ? `Overdue by ${formatRemaining(remainingMs)}`
+                              : `Accept within ${formatRemaining(remainingMs)}`}
+                          </div>
+                        );
+                      })()}
+                    </div>
                   </div>
 
                   <div className="mt-4 flex flex-wrap gap-3">
@@ -1236,6 +1317,8 @@ export default function CleanerPage() {
                         const isSelected = selectedJobId === job.id;
                         const tone = getStatusTone(job.status);
                         const isAccepted = isAcceptedStatus(job.status) && !!job.accepted_at;
+                        const remainingMs = !isAccepted ? getTimeRemainingMs(job, now) : null;
+                        const countdownTone = getCountdownTone(remainingMs);
 
                         return (
                           <button
@@ -1272,6 +1355,14 @@ export default function CleanerPage() {
                                 <p className="mt-2 text-sm font-medium text-[#f0d59f]">
                                   Cleaning date: {formatDateLabel(job.jobDate)}
                                 </p>
+
+                                {!isAccepted && remainingMs !== null && (
+                                  <p className={`mt-2 text-sm font-semibold ${countdownTone}`}>
+                                    {remainingMs < 0
+                                      ? `Overdue by ${formatRemaining(remainingMs)}`
+                                      : `Accept within ${formatRemaining(remainingMs)}`}
+                                  </p>
+                                )}
                               </div>
 
                               <div className="flex items-start md:justify-end">
@@ -1309,6 +1400,8 @@ export default function CleanerPage() {
                         const isSelected = selectedJobId === job.id;
                         const tone = getStatusTone(job.status);
                         const isAccepted = isAcceptedStatus(job.status) && !!job.accepted_at;
+                        const remainingMs = !isAccepted ? getTimeRemainingMs(job, now) : null;
+                        const countdownTone = getCountdownTone(remainingMs);
 
                         return (
                           <button
@@ -1351,6 +1444,14 @@ export default function CleanerPage() {
                                 <p className="mt-2 text-sm font-medium text-[#f0d59f]">
                                   Cleaning date: {formatDateLabel(job.jobDate)}
                                 </p>
+
+                                {!isAccepted && remainingMs !== null && (
+                                  <p className={`mt-2 text-sm font-semibold ${countdownTone}`}>
+                                    {remainingMs < 0
+                                      ? `Overdue by ${formatRemaining(remainingMs)}`
+                                      : `Accept within ${formatRemaining(remainingMs)}`}
+                                  </p>
+                                )}
                               </div>
 
                               <div className="flex items-start md:justify-end">
