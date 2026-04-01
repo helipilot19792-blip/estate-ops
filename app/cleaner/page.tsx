@@ -126,8 +126,18 @@ function formatDateTimeLabel(dateString: string | null | undefined) {
   return d.toLocaleString();
 }
 
+function isAcceptedStatus(status: string | null) {
+  return (status || "").toLowerCase().trim() === "accepted";
+}
+
 function sortCalendarJobsNearestFirst(items: CalendarJob[]) {
   return [...items].sort((a, b) => {
+    const aAccepted = isAcceptedStatus(a.status) && !!a.accepted_at;
+    const bAccepted = isAcceptedStatus(b.status) && !!b.accepted_at;
+
+    if (!aAccepted && bAccepted) return -1;
+    if (aAccepted && !bAccepted) return 1;
+
     const aDate = a.jobDate ?? "9999-12-31";
     const bDate = b.jobDate ?? "9999-12-31";
 
@@ -135,14 +145,11 @@ function sortCalendarJobsNearestFirst(items: CalendarJob[]) {
       return aDate.localeCompare(bDate);
     }
 
-    const aCreated = a.created_at ?? "";
-    const bCreated = b.created_at ?? "";
-    return aCreated.localeCompare(bCreated);
-  });
-}
+    const aOffered = a.offered_at ?? a.created_at ?? "";
+    const bOffered = b.offered_at ?? b.created_at ?? "";
 
-function isAcceptedStatus(status: string | null) {
-  return (status || "").toLowerCase().trim() === "accepted";
+    return bOffered.localeCompare(aOffered);
+  });
 }
 
 function getStatusTone(status: string | null) {
@@ -162,7 +169,7 @@ function getStatusTone(status: string | null) {
     badge:
       "border border-red-400/70 bg-red-500 text-white shadow-[0_0_18px_rgba(239,68,68,0.35)] animate-pulse",
     card:
-      "border-red-400/55 bg-[linear-gradient(180deg,rgba(70,18,18,0.62)_0%,rgba(24,18,14,1)_100%)] shadow-[0_0_28px_rgba(239,68,68,0.14)]",
+      "border-red-400/65 bg-[linear-gradient(180deg,rgba(92,20,20,0.78)_0%,rgba(24,18,14,1)_100%)] shadow-[0_0_34px_rgba(239,68,68,0.18)]",
     dot: "bg-red-400",
     selectedRing: "ring-2 ring-red-300/70",
   };
@@ -525,6 +532,13 @@ export default function CleanerPage() {
     return sortCalendarJobsNearestFirst(mapped);
   }, [jobs]);
 
+  const unacceptedJobs = useMemo(
+    () => calendarJobs.filter((job) => !isAcceptedStatus(job.status) || !job.accepted_at),
+    [calendarJobs]
+  );
+
+  const unacceptedCount = unacceptedJobs.length;
+
   const jobsByDate = useMemo(() => {
     const map = new Map<string, CalendarJob[]>();
 
@@ -558,6 +572,11 @@ export default function CleanerPage() {
   }, [filteredJobs]);
 
   const collapsedPreviewJob = useMemo(() => {
+    const urgentUnaccepted = filteredJobs.find(
+      (job) => !isAcceptedStatus(job.status) || !job.accepted_at
+    );
+    if (urgentUnaccepted) return urgentUnaccepted;
+
     if (upcomingFilteredJobs.length > 0) return upcomingFilteredJobs[0];
     if (filteredJobs.length > 0) return filteredJobs[0];
     return null;
@@ -592,6 +611,23 @@ export default function CleanerPage() {
     if (!selectedJob) return [];
     return sopsByPropertyId.get(selectedJob.property_id) || [];
   }, [selectedJob, sopsByPropertyId]);
+
+  useEffect(() => {
+    if (unacceptedCount > 0) {
+      setJobsCollapsed(false);
+    }
+  }, [unacceptedCount]);
+
+  useEffect(() => {
+    if (selectedJobId) return;
+    if (unacceptedJobs.length > 0) {
+      setSelectedJobId(unacceptedJobs[0].id);
+      return;
+    }
+    if (calendarJobs.length > 0) {
+      setSelectedJobId(calendarJobs[0].id);
+    }
+  }, [selectedJobId, unacceptedJobs, calendarJobs]);
 
   function handleDateClick(dateYmd: string) {
     setSelectedDate(dateYmd);
@@ -706,20 +742,53 @@ export default function CleanerPage() {
               </section>
             )}
 
+            {unacceptedCount > 0 && (
+              <section className="sticky top-0 z-40 rounded-2xl border border-red-400/60 bg-red-600 p-4 text-white shadow-[0_0_28px_rgba(239,68,68,0.28)]">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.22em] text-red-100">
+                      Immediate Attention Needed
+                    </p>
+                    <p className="mt-1 text-lg font-semibold">
+                      🚨 {unacceptedCount} job{unacceptedCount === 1 ? "" : "s"} waiting for your response
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      if (unacceptedJobs[0]) {
+                        setSelectedJobId(unacceptedJobs[0].id);
+                        setJobsCollapsed(false);
+                      }
+                    }}
+                    className="rounded-full border border-white/25 bg-white/10 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/20"
+                  >
+                    View urgent jobs
+                  </button>
+                </div>
+              </section>
+            )}
+
             <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <div className="rounded-2xl border border-[#7a5c2e]/25 bg-[#15110d] p-5">
                 <p className="text-xs uppercase tracking-[0.2em] text-[#b08b47]">Assigned Properties</p>
                 <p className="mt-3 text-3xl font-semibold text-[#f8f2e8]">{properties.length}</p>
               </div>
 
-              <div className="rounded-2xl border border-[#7a5c2e]/25 bg-[#15110d] p-5">
-                <p className="text-xs uppercase tracking-[0.2em] text-[#b08b47]">Jobs</p>
-                <p className="mt-3 text-3xl font-semibold text-[#f8f2e8]">{jobs.length}</p>
+              <div
+                className={`rounded-2xl border p-5 ${
+                  unacceptedCount > 0
+                    ? "border-red-500/60 bg-[linear-gradient(180deg,rgba(90,18,18,0.78)_0%,rgba(21,17,13,1)_100%)] shadow-[0_0_28px_rgba(239,68,68,0.16)]"
+                    : "border-[#7a5c2e]/25 bg-[#15110d]"
+                }`}
+              >
+                <p className="text-xs uppercase tracking-[0.2em] text-[#b08b47]">Jobs Waiting</p>
+                <p className="mt-3 text-3xl font-semibold text-[#f8f2e8]">{unacceptedCount}</p>
               </div>
 
               <div className="rounded-2xl border border-[#7a5c2e]/25 bg-[#15110d] p-5 sm:col-span-2 lg:col-span-1">
-                <p className="text-xs uppercase tracking-[0.2em] text-[#b08b47]">SOP Items</p>
-                <p className="mt-3 text-3xl font-semibold text-[#f8f2e8]">{sops.length}</p>
+                <p className="text-xs uppercase tracking-[0.2em] text-[#b08b47]">Total Jobs</p>
+                <p className="mt-3 text-3xl font-semibold text-[#f8f2e8]">{jobs.length}</p>
               </div>
             </section>
 
@@ -784,6 +853,9 @@ export default function CleanerPage() {
                   const isCurrentMonth = day.getMonth() === calendarMonth.getMonth();
                   const isSelected = selectedDate === ymd;
                   const isToday = ymd === toYmd(new Date());
+                  const hasUnacceptedOnDay = dayJobs.some(
+                    (job) => !isAcceptedStatus(job.status) || !job.accepted_at
+                  );
 
                   return (
                     <div
@@ -792,6 +864,8 @@ export default function CleanerPage() {
                         "min-h-[112px] rounded-2xl border p-2 sm:min-h-[120px]",
                         isSelected
                           ? "border-[#b08b47] bg-[#221a13]"
+                          : hasUnacceptedOnDay
+                          ? "border-red-500/50 bg-[linear-gradient(180deg,rgba(68,16,16,0.58)_0%,rgba(16,13,10,1)_100%)]"
                           : "border-[#7a5c2e]/20 bg-[#100d0a]",
                         !isCurrentMonth ? "opacity-45" : "",
                       ].join(" ")}
@@ -810,7 +884,13 @@ export default function CleanerPage() {
                         </span>
 
                         {dayJobs.length > 0 && (
-                          <span className="rounded-full bg-[#b08b47]/15 px-2 py-0.5 text-[11px] text-[#e7c98a]">
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[11px] ${
+                              hasUnacceptedOnDay
+                                ? "bg-red-500 text-white shadow-[0_0_14px_rgba(239,68,68,0.28)]"
+                                : "bg-[#b08b47]/15 text-[#e7c98a]"
+                            }`}
+                          >
                             {dayJobs.length}
                           </span>
                         )}
@@ -821,7 +901,7 @@ export default function CleanerPage() {
                           const property = properties.find((p) => p.id === job.property_id);
                           const isJobSelected = selectedJobId === job.id;
                           const tone = getStatusTone(job.status);
-                          const isAccepted = isAcceptedStatus(job.status);
+                          const isAccepted = isAcceptedStatus(job.status) && !!job.accepted_at;
 
                           return (
                             <button
@@ -862,7 +942,7 @@ export default function CleanerPage() {
                 <button
                   onClick={() => {
                     setSelectedDate(null);
-                    setSelectedJobId(null);
+                    setSelectedJobId(unacceptedJobs[0]?.id ?? null);
                     setJobsCollapsed(false);
                   }}
                   className="rounded-full border border-[#7a5c2e]/40 px-4 py-2 text-sm text-[#f5efe4] hover:bg-[#1b1510]"
@@ -886,8 +966,8 @@ export default function CleanerPage() {
                   </h2>
                   <p className="mt-1 text-sm text-[#cdbda0]">
                     {jobsCollapsed
-                      ? "Collapsed view showing the next upcoming job. Expand to see the full schedule."
-                      : "Expanded view showing all jobs in this list."}
+                      ? "Collapsed view showing the most urgent job first. Expand to see the full schedule."
+                      : "Expanded view showing all jobs in priority order, with waiting jobs first."}
                   </p>
                 </div>
 
@@ -939,7 +1019,7 @@ export default function CleanerPage() {
                       </p>
                     </div>
 
-                    {isAcceptedStatus(selectedJob.status) ? (
+                    {isAcceptedStatus(selectedJob.status) && selectedJob.accepted_at ? (
                       <span className="inline-flex w-fit rounded-full border border-emerald-400/40 bg-emerald-500/20 px-3 py-1 text-xs uppercase tracking-[0.16em] text-emerald-200">
                         Accepted
                       </span>
@@ -1089,15 +1169,29 @@ export default function CleanerPage() {
 
               {jobsCollapsed ? (
                 <div className="mt-4">
-                  <div className="mb-4 rounded-2xl border border-[#b08b47]/20 bg-[#110d09] p-4">
+                  <div
+                    className={`mb-4 rounded-2xl border p-4 ${
+                      unacceptedCount > 0
+                        ? "border-red-500/45 bg-red-950/25"
+                        : "border-[#b08b47]/20 bg-[#110d09]"
+                    }`}
+                  >
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="rounded-full border border-[#b08b47]/35 bg-[#b08b47]/10 px-3 py-1 text-xs uppercase tracking-[0.18em] text-[#e7c98a]">
                         Collapsed
                       </span>
 
                       {collapsedPreviewJob && (
-                        <span className="rounded-full border border-sky-400/25 bg-sky-400/10 px-3 py-1 text-xs uppercase tracking-[0.18em] text-sky-200">
-                          Next Upcoming Job
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs uppercase tracking-[0.18em] ${
+                            !isAcceptedStatus(collapsedPreviewJob.status) || !collapsedPreviewJob.accepted_at
+                              ? "border border-red-400/70 bg-red-500 text-white animate-pulse"
+                              : "border border-sky-400/25 bg-sky-400/10 text-sky-200"
+                          }`}
+                        >
+                          {!isAcceptedStatus(collapsedPreviewJob.status) || !collapsedPreviewJob.accepted_at
+                            ? "Needs Response"
+                            : "Next Upcoming Job"}
                         </span>
                       )}
 
@@ -1120,7 +1214,7 @@ export default function CleanerPage() {
                         const property = properties.find((p) => p.id === job.property_id);
                         const isSelected = selectedJobId === job.id;
                         const tone = getStatusTone(job.status);
-                        const isAccepted = isAcceptedStatus(job.status);
+                        const isAccepted = isAcceptedStatus(job.status) && !!job.accepted_at;
 
                         return (
                           <button
@@ -1135,17 +1229,13 @@ export default function CleanerPage() {
                             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                               <div>
                                 <div className="flex flex-wrap items-center gap-2">
-                                  <span className="rounded-full border border-sky-400/25 bg-sky-400/10 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-sky-200">
-                                    Preview
-                                  </span>
-
-                                  {isAccepted ? (
-                                    <span className="rounded-full border border-emerald-400/40 bg-emerald-500/20 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-200 shadow-[0_0_14px_rgba(16,185,129,0.16)]">
-                                      Accepted
-                                    </span>
-                                  ) : (
+                                  {!isAccepted ? (
                                     <span className="rounded-full border border-red-400/70 bg-red-500 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white shadow-[0_0_16px_rgba(239,68,68,0.28)] animate-pulse">
                                       Unaccepted
+                                    </span>
+                                  ) : (
+                                    <span className="rounded-full border border-emerald-400/40 bg-emerald-500/20 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-200 shadow-[0_0_14px_rgba(16,185,129,0.16)]">
+                                      Accepted
                                     </span>
                                   )}
                                 </div>
@@ -1197,7 +1287,7 @@ export default function CleanerPage() {
                         const property = properties.find((p) => p.id === job.property_id);
                         const isSelected = selectedJobId === job.id;
                         const tone = getStatusTone(job.status);
-                        const isAccepted = isAcceptedStatus(job.status);
+                        const isAccepted = isAcceptedStatus(job.status) && !!job.accepted_at;
 
                         return (
                           <button
@@ -1212,13 +1302,13 @@ export default function CleanerPage() {
                             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                               <div>
                                 <div className="flex flex-wrap items-center gap-2">
-                                  {isAccepted ? (
-                                    <span className="rounded-full border border-emerald-400/40 bg-emerald-500/20 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-200 shadow-[0_0_14px_rgba(16,185,129,0.16)]">
-                                      Accepted
-                                    </span>
-                                  ) : (
+                                  {!isAccepted ? (
                                     <span className="rounded-full border border-red-400/70 bg-red-500 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white shadow-[0_0_16px_rgba(239,68,68,0.28)] animate-pulse">
                                       Unaccepted
+                                    </span>
+                                  ) : (
+                                    <span className="rounded-full border border-emerald-400/40 bg-emerald-500/20 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-200 shadow-[0_0_14px_rgba(16,185,129,0.16)]">
+                                      Accepted
                                     </span>
                                   )}
 
