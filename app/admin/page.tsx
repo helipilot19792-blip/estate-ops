@@ -33,6 +33,7 @@ type Job = {
   status: string | null;
   assigned_cleaner_id: string | null;
   notes: string | null;
+  created_at?: string | null;
 };
 
 type StrandedJob = {
@@ -112,6 +113,9 @@ export default function AdminPage() {
   const [error, setError] = useState("");
   const [savingRoleId, setSavingRoleId] = useState<string | null>(null);
   const [savingCalendars, setSavingCalendars] = useState(false);
+  const [uploadingSop, setUploadingSop] = useState(false);
+  const [highlightedJobId, setHighlightedJobId] = useState<string | null>(null);
+  const [jobsExpanded, setJobsExpanded] = useState(false);
 
   const [propertyName, setPropertyName] = useState("");
   const [propertyAddress, setPropertyAddress] = useState("");
@@ -137,7 +141,6 @@ export default function AdminPage() {
   const [sopTitle, setSopTitle] = useState("");
   const [sopContent, setSopContent] = useState("");
   const [sopFiles, setSopFiles] = useState<File[]>([]);
-  const [uploadingSop, setUploadingSop] = useState(false);
 
   async function loadData() {
     setError("");
@@ -195,21 +198,20 @@ export default function AdminPage() {
       .order("created_at", { ascending: false });
     if (pcErr) return setError(pcErr.message);
 
-    const cleanerProfiles: Cleaner[] =
-      (pr ?? [])
-        .filter((profile) => profile.role === "cleaner")
-        .map((profile) => ({
-          id: profile.id,
-          name: profile.full_name ?? null,
-          email: profile.email ?? null,
-          phone: profile.phone ?? null,
-          active: true,
-        }))
-        .sort((a, b) => {
-          const aName = (a.name || a.email || "").toLowerCase();
-          const bName = (b.name || b.email || "").toLowerCase();
-          return aName.localeCompare(bName);
-        });
+    const cleanerProfiles: Cleaner[] = (pr ?? [])
+      .filter((profile) => profile.role === "cleaner")
+      .map((profile) => ({
+        id: profile.id,
+        name: profile.full_name ?? null,
+        email: profile.email ?? null,
+        phone: profile.phone ?? null,
+        active: true,
+      }))
+      .sort((a, b) => {
+        const aName = (a.name || a.email || "").toLowerCase();
+        const bName = (b.name || b.email || "").toLowerCase();
+        return aName.localeCompare(bName);
+      });
 
     setProperties((p ?? []) as Property[]);
     setCleaners(cleanerProfiles);
@@ -263,6 +265,16 @@ export default function AdminPage() {
   }, [checkingAuth]);
 
   useEffect(() => {
+    if (checkingAuth) return;
+
+    const interval = setInterval(() => {
+      loadData();
+    }, 15000);
+
+    return () => clearInterval(interval);
+  }, [checkingAuth]);
+
+  useEffect(() => {
     if (!selectedPropertyId) {
       setDoorCode("");
       setAlarmCode("");
@@ -273,13 +285,6 @@ export default function AdminPage() {
       setVrboCalendarActive(true);
       return;
     }
-useEffect(() => {
-  const interval = setInterval(() => {
-    loadData();
-  }, 15000); // every 15 seconds
-
-  return () => clearInterval(interval);
-}, []);
 
     const existingAccess = accessRows.find((x) => x.property_id === selectedPropertyId);
     setDoorCode(existingAccess?.door_code ?? "");
@@ -298,6 +303,16 @@ useEffect(() => {
     setAirbnbCalendarActive(airbnbCalendar?.is_active ?? true);
     setVrboCalendarActive(vrboCalendar?.is_active ?? true);
   }, [selectedPropertyId, accessRows, propertyCalendars]);
+
+  useEffect(() => {
+    if (!highlightedJobId) return;
+
+    const timeout = setTimeout(() => {
+      setHighlightedJobId(null);
+    }, 4000);
+
+    return () => clearTimeout(timeout);
+  }, [highlightedJobId]);
 
   function handleSopFilesChange(e: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
@@ -649,6 +664,8 @@ useEffect(() => {
     return map;
   }, [sopImages]);
 
+  const visibleJobs = jobsExpanded ? jobs : jobs.slice(0, 3);
+
   if (checkingAuth) {
     return (
       <main className="min-h-screen bg-[#f7f3ee] text-[#241c15]">
@@ -745,33 +762,38 @@ useEffect(() => {
             ))}
           </div>
         </div>
-{strandedJobs.length > 0 && (
-  <div className="sticky top-0 z-50 mb-4 rounded-[20px] border border-[#f0b4b4] bg-[#7e1f1f] px-4 py-3 text-white shadow-lg">
-    <div className="flex items-center justify-between">
-      <div className="text-sm font-semibold">
-        🚨 {strandedJobs.length} stranded job{strandedJobs.length === 1 ? "" : "s"} need attention
-      </div>
-      <button
-        onClick={() => {
-          const el = document.getElementById("jobs-section");
-          if (el) el.scrollIntoView({ behavior: "smooth" });
-        }}
-        className="text-xs underline hover:text-[#ffdede]"
-      >
-        View Jobs
-      </button>
-    </div>
-  </div>
-)}
+
+        {strandedJobs.length > 0 && (
+          <div className="sticky top-0 z-40 mb-4 rounded-[20px] border border-[#f0b4b4] bg-[#7e1f1f] px-4 py-3 text-white shadow-lg">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-sm font-semibold">
+                🚨 {strandedJobs.length} stranded job
+                {strandedJobs.length === 1 ? "" : "s"} need attention
+              </div>
+
+              <button
+                onClick={() => {
+                  const el = document.getElementById("jobs-section");
+                  if (el) el.scrollIntoView({ behavior: "smooth" });
+                }}
+                className="rounded-full border border-white/20 px-3 py-1 text-xs font-medium text-white transition hover:bg-white/10"
+              >
+                View Jobs
+              </button>
+            </div>
+          </div>
+        )}
+
         {strandedJobs.length > 0 ? (
-        <div className="mb-6 rounded-[30px] border border-[#f0b4b4] bg-[linear-gradient(135deg,#fff5f5_0%,#ffe9e9_100%)] p-5 shadow-[0_18px_45px_rgba(140,32,32,0.12)]">
+          <div className="mb-6 rounded-[30px] border border-[#f0b4b4] bg-[linear-gradient(135deg,#fff5f5_0%,#ffe9e9_100%)] p-5 shadow-[0_18px_45px_rgba(140,32,32,0.12)]">
             <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
               <div>
                 <div className="text-[11px] uppercase tracking-[0.24em] text-[#b14b4b]">
                   Immediate Attention Needed
                 </div>
-               <h2 className="mt-2 text-3xl font-bold tracking-tight text-[#7e1f1f] animate-pulse">
-                  🚨 {strandedJobs.length} stranded job{strandedJobs.length === 1 ? "" : "s"}
+                <h2 className="mt-2 text-3xl font-bold tracking-tight text-[#7e1f1f] animate-pulse">
+                  🚨 {strandedJobs.length} stranded job
+                  {strandedJobs.length === 1 ? "" : "s"}
                 </h2>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-[#8b3838]">
                   These jobs are assigned but have not been accepted by a cleaner yet.
@@ -788,17 +810,22 @@ useEffect(() => {
             </div>
 
             <div className="mt-4 grid gap-3">
-             {strandedJobs.map((job) => (
-  <div
-    key={job.id}
-    onClick={() => {
-      const el = document.getElementById("job-" + job.id);
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
-    }}
-    className="rounded-[22px] border border-[#efc3c3] bg-white px-4 py-4 shadow-sm cursor-pointer transition hover:shadow-md"
-  >
+              {strandedJobs.map((job) => (
+                <div
+                  key={job.id}
+                  onClick={() => {
+                    setHighlightedJobId(job.id);
+                    setJobsExpanded(true);
+
+                    setTimeout(() => {
+                      const el = document.getElementById("job-" + job.id);
+                      if (el) {
+                        el.scrollIntoView({ behavior: "smooth", block: "center" });
+                      }
+                    }, 50);
+                  }}
+                  className="rounded-[22px] border border-[#efc3c3] bg-white px-4 py-4 shadow-sm cursor-pointer transition hover:shadow-md"
+                >
                   <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                     <div>
                       <div className="text-base font-semibold text-[#241c15]">
@@ -1354,13 +1381,28 @@ useEffect(() => {
             </div>
           </section>
 
-          <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-xl font-semibold tracking-tight">Jobs</h2>
-              <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">
-                {jobs.length}
-              </span>
+          <section
+            id="jobs-section"
+            className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]"
+          >
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <h2 className="text-xl font-semibold tracking-tight">Jobs</h2>
+                <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">
+                  {jobs.length}
+                </span>
+              </div>
+
+              {jobs.length > 3 ? (
+                <button
+                  onClick={() => setJobsExpanded((prev) => !prev)}
+                  className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1.5 text-xs font-medium text-[#6f6255] transition hover:bg-white"
+                >
+                  {jobsExpanded ? "Collapse Jobs" : `Show All ${jobs.length} Jobs`}
+                </button>
+              ) : null}
             </div>
+
             <div className="space-y-3">
               {jobs.length === 0 ? (
                 <div className="rounded-[24px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-5 py-6 text-sm text-[#8a7b68]">
@@ -1368,15 +1410,21 @@ useEffect(() => {
                 </div>
               ) : null}
 
-             {jobs.map((job) => (
-  <div
-    key={job.id}
-    id={"job-" + job.id}
-    className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4"
-  >
+              {visibleJobs.map((job) => (
+                <div
+                  key={job.id}
+                  id={"job-" + job.id}
+                  onClick={() => setHighlightedJobId(job.id)}
+                  className={`rounded-[22px] p-4 transition cursor-pointer ${
+                    highlightedJobId === job.id
+                      ? "border-2 border-[#b48d4e] bg-[#fffaf3] shadow-lg"
+                      : "border border-[#eadfce] bg-[#fcfaf7] hover:shadow-sm"
+                  }`}
+                >
                   <div className="text-base font-semibold">{getPropertyName(job.property_id)}</div>
                   <div className="mt-2 text-sm text-[#6f6255]">
-                    Status: <span className="font-medium text-[#241c15]">{job.status || "unknown"}</span>
+                    Status:{" "}
+                    <span className="font-medium text-[#241c15]">{job.status || "unknown"}</span>
                   </div>
                   <div className="mt-1 text-sm text-[#8a7b68]">
                     Assigned: {getCleanerName(job.assigned_cleaner_id)}
@@ -1387,6 +1435,12 @@ useEffect(() => {
                 </div>
               ))}
             </div>
+
+            {jobs.length > 3 && !jobsExpanded ? (
+              <div className="mt-4 text-sm text-[#8a7b68]">
+                Showing 3 of {jobs.length} jobs.
+              </div>
+            ) : null}
           </section>
         </div>
       </div>
