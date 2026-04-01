@@ -34,6 +34,10 @@ type Job = {
   assigned_cleaner_id: string | null;
   notes: string | null;
   created_at?: string | null;
+  offered_at?: string | null;
+  accepted_at?: string | null;
+  declined_at?: string | null;
+  scheduled_for?: string | null;
 };
 
 type StrandedJob = {
@@ -50,6 +54,7 @@ type StrandedJob = {
   offered_at?: string | null;
   accepted_at?: string | null;
   declined_at?: string | null;
+  scheduled_for?: string | null;
 };
 
 type AccessRow = {
@@ -96,6 +101,70 @@ type PropertyCalendarRow = {
   created_at?: string | null;
 };
 
+function extractCheckoutDate(notes: string | null): string | null {
+  if (!notes) return null;
+  const match = notes.match(/Checkout date:\s*(\d{4}-\d{2}-\d{2})/i);
+  if (match?.[1]) return match[1];
+  return null;
+}
+
+function getResponseWindowHours(jobDate: string | null, now: Date) {
+  if (!jobDate) return 8;
+
+  const job = new Date(`${jobDate}T12:00:00`);
+  const diffHours = (job.getTime() - now.getTime()) / (1000 * 60 * 60);
+
+  if (diffHours > 24 * 7) return 48;
+  if (diffHours > 48) return 8;
+  return 2;
+}
+
+function getDeadline(
+  job: { offered_at?: string | null; scheduled_for?: string | null; notes: string | null },
+  now: Date
+) {
+  if (!job.offered_at) return null;
+
+  const offered = new Date(job.offered_at);
+  if (Number.isNaN(offered.getTime())) return null;
+
+  const jobDate = job.scheduled_for || extractCheckoutDate(job.notes);
+  const hours = getResponseWindowHours(jobDate, now);
+
+  return new Date(offered.getTime() + hours * 60 * 60 * 1000);
+}
+
+function getTimeRemainingMs(
+  job: { offered_at?: string | null; scheduled_for?: string | null; notes: string | null },
+  now: Date
+) {
+  const deadline = getDeadline(job, now);
+  if (!deadline) return null;
+  return deadline.getTime() - now.getTime();
+}
+
+function formatRemaining(ms: number) {
+  const totalSeconds = Math.floor(ms / 1000);
+  const absSeconds = Math.abs(totalSeconds);
+
+  const days = Math.floor(absSeconds / 86400);
+  const hours = Math.floor((absSeconds % 86400) / 3600);
+  const minutes = Math.floor((absSeconds % 3600) / 60);
+  const seconds = absSeconds % 60;
+
+  if (days > 0) return `${days}d ${hours}h ${minutes}m`;
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+}
+
+function getCountdownTone(ms: number | null) {
+  if (ms === null) return "text-[#8a7b68]";
+  if (ms < 0) return "text-red-600";
+  if (ms <= 2 * 60 * 60 * 1000) return "text-amber-600";
+  return "text-[#7f5d28]";
+}
+
 export default function AdminPage() {
   const router = useRouter();
   const [checkingAuth, setCheckingAuth] = useState(true);
@@ -119,6 +188,7 @@ export default function AdminPage() {
   const [reassignSelections, setReassignSelections] = useState<Record<string, string>>({});
   const [reassigningJobId, setReassigningJobId] = useState<string | null>(null);
   const [reofferingJobId, setReofferingJobId] = useState<string | null>(null);
+  const [now, setNow] = useState(() => new Date());
 
   const [propertyName, setPropertyName] = useState("");
   const [propertyAddress, setPropertyAddress] = useState("");
@@ -144,6 +214,14 @@ export default function AdminPage() {
   const [sopTitle, setSopTitle] = useState("");
   const [sopContent, setSopContent] = useState("");
   const [sopFiles, setSopFiles] = useState<File[]>([]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setNow(new Date());
+    }, 1000);
+
+    return () => window.clearInterval(interval);
+  }, []);
 
   async function loadData() {
     setError("");
@@ -399,12 +477,14 @@ export default function AdminPage() {
       .sort((a, b) => a.priority - b.priority);
 
     const primaryCleanerId = matchingAssignments[0]?.cleaner_id ?? null;
+    const extractedDate = extractCheckoutDate(jobNotes.trim() || null);
 
     const { error } = await supabase.from("turnover_jobs").insert({
       property_id: jobPropertyId,
       status: primaryCleanerId ? "assigned" : "pending",
       assigned_cleaner_id: primaryCleanerId,
       notes: jobNotes.trim() || null,
+      scheduled_for: extractedDate,
     });
 
     if (error) {
@@ -708,6 +788,13 @@ export default function AdminPage() {
     return date.toLocaleString();
   }
 
+  function formatScheduledFor(value?: string | null) {
+    if (!value) return "Not set";
+    const d = new Date(`${value}T12:00:00`);
+    if (Number.isNaN(d.getTime())) return value;
+    return d.toLocaleDateString();
+  }
+
   const selectedSops = useMemo(
     () => sops.filter((x) => x.property_id === selectedPropertyId),
     [sops, selectedPropertyId]
@@ -725,6 +812,17 @@ export default function AdminPage() {
   }, [sopImages]);
 
   const visibleJobs = jobsExpanded ? jobs : jobs.slice(0, 3);
+
+  const recentDeclinedJobs = useMemo(() => {
+    return [...jobs]
+      .filter((job) => !!job.declined_at)
+      .sort((a, b) => {
+        const aTime = a.declined_at ? new Date(a.declined_at).getTime() : 0;
+        const bTime = b.declined_at ? new Date(b.declined_at).getTime() : 0;
+        return bTime - aTime;
+      })
+      .slice(0, 10);
+  }, [jobs]);
 
   if (checkingAuth) {
     return (
@@ -856,8 +954,7 @@ export default function AdminPage() {
                   {strandedJobs.length === 1 ? "" : "s"}
                 </h2>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-[#8b3838]">
-                  These jobs are assigned but have not been accepted by a cleaner yet.
-                  They need attention before they fall through the cracks.
+                  These jobs have timed out or need intervention.
                 </p>
               </div>
 
@@ -870,109 +967,177 @@ export default function AdminPage() {
             </div>
 
             <div className="mt-4 grid gap-3">
-              {strandedJobs.map((job) => (
+              {strandedJobs.map((job) => {
+                const remainingMs = getTimeRemainingMs(job, now);
+                const countdownTone = getCountdownTone(remainingMs);
+
+                return (
+                  <div
+                    key={job.id}
+                    className="rounded-[22px] border border-[#efc3c3] bg-white px-4 py-4 shadow-sm transition hover:shadow-md"
+                  >
+                    <div
+                      onClick={() => {
+                        setHighlightedJobId(job.id);
+                        setJobsExpanded(true);
+
+                        setTimeout(() => {
+                          const el = document.getElementById("job-" + job.id);
+                          if (el) {
+                            el.scrollIntoView({ behavior: "smooth", block: "center" });
+                          }
+                        }, 50);
+                      }}
+                      className="cursor-pointer"
+                    >
+                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                        <div>
+                          <div className="text-base font-semibold text-[#241c15]">
+                            {job.property_name || getPropertyName(job.property_id || "")}
+                          </div>
+                          <div className="mt-1 text-sm text-[#6f6255]">
+                            {job.property_address || "No address"}
+                          </div>
+                          <div className="mt-2 text-sm text-[#8b3838]">
+                            Assigned cleaner:{" "}
+                            <span className="font-medium text-[#7e1f1f]">
+                              {job.assigned_cleaner_name ||
+                                job.assigned_cleaner_email ||
+                                getCleanerName(job.assigned_cleaner_id)}
+                            </span>
+                          </div>
+                          <div className="mt-1 text-sm text-[#8a7b68]">
+                            Status: {job.status || "unknown"}
+                          </div>
+                          <div className="mt-1 text-sm text-[#8a7b68]">
+                            Cleaning date: {formatScheduledFor(job.scheduled_for || extractCheckoutDate(job.notes))}
+                          </div>
+                          {remainingMs !== null && (
+                            <div className={`mt-2 text-sm font-semibold ${countdownTone}`}>
+                              {remainingMs < 0
+                                ? `Overdue by ${formatRemaining(remainingMs)}`
+                                : `Accept within ${formatRemaining(remainingMs)}`}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="rounded-[18px] border border-[#f1d0d0] bg-[#fff8f8] px-4 py-3 text-sm text-[#8b3838]">
+                          <div>Created: {formatDateTime(job.created_at)}</div>
+                          <div className="mt-1">
+                            Offered: {job.offered_at ? formatDateTime(job.offered_at) : "Not recorded"}
+                          </div>
+                          <div className="mt-1">
+                            Declined: {job.declined_at ? formatDateTime(job.declined_at) : "No"}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 text-sm leading-6 text-[#6f6255]">
+                        {job.notes || "No notes"}
+                      </div>
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        onClick={() => reofferJob(job.id)}
+                        disabled={reofferingJobId === job.id}
+                        className="rounded-full bg-[#b48d4e] px-3 py-1 text-xs text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {reofferingJobId === job.id ? "Re-offering..." : "Re-offer"}
+                      </button>
+                    </div>
+
+                    <div className="mt-4 rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] p-3">
+                      <div className="mb-2 text-xs uppercase tracking-[0.18em] text-[#8a7b68]">
+                        Reassign cleaner
+                      </div>
+
+                      <div className="flex flex-col gap-2 md:flex-row">
+                        <select
+                          value={reassignSelections[job.id] ?? ""}
+                          onChange={(e) =>
+                            setReassignSelections((prev) => ({
+                              ...prev,
+                              [job.id]: e.target.value,
+                            }))
+                          }
+                          className="w-full rounded-[16px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none transition focus:border-[#b48d4e]"
+                        >
+                          <option value="">Select cleaner</option>
+                          {cleaners.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name || c.email || "Unnamed cleaner"}
+                            </option>
+                          ))}
+                        </select>
+
+                        <button
+                          onClick={() => reassignStrandedJob(job.id)}
+                          disabled={
+                            reassigningJobId === job.id || !(reassignSelections[job.id] ?? "")
+                          }
+                          className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-4 py-2 text-sm font-medium text-[#f8f2e8] shadow-[0_10px_24px_rgba(36,28,21,0.18)] transition hover:bg-[#352a21] disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {reassigningJobId === job.id ? "Reassigning..." : "Reassign"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+
+        {recentDeclinedJobs.length > 0 && (
+          <div className="mb-6 rounded-[30px] border border-[#f2d2c4] bg-[linear-gradient(135deg,#fff8f4_0%,#fff2eb_100%)] p-5 shadow-[0_18px_45px_rgba(140,80,32,0.08)]">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.24em] text-[#b16a4b]">
+                  Recent Activity
+                </div>
+                <h2 className="mt-2 text-2xl font-bold tracking-tight text-[#8a4526]">
+                  Recently Declined Jobs
+                </h2>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-[#8a5d4b]">
+                  Latest jobs that were declined by a cleaner.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3">
+              {recentDeclinedJobs.map((job) => (
                 <div
                   key={job.id}
-                  className="rounded-[22px] border border-[#efc3c3] bg-white px-4 py-4 shadow-sm transition hover:shadow-md"
+                  className="rounded-[22px] border border-[#edd8cc] bg-white px-4 py-4 shadow-sm"
                 >
-                  <div
-                    onClick={() => {
-                      setHighlightedJobId(job.id);
-                      setJobsExpanded(true);
-
-                      setTimeout(() => {
-                        const el = document.getElementById("job-" + job.id);
-                        if (el) {
-                          el.scrollIntoView({ behavior: "smooth", block: "center" });
-                        }
-                      }, 50);
-                    }}
-                    className="cursor-pointer"
-                  >
-                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                      <div>
-                        <div className="text-base font-semibold text-[#241c15]">
-                          {job.property_name || getPropertyName(job.property_id || "")}
-                        </div>
-                        <div className="mt-1 text-sm text-[#6f6255]">
-                          {job.property_address || "No address"}
-                        </div>
-                        <div className="mt-2 text-sm text-[#8b3838]">
-                          Assigned cleaner:{" "}
-                          <span className="font-medium text-[#7e1f1f]">
-                            {job.assigned_cleaner_name ||
-                              job.assigned_cleaner_email ||
-                              getCleanerName(job.assigned_cleaner_id)}
-                          </span>
-                        </div>
-                        <div className="mt-1 text-sm text-[#8a7b68]">
-                          Status: {job.status || "unknown"}
-                        </div>
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <div className="text-base font-semibold text-[#241c15]">
+                        {getPropertyName(job.property_id)}
                       </div>
-
-                      <div className="rounded-[18px] border border-[#f1d0d0] bg-[#fff8f8] px-4 py-3 text-sm text-[#8b3838]">
-                        <div>Created: {formatDateTime(job.created_at)}</div>
-                        <div className="mt-1">
-                          Offered: {job.offered_at ? formatDateTime(job.offered_at) : "Not recorded"}
-                        </div>
+                      <div className="mt-1 text-sm text-[#6f6255]">
+                        Assigned: {getCleanerName(job.assigned_cleaner_id)}
+                      </div>
+                      <div className="mt-1 text-sm text-[#8a7b68]">
+                        Cleaning date: {formatScheduledFor(job.scheduled_for || extractCheckoutDate(job.notes))}
+                      </div>
+                      <div className="mt-3 text-sm leading-6 text-[#6f6255]">
+                        {job.notes || "No notes"}
                       </div>
                     </div>
 
-                    <div className="mt-3 text-sm leading-6 text-[#6f6255]">
-                      {job.notes || "No notes"}
-                    </div>
-                  </div>
-
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button
-                      onClick={() => reofferJob(job.id)}
-                      disabled={reofferingJobId === job.id}
-                      className="rounded-full bg-[#b48d4e] px-3 py-1 text-xs text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {reofferingJobId === job.id ? "Re-offering..." : "Re-offer"}
-                    </button>
-                  </div>
-
-                  <div className="mt-4 rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] p-3">
-                    <div className="mb-2 text-xs uppercase tracking-[0.18em] text-[#8a7b68]">
-                      Reassign cleaner
-                    </div>
-
-                    <div className="flex flex-col gap-2 md:flex-row">
-                      <select
-                        value={reassignSelections[job.id] ?? ""}
-                        onChange={(e) =>
-                          setReassignSelections((prev) => ({
-                            ...prev,
-                            [job.id]: e.target.value,
-                          }))
-                        }
-                        className="w-full rounded-[16px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none transition focus:border-[#b48d4e]"
-                      >
-                        <option value="">Select cleaner</option>
-                        {cleaners.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name || c.email || "Unnamed cleaner"}
-                          </option>
-                        ))}
-                      </select>
-
-                      <button
-                        onClick={() => reassignStrandedJob(job.id)}
-                        disabled={
-                          reassigningJobId === job.id || !(reassignSelections[job.id] ?? "")
-                        }
-                        className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-4 py-2 text-sm font-medium text-[#f8f2e8] shadow-[0_10px_24px_rgba(36,28,21,0.18)] transition hover:bg-[#352a21] disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {reassigningJobId === job.id ? "Reassigning..." : "Reassign"}
-                      </button>
+                    <div className="rounded-[18px] border border-[#efe1d8] bg-[#fcfaf7] px-4 py-3 text-sm text-[#8a5d4b]">
+                      <div>Declined: {formatDateTime(job.declined_at)}</div>
+                      <div className="mt-1">Offered: {formatDateTime(job.offered_at)}</div>
+                      <div className="mt-1">Status: {job.status || "unknown"}</div>
                     </div>
                   </div>
                 </div>
               ))}
             </div>
           </div>
-        ) : null}
+        )}
 
         {error ? (
           <div className="mb-6 rounded-[24px] border border-[#e7c6c1] bg-[#fff4f2] px-4 py-3 text-sm text-[#8a2e22] shadow-sm">
@@ -1177,7 +1342,7 @@ export default function AdminPage() {
 
               <textarea
                 className="min-h-[120px] w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e] focus:bg-white"
-                placeholder="Job notes"
+                placeholder="Job notes. Example: Checkout date: 2026-04-08"
                 value={jobNotes}
                 onChange={(e) => setJobNotes(e.target.value)}
               />
@@ -1520,30 +1685,50 @@ export default function AdminPage() {
                 </div>
               ) : null}
 
-              {visibleJobs.map((job) => (
-                <div
-                  key={job.id}
-                  id={"job-" + job.id}
-                  onClick={() => setHighlightedJobId(job.id)}
-                  className={`rounded-[22px] p-4 transition cursor-pointer ${
-                    highlightedJobId === job.id
-                      ? "border-2 border-[#b48d4e] bg-[#fffaf3] shadow-lg"
-                      : "border border-[#eadfce] bg-[#fcfaf7] hover:shadow-sm"
-                  }`}
-                >
-                  <div className="text-base font-semibold">{getPropertyName(job.property_id)}</div>
-                  <div className="mt-2 text-sm text-[#6f6255]">
-                    Status:{" "}
-                    <span className="font-medium text-[#241c15]">{job.status || "unknown"}</span>
+              {visibleJobs.map((job) => {
+                const remainingMs = getTimeRemainingMs(job, now);
+                const countdownTone = getCountdownTone(remainingMs);
+
+                return (
+                  <div
+                    key={job.id}
+                    id={"job-" + job.id}
+                    onClick={() => setHighlightedJobId(job.id)}
+                    className={`rounded-[22px] p-4 transition cursor-pointer ${
+                      highlightedJobId === job.id
+                        ? "border-2 border-[#b48d4e] bg-[#fffaf3] shadow-lg"
+                        : "border border-[#eadfce] bg-[#fcfaf7] hover:shadow-sm"
+                    }`}
+                  >
+                    <div className="text-base font-semibold">{getPropertyName(job.property_id)}</div>
+                    <div className="mt-2 text-sm text-[#6f6255]">
+                      Status:{" "}
+                      <span className="font-medium text-[#241c15]">{job.status || "unknown"}</span>
+                    </div>
+                    <div className="mt-1 text-sm text-[#8a7b68]">
+                      Assigned: {getCleanerName(job.assigned_cleaner_id)}
+                    </div>
+                    <div className="mt-1 text-sm text-[#8a7b68]">
+                      Cleaning date: {formatScheduledFor(job.scheduled_for || extractCheckoutDate(job.notes))}
+                    </div>
+                    {remainingMs !== null && !job.accepted_at && (
+                      <div className={`mt-1 text-sm font-semibold ${countdownTone}`}>
+                        {remainingMs < 0
+                          ? `Overdue by ${formatRemaining(remainingMs)}`
+                          : `Accept within ${formatRemaining(remainingMs)}`}
+                      </div>
+                    )}
+                    <div className="mt-2 grid gap-1 text-xs text-[#8a7b68]">
+                      <div>Offered: {formatDateTime(job.offered_at)}</div>
+                      <div>Accepted: {formatDateTime(job.accepted_at)}</div>
+                      <div>Declined: {formatDateTime(job.declined_at)}</div>
+                    </div>
+                    <div className="mt-3 text-sm leading-6 text-[#6f6255]">
+                      {job.notes || "No notes"}
+                    </div>
                   </div>
-                  <div className="mt-1 text-sm text-[#8a7b68]">
-                    Assigned: {getCleanerName(job.assigned_cleaner_id)}
-                  </div>
-                  <div className="mt-3 text-sm leading-6 text-[#6f6255]">
-                    {job.notes || "No notes"}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {jobs.length > 3 && !jobsExpanded ? (
