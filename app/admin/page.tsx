@@ -788,11 +788,17 @@ useEffect(() => {
             </div>
 
             <div className="mt-4 grid gap-3">
-              {strandedJobs.map((job) => (
-                <div
-                  key={job.id}
-                  className="rounded-[22px] border border-[#efc3c3] bg-white px-4 py-4 shadow-sm"
-                >
+             {strandedJobs.map((job) => (
+  <div
+    key={job.id}
+    onClick={() => {
+      const el = document.getElementById("job-" + job.id);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }}
+    className="rounded-[22px] border border-[#efc3c3] bg-white px-4 py-4 shadow-sm cursor-pointer transition hover:shadow-md"
+  >
                   <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                     <div>
                       <div className="text-base font-semibold text-[#241c15]">
@@ -1362,8 +1368,12 @@ useEffect(() => {
                 </div>
               ) : null}
 
-              {jobs.map((job) => (
-                <div key={job.id} className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+             {jobs.map((job) => (
+  <div
+    key={job.id}
+    id={"job-" + job.id}
+    className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4"
+  >
                   <div className="text-base font-semibold">{getPropertyName(job.property_id)}</div>
                   <div className="mt-2 text-sm text-[#6f6255]">
                     Status: <span className="font-medium text-[#241c15]">{job.status || "unknown"}</span>
