@@ -207,7 +207,10 @@ function getCountdownTone(ms: number | null) {
   return "text-[#e7c98a]";
 }
 
-function getSlotDisplayStatus(slotStatus: string | null, staffingStatus: string | null) {
+function getSlotDisplayStatus(
+  slotStatus: string | null | undefined,
+  staffingStatus: string | null | undefined
+) {
   const slot = (slotStatus || "").toLowerCase().trim();
   const staffing = (staffingStatus || "").toLowerCase().trim();
 
@@ -1303,10 +1306,10 @@ export default function CleanerPage() {
 
                     <div>
                       {(() => {
-                        const display = getSlotDisplayStatus(
-                          selectedCleanerJob.slot.status,
-                          selectedCleanerJob.job.staffing_status
-                        );
+                     const display = getSlotDisplayStatus(
+  selectedCleanerJob.slot.status ?? null,
+  selectedCleanerJob.job.staffing_status ?? null
+);
                         const isOffered =
                           (selectedCleanerJob.slot.status || "").toLowerCase().trim() === "offered";
                         const isAccepted =
