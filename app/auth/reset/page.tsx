@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 
@@ -16,6 +16,57 @@ export default function ResetPasswordPage() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [initializing, setInitializing] = useState(true);
+
+  useEffect(() => {
+    async function initResetSession() {
+      setError("");
+      setMessage("");
+
+      try {
+        const hash = window.location.hash.startsWith("#")
+          ? window.location.hash.slice(1)
+          : window.location.hash;
+
+        const params = new URLSearchParams(hash);
+        const accessToken = params.get("access_token");
+        const refreshToken = params.get("refresh_token");
+        const type = params.get("type");
+
+        if (type === "recovery" && accessToken && refreshToken) {
+          const { error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+
+          if (error) {
+            setError(error.message);
+            setInitializing(false);
+            return;
+          }
+
+          // clean ugly tokens from the URL after session is set
+          window.history.replaceState({}, document.title, "/auth/reset");
+          setInitializing(false);
+          return;
+        }
+
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (!session) {
+          setError("Reset link is invalid or expired. Please request a new password reset email.");
+        }
+      } catch (err: any) {
+        setError(err?.message || "Could not initialize reset session.");
+      } finally {
+        setInitializing(false);
+      }
+    }
+
+    initResetSession();
+  }, []);
 
   async function handleResetPassword(e: React.FormEvent) {
     e.preventDefault();
@@ -125,6 +176,7 @@ export default function ResetPasswordPage() {
                       placeholder="New password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
+                      disabled={initializing}
                     />
                     <button
                       type="button"
@@ -142,6 +194,7 @@ export default function ResetPasswordPage() {
                       placeholder="Confirm new password"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
+                      disabled={initializing}
                     />
                     <button
                       type="button"
@@ -156,9 +209,9 @@ export default function ResetPasswordPage() {
                     <button
                       type="submit"
                       className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-3 text-sm font-medium text-[#f8f2e8] shadow-[0_10px_24px_rgba(36,28,21,0.18)] transition hover:bg-[#352a21] active:scale-[0.98] cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
-                      disabled={loading}
+                      disabled={loading || initializing}
                     >
-                      {loading ? "Updating..." : "Update Password"}
+                      {initializing ? "Preparing..." : loading ? "Updating..." : "Update Password"}
                     </button>
 
                     <button
