@@ -745,7 +745,24 @@ useEffect(() => {
             ))}
           </div>
         </div>
-
+{strandedJobs.length > 0 && (
+  <div className="sticky top-0 z-50 mb-4 rounded-[20px] border border-[#f0b4b4] bg-[#7e1f1f] px-4 py-3 text-white shadow-lg">
+    <div className="flex items-center justify-between">
+      <div className="text-sm font-semibold">
+        🚨 {strandedJobs.length} stranded job{strandedJobs.length === 1 ? "" : "s"} need attention
+      </div>
+      <button
+        onClick={() => {
+          const el = document.getElementById("jobs-section");
+          if (el) el.scrollIntoView({ behavior: "smooth" });
+        }}
+        className="text-xs underline hover:text-[#ffdede]"
+      >
+        View Jobs
+      </button>
+    </div>
+  </div>
+)}
         {strandedJobs.length > 0 ? (
         <div className="mb-6 rounded-[30px] border border-[#f0b4b4] bg-[linear-gradient(135deg,#fff5f5_0%,#ffe9e9_100%)] p-5 shadow-[0_18px_45px_rgba(140,32,32,0.12)]">
             <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
