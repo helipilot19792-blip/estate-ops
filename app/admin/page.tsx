@@ -118,6 +118,7 @@ export default function AdminPage() {
   const [jobsExpanded, setJobsExpanded] = useState(false);
   const [reassignSelections, setReassignSelections] = useState<Record<string, string>>({});
   const [reassigningJobId, setReassigningJobId] = useState<string | null>(null);
+  const [reofferingJobId, setReofferingJobId] = useState<string | null>(null);
 
   const [propertyName, setPropertyName] = useState("");
   const [propertyAddress, setPropertyAddress] = useState("");
@@ -414,6 +415,24 @@ export default function AdminPage() {
     setJobPropertyId("");
     setJobNotes("");
     loadData();
+  }
+
+  async function reofferJob(jobId: string) {
+    setError("");
+    setReofferingJobId(jobId);
+
+    const { error } = await supabase.rpc("reoffer_job", {
+      job_id: jobId,
+    });
+
+    if (error) {
+      setError(error.message);
+      setReofferingJobId(null);
+      return;
+    }
+
+    await loadData();
+    setReofferingJobId(null);
   }
 
   async function reassignStrandedJob(jobId: string) {
@@ -902,6 +921,16 @@ export default function AdminPage() {
                     <div className="mt-3 text-sm leading-6 text-[#6f6255]">
                       {job.notes || "No notes"}
                     </div>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      onClick={() => reofferJob(job.id)}
+                      disabled={reofferingJobId === job.id}
+                      className="rounded-full bg-[#b48d4e] px-3 py-1 text-xs text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {reofferingJobId === job.id ? "Re-offering..." : "Re-offer"}
+                    </button>
                   </div>
 
                   <div className="mt-4 rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] p-3">
