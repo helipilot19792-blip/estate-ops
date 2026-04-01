@@ -1,3 +1,4 @@
+
 "use client";
 
 import Image from "next/image";
@@ -10,20 +11,28 @@ type Property = {
   name: string | null;
   address: string | null;
   notes?: string | null;
+  default_cleaner_units_needed?: number | null;
+  cleaner_units_required_strict?: boolean | null;
+  show_team_status_to_cleaners?: boolean | null;
 };
 
-type Cleaner = {
+type CleanerAccount = {
   id: string;
-  name: string | null;
-  email: string | null;
-  phone?: string | null;
-  active?: boolean | null;
+  display_name: string | null;
+  created_at?: string | null;
+};
+
+type CleanerAccountMember = {
+  id: string;
+  cleaner_account_id: string;
+  profile_id: string;
+  created_at?: string | null;
 };
 
 type Assignment = {
   id: string;
   property_id: string;
-  cleaner_id: string;
+  cleaner_account_id: string;
   priority: number;
 };
 
@@ -31,14 +40,28 @@ type Job = {
   id: string;
   property_id: string;
   status: string | null;
-  assigned_cleaner_id?: string | null;
+  staffing_status?: string | null;
   notes: string | null;
   created_at?: string | null;
+  scheduled_for?: string | null;
+  cleaner_units_needed?: number | null;
+  cleaner_units_required_strict?: boolean | null;
+  show_team_status_to_cleaners?: boolean | null;
+};
+
+type JobSlot = {
+  id: string;
+  job_id: string;
+  slot_number: number;
+  cleaner_account_id: string | null;
+  status: string | null;
   offered_at?: string | null;
+  expires_at?: string | null;
   accepted_at?: string | null;
   declined_at?: string | null;
-  scheduled_for?: string | null;
-  staffing_status?: string | null;
+  accepted_by_profile_id?: string | null;
+  declined_by_profile_id?: string | null;
+  updated_at?: string | null;
 };
 
 type StrandedJob = {
@@ -47,15 +70,11 @@ type StrandedJob = {
   property_name: string | null;
   property_address: string | null;
   status: string | null;
-  assigned_cleaner_id: string | null;
-  assigned_cleaner_name: string | null;
-  assigned_cleaner_email: string | null;
   notes: string | null;
   created_at?: string | null;
-  offered_at?: string | null;
-  accepted_at?: string | null;
-  declined_at?: string | null;
   scheduled_for?: string | null;
+  cleaner_units_needed?: number | null;
+  cleaner_units_required_strict?: boolean | null;
   staffing_status?: string | null;
 };
 
@@ -121,30 +140,6 @@ function getResponseWindowHours(jobDate: string | null, now: Date) {
   return 2;
 }
 
-function getDeadline(
-  job: { offered_at?: string | null; scheduled_for?: string | null; notes: string | null },
-  now: Date
-) {
-  if (!job.offered_at) return null;
-
-  const offered = new Date(job.offered_at);
-  if (Number.isNaN(offered.getTime())) return null;
-
-  const jobDate = job.scheduled_for || extractCheckoutDate(job.notes);
-  const hours = getResponseWindowHours(jobDate, now);
-
-  return new Date(offered.getTime() + hours * 60 * 60 * 1000);
-}
-
-function getTimeRemainingMs(
-  job: { offered_at?: string | null; scheduled_for?: string | null; notes: string | null },
-  now: Date
-) {
-  const deadline = getDeadline(job, now);
-  if (!deadline) return null;
-  return deadline.getTime() - now.getTime();
-}
-
 function formatRemaining(ms: number) {
   const totalSeconds = Math.floor(ms / 1000);
   const absSeconds = Math.abs(totalSeconds);
@@ -167,13 +162,13 @@ function getCountdownTone(ms: number | null) {
   return "text-[#7f5d28]";
 }
 
-function getStaffingLabel(staffingStatus?: string | null, fallbackStatus?: string | null) {
-  if (staffingStatus === "fully_staffed") return "Fully staffed";
-  if (staffingStatus === "partially_filled") return "Partially filled";
-  if (staffingStatus === "ready") return "Ready";
-  if (staffingStatus === "stranded") return "Stranded";
-  if (staffingStatus === "unfilled") return "Unfilled";
-  return fallbackStatus || "unknown";
+function staffingLabel(status?: string | null, fallback?: string | null) {
+  if (status === "fully_staffed") return "Fully staffed";
+  if (status === "partially_filled") return "Partially filled";
+  if (status === "ready") return "Ready";
+  if (status === "stranded") return "Stranded";
+  if (status === "unfilled") return "Unfilled";
+  return fallback || "Unknown";
 }
 
 export default function AdminPage() {
@@ -181,9 +176,11 @@ export default function AdminPage() {
   const [checkingAuth, setCheckingAuth] = useState(true);
 
   const [properties, setProperties] = useState<Property[]>([]);
-  const [cleaners, setCleaners] = useState<Cleaner[]>([]);
+  const [cleanerAccounts, setCleanerAccounts] = useState<CleanerAccount[]>([]);
+  const [cleanerAccountMembers, setCleanerAccountMembers] = useState<CleanerAccountMember[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [jobSlots, setJobSlots] = useState<JobSlot[]>([]);
   const [strandedJobs, setStrandedJobs] = useState<StrandedJob[]>([]);
   const [accessRows, setAccessRows] = useState<AccessRow[]>([]);
   const [sops, setSops] = useState<SopRow[]>([]);
@@ -204,13 +201,22 @@ export default function AdminPage() {
   const [propertyName, setPropertyName] = useState("");
   const [propertyAddress, setPropertyAddress] = useState("");
   const [propertyNotes, setPropertyNotes] = useState("");
+  const [propertyCleanerUnitsNeeded, setPropertyCleanerUnitsNeeded] = useState("1");
+  const [propertyCleanerUnitsStrict, setPropertyCleanerUnitsStrict] = useState(false);
+  const [propertyShowTeamStatus, setPropertyShowTeamStatus] = useState(true);
+
+  const [newAccountName, setNewAccountName] = useState("");
+  const [newAccountMemberIds, setNewAccountMemberIds] = useState<string[]>([]);
+  const [creatingAccount, setCreatingAccount] = useState(false);
 
   const [assignmentPropertyId, setAssignmentPropertyId] = useState("");
-  const [assignmentCleanerId, setAssignmentCleanerId] = useState("");
+  const [assignmentCleanerAccountId, setAssignmentCleanerAccountId] = useState("");
   const [assignmentPriority, setAssignmentPriority] = useState("1");
 
   const [jobPropertyId, setJobPropertyId] = useState("");
   const [jobNotes, setJobNotes] = useState("");
+  const [jobCleanerUnitsNeeded, setJobCleanerUnitsNeeded] = useState("");
+  const [jobStrictMode, setJobStrictMode] = useState("inherit");
 
   const [selectedPropertyId, setSelectedPropertyId] = useState("");
   const [doorCode, setDoorCode] = useState("");
@@ -243,8 +249,20 @@ export default function AdminPage() {
       .order("created_at", { ascending: false });
     if (pErr) return setError(pErr.message);
 
+    const { data: ca, error: caErr } = await supabase
+      .from("cleaner_accounts")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (caErr) return setError(caErr.message);
+
+    const { data: cam, error: camErr } = await supabase
+      .from("cleaner_account_members")
+      .select("*")
+      .order("created_at", { ascending: true });
+    if (camErr) return setError(camErr.message);
+
     const { data: a, error: aErr } = await supabase
-      .from("property_cleaner_assignments")
+      .from("property_cleaner_account_assignments")
       .select("*")
       .order("priority", { ascending: true });
     if (aErr) return setError(aErr.message);
@@ -254,6 +272,13 @@ export default function AdminPage() {
       .select("*")
       .order("created_at", { ascending: false });
     if (jErr) return setError(jErr.message);
+
+    const { data: js, error: jsErr } = await supabase
+      .from("turnover_job_slots")
+      .select("*")
+      .order("job_id", { ascending: false })
+      .order("slot_number", { ascending: true });
+    if (jsErr) return setError(jsErr.message);
 
     const { data: sj, error: sjErr } = await supabase
       .from("admin_stranded_jobs")
@@ -290,25 +315,12 @@ export default function AdminPage() {
       .order("created_at", { ascending: false });
     if (pcErr) return setError(pcErr.message);
 
-    const cleanerProfiles: Cleaner[] = (pr ?? [])
-      .filter((profile) => profile.role === "cleaner")
-      .map((profile) => ({
-        id: profile.id,
-        name: profile.full_name ?? null,
-        email: profile.email ?? null,
-        phone: profile.phone ?? null,
-        active: true,
-      }))
-      .sort((a, b) => {
-        const aName = (a.name || a.email || "").toLowerCase();
-        const bName = (b.name || b.email || "").toLowerCase();
-        return aName.localeCompare(bName);
-      });
-
     setProperties((p ?? []) as Property[]);
-    setCleaners(cleanerProfiles);
+    setCleanerAccounts((ca ?? []) as CleanerAccount[]);
+    setCleanerAccountMembers((cam ?? []) as CleanerAccountMember[]);
     setAssignments((a ?? []) as Assignment[]);
     setJobs((j ?? []) as Job[]);
+    setJobSlots((js ?? []) as JobSlot[]);
     setStrandedJobs((sj ?? []) as StrandedJob[]);
     setAccessRows((ar ?? []) as AccessRow[]);
     setSops((s ?? []) as SopRow[]);
@@ -320,7 +332,7 @@ export default function AdminPage() {
       const next = { ...prev };
       for (const job of (sj ?? []) as StrandedJob[]) {
         if (!next[job.id]) {
-          next[job.id] = job.assigned_cleaner_id ?? "";
+          next[job.id] = "";
         }
       }
       return next;
@@ -344,12 +356,7 @@ export default function AdminPage() {
         .eq("id", user.id)
         .single<ProfileRow>();
 
-      if (profileError || !profile) {
-        router.push("/login");
-        return;
-      }
-
-      if (profile.role !== "admin") {
+      if (profileError || !profile || profile.role !== "admin") {
         router.push("/login");
         return;
       }
@@ -421,6 +428,12 @@ export default function AdminPage() {
     setSopFiles(files);
   }
 
+  function toggleNewAccountMember(profileId: string) {
+    setNewAccountMemberIds((prev) =>
+      prev.includes(profileId) ? prev.filter((id) => id !== profileId) : [...prev, profileId]
+    );
+  }
+
   async function updateUserRole(profileId: string, newRole: string) {
     setError("");
     setSavingRoleId(profileId);
@@ -447,6 +460,9 @@ export default function AdminPage() {
       name: propertyName.trim(),
       address: propertyAddress.trim() || null,
       notes: propertyNotes.trim() || null,
+      default_cleaner_units_needed: Number(propertyCleanerUnitsNeeded || "1"),
+      cleaner_units_required_strict: propertyCleanerUnitsStrict,
+      show_team_status_to_cleaners: propertyShowTeamStatus,
     });
 
     if (error) {
@@ -457,15 +473,68 @@ export default function AdminPage() {
     setPropertyName("");
     setPropertyAddress("");
     setPropertyNotes("");
+    setPropertyCleanerUnitsNeeded("1");
+    setPropertyCleanerUnitsStrict(false);
+    setPropertyShowTeamStatus(true);
     loadData();
   }
 
-  async function addAssignment() {
-    if (!assignmentPropertyId || !assignmentCleanerId) return;
+  async function createCleanerAccount() {
+    if (!newAccountName.trim()) {
+      setError("Please enter a team/account name.");
+      return;
+    }
 
-    const { error } = await supabase.from("property_cleaner_assignments").insert({
+    if (newAccountMemberIds.length === 0) {
+      setError("Please choose at least one cleaner profile.");
+      return;
+    }
+
+    setError("");
+    setCreatingAccount(true);
+
+    try {
+      const { data: account, error: accountError } = await supabase
+        .from("cleaner_accounts")
+        .insert({
+          display_name: newAccountName.trim(),
+        })
+        .select("*")
+        .single();
+
+      if (accountError || !account) {
+        throw accountError || new Error("Could not create cleaner account.");
+      }
+
+      const rows = newAccountMemberIds.map((profileId) => ({
+        cleaner_account_id: account.id,
+        profile_id: profileId,
+      }));
+
+      const { error: memberError } = await supabase
+        .from("cleaner_account_members")
+        .insert(rows);
+
+      if (memberError) {
+        throw memberError;
+      }
+
+      setNewAccountName("");
+      setNewAccountMemberIds([]);
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Could not create cleaner account.");
+    } finally {
+      setCreatingAccount(false);
+    }
+  }
+
+  async function addAssignment() {
+    if (!assignmentPropertyId || !assignmentCleanerAccountId) return;
+
+    const { error } = await supabase.from("property_cleaner_account_assignments").insert({
       property_id: assignmentPropertyId,
-      cleaner_id: assignmentCleanerId,
+      cleaner_account_id: assignmentCleanerAccountId,
       priority: Number(assignmentPriority),
     });
 
@@ -475,7 +544,7 @@ export default function AdminPage() {
     }
 
     setAssignmentPropertyId("");
-    setAssignmentCleanerId("");
+    setAssignmentCleanerAccountId("");
     setAssignmentPriority("1");
     loadData();
   }
@@ -483,20 +552,24 @@ export default function AdminPage() {
   async function createJob() {
     if (!jobPropertyId) return;
 
-    const matchingAssignments = assignments
-      .filter((a) => a.property_id === jobPropertyId)
-      .sort((a, b) => a.priority - b.priority);
-
-    const primaryCleanerId = matchingAssignments[0]?.cleaner_id ?? null;
     const extractedDate = extractCheckoutDate(jobNotes.trim() || null);
-
-    const { error } = await supabase.from("turnover_jobs").insert({
+    const payload: Record<string, any> = {
       property_id: jobPropertyId,
-      status: primaryCleanerId ? "assigned" : "pending",
-      assigned_cleaner_id: primaryCleanerId,
       notes: jobNotes.trim() || null,
       scheduled_for: extractedDate,
-    });
+    };
+
+    if (jobCleanerUnitsNeeded.trim()) {
+      payload.cleaner_units_needed = Number(jobCleanerUnitsNeeded);
+    }
+
+    if (jobStrictMode === "yes") {
+      payload.cleaner_units_required_strict = true;
+    } else if (jobStrictMode === "no") {
+      payload.cleaner_units_required_strict = false;
+    }
+
+    const { error } = await supabase.from("turnover_jobs").insert(payload);
 
     if (error) {
       setError(error.message);
@@ -505,6 +578,8 @@ export default function AdminPage() {
 
     setJobPropertyId("");
     setJobNotes("");
+    setJobCleanerUnitsNeeded("");
+    setJobStrictMode("inherit");
     loadData();
   }
 
@@ -512,8 +587,8 @@ export default function AdminPage() {
     setError("");
     setReofferingJobId(jobId);
 
-    const { error } = await supabase.rpc("reoffer_job", {
-      job_id: jobId,
+    const { error } = await supabase.rpc("create_slots_for_job", {
+      p_job_id: jobId,
     });
 
     if (error) {
@@ -527,32 +602,58 @@ export default function AdminPage() {
   }
 
   async function reassignStrandedJob(jobId: string) {
-    const cleanerId = reassignSelections[jobId];
+    const cleanerAccountId = reassignSelections[jobId];
 
-    if (!cleanerId) {
-      setError("Please select a cleaner before reassigning.");
+    if (!cleanerAccountId) {
+      setError("Please select a cleaner team/account before offering.");
       return;
     }
 
     setError("");
     setReassigningJobId(jobId);
 
-    const { error } = await supabase
-      .from("turnover_jobs")
-      .update({
-        assigned_cleaner_id: cleanerId,
-        status: "assigned",
-      })
-      .eq("id", jobId);
+    try {
+      const slots = jobSlots
+        .filter((slot) => slot.job_id === jobId)
+        .sort((a, b) => a.slot_number - b.slot_number);
 
-    if (error) {
-      setError(error.message);
+      const targetSlot =
+        slots.find((slot) => slot.status === "stranded") ||
+        slots.find((slot) => slot.status === "declined") ||
+        slots.find((slot) => slot.status === "offered");
+
+      if (!targetSlot) {
+        throw new Error("No slot is available to reassign.");
+      }
+
+      const job = jobs.find((x) => x.id === jobId);
+      const jobDate = job?.scheduled_for || extractCheckoutDate(job?.notes ?? null);
+      const hours = getResponseWindowHours(jobDate, new Date());
+
+      const { error } = await supabase
+        .from("turnover_job_slots")
+        .update({
+          cleaner_account_id: cleanerAccountId,
+          status: "offered",
+          offered_at: new Date().toISOString(),
+          expires_at: new Date(Date.now() + hours * 60 * 60 * 1000).toISOString(),
+          accepted_at: null,
+          declined_at: null,
+          accepted_by_profile_id: null,
+          declined_by_profile_id: null,
+        })
+        .eq("id", targetSlot.id);
+
+      if (error) {
+        throw error;
+      }
+
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Could not reassign stranded job.");
+    } finally {
       setReassigningJobId(null);
-      return;
     }
-
-    await loadData();
-    setReassigningJobId(null);
   }
 
   async function saveAccess() {
@@ -721,8 +822,8 @@ export default function AdminPage() {
         .select()
         .single();
 
-      if (sopError) {
-        setError("SOP save failed: " + sopError.message);
+      if (sopError || !sopInsert) {
+        setError("SOP save failed: " + (sopError?.message || "Unknown error"));
         return;
       }
 
@@ -779,10 +880,28 @@ export default function AdminPage() {
     return properties.find((p) => p.id === id)?.name || id;
   }
 
-  function getCleanerName(id: string | null | undefined) {
+  function getProfileName(profileId: string) {
+    const profile = profiles.find((p) => p.id === profileId);
+    return profile?.full_name || profile?.email || profileId;
+  }
+
+  function getCleanerAccountName(id: string | null | undefined) {
     if (!id) return "Unassigned";
-    const cleaner = cleaners.find((c) => c.id === id);
-    return cleaner?.name || cleaner?.email || id;
+    const account = cleanerAccounts.find((c) => c.id === id);
+    if (account?.display_name) return account.display_name;
+
+    const memberIds = cleanerAccountMembers
+      .filter((m) => m.cleaner_account_id === id)
+      .map((m) => getProfileName(m.profile_id));
+
+    return memberIds.length ? memberIds.join(" / ") : id;
+  }
+
+  function getCleanerAccountMemberSummary(id: string) {
+    const memberIds = cleanerAccountMembers
+      .filter((m) => m.cleaner_account_id === id)
+      .map((m) => getProfileName(m.profile_id));
+    return memberIds.length ? memberIds.join(", ") : "No members linked";
   }
 
   function getPriorityLabel(priority: number) {
@@ -822,17 +941,86 @@ export default function AdminPage() {
     return map;
   }, [sopImages]);
 
+  const selectedProperty = useMemo(
+    () => properties.find((p) => p.id === selectedPropertyId) || null,
+    [properties, selectedPropertyId]
+  );
+
+  const cleanerProfiles = useMemo(
+    () =>
+      profiles
+        .filter((profile) => profile.role === "cleaner")
+        .sort((a, b) =>
+          (a.full_name || a.email || "").localeCompare(b.full_name || b.email || "")
+        ),
+    [profiles]
+  );
+
+  const assignmentsByPropertyId = useMemo(() => {
+    const map: Record<string, Assignment[]> = {};
+    for (const assignment of assignments) {
+      if (!map[assignment.property_id]) {
+        map[assignment.property_id] = [];
+      }
+      map[assignment.property_id].push(assignment);
+    }
+
+    for (const propertyId of Object.keys(map)) {
+      map[propertyId].sort((a, b) => a.priority - b.priority);
+    }
+
+    return map;
+  }, [assignments]);
+
+  const slotsByJobId = useMemo(() => {
+    const map: Record<string, JobSlot[]> = {};
+    for (const slot of jobSlots) {
+      if (!map[slot.job_id]) {
+        map[slot.job_id] = [];
+      }
+      map[slot.job_id].push(slot);
+    }
+
+    for (const jobId of Object.keys(map)) {
+      map[jobId].sort((a, b) => a.slot_number - b.slot_number);
+    }
+
+    return map;
+  }, [jobSlots]);
+
+  function getActiveCountdownMs(jobId: string) {
+    const slots = slotsByJobId[jobId] ?? [];
+    const activeOffered = slots
+      .filter((slot) => slot.status === "offered" && !!slot.expires_at)
+      .sort((a, b) => new Date(a.expires_at || 0).getTime() - new Date(b.expires_at || 0).getTime());
+
+    if (!activeOffered.length || !activeOffered[0].expires_at) return null;
+    return new Date(activeOffered[0].expires_at).getTime() - now.getTime();
+  }
+
   const visibleJobs = jobsExpanded ? jobs : jobs.slice(0, 3);
 
-  const recentDeclinedJobs = useMemo(() => {
-    return [...jobs]
-      .filter((job) => !!job.declined_at)
+  const recentDeclinedSlots = useMemo(() => {
+    return [...jobSlots]
+      .filter((slot) => slot.status === "declined" && !!slot.declined_at)
       .sort((a, b) => {
         const aTime = a.declined_at ? new Date(a.declined_at).getTime() : 0;
         const bTime = b.declined_at ? new Date(b.declined_at).getTime() : 0;
         return bTime - aTime;
       })
       .slice(0, 10);
+  }, [jobSlots]);
+
+  const stats = useMemo(() => {
+    const activeStranded = jobs.filter((j) => j.staffing_status === "stranded").length;
+    const readyJobs = jobs.filter((j) =>
+      j.staffing_status === "ready" || j.staffing_status === "fully_staffed"
+    ).length;
+
+    return {
+      stranded: activeStranded,
+      ready: readyJobs,
+    };
   }, [jobs]);
 
   if (checkingAuth) {
@@ -855,9 +1043,7 @@ export default function AdminPage() {
                 <div className="text-xs uppercase tracking-[0.28em] text-[#8a7b68]">
                   Estate of Mind
                 </div>
-                <div className="mt-1 text-2xl font-semibold">
-                  Checking admin access...
-                </div>
+                <div className="mt-1 text-2xl font-semibold">Checking admin access...</div>
               </div>
             </div>
           </div>
@@ -891,8 +1077,8 @@ export default function AdminPage() {
                     Luxury Operations Portal
                   </h1>
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-[#e7dccb] md:text-base">
-                    Refined control for properties, cleaners, turnover scheduling,
-                    access details, users, and visual SOPs.
+                    Full system upgrade mode: cleaner teams, shared cleaner accounts, multi-staff
+                    jobs, stranded recovery, access details, users, and visual SOPs.
                   </p>
                 </div>
               </div>
@@ -909,13 +1095,14 @@ export default function AdminPage() {
             </div>
           </div>
 
-          <div className="grid gap-3 border-t border-[#efe6dc] bg-[#fbf8f4] px-6 py-4 md:grid-cols-5 md:px-8">
+          <div className="grid gap-3 border-t border-[#efe6dc] bg-[#fbf8f4] px-6 py-4 md:grid-cols-6 md:px-8">
             {[
               { label: "Properties", value: properties.length },
-              { label: "Cleaners", value: cleaners.length },
+              { label: "Cleaner Accounts", value: cleanerAccounts.length },
               { label: "Assignments", value: assignments.length },
               { label: "Jobs", value: jobs.length },
-              { label: "Users", value: profiles.length },
+              { label: "Ready", value: stats.ready },
+              { label: "Stranded", value: stats.stranded },
             ].map((item) => (
               <div
                 key={item.label}
@@ -936,8 +1123,8 @@ export default function AdminPage() {
           <div className="sticky top-0 z-40 mb-4 rounded-[20px] border border-[#f0b4b4] bg-[#7e1f1f] px-4 py-3 text-white shadow-lg">
             <div className="flex items-center justify-between gap-3">
               <div className="text-sm font-semibold">
-                🚨 {strandedJobs.length} stranded job
-                {strandedJobs.length === 1 ? "" : "s"} need attention
+                🚨 {strandedJobs.length} stranded job{strandedJobs.length === 1 ? "" : "s"} need
+                attention
               </div>
 
               <button
@@ -961,25 +1148,22 @@ export default function AdminPage() {
                   Immediate Attention Needed
                 </div>
                 <h2 className="mt-2 text-3xl font-bold tracking-tight text-[#7e1f1f] animate-pulse">
-                  🚨 {strandedJobs.length} stranded job
-                  {strandedJobs.length === 1 ? "" : "s"}
+                  🚨 {strandedJobs.length} stranded job{strandedJobs.length === 1 ? "" : "s"}
                 </h2>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-[#8b3838]">
-                  These jobs have timed out or need intervention.
+                  These jobs have run out of valid offers or need a new team assigned.
                 </p>
               </div>
 
               <div className="rounded-[20px] border border-[#efc3c3] bg-white/80 px-4 py-3 text-sm text-[#7e1f1f] shadow-sm">
                 Oldest waiting:
-                <div className="mt-1 font-semibold">
-                  {formatDateTime(strandedJobs[0]?.created_at)}
-                </div>
+                <div className="mt-1 font-semibold">{formatDateTime(strandedJobs[0]?.created_at)}</div>
               </div>
             </div>
 
             <div className="mt-4 grid gap-3">
               {strandedJobs.map((job) => {
-                const remainingMs = getTimeRemainingMs(job, now);
+                const remainingMs = getActiveCountdownMs(job.id);
                 const countdownTone = getCountdownTone(remainingMs);
 
                 return (
@@ -1009,16 +1193,16 @@ export default function AdminPage() {
                           <div className="mt-1 text-sm text-[#6f6255]">
                             {job.property_address || "No address"}
                           </div>
-                          <div className="mt-2 text-sm text-[#8b3838]">
-                            Assigned cleaner:{" "}
+                          <div className="mt-2 text-sm text-[#8a7b68]">
+                            Staffing:{" "}
                             <span className="font-medium text-[#7e1f1f]">
-                              {job.assigned_cleaner_name ||
-                                job.assigned_cleaner_email ||
-                                getCleanerName(job.assigned_cleaner_id)}
+                              {staffingLabel(job.staffing_status, job.status)}
                             </span>
                           </div>
                           <div className="mt-1 text-sm text-[#8a7b68]">
-                            Status: {getStaffingLabel(job.staffing_status, job.status)}
+                            Needed: {job.cleaner_units_needed || 1} cleaner unit
+                            {(job.cleaner_units_needed || 1) === 1 ? "" : "s"}
+                            {job.cleaner_units_required_strict ? " (strict)" : " (at least one can proceed)"}
                           </div>
                           <div className="mt-1 text-sm text-[#8a7b68]">
                             Cleaning date: {formatScheduledFor(job.scheduled_for || extractCheckoutDate(job.notes))}
@@ -1027,40 +1211,23 @@ export default function AdminPage() {
                             <div className={`mt-2 text-sm font-semibold ${countdownTone}`}>
                               {remainingMs < 0
                                 ? `Overdue by ${formatRemaining(remainingMs)}`
-                                : `Accept within ${formatRemaining(remainingMs)}`}
+                                : `Current offer expires in ${formatRemaining(remainingMs)}`}
                             </div>
                           )}
                         </div>
 
                         <div className="rounded-[18px] border border-[#f1d0d0] bg-[#fff8f8] px-4 py-3 text-sm text-[#8b3838]">
                           <div>Created: {formatDateTime(job.created_at)}</div>
-                          <div className="mt-1">
-                            Offered: {job.offered_at ? formatDateTime(job.offered_at) : "Not recorded"}
-                          </div>
-                          <div className="mt-1">
-                            Declined: {job.declined_at ? formatDateTime(job.declined_at) : "No"}
-                          </div>
+                          <div className="mt-1">Status: {staffingLabel(job.staffing_status, job.status)}</div>
                         </div>
                       </div>
 
-                      <div className="mt-3 text-sm leading-6 text-[#6f6255]">
-                        {job.notes || "No notes"}
-                      </div>
-                    </div>
-
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <button
-                        onClick={() => reofferJob(job.id)}
-                        disabled={reofferingJobId === job.id}
-                        className="rounded-full bg-[#b48d4e] px-3 py-1 text-xs text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {reofferingJobId === job.id ? "Re-offering..." : "Re-offer"}
-                      </button>
+                      <div className="mt-3 text-sm leading-6 text-[#6f6255]">{job.notes || "No notes"}</div>
                     </div>
 
                     <div className="mt-4 rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] p-3">
                       <div className="mb-2 text-xs uppercase tracking-[0.18em] text-[#8a7b68]">
-                        Reassign cleaner
+                        Offer to cleaner team/account
                       </div>
 
                       <div className="flex flex-col gap-2 md:flex-row">
@@ -1074,10 +1241,10 @@ export default function AdminPage() {
                           }
                           className="w-full rounded-[16px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none transition focus:border-[#b48d4e]"
                         >
-                          <option value="">Select cleaner</option>
-                          {cleaners.map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.name || c.email || "Unnamed cleaner"}
+                          <option value="">Select cleaner team/account</option>
+                          {cleanerAccounts.map((account) => (
+                            <option key={account.id} value={account.id}>
+                              {getCleanerAccountName(account.id)}
                             </option>
                           ))}
                         </select>
@@ -1089,7 +1256,15 @@ export default function AdminPage() {
                           }
                           className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-4 py-2 text-sm font-medium text-[#f8f2e8] shadow-[0_10px_24px_rgba(36,28,21,0.18)] transition hover:bg-[#352a21] disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          {reassigningJobId === job.id ? "Reassigning..." : "Reassign"}
+                          {reassigningJobId === job.id ? "Offering..." : "Offer Team"}
+                        </button>
+
+                        <button
+                          onClick={() => reofferJob(job.id)}
+                          disabled={reofferingJobId === job.id}
+                          className="rounded-full bg-[#b48d4e] px-4 py-2 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {reofferingJobId === job.id ? "Rebuilding..." : "Rebuild Offers"}
                         </button>
                       </div>
                     </div>
@@ -1100,7 +1275,7 @@ export default function AdminPage() {
           </div>
         ) : null}
 
-        {recentDeclinedJobs.length > 0 && (
+        {recentDeclinedSlots.length > 0 && (
           <div className="mb-6 rounded-[30px] border border-[#f2d2c4] bg-[linear-gradient(135deg,#fff8f4_0%,#fff2eb_100%)] p-5 shadow-[0_18px_45px_rgba(140,80,32,0.08)]">
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -1108,47 +1283,47 @@ export default function AdminPage() {
                   Recent Activity
                 </div>
                 <h2 className="mt-2 text-2xl font-bold tracking-tight text-[#8a4526]">
-                  Recently Declined Jobs
+                  Recently Declined Slots
                 </h2>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-[#8a5d4b]">
-                  Latest jobs that were declined by a cleaner.
+                  Latest team/account declines on turnover job slots.
                 </p>
               </div>
             </div>
 
             <div className="mt-4 grid gap-3">
-              {recentDeclinedJobs.map((job) => (
-                <div
-                  key={job.id}
-                  className="rounded-[22px] border border-[#edd8cc] bg-white px-4 py-4 shadow-sm"
-                >
-                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div>
-                      <div className="text-base font-semibold text-[#241c15]">
-                        {getPropertyName(job.property_id)}
-                      </div>
-                      <div className="mt-1 text-sm text-[#6f6255]">
-                        Assigned:{" "}
-                        <span className="font-medium">
-                          {getStaffingLabel(job.staffing_status, job.status)}
-                        </span>
-                      </div>
-                      <div className="mt-1 text-sm text-[#8a7b68]">
-                        Cleaning date: {formatScheduledFor(job.scheduled_for || extractCheckoutDate(job.notes))}
-                      </div>
-                      <div className="mt-3 text-sm leading-6 text-[#6f6255]">
-                        {job.notes || "No notes"}
-                      </div>
-                    </div>
+              {recentDeclinedSlots.map((slot) => {
+                const job = jobs.find((j) => j.id === slot.job_id);
+                if (!job) return null;
 
-                    <div className="rounded-[18px] border border-[#efe1d8] bg-[#fcfaf7] px-4 py-3 text-sm text-[#8a5d4b]">
-                      <div>Declined: {formatDateTime(job.declined_at)}</div>
-                      <div className="mt-1">Offered: {formatDateTime(job.offered_at)}</div>
-                      <div className="mt-1">Status: {getStaffingLabel(job.staffing_status, job.status)}</div>
+                return (
+                  <div
+                    key={slot.id}
+                    className="rounded-[22px] border border-[#edd8cc] bg-white px-4 py-4 shadow-sm"
+                  >
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                      <div>
+                        <div className="text-base font-semibold text-[#241c15]">
+                          {getPropertyName(job.property_id)}
+                        </div>
+                        <div className="mt-1 text-sm text-[#6f6255]">
+                          Team: <span className="font-medium">{getCleanerAccountName(slot.cleaner_account_id)}</span>
+                        </div>
+                        <div className="mt-1 text-sm text-[#8a7b68]">
+                          Cleaning date: {formatScheduledFor(job.scheduled_for || extractCheckoutDate(job.notes))}
+                        </div>
+                        <div className="mt-3 text-sm leading-6 text-[#6f6255]">{job.notes || "No notes"}</div>
+                      </div>
+
+                      <div className="rounded-[18px] border border-[#efe1d8] bg-[#fcfaf7] px-4 py-3 text-sm text-[#8a5d4b]">
+                        <div>Declined: {formatDateTime(slot.declined_at)}</div>
+                        <div className="mt-1">Offered: {formatDateTime(slot.offered_at)}</div>
+                        <div className="mt-1">Job: {staffingLabel(job.staffing_status, job.status)}</div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -1164,18 +1339,12 @@ export default function AdminPage() {
             <div>
               <h2 className="text-xl font-semibold tracking-tight">User Management</h2>
               <p className="mt-1 text-sm text-[#7f7263]">
-                Approve pending users and change access roles.
+                Approve pending users and change access roles. Cleaner users can then be linked into shared teams/accounts below.
               </p>
             </div>
           </div>
 
           <div className="space-y-3">
-            {profiles.length === 0 ? (
-              <div className="rounded-[24px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-5 py-6 text-sm text-[#8a7b68]">
-                No users found.
-              </div>
-            ) : null}
-
             {profiles.map((profile) => (
               <div
                 key={profile.id}
@@ -1185,27 +1354,19 @@ export default function AdminPage() {
                   <div className="text-base font-semibold text-[#241c15]">
                     {profile.full_name || "No name"}
                   </div>
-                  <div className="mt-1 text-sm text-[#6f6255]">
-                    {profile.email || "No email"}
-                  </div>
-                  <div className="mt-1 text-sm text-[#8a7b68]">
-                    {profile.phone || "No phone"}
-                  </div>
+                  <div className="mt-1 text-sm text-[#6f6255]">{profile.email || "No email"}</div>
+                  <div className="mt-1 text-sm text-[#8a7b68]">{profile.phone || "No phone"}</div>
                 </div>
 
                 <div>
-                  <div className="text-xs uppercase tracking-[0.18em] text-[#8a7b68]">
-                    Current role
-                  </div>
+                  <div className="text-xs uppercase tracking-[0.18em] text-[#8a7b68]">Current role</div>
                   <div className="mt-2 inline-flex rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-medium text-[#7f7263]">
                     {profile.role}
                   </div>
                 </div>
 
                 <div>
-                  <div className="text-xs uppercase tracking-[0.18em] text-[#8a7b68]">
-                    Change role
-                  </div>
+                  <div className="text-xs uppercase tracking-[0.18em] text-[#8a7b68]">Change role</div>
                   <select
                     className="mt-2 w-full rounded-[16px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none transition focus:border-[#b48d4e]"
                     value={profile.role}
@@ -1232,7 +1393,7 @@ export default function AdminPage() {
           <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
             <h2 className="text-xl font-semibold tracking-tight">Add Property</h2>
             <p className="mt-1 text-sm text-[#7f7263]">
-              Add a managed property to the system.
+              Add a managed property and set the default staffing requirement.
             </p>
 
             <div className="mt-5 space-y-3">
@@ -1254,6 +1415,40 @@ export default function AdminPage() {
                 value={propertyNotes}
                 onChange={(e) => setPropertyNotes(e.target.value)}
               />
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div>
+                  <div className="mb-2 text-xs uppercase tracking-[0.18em] text-[#8a7b68]">
+                    Default cleaner units needed
+                  </div>
+                  <select
+                    className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none transition focus:border-[#b48d4e]"
+                    value={propertyCleanerUnitsNeeded}
+                    onChange={(e) => setPropertyCleanerUnitsNeeded(e.target.value)}
+                  >
+                    <option value="1">1 cleaner unit</option>
+                    <option value="2">2 cleaner units</option>
+                    <option value="3">3 cleaner units</option>
+                  </select>
+                </div>
+                <div className="space-y-3 rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3">
+                  <label className="flex items-center gap-2 text-sm text-[#6f6255]">
+                    <input
+                      type="checkbox"
+                      checked={propertyCleanerUnitsStrict}
+                      onChange={(e) => setPropertyCleanerUnitsStrict(e.target.checked)}
+                    />
+                    Property must have full team
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-[#6f6255]">
+                    <input
+                      type="checkbox"
+                      checked={propertyShowTeamStatus}
+                      onChange={(e) => setPropertyShowTeamStatus(e.target.checked)}
+                    />
+                    Show team status to cleaners
+                  </label>
+                </div>
+              </div>
               <button
                 className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] shadow-[0_10px_24px_rgba(36,28,21,0.18)] transition hover:bg-[#352a21] active:scale-[0.98] cursor-pointer"
                 onClick={addProperty}
@@ -1264,26 +1459,54 @@ export default function AdminPage() {
           </section>
 
           <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-            <h2 className="text-xl font-semibold tracking-tight">Cleaner Accounts</h2>
+            <h2 className="text-xl font-semibold tracking-tight">Cleaner Teams / Accounts</h2>
             <p className="mt-1 text-sm text-[#7f7263]">
-              Cleaners come from signed up users whose role is set to cleaner.
+              Link one or more cleaner logins to the same working team. This is where a husband/wife team can share the same job content.
             </p>
 
-            <div className="mt-5 rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] p-4 text-sm text-[#6f6255]">
-              Use the User Management section above to change a user from
-              <span className="font-medium"> pending </span>
-              to
-              <span className="font-medium"> cleaner</span>.
-              <div className="mt-3 text-[#8a7b68]">
-                Once their role is cleaner, they will appear in the assignment dropdown automatically.
+            <div className="mt-5 space-y-3">
+              <input
+                className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e] focus:bg-white"
+                placeholder="Team/account name (example: Sam + Sean)"
+                value={newAccountName}
+                onChange={(e) => setNewAccountName(e.target.value)}
+              />
+
+              <div className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+                <div className="mb-3 text-xs uppercase tracking-[0.18em] text-[#8a7b68]">
+                  Select cleaner members
+                </div>
+                <div className="max-h-52 space-y-2 overflow-auto">
+                  {cleanerProfiles.map((profile) => (
+                    <label
+                      key={profile.id}
+                      className="flex items-center gap-2 rounded-[14px] border border-[#eadfce] bg-white px-3 py-2 text-sm text-[#6f6255]"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={newAccountMemberIds.includes(profile.id)}
+                        onChange={() => toggleNewAccountMember(profile.id)}
+                      />
+                      <span>{profile.full_name || profile.email || "Unnamed cleaner"}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
+
+              <button
+                className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] shadow-[0_10px_24px_rgba(36,28,21,0.18)] transition hover:bg-[#352a21] disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={createCleanerAccount}
+                disabled={creatingAccount}
+              >
+                {creatingAccount ? "Creating..." : "Create Cleaner Team"}
+              </button>
             </div>
           </section>
 
           <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-            <h2 className="text-xl font-semibold tracking-tight">Assign Cleaner</h2>
+            <h2 className="text-xl font-semibold tracking-tight">Assign Team to Property</h2>
             <p className="mt-1 text-sm text-[#7f7263]">
-              Set primary and backup cleaner order.
+              Set primary and backup team/account order for each property.
             </p>
 
             <div className="mt-5 space-y-3">
@@ -1302,13 +1525,13 @@ export default function AdminPage() {
 
               <select
                 className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none transition focus:border-[#b48d4e] focus:bg-white"
-                value={assignmentCleanerId}
-                onChange={(e) => setAssignmentCleanerId(e.target.value)}
+                value={assignmentCleanerAccountId}
+                onChange={(e) => setAssignmentCleanerAccountId(e.target.value)}
               >
-                <option value="">Select cleaner</option>
-                {cleaners.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name || c.email || "Unnamed cleaner"}
+                <option value="">Select cleaner team/account</option>
+                {cleanerAccounts.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {getCleanerAccountName(account.id)}
                   </option>
                 ))}
               </select>
@@ -1337,7 +1560,7 @@ export default function AdminPage() {
           <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
             <h2 className="text-xl font-semibold tracking-tight">Create Job</h2>
             <p className="mt-1 text-sm text-[#7f7263]">
-              Create a turnover job and auto-assign the primary cleaner.
+              Create a turnover job. The backend now builds the slot offers automatically based on the property team assignments and staffing rules.
             </p>
 
             <div className="mt-5 space-y-3">
@@ -1360,6 +1583,25 @@ export default function AdminPage() {
                 value={jobNotes}
                 onChange={(e) => setJobNotes(e.target.value)}
               />
+
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <input
+                  className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e] focus:bg-white"
+                  placeholder="Optional units override (1,2,3)"
+                  value={jobCleanerUnitsNeeded}
+                  onChange={(e) => setJobCleanerUnitsNeeded(e.target.value)}
+                />
+
+                <select
+                  className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none transition focus:border-[#b48d4e] focus:bg-white"
+                  value={jobStrictMode}
+                  onChange={(e) => setJobStrictMode(e.target.value)}
+                >
+                  <option value="inherit">Use property strictness</option>
+                  <option value="yes">Require full team for this job</option>
+                  <option value="no">At least one cleaner can proceed</option>
+                </select>
+              </div>
 
               <button
                 className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] shadow-[0_10px_24px_rgba(36,28,21,0.18)] transition hover:bg-[#352a21] active:scale-[0.98] cursor-pointer"
@@ -1390,6 +1632,30 @@ export default function AdminPage() {
                 ))}
               </select>
             </div>
+
+            {selectedProperty ? (
+              <div className="mt-4 rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4 text-sm text-[#6f6255]">
+                <div>
+                  Default staffing:{" "}
+                  <span className="font-medium">
+                    {selectedProperty.default_cleaner_units_needed || 1} cleaner unit
+                    {(selectedProperty.default_cleaner_units_needed || 1) === 1 ? "" : "s"}
+                  </span>
+                </div>
+                <div className="mt-1">
+                  Strict full-team requirement:{" "}
+                  <span className="font-medium">
+                    {selectedProperty.cleaner_units_required_strict ? "Yes" : "No"}
+                  </span>
+                </div>
+                <div className="mt-1">
+                  Show team status to cleaners:{" "}
+                  <span className="font-medium">
+                    {selectedProperty.show_team_status_to_cleaners === false ? "No" : "Yes"}
+                  </span>
+                </div>
+              </div>
+            ) : null}
 
             {selectedPropertyId ? (
               <div className="mt-6 grid gap-6 lg:grid-cols-3">
@@ -1508,9 +1774,7 @@ export default function AdminPage() {
                           {sopFiles.length} image{sopFiles.length === 1 ? "" : "s"} selected
                         </div>
                       ) : (
-                        <div className="mt-3 text-sm text-[#a39584]">
-                          No images selected yet.
-                        </div>
+                        <div className="mt-3 text-sm text-[#a39584]">No images selected yet.</div>
                       )}
                     </div>
 
@@ -1580,9 +1844,7 @@ export default function AdminPage() {
                             ))}
                           </div>
                         ) : (
-                          <div className="mt-4 text-sm text-[#a39584]">
-                            No images attached.
-                          </div>
+                          <div className="mt-4 text-sm text-[#a39584]">No images attached.</div>
                         )}
                       </div>
                     );
@@ -1602,17 +1864,16 @@ export default function AdminPage() {
               </span>
             </div>
             <div className="space-y-3">
-              {properties.length === 0 ? (
-                <div className="rounded-[24px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-5 py-6 text-sm text-[#8a7b68]">
-                  No properties yet.
-                </div>
-              ) : null}
-
               {properties.map((p) => (
                 <div key={p.id} className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
                   <div className="text-base font-semibold">{p.name}</div>
                   <div className="mt-1 text-sm text-[#6f6255]">{p.address || "No address"}</div>
                   <div className="mt-2 text-sm text-[#8a7b68]">{p.notes || "No notes"}</div>
+                  <div className="mt-2 text-sm text-[#8a7b68]">
+                    Staffing default: {p.default_cleaner_units_needed || 1} unit
+                    {(p.default_cleaner_units_needed || 1) === 1 ? "" : "s"} /{" "}
+                    {p.cleaner_units_required_strict ? "strict full-team" : "flexible"}
+                  </div>
                 </div>
               ))}
             </div>
@@ -1620,23 +1881,23 @@ export default function AdminPage() {
 
           <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-xl font-semibold tracking-tight">Cleaners</h2>
+              <h2 className="text-xl font-semibold tracking-tight">Cleaner Accounts</h2>
               <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">
-                {cleaners.length}
+                {cleanerAccounts.length}
               </span>
             </div>
             <div className="space-y-3">
-              {cleaners.length === 0 ? (
-                <div className="rounded-[24px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-5 py-6 text-sm text-[#8a7b68]">
-                  No cleaners yet.
-                </div>
-              ) : null}
-
-              {cleaners.map((c) => (
-                <div key={c.id} className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
-                  <div className="text-base font-semibold">{c.name || "No name"}</div>
-                  <div className="mt-1 text-sm text-[#6f6255]">{c.email || "No email"}</div>
-                  <div className="mt-2 text-sm text-[#8a7b68]">{c.phone || "No phone"}</div>
+              {cleanerAccounts.map((account) => (
+                <div
+                  key={account.id}
+                  className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4"
+                >
+                  <div className="text-base font-semibold">
+                    {account.display_name || getCleanerAccountName(account.id)}
+                  </div>
+                  <div className="mt-1 text-sm text-[#6f6255]">
+                    Members: {getCleanerAccountMemberSummary(account.id)}
+                  </div>
                 </div>
               ))}
             </div>
@@ -1652,16 +1913,12 @@ export default function AdminPage() {
               </span>
             </div>
             <div className="space-y-3">
-              {assignments.length === 0 ? (
-                <div className="rounded-[24px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-5 py-6 text-sm text-[#8a7b68]">
-                  No assignments yet.
-                </div>
-              ) : null}
-
               {assignments.map((a) => (
                 <div key={a.id} className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
                   <div className="text-base font-semibold">{getPropertyName(a.property_id)}</div>
-                  <div className="mt-1 text-sm text-[#6f6255]">{getCleanerName(a.cleaner_id)}</div>
+                  <div className="mt-1 text-sm text-[#6f6255]">
+                    {getCleanerAccountName(a.cleaner_account_id)}
+                  </div>
                   <div className="mt-2 inline-flex rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-medium text-[#7f7263]">
                     {getPriorityLabel(a.priority)}
                   </div>
@@ -1693,70 +1950,97 @@ export default function AdminPage() {
             </div>
 
             <div className="space-y-3">
-              {jobs.length === 0 ? (
-                <div className="rounded-[24px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-5 py-6 text-sm text-[#8a7b68]">
-                  No jobs yet.
-                </div>
-              ) : null}
-
               {visibleJobs.map((job) => {
-                const remainingMs = getTimeRemainingMs(job, now);
+                const remainingMs = getActiveCountdownMs(job.id);
                 const countdownTone = getCountdownTone(remainingMs);
+                const slots = slotsByJobId[job.id] ?? [];
+                const acceptedCount = slots.filter((slot) => slot.status === "accepted").length;
+                const offeredCount = slots.filter((slot) => slot.status === "offered").length;
+                const declinedCount = slots.filter((slot) => slot.status === "declined").length;
+                const strandedCount = slots.filter((slot) => slot.status === "stranded").length;
+
+                const jobCardClass =
+                  job.staffing_status === "stranded"
+                    ? "border-2 border-red-500 bg-red-50 shadow-lg"
+                    : job.staffing_status === "fully_staffed" || job.staffing_status === "ready"
+                    ? "border border-[#cfe3d1] bg-[#f7fcf7] hover:shadow-sm"
+                    : job.staffing_status === "partially_filled"
+                    ? "border border-[#ead9b0] bg-[#fffaf0] hover:shadow-sm"
+                    : highlightedJobId === job.id
+                    ? "border-2 border-[#b48d4e] bg-[#fffaf3] shadow-lg"
+                    : "border border-[#eadfce] bg-[#fcfaf7] hover:shadow-sm";
 
                 return (
                   <div
                     key={job.id}
                     id={"job-" + job.id}
                     onClick={() => setHighlightedJobId(job.id)}
-                    className={`rounded-[22px] p-4 transition cursor-pointer ${
-                      job.staffing_status === "stranded"
-                        ? "border-2 border-red-500 bg-red-50 shadow-lg"
-                        : highlightedJobId === job.id
-                        ? "border-2 border-[#b48d4e] bg-[#fffaf3] shadow-lg"
-                        : "border border-[#eadfce] bg-[#fcfaf7] hover:shadow-sm"
-                    }`}
+                    className={`rounded-[22px] p-4 transition cursor-pointer ${jobCardClass}`}
                   >
                     <div className="text-base font-semibold">{getPropertyName(job.property_id)}</div>
+
                     <div className="mt-2 text-sm text-[#6f6255]">
                       Status:{" "}
                       <span className="font-medium text-[#241c15]">
-                        {getStaffingLabel(job.staffing_status, job.status)}
+                        {staffingLabel(job.staffing_status, job.status)}
                       </span>
                     </div>
+
                     <div className="mt-1 text-sm text-[#8a7b68]">
-                      Assigned:{" "}
+                      Team progress:{" "}
                       <span className="font-medium">
-                        {getStaffingLabel(job.staffing_status, job.status)}
+                        {acceptedCount}/{job.cleaner_units_needed || 1} accepted
                       </span>
                     </div>
+
+                    <div className="mt-1 text-sm text-[#8a7b68]">
+                      Slots: {offeredCount} offered, {declinedCount} declined, {strandedCount} stranded
+                    </div>
+
                     <div className="mt-1 text-sm text-[#8a7b68]">
                       Cleaning date: {formatScheduledFor(job.scheduled_for || extractCheckoutDate(job.notes))}
                     </div>
-                    {remainingMs !== null && !job.accepted_at && (
+
+                    {remainingMs !== null && (
                       <div className={`mt-1 text-sm font-semibold ${countdownTone}`}>
                         {remainingMs < 0
-                          ? `Overdue by ${formatRemaining(remainingMs)}`
-                          : `Accept within ${formatRemaining(remainingMs)}`}
+                          ? `Offer overdue by ${formatRemaining(remainingMs)}`
+                          : `Offer expires in ${formatRemaining(remainingMs)}`}
                       </div>
                     )}
-                    <div className="mt-2 grid gap-1 text-xs text-[#8a7b68]">
-                      <div>Offered: {formatDateTime(job.offered_at)}</div>
-                      <div>Accepted: {formatDateTime(job.accepted_at)}</div>
-                      <div>Declined: {formatDateTime(job.declined_at)}</div>
-                    </div>
-                    <div className="mt-3 text-sm leading-6 text-[#6f6255]">
-                      {job.notes || "No notes"}
-                    </div>
+
+                    <div className="mt-3 text-sm leading-6 text-[#6f6255]">{job.notes || "No notes"}</div>
+
+                    {slots.length > 0 ? (
+                      <div className="mt-3 rounded-[18px] border border-[#eadfce] bg-white/80 p-3">
+                        <div className="mb-2 text-xs uppercase tracking-[0.18em] text-[#8a7b68]">
+                          Slot breakdown
+                        </div>
+                        <div className="space-y-2">
+                          {slots.map((slot) => (
+                            <div
+                              key={slot.id}
+                              className="flex flex-col gap-1 rounded-[14px] border border-[#efe6dc] bg-[#fcfaf7] px-3 py-2 text-sm text-[#6f6255] md:flex-row md:items-center md:justify-between"
+                            >
+                              <div>
+                                Slot {slot.slot_number}:{" "}
+                                <span className="font-medium">
+                                  {getCleanerAccountName(slot.cleaner_account_id)}
+                                </span>
+                              </div>
+                              <div className="text-[#8a7b68]">
+                                {slot.status || "unknown"}
+                                {slot.expires_at ? ` • expires ${formatDateTime(slot.expires_at)}` : ""}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 );
               })}
             </div>
-
-            {jobs.length > 3 && !jobsExpanded ? (
-              <div className="mt-4 text-sm text-[#8a7b68]">
-                Showing 3 of {jobs.length} jobs.
-              </div>
-            ) : null}
           </section>
         </div>
       </div>
