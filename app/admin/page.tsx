@@ -116,6 +116,8 @@ export default function AdminPage() {
   const [uploadingSop, setUploadingSop] = useState(false);
   const [highlightedJobId, setHighlightedJobId] = useState<string | null>(null);
   const [jobsExpanded, setJobsExpanded] = useState(false);
+  const [reassignSelections, setReassignSelections] = useState<Record<string, string>>({});
+  const [reassigningJobId, setReassigningJobId] = useState<string | null>(null);
 
   const [propertyName, setPropertyName] = useState("");
   const [propertyAddress, setPropertyAddress] = useState("");
@@ -223,6 +225,16 @@ export default function AdminPage() {
     setSopImages((si ?? []) as SopImageRow[]);
     setProfiles((pr ?? []) as ProfileRow[]);
     setPropertyCalendars((pc ?? []) as PropertyCalendarRow[]);
+
+    setReassignSelections((prev) => {
+      const next = { ...prev };
+      for (const job of (sj ?? []) as StrandedJob[]) {
+        if (!next[job.id]) {
+          next[job.id] = job.assigned_cleaner_id ?? "";
+        }
+      }
+      return next;
+    });
   }
 
   useEffect(() => {
@@ -402,6 +414,35 @@ export default function AdminPage() {
     setJobPropertyId("");
     setJobNotes("");
     loadData();
+  }
+
+  async function reassignStrandedJob(jobId: string) {
+    const cleanerId = reassignSelections[jobId];
+
+    if (!cleanerId) {
+      setError("Please select a cleaner before reassigning.");
+      return;
+    }
+
+    setError("");
+    setReassigningJobId(jobId);
+
+    const { error } = await supabase
+      .from("turnover_jobs")
+      .update({
+        assigned_cleaner_id: cleanerId,
+        status: "assigned",
+      })
+      .eq("id", jobId);
+
+    if (error) {
+      setError(error.message);
+      setReassigningJobId(null);
+      return;
+    }
+
+    await loadData();
+    setReassigningJobId(null);
   }
 
   async function saveAccess() {
@@ -813,50 +854,90 @@ export default function AdminPage() {
               {strandedJobs.map((job) => (
                 <div
                   key={job.id}
-                  onClick={() => {
-                    setHighlightedJobId(job.id);
-                    setJobsExpanded(true);
-
-                    setTimeout(() => {
-                      const el = document.getElementById("job-" + job.id);
-                      if (el) {
-                        el.scrollIntoView({ behavior: "smooth", block: "center" });
-                      }
-                    }, 50);
-                  }}
-                  className="rounded-[22px] border border-[#efc3c3] bg-white px-4 py-4 shadow-sm cursor-pointer transition hover:shadow-md"
+                  className="rounded-[22px] border border-[#efc3c3] bg-white px-4 py-4 shadow-sm transition hover:shadow-md"
                 >
-                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div>
-                      <div className="text-base font-semibold text-[#241c15]">
-                        {job.property_name || getPropertyName(job.property_id || "")}
+                  <div
+                    onClick={() => {
+                      setHighlightedJobId(job.id);
+                      setJobsExpanded(true);
+
+                      setTimeout(() => {
+                        const el = document.getElementById("job-" + job.id);
+                        if (el) {
+                          el.scrollIntoView({ behavior: "smooth", block: "center" });
+                        }
+                      }, 50);
+                    }}
+                    className="cursor-pointer"
+                  >
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                      <div>
+                        <div className="text-base font-semibold text-[#241c15]">
+                          {job.property_name || getPropertyName(job.property_id || "")}
+                        </div>
+                        <div className="mt-1 text-sm text-[#6f6255]">
+                          {job.property_address || "No address"}
+                        </div>
+                        <div className="mt-2 text-sm text-[#8b3838]">
+                          Assigned cleaner:{" "}
+                          <span className="font-medium text-[#7e1f1f]">
+                            {job.assigned_cleaner_name ||
+                              job.assigned_cleaner_email ||
+                              getCleanerName(job.assigned_cleaner_id)}
+                          </span>
+                        </div>
+                        <div className="mt-1 text-sm text-[#8a7b68]">
+                          Status: {job.status || "unknown"}
+                        </div>
                       </div>
-                      <div className="mt-1 text-sm text-[#6f6255]">
-                        {job.property_address || "No address"}
-                      </div>
-                      <div className="mt-2 text-sm text-[#8b3838]">
-                        Assigned cleaner:{" "}
-                        <span className="font-medium text-[#7e1f1f]">
-                          {job.assigned_cleaner_name ||
-                            job.assigned_cleaner_email ||
-                            getCleanerName(job.assigned_cleaner_id)}
-                        </span>
-                      </div>
-                      <div className="mt-1 text-sm text-[#8a7b68]">
-                        Status: {job.status || "unknown"}
+
+                      <div className="rounded-[18px] border border-[#f1d0d0] bg-[#fff8f8] px-4 py-3 text-sm text-[#8b3838]">
+                        <div>Created: {formatDateTime(job.created_at)}</div>
+                        <div className="mt-1">
+                          Offered: {job.offered_at ? formatDateTime(job.offered_at) : "Not recorded"}
+                        </div>
                       </div>
                     </div>
 
-                    <div className="rounded-[18px] border border-[#f1d0d0] bg-[#fff8f8] px-4 py-3 text-sm text-[#8b3838]">
-                      <div>Created: {formatDateTime(job.created_at)}</div>
-                      <div className="mt-1">
-                        Offered: {job.offered_at ? formatDateTime(job.offered_at) : "Not recorded"}
-                      </div>
+                    <div className="mt-3 text-sm leading-6 text-[#6f6255]">
+                      {job.notes || "No notes"}
                     </div>
                   </div>
 
-                  <div className="mt-3 text-sm leading-6 text-[#6f6255]">
-                    {job.notes || "No notes"}
+                  <div className="mt-4 rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] p-3">
+                    <div className="mb-2 text-xs uppercase tracking-[0.18em] text-[#8a7b68]">
+                      Reassign cleaner
+                    </div>
+
+                    <div className="flex flex-col gap-2 md:flex-row">
+                      <select
+                        value={reassignSelections[job.id] ?? ""}
+                        onChange={(e) =>
+                          setReassignSelections((prev) => ({
+                            ...prev,
+                            [job.id]: e.target.value,
+                          }))
+                        }
+                        className="w-full rounded-[16px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none transition focus:border-[#b48d4e]"
+                      >
+                        <option value="">Select cleaner</option>
+                        {cleaners.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name || c.email || "Unnamed cleaner"}
+                          </option>
+                        ))}
+                      </select>
+
+                      <button
+                        onClick={() => reassignStrandedJob(job.id)}
+                        disabled={
+                          reassigningJobId === job.id || !(reassignSelections[job.id] ?? "")
+                        }
+                        className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-4 py-2 text-sm font-medium text-[#f8f2e8] shadow-[0_10px_24px_rgba(36,28,21,0.18)] transition hover:bg-[#352a21] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {reassigningJobId === job.id ? "Reassigning..." : "Reassign"}
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
