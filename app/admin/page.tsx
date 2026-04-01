@@ -31,13 +31,14 @@ type Job = {
   id: string;
   property_id: string;
   status: string | null;
-  assigned_cleaner_id: string | null;
+  assigned_cleaner_id?: string | null;
   notes: string | null;
   created_at?: string | null;
   offered_at?: string | null;
   accepted_at?: string | null;
   declined_at?: string | null;
   scheduled_for?: string | null;
+  staffing_status?: string | null;
 };
 
 type StrandedJob = {
@@ -55,6 +56,7 @@ type StrandedJob = {
   accepted_at?: string | null;
   declined_at?: string | null;
   scheduled_for?: string | null;
+  staffing_status?: string | null;
 };
 
 type AccessRow = {
@@ -163,6 +165,15 @@ function getCountdownTone(ms: number | null) {
   if (ms < 0) return "text-red-600";
   if (ms <= 2 * 60 * 60 * 1000) return "text-amber-600";
   return "text-[#7f5d28]";
+}
+
+function getStaffingLabel(staffingStatus?: string | null, fallbackStatus?: string | null) {
+  if (staffingStatus === "fully_staffed") return "Fully staffed";
+  if (staffingStatus === "partially_filled") return "Partially filled";
+  if (staffingStatus === "ready") return "Ready";
+  if (staffingStatus === "stranded") return "Stranded";
+  if (staffingStatus === "unfilled") return "Unfilled";
+  return fallbackStatus || "unknown";
 }
 
 export default function AdminPage() {
@@ -768,7 +779,7 @@ export default function AdminPage() {
     return properties.find((p) => p.id === id)?.name || id;
   }
 
-  function getCleanerName(id: string | null) {
+  function getCleanerName(id: string | null | undefined) {
     if (!id) return "Unassigned";
     const cleaner = cleaners.find((c) => c.id === id);
     return cleaner?.name || cleaner?.email || id;
@@ -1007,7 +1018,7 @@ export default function AdminPage() {
                             </span>
                           </div>
                           <div className="mt-1 text-sm text-[#8a7b68]">
-                            Status: {job.status || "unknown"}
+                            Status: {getStaffingLabel(job.staffing_status, job.status)}
                           </div>
                           <div className="mt-1 text-sm text-[#8a7b68]">
                             Cleaning date: {formatScheduledFor(job.scheduled_for || extractCheckoutDate(job.notes))}
@@ -1117,7 +1128,10 @@ export default function AdminPage() {
                         {getPropertyName(job.property_id)}
                       </div>
                       <div className="mt-1 text-sm text-[#6f6255]">
-                        Assigned: {getCleanerName(job.assigned_cleaner_id)}
+                        Assigned:{" "}
+                        <span className="font-medium">
+                          {getStaffingLabel(job.staffing_status, job.status)}
+                        </span>
                       </div>
                       <div className="mt-1 text-sm text-[#8a7b68]">
                         Cleaning date: {formatScheduledFor(job.scheduled_for || extractCheckoutDate(job.notes))}
@@ -1130,7 +1144,7 @@ export default function AdminPage() {
                     <div className="rounded-[18px] border border-[#efe1d8] bg-[#fcfaf7] px-4 py-3 text-sm text-[#8a5d4b]">
                       <div>Declined: {formatDateTime(job.declined_at)}</div>
                       <div className="mt-1">Offered: {formatDateTime(job.offered_at)}</div>
-                      <div className="mt-1">Status: {job.status || "unknown"}</div>
+                      <div className="mt-1">Status: {getStaffingLabel(job.staffing_status, job.status)}</div>
                     </div>
                   </div>
                 </div>
@@ -1695,7 +1709,9 @@ export default function AdminPage() {
                     id={"job-" + job.id}
                     onClick={() => setHighlightedJobId(job.id)}
                     className={`rounded-[22px] p-4 transition cursor-pointer ${
-                      highlightedJobId === job.id
+                      job.staffing_status === "stranded"
+                        ? "border-2 border-red-500 bg-red-50 shadow-lg"
+                        : highlightedJobId === job.id
                         ? "border-2 border-[#b48d4e] bg-[#fffaf3] shadow-lg"
                         : "border border-[#eadfce] bg-[#fcfaf7] hover:shadow-sm"
                     }`}
@@ -1703,10 +1719,15 @@ export default function AdminPage() {
                     <div className="text-base font-semibold">{getPropertyName(job.property_id)}</div>
                     <div className="mt-2 text-sm text-[#6f6255]">
                       Status:{" "}
-                      <span className="font-medium text-[#241c15]">{job.status || "unknown"}</span>
+                      <span className="font-medium text-[#241c15]">
+                        {getStaffingLabel(job.staffing_status, job.status)}
+                      </span>
                     </div>
                     <div className="mt-1 text-sm text-[#8a7b68]">
-                      Assigned: {getCleanerName(job.assigned_cleaner_id)}
+                      Assigned:{" "}
+                      <span className="font-medium">
+                        {getStaffingLabel(job.staffing_status, job.status)}
+                      </span>
                     </div>
                     <div className="mt-1 text-sm text-[#8a7b68]">
                       Cleaning date: {formatScheduledFor(job.scheduled_for || extractCheckoutDate(job.notes))}
