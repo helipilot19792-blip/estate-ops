@@ -14,6 +14,22 @@ type Profile = {
   created_at: string | null;
 };
 
+type CleanerAccountMember = {
+  id: string;
+  cleaner_account_id: string;
+  profile_id: string;
+  created_at?: string | null;
+};
+
+type CleanerAccount = {
+  id: string;
+  display_name: string | null;
+  email?: string | null;
+  phone?: string | null;
+  active?: boolean | null;
+  created_at?: string | null;
+};
+
 type Property = {
   id: string;
   name: string | null;
@@ -21,24 +37,36 @@ type Property = {
   notes: string | null;
 };
 
-type AssignmentRow = {
-  id: string;
-  property_id: string;
-  cleaner_id: string;
-  priority: number;
-  created_at?: string | null;
-};
-
-type Job = {
+type TurnoverJob = {
   id: string;
   property_id: string;
   status: string | null;
-  assigned_cleaner_id: string | null;
   notes: string | null;
   created_at?: string | null;
   offered_at?: string | null;
   accepted_at?: string | null;
   declined_at?: string | null;
+  scheduled_for?: string | null;
+  staffing_status?: string | null;
+  cleaner_units_needed?: number | null;
+  cleaner_units_required_strict?: boolean | null;
+  show_team_status_to_cleaners?: boolean | null;
+};
+
+type TurnoverJobSlot = {
+  id: string;
+  job_id: string;
+  slot_number: number | null;
+  cleaner_account_id: string | null;
+  status: string | null;
+  offered_at?: string | null;
+  accepted_at?: string | null;
+  declined_at?: string | null;
+  expires_at?: string | null;
+  accepted_by_profile_id?: string | null;
+  declined_by_profile_id?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
 };
 
 type AccessRow = {
@@ -65,8 +93,12 @@ type Sop = {
   created_at?: string | null;
 };
 
-type CalendarJob = Job & {
+type CleanerJob = {
+  slot: TurnoverJobSlot;
+  job: TurnoverJob;
   jobDate: string | null;
+  acceptedSlots: number;
+  totalSlots: number;
 };
 
 function formatMonthLabel(date: Date) {
@@ -126,10 +158,6 @@ function formatDateTimeLabel(dateString: string | null | undefined) {
   return d.toLocaleString();
 }
 
-function isAcceptedStatus(status: string | null) {
-  return (status || "").toLowerCase().trim() === "accepted";
-}
-
 function getResponseWindowHours(jobDate: string | null, now: Date) {
   if (!jobDate) return 8;
 
@@ -141,18 +169,18 @@ function getResponseWindowHours(jobDate: string | null, now: Date) {
   return 2;
 }
 
-function getDeadline(job: CalendarJob, now: Date) {
-  if (!job.offered_at) return null;
+function getDeadline(item: CleanerJob, now: Date) {
+  if (!item.slot.offered_at) return null;
 
-  const offered = new Date(job.offered_at);
+  const offered = new Date(item.slot.offered_at);
   if (Number.isNaN(offered.getTime())) return null;
 
-  const hours = getResponseWindowHours(job.jobDate, now);
+  const hours = getResponseWindowHours(item.jobDate, now);
   return new Date(offered.getTime() + hours * 60 * 60 * 1000);
 }
 
-function getTimeRemainingMs(job: CalendarJob, now: Date) {
-  const deadline = getDeadline(job, now);
+function getTimeRemainingMs(item: CleanerJob, now: Date) {
+  const deadline = getDeadline(item, now);
   if (!deadline) return null;
   return deadline.getTime() - now.getTime();
 }
@@ -173,44 +201,38 @@ function formatRemaining(ms: number) {
 }
 
 function getCountdownTone(ms: number | null) {
-  if (ms === null) {
-    return "text-[#e7c98a]";
-  }
-  if (ms < 0) {
-    return "text-red-400";
-  }
-  if (ms <= 2 * 60 * 60 * 1000) {
-    return "text-amber-300";
-  }
+  if (ms === null) return "text-[#e7c98a]";
+  if (ms < 0) return "text-red-400";
+  if (ms <= 2 * 60 * 60 * 1000) return "text-amber-300";
   return "text-[#e7c98a]";
 }
 
-function sortCalendarJobsNearestFirst(items: CalendarJob[]) {
-  return [...items].sort((a, b) => {
-    const aAccepted = isAcceptedStatus(a.status) && !!a.accepted_at;
-    const bAccepted = isAcceptedStatus(b.status) && !!b.accepted_at;
+function getSlotDisplayStatus(slotStatus: string | null, staffingStatus: string | null) {
+  const slot = (slotStatus || "").toLowerCase().trim();
+  const staffing = (staffingStatus || "").toLowerCase().trim();
 
-    if (!aAccepted && bAccepted) return -1;
-    if (aAccepted && !bAccepted) return 1;
+  if (slot === "accepted") {
+    if (staffing === "fully_staffed") return "Accepted • fully staffed";
+    if (staffing === "partially_filled") return "Accepted • waiting on team";
+    if (staffing === "ready") return "Accepted • ready to proceed";
+    return "Accepted";
+  }
 
-    const aDate = a.jobDate ?? "9999-12-31";
-    const bDate = b.jobDate ?? "9999-12-31";
+  if (slot === "offered") {
+    if (staffing === "stranded") return "Urgent • stranded";
+    return "Waiting for your response";
+  }
 
-    if (aDate !== bDate) {
-      return aDate.localeCompare(bDate);
-    }
-
-    const aOffered = a.offered_at ?? a.created_at ?? "";
-    const bOffered = b.offered_at ?? b.created_at ?? "";
-
-    return bOffered.localeCompare(aOffered);
-  });
+  if (slot === "declined") return "Declined";
+  if (slot === "stranded") return "Stranded";
+  return slotStatus || "Unknown";
 }
 
-function getStatusTone(status: string | null) {
-  const normalized = (status || "").toLowerCase().trim();
+function getStatusTone(slotStatus: string | null, staffingStatus: string | null) {
+  const slot = (slotStatus || "").toLowerCase().trim();
+  const staffing = (staffingStatus || "").toLowerCase().trim();
 
-  if (normalized === "accepted") {
+  if (slot === "accepted") {
     return {
       badge: "border border-emerald-400/30 bg-emerald-500/15 text-emerald-200",
       card:
@@ -220,14 +242,97 @@ function getStatusTone(status: string | null) {
     };
   }
 
+  if (slot === "offered" || staffing === "stranded") {
+    return {
+      badge:
+        "border border-red-400/70 bg-red-500 text-white shadow-[0_0_18px_rgba(239,68,68,0.35)] animate-pulse",
+      card:
+        "border-red-400/65 bg-[linear-gradient(180deg,rgba(92,20,20,0.78)_0%,rgba(24,18,14,1)_100%)] shadow-[0_0_34px_rgba(239,68,68,0.18)]",
+      dot: "bg-red-400",
+      selectedRing: "ring-2 ring-red-300/70",
+    };
+  }
+
   return {
-    badge:
-      "border border-red-400/70 bg-red-500 text-white shadow-[0_0_18px_rgba(239,68,68,0.35)] animate-pulse",
+    badge: "border border-[#7a5c2e]/30 bg-[#b08b47]/10 text-[#e7c98a]",
     card:
-      "border-red-400/65 bg-[linear-gradient(180deg,rgba(92,20,20,0.78)_0%,rgba(24,18,14,1)_100%)] shadow-[0_0_34px_rgba(239,68,68,0.18)]",
-    dot: "bg-red-400",
-    selectedRing: "ring-2 ring-red-300/70",
+      "border-[#7a5c2e]/25 bg-[linear-gradient(180deg,rgba(27,21,16,0.95)_0%,rgba(16,13,10,1)_100%)]",
+    dot: "bg-[#b08b47]",
+    selectedRing: "ring-2 ring-[#b08b47]/60",
   };
+}
+
+function sortCleanerJobsNearestFirst(items: CleanerJob[]) {
+  return [...items].sort((a, b) => {
+    const aOffered = (a.slot.status || "").toLowerCase().trim() === "offered";
+    const bOffered = (b.slot.status || "").toLowerCase().trim() === "offered";
+
+    if (aOffered && !bOffered) return -1;
+    if (!aOffered && bOffered) return 1;
+
+    const aDate = a.jobDate ?? "9999-12-31";
+    const bDate = b.jobDate ?? "9999-12-31";
+
+    if (aDate !== bDate) return aDate.localeCompare(bDate);
+
+    const aTime = a.slot.offered_at ?? a.job.created_at ?? "";
+    const bTime = b.slot.offered_at ?? b.job.created_at ?? "";
+    return bTime.localeCompare(aTime);
+  });
+}
+
+function getTeamMessage(item: CleanerJob) {
+  const needed = item.job.cleaner_units_needed ?? item.totalSlots ?? 1;
+  const accepted = item.acceptedSlots;
+  const strict = !!item.job.cleaner_units_required_strict;
+  const show = item.job.show_team_status_to_cleaners !== false;
+  const slotStatus = (item.slot.status || "").toLowerCase().trim();
+  const staffing = (item.job.staffing_status || "").toLowerCase().trim();
+
+  if (needed <= 1) {
+    return slotStatus === "accepted" ? "Solo clean • you accepted this job" : "Solo clean";
+  }
+
+  if (!show) {
+    return slotStatus === "accepted" ? "Team clean • you accepted this slot" : "Team clean";
+  }
+
+  if (strict) {
+    if (slotStatus === "accepted" && staffing !== "fully_staffed") {
+      const remaining = Math.max(needed - accepted, 0);
+      return remaining > 0
+        ? `Team clean • ${accepted} of ${needed} accepted • waiting on ${remaining} more`
+        : `Team clean • ${accepted} of ${needed} accepted`;
+    }
+
+    if (staffing === "fully_staffed") {
+      return `Team clean • ${accepted} of ${needed} accepted • fully staffed`;
+    }
+
+    if (staffing === "partially_filled") {
+      return `Team clean • ${accepted} of ${needed} accepted`;
+    }
+
+    return `Team clean • ${needed} cleaners required`;
+  }
+
+  if (slotStatus === "accepted" && staffing === "ready" && accepted < needed) {
+    return `Team clean • job can proceed • ${accepted} of ${needed} accepted`;
+  }
+
+  if (staffing === "fully_staffed") {
+    return `Team clean • ${accepted} of ${needed} accepted • fully staffed`;
+  }
+
+  if (staffing === "ready") {
+    return `Team clean • ready to proceed • ${accepted} of ${needed} accepted`;
+  }
+
+  if (staffing === "partially_filled") {
+    return `Team clean • partially filled • ${accepted} of ${needed} accepted`;
+  }
+
+  return `Team clean • ${needed} cleaner slots`;
 }
 
 export default function CleanerPage() {
@@ -238,14 +343,16 @@ export default function CleanerPage() {
   const [actionLoading, setActionLoading] = useState<"accept" | "decline" | null>(null);
 
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [cleanerAccount, setCleanerAccount] = useState<CleanerAccount | null>(null);
+
   const [properties, setProperties] = useState<Property[]>([]);
-  const [jobs, setJobs] = useState<Job[]>([]);
+  const [cleanerJobs, setCleanerJobs] = useState<CleanerJob[]>([]);
   const [accessRows, setAccessRows] = useState<AccessRow[]>([]);
   const [sops, setSops] = useState<Sop[]>([]);
   const [sopImages, setSopImages] = useState<SopImage[]>([]);
 
   const [pageError, setPageError] = useState<string | null>(null);
-  const [assignmentWarning, setAssignmentWarning] = useState<string | null>(null);
+  const [accountWarning, setAccountWarning] = useState<string | null>(null);
   const [jobsWarning, setJobsWarning] = useState<string | null>(null);
   const [sopsWarning, setSopsWarning] = useState<string | null>(null);
 
@@ -254,7 +361,7 @@ export default function CleanerPage() {
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
   const [jobsCollapsed, setJobsCollapsed] = useState(true);
   const [now, setNow] = useState(() => new Date());
 
@@ -306,15 +413,29 @@ export default function CleanerPage() {
           return;
         }
 
-        const assignedProperties = await loadAssignedProperties(user.id);
+        const accountData = await loadCleanerAccount(profileData.id);
         if (!mounted) return;
-        setProperties(assignedProperties);
 
-        const propertyIds = assignedProperties.map((p) => p.id);
+        setCleanerAccount(accountData.account);
+        setAccountWarning(accountData.warning);
 
-        const loadedJobs = await loadJobs(user.id);
+        if (!accountData.account) {
+          setProperties([]);
+          setCleanerJobs([]);
+          setAccessRows([]);
+          setSops([]);
+          setSopImages([]);
+          return;
+        }
+
+        const loadedCleanerJobs = await loadCleanerJobs(accountData.account.id);
         if (!mounted) return;
-        setJobs(loadedJobs);
+        setCleanerJobs(loadedCleanerJobs);
+
+        const propertyIds = [...new Set(loadedCleanerJobs.map((item) => item.job.property_id))];
+        const loadedProperties = await loadProperties(propertyIds);
+        if (!mounted) return;
+        setProperties(loadedProperties);
 
         const loadedAccess = await loadAccess(propertyIds);
         if (!mounted) return;
@@ -342,7 +463,7 @@ export default function CleanerPage() {
   }, [router]);
 
   useEffect(() => {
-    if (!selectedJobId) return;
+    if (!selectedSlotId) return;
 
     const timer = window.setTimeout(() => {
       selectedJobPanelRef.current?.scrollIntoView({
@@ -352,65 +473,145 @@ export default function CleanerPage() {
     }, 120);
 
     return () => window.clearTimeout(timer);
-  }, [selectedJobId]);
+  }, [selectedSlotId]);
 
-  async function loadAssignedProperties(cleanerId: string): Promise<Property[]> {
-    setAssignmentWarning(null);
-
+  async function loadCleanerAccount(profileId: string): Promise<{
+    account: CleanerAccount | null;
+    warning: string | null;
+  }> {
     try {
-      const { data: assignmentsData, error: assignmentsError } = await supabase
-        .from("property_cleaner_assignments")
-        .select("id, property_id, cleaner_id, priority, created_at")
-        .eq("cleaner_id", cleanerId)
-        .order("priority", { ascending: true });
+      const { data: membershipData, error: membershipError } = await supabase
+        .from("cleaner_account_members")
+        .select("id, cleaner_account_id, profile_id, created_at")
+        .eq("profile_id", profileId)
+        .order("created_at", { ascending: true });
 
-      if (assignmentsError) throw assignmentsError;
+      if (membershipError) throw membershipError;
 
-      const assignmentRows = (assignmentsData ?? []) as AssignmentRow[];
+      const memberships = (membershipData ?? []) as CleanerAccountMember[];
 
-      if (assignmentRows.length === 0) {
-        return [];
+      if (memberships.length === 0) {
+        return {
+          account: null,
+          warning:
+            "Your cleaner login is not linked to a cleaner account yet. Ask admin to connect your profile to a cleaner account.",
+        };
       }
 
-      const propertyIds = [...new Set(assignmentRows.map((row) => row.property_id))];
+      const accountIds = memberships.map((m) => m.cleaner_account_id);
 
-      const { data: propertyData, error: propertyError } = await supabase
-        .from("properties")
-        .select("id, name, address, notes")
-        .in("id", propertyIds);
+      const { data: accountsData, error: accountsError } = await supabase
+        .from("cleaner_accounts")
+        .select("*")
+        .in("id", accountIds);
 
-      if (propertyError) throw propertyError;
+      if (accountsError) throw accountsError;
 
-      const propertyMap = new Map(
-        ((propertyData ?? []) as Property[]).map((property) => [property.id, property])
-      );
+      const accounts = (accountsData ?? []) as CleanerAccount[];
+      const primaryAccount = accounts.find((a) => a.id === memberships[0].cleaner_account_id) || accounts[0] || null;
 
-      return propertyIds
-        .map((id) => propertyMap.get(id))
-        .filter((property): property is Property => Boolean(property));
+      let warning: string | null = null;
+      if (memberships.length > 1) {
+        warning =
+          "Your profile is linked to more than one cleaner account. This page is using the first linked account right now.";
+      }
+
+      return {
+        account: primaryAccount,
+        warning,
+      };
     } catch (error: any) {
-      setAssignmentWarning(
-        `Assigned properties could not be loaded yet. ${error?.message || ""}`.trim()
-      );
-      return [];
+      return {
+        account: null,
+        warning: `Cleaner account could not be loaded yet. ${error?.message || ""}`.trim(),
+      };
     }
   }
 
-  async function loadJobs(cleanerId: string): Promise<Job[]> {
+  async function loadProperties(propertyIds: string[]): Promise<Property[]> {
+    if (propertyIds.length === 0) return [];
+
+    const { data, error } = await supabase
+      .from("properties")
+      .select("id, name, address, notes")
+      .in("id", propertyIds);
+
+    if (error) throw error;
+
+    return (data ?? []) as Property[];
+  }
+
+  async function loadCleanerJobs(cleanerAccountId: string): Promise<CleanerJob[]> {
     setJobsWarning(null);
 
     try {
-      const { data, error } = await supabase
-        .from("turnover_jobs")
+      const { data: slotData, error: slotError } = await supabase
+        .from("turnover_job_slots")
         .select(
-          "id, property_id, status, assigned_cleaner_id, notes, created_at, offered_at, accepted_at, declined_at"
+          "id, job_id, slot_number, cleaner_account_id, status, offered_at, accepted_at, declined_at, expires_at, accepted_by_profile_id, declined_by_profile_id, created_at, updated_at"
         )
-        .eq("assigned_cleaner_id", cleanerId)
+        .eq("cleaner_account_id", cleanerAccountId)
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
+      if (slotError) throw slotError;
 
-      return (data ?? []) as Job[];
+      const accountSlots = (slotData ?? []) as TurnoverJobSlot[];
+
+      if (accountSlots.length === 0) {
+        return [];
+      }
+
+      const jobIds = [...new Set(accountSlots.map((slot) => slot.job_id))];
+
+      const { data: jobData, error: jobError } = await supabase
+        .from("turnover_jobs")
+        .select(
+          "id, property_id, status, notes, created_at, offered_at, accepted_at, declined_at, scheduled_for, staffing_status, cleaner_units_needed, cleaner_units_required_strict, show_team_status_to_cleaners"
+        )
+        .in("id", jobIds);
+
+      if (jobError) throw jobError;
+
+      const jobs = (jobData ?? []) as TurnoverJob[];
+      const jobsById = new Map(jobs.map((job) => [job.id, job]));
+
+      const { data: allSlotData, error: allSlotError } = await supabase
+        .from("turnover_job_slots")
+        .select("id, job_id, status")
+        .in("job_id", jobIds);
+
+      if (allSlotError) throw allSlotError;
+
+      const allSlots = (allSlotData ?? []) as Array<{ id: string; job_id: string; status: string | null }>;
+      const slotCounts = new Map<string, { total: number; accepted: number }>();
+
+      for (const slot of allSlots) {
+        const current = slotCounts.get(slot.job_id) || { total: 0, accepted: 0 };
+        current.total += 1;
+        if ((slot.status || "").toLowerCase().trim() === "accepted") {
+          current.accepted += 1;
+        }
+        slotCounts.set(slot.job_id, current);
+      }
+
+      const merged: CleanerJob[] = accountSlots
+        .map((slot) => {
+          const job = jobsById.get(slot.job_id);
+          if (!job) return null;
+
+          const counts = slotCounts.get(slot.job_id) || { total: 0, accepted: 0 };
+
+          return {
+            slot,
+            job,
+            jobDate: job.scheduled_for || extractCheckoutDate(job.notes),
+            acceptedSlots: counts.accepted,
+            totalSlots: counts.total,
+          };
+        })
+        .filter((item): item is CleanerJob => Boolean(item));
+
+      return sortCleanerJobsNearestFirst(merged);
     } catch (error: any) {
       setJobsWarning(`Jobs could not be loaded yet. ${error?.message || ""}`.trim());
       return [];
@@ -478,32 +679,27 @@ export default function CleanerPage() {
     }
   }
 
-  async function refreshJobs() {
-    if (!profile?.id) return;
-    const loadedJobs = await loadJobs(profile.id);
-    setJobs(loadedJobs);
+  async function refreshCleanerJobs() {
+    if (!cleanerAccount?.id) return;
+    const loadedJobs = await loadCleanerJobs(cleanerAccount.id);
+    setCleanerJobs(loadedJobs);
   }
 
   async function handleAcceptJob() {
-    if (!selectedJob || !profile?.id) return;
+    if (!selectedCleanerJob || !profile?.id) return;
 
     setJobsWarning(null);
     setActionLoading("accept");
 
     try {
-      const { error } = await supabase
-        .from("turnover_jobs")
-        .update({
-          status: "accepted",
-          accepted_at: new Date().toISOString(),
-          declined_at: null,
-        })
-        .eq("id", selectedJob.id)
-        .eq("assigned_cleaner_id", profile.id);
+      const { error } = await supabase.rpc("accept_turnover_job_slot", {
+        p_slot_id: selectedCleanerJob.slot.id,
+        p_profile_id: profile.id,
+      });
 
       if (error) throw error;
 
-      await refreshJobs();
+      await refreshCleanerJobs();
     } catch (error: any) {
       setJobsWarning(error?.message || "Could not accept job.");
     } finally {
@@ -512,25 +708,23 @@ export default function CleanerPage() {
   }
 
   async function handleDeclineJob() {
-    if (!selectedJob || !profile?.id) return;
+    if (!selectedCleanerJob || !profile?.id) return;
 
     setJobsWarning(null);
     setActionLoading("decline");
 
     try {
-      const { error } = await supabase
-        .from("turnover_jobs")
-        .update({
-          status: "declined",
-          declined_at: new Date().toISOString(),
-          accepted_at: null,
-        })
-        .eq("id", selectedJob.id)
-        .eq("assigned_cleaner_id", profile.id);
+      const { error } = await supabase.rpc("decline_turnover_job_slot", {
+        p_slot_id: selectedCleanerJob.slot.id,
+        p_profile_id: profile.id,
+      });
 
       if (error) throw error;
 
-      await refreshJobs();
+      const declinedSlotId = selectedCleanerJob.slot.id;
+      await refreshCleanerJobs();
+
+      setSelectedSlotId((current) => (current === declinedSlotId ? null : current));
     } catch (error: any) {
       setJobsWarning(error?.message || "Could not decline job.");
     } finally {
@@ -557,15 +751,15 @@ export default function CleanerPage() {
   }, [accessRows]);
 
   const jobsByPropertyId = useMemo(() => {
-    const map = new Map<string, Job[]>();
-    for (const job of jobs) {
-      if (!map.has(job.property_id)) {
-        map.set(job.property_id, []);
+    const map = new Map<string, CleanerJob[]>();
+    for (const item of cleanerJobs) {
+      if (!map.has(item.job.property_id)) {
+        map.set(item.job.property_id, []);
       }
-      map.get(job.property_id)!.push(job);
+      map.get(item.job.property_id)!.push(item);
     }
     return map;
-  }, [jobs]);
+  }, [cleanerJobs]);
 
   const sopImagesBySopId = useMemo(() => {
     const map = new Map<string, SopImage[]>();
@@ -589,57 +783,48 @@ export default function CleanerPage() {
     return map;
   }, [sops]);
 
-  const calendarJobs = useMemo<CalendarJob[]>(() => {
-    const mapped = jobs.map((job) => ({
-      ...job,
-      jobDate: extractCheckoutDate(job.notes),
-    }));
-
-    return sortCalendarJobsNearestFirst(mapped);
-  }, [jobs]);
-
   const unacceptedJobs = useMemo(
-    () => calendarJobs.filter((job) => !isAcceptedStatus(job.status) || !job.accepted_at),
-    [calendarJobs]
+    () => cleanerJobs.filter((item) => (item.slot.status || "").toLowerCase().trim() === "offered"),
+    [cleanerJobs]
   );
 
   const unacceptedCount = unacceptedJobs.length;
 
   const jobsByDate = useMemo(() => {
-    const map = new Map<string, CalendarJob[]>();
+    const map = new Map<string, CleanerJob[]>();
 
-    for (const job of calendarJobs) {
-      if (!job.jobDate) continue;
-      if (!map.has(job.jobDate)) {
-        map.set(job.jobDate, []);
+    for (const item of cleanerJobs) {
+      if (!item.jobDate) continue;
+      if (!map.has(item.jobDate)) {
+        map.set(item.jobDate, []);
       }
-      map.get(job.jobDate)!.push(job);
+      map.get(item.jobDate)!.push(item);
     }
 
     return map;
-  }, [calendarJobs]);
+  }, [cleanerJobs]);
 
   const calendarDays = useMemo(() => getMonthGrid(calendarMonth), [calendarMonth]);
 
   const filteredJobs = useMemo(() => {
     const items = selectedDate
-      ? calendarJobs.filter((job) => job.jobDate === selectedDate)
-      : calendarJobs;
+      ? cleanerJobs.filter((item) => item.jobDate === selectedDate)
+      : cleanerJobs;
 
-    return sortCalendarJobsNearestFirst(items);
-  }, [calendarJobs, selectedDate]);
+    return sortCleanerJobsNearestFirst(items);
+  }, [cleanerJobs, selectedDate]);
 
   const upcomingFilteredJobs = useMemo(() => {
     const today = toYmd(new Date());
-    return filteredJobs.filter((job) => {
-      if (!job.jobDate) return false;
-      return job.jobDate >= today;
+    return filteredJobs.filter((item) => {
+      if (!item.jobDate) return false;
+      return item.jobDate >= today;
     });
   }, [filteredJobs]);
 
   const collapsedPreviewJob = useMemo(() => {
     const urgentUnaccepted = filteredJobs.find(
-      (job) => !isAcceptedStatus(job.status) || !job.accepted_at
+      (item) => (item.slot.status || "").toLowerCase().trim() === "offered"
     );
     if (urgentUnaccepted) return urgentUnaccepted;
 
@@ -658,25 +843,25 @@ export default function CleanerPage() {
     return formatDateLabel(selectedDate);
   }, [selectedDate]);
 
-  const selectedJob = useMemo(() => {
-    if (!selectedJobId) return null;
-    return calendarJobs.find((job) => job.id === selectedJobId) || null;
-  }, [calendarJobs, selectedJobId]);
+  const selectedCleanerJob = useMemo(() => {
+    if (!selectedSlotId) return null;
+    return cleanerJobs.find((item) => item.slot.id === selectedSlotId) || null;
+  }, [cleanerJobs, selectedSlotId]);
 
   const selectedJobProperty = useMemo(() => {
-    if (!selectedJob) return null;
-    return properties.find((p) => p.id === selectedJob.property_id) || null;
-  }, [selectedJob, properties]);
+    if (!selectedCleanerJob) return null;
+    return properties.find((p) => p.id === selectedCleanerJob.job.property_id) || null;
+  }, [selectedCleanerJob, properties]);
 
   const selectedJobAccess = useMemo(() => {
-    if (!selectedJob) return null;
-    return accessByPropertyId.get(selectedJob.property_id) || null;
-  }, [selectedJob, accessByPropertyId]);
+    if (!selectedCleanerJob) return null;
+    return accessByPropertyId.get(selectedCleanerJob.job.property_id) || null;
+  }, [selectedCleanerJob, accessByPropertyId]);
 
   const selectedJobSops = useMemo(() => {
-    if (!selectedJob) return [];
-    return sopsByPropertyId.get(selectedJob.property_id) || [];
-  }, [selectedJob, sopsByPropertyId]);
+    if (!selectedCleanerJob) return [];
+    return sopsByPropertyId.get(selectedCleanerJob.job.property_id) || [];
+  }, [selectedCleanerJob, sopsByPropertyId]);
 
   useEffect(() => {
     if (unacceptedCount > 0) {
@@ -686,29 +871,29 @@ export default function CleanerPage() {
 
   useEffect(() => {
     if (hasAutoSelectedInitialJob.current) return;
-    if (selectedJobId) return;
+    if (selectedSlotId) return;
 
     if (unacceptedJobs.length > 0) {
-      setSelectedJobId(unacceptedJobs[0].id);
+      setSelectedSlotId(unacceptedJobs[0].slot.id);
       hasAutoSelectedInitialJob.current = true;
       return;
     }
 
-    if (calendarJobs.length > 0) {
-      setSelectedJobId(calendarJobs[0].id);
+    if (cleanerJobs.length > 0) {
+      setSelectedSlotId(cleanerJobs[0].slot.id);
       hasAutoSelectedInitialJob.current = true;
     }
-  }, [selectedJobId, unacceptedJobs, calendarJobs]);
+  }, [selectedSlotId, unacceptedJobs, cleanerJobs]);
 
   function handleDateClick(dateYmd: string) {
     setSelectedDate(dateYmd);
-    const dateJobs = sortCalendarJobsNearestFirst(jobsByDate.get(dateYmd) || []);
-    setSelectedJobId(dateJobs[0]?.id || null);
+    const dateJobs = sortCleanerJobsNearestFirst(jobsByDate.get(dateYmd) || []);
+    setSelectedSlotId(dateJobs[0]?.slot.id || null);
     setJobsCollapsed(false);
   }
 
-  function handleJobClick(jobId: string) {
-    setSelectedJobId(jobId);
+  function handleJobClick(slotId: string) {
+    setSelectedSlotId(slotId);
     setJobsCollapsed(false);
   }
 
@@ -798,7 +983,9 @@ export default function CleanerPage() {
                     Welcome{profile?.full_name ? `, ${profile.full_name}` : ""}
                   </h1>
                   <p className="mt-1 text-sm text-[#d4c4a8]">
-                    Your assigned properties, jobs, access notes, and SOPs.
+                    {cleanerAccount?.display_name
+                      ? `Account: ${cleanerAccount.display_name}`
+                      : "Your assigned jobs, access notes, and SOPs."}
                   </p>
                 </div>
               </div>
@@ -824,6 +1011,12 @@ export default function CleanerPage() {
               </section>
             )}
 
+            {accountWarning && (
+              <section className="rounded-2xl border border-amber-500/25 bg-amber-950/20 p-4 text-sm text-[#e6d8be]">
+                {accountWarning}
+              </section>
+            )}
+
             {unacceptedCount > 0 && (
               <section className="sticky top-0 z-40 rounded-2xl border border-red-400/60 bg-red-600 p-4 text-white shadow-[0_0_28px_rgba(239,68,68,0.28)]">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -839,7 +1032,7 @@ export default function CleanerPage() {
                   <button
                     onClick={() => {
                       if (unacceptedJobs[0]) {
-                        setSelectedJobId(unacceptedJobs[0].id);
+                        setSelectedSlotId(unacceptedJobs[0].slot.id);
                       }
                       scrollToJobsSection();
                     }}
@@ -851,7 +1044,7 @@ export default function CleanerPage() {
               </section>
             )}
 
-            <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="rounded-2xl border border-[#7a5c2e]/25 bg-[#15110d] p-5">
                 <p className="text-xs uppercase tracking-[0.2em] text-[#b08b47]">Assigned Properties</p>
                 <p className="mt-3 text-3xl font-semibold text-[#f8f2e8]">{properties.length}</p>
@@ -868,17 +1061,18 @@ export default function CleanerPage() {
                 <p className="mt-3 text-3xl font-semibold text-[#f8f2e8]">{unacceptedCount}</p>
               </div>
 
-              <div className="rounded-2xl border border-[#7a5c2e]/25 bg-[#15110d] p-5 sm:col-span-2 lg:col-span-1">
-                <p className="text-xs uppercase tracking-[0.2em] text-[#b08b47]">Total Jobs</p>
-                <p className="mt-3 text-3xl font-semibold text-[#f8f2e8]">{jobs.length}</p>
+              <div className="rounded-2xl border border-[#7a5c2e]/25 bg-[#15110d] p-5">
+                <p className="text-xs uppercase tracking-[0.2em] text-[#b08b47]">Visible Slots</p>
+                <p className="mt-3 text-3xl font-semibold text-[#f8f2e8]">{cleanerJobs.length}</p>
+              </div>
+
+              <div className="rounded-2xl border border-[#7a5c2e]/25 bg-[#15110d] p-5">
+                <p className="text-xs uppercase tracking-[0.2em] text-[#b08b47]">Cleaner Account</p>
+                <p className="mt-3 text-lg font-semibold text-[#f8f2e8]">
+                  {cleanerAccount?.display_name || "Not linked"}
+                </p>
               </div>
             </section>
-
-            {assignmentWarning && (
-              <section className="rounded-2xl border border-amber-500/25 bg-amber-950/20 p-4 text-sm text-[#e6d8be]">
-                {assignmentWarning}
-              </section>
-            )}
 
             <section className="rounded-2xl border border-[#7a5c2e]/25 bg-[#15110d] p-4 sm:p-5">
               <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -931,12 +1125,12 @@ export default function CleanerPage() {
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-7">
                 {calendarDays.map((day) => {
                   const ymd = toYmd(day);
-                  const dayJobs = sortCalendarJobsNearestFirst(jobsByDate.get(ymd) || []);
+                  const dayJobs = sortCleanerJobsNearestFirst(jobsByDate.get(ymd) || []);
                   const isCurrentMonth = day.getMonth() === calendarMonth.getMonth();
                   const isSelected = selectedDate === ymd;
                   const isToday = ymd === toYmd(new Date());
                   const hasUnacceptedOnDay = dayJobs.some(
-                    (job) => !isAcceptedStatus(job.status) || !job.accepted_at
+                    (item) => (item.slot.status || "").toLowerCase().trim() === "offered"
                   );
 
                   return (
@@ -979,23 +1173,23 @@ export default function CleanerPage() {
                       </button>
 
                       <div className="mt-2 space-y-1.5">
-                        {dayJobs.slice(0, 3).map((job) => {
-                          const property = properties.find((p) => p.id === job.property_id);
-                          const isJobSelected = selectedJobId === job.id;
-                          const tone = getStatusTone(job.status);
-                          const isAccepted = isAcceptedStatus(job.status) && !!job.accepted_at;
+                        {dayJobs.slice(0, 3).map((item) => {
+                          const property = properties.find((p) => p.id === item.job.property_id);
+                          const isJobSelected = selectedSlotId === item.slot.id;
+                          const tone = getStatusTone(item.slot.status, item.job.staffing_status);
+                          const waiting = (item.slot.status || "").toLowerCase().trim() === "offered";
 
                           return (
                             <button
-                              key={job.id}
-                              onClick={() => handleJobClick(job.id)}
+                              key={item.slot.id}
+                              onClick={() => handleJobClick(item.slot.id)}
                               className={[
                                 "block w-full truncate rounded-lg px-2 py-1.5 text-left text-[11px] transition",
                                 isJobSelected
                                   ? "bg-[#b08b47] text-[#120f0b]"
-                                  : isAccepted
-                                  ? "bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/25"
-                                  : "bg-red-500 text-white shadow-[0_0_14px_rgba(239,68,68,0.25)] animate-pulse",
+                                  : waiting
+                                  ? "bg-red-500 text-white shadow-[0_0_14px_rgba(239,68,68,0.25)] animate-pulse"
+                                  : "bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/25",
                               ].join(" ")}
                             >
                               <span className="inline-flex items-center gap-1.5">
@@ -1024,7 +1218,7 @@ export default function CleanerPage() {
                 <button
                   onClick={() => {
                     setSelectedDate(null);
-                    setSelectedJobId(unacceptedJobs[0]?.id ?? null);
+                    setSelectedSlotId(unacceptedJobs[0]?.slot.id ?? null);
                     setJobsCollapsed(false);
                   }}
                   className="rounded-full border border-[#7a5c2e]/40 px-4 py-2 text-sm text-[#f5efe4] hover:bg-[#1b1510]"
@@ -1051,8 +1245,8 @@ export default function CleanerPage() {
                   </h2>
                   <p className="mt-1 text-sm text-[#cdbda0]">
                     {jobsCollapsed
-                      ? "Collapsed view showing the most urgent job first. Expand to see the full schedule."
-                      : "Expanded view showing all jobs in priority order, with waiting jobs first."}
+                      ? "Collapsed view showing the most urgent slot first. Expand to see the full schedule."
+                      : "Expanded view showing all visible slots in priority order, with waiting jobs first."}
                   </p>
                 </div>
 
@@ -1083,7 +1277,7 @@ export default function CleanerPage() {
                 </p>
               )}
 
-              {selectedJob && (
+              {selectedCleanerJob && (
                 <section
                   ref={selectedJobPanelRef}
                   className="mt-4 rounded-2xl border border-[#b08b47]/30 bg-[#18120e] p-4 shadow-lg sm:p-5"
@@ -1100,23 +1294,45 @@ export default function CleanerPage() {
                         {selectedJobProperty?.address || "No property address"}
                       </p>
                       <p className="mt-2 text-sm text-[#e7c98a]">
-                        Cleaning date: {formatDateLabel(selectedJob.jobDate)}
+                        Cleaning date: {formatDateLabel(selectedCleanerJob.jobDate)}
+                      </p>
+                      <p className="mt-2 text-sm text-[#d9c5a1]">
+                        {getTeamMessage(selectedCleanerJob)}
                       </p>
                     </div>
 
                     <div>
-                      {isAcceptedStatus(selectedJob.status) && selectedJob.accepted_at ? (
-                        <span className="inline-flex w-fit rounded-full border border-emerald-400/40 bg-emerald-500/20 px-3 py-1 text-xs uppercase tracking-[0.16em] text-emerald-200">
-                          Accepted
-                        </span>
-                      ) : (
-                        <span className="inline-flex w-fit rounded-full border border-red-400/70 bg-red-500 px-3 py-1 text-xs uppercase tracking-[0.16em] text-white animate-pulse">
-                          Unaccepted
-                        </span>
-                      )}
+                      {(() => {
+                        const display = getSlotDisplayStatus(
+                          selectedCleanerJob.slot.status,
+                          selectedCleanerJob.job.staffing_status
+                        );
+                        const isOffered =
+                          (selectedCleanerJob.slot.status || "").toLowerCase().trim() === "offered";
+                        const isAccepted =
+                          (selectedCleanerJob.slot.status || "").toLowerCase().trim() === "accepted";
 
-                      {!isAcceptedStatus(selectedJob.status) && !selectedJob.accepted_at && (() => {
-                        const remainingMs = getTimeRemainingMs(selectedJob, now);
+                        return (
+                          <span
+                            className={`inline-flex w-fit rounded-full px-3 py-1 text-xs uppercase tracking-[0.16em] ${
+                              isOffered
+                                ? "border border-red-400/70 bg-red-500 text-white animate-pulse"
+                                : isAccepted
+                                ? "border border-emerald-400/40 bg-emerald-500/20 text-emerald-200"
+                                : "border border-[#7a5c2e]/35 bg-[#b08b47]/10 text-[#e7c98a]"
+                            }`}
+                          >
+                            {display}
+                          </span>
+                        );
+                      })()}
+
+                      {(() => {
+                        const isOffered =
+                          (selectedCleanerJob.slot.status || "").toLowerCase().trim() === "offered";
+                        if (!isOffered) return null;
+
+                        const remainingMs = getTimeRemainingMs(selectedCleanerJob, now);
                         if (remainingMs === null) return null;
 
                         const tone = getCountdownTone(remainingMs);
@@ -1132,10 +1348,59 @@ export default function CleanerPage() {
                     </div>
                   </div>
 
+                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-4">
+                      <p className="text-xs uppercase tracking-[0.16em] text-[#b08b47]">Slot Offered</p>
+                      <p className="mt-2 text-sm text-[#e8ddca]">
+                        {formatDateTimeLabel(selectedCleanerJob.slot.offered_at)}
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-4">
+                      <p className="text-xs uppercase tracking-[0.16em] text-[#b08b47]">Slot Accepted</p>
+                      <p className="mt-2 text-sm text-[#e8ddca]">
+                        {formatDateTimeLabel(selectedCleanerJob.slot.accepted_at)}
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-4">
+                      <p className="text-xs uppercase tracking-[0.16em] text-[#b08b47]">Slot Declined</p>
+                      <p className="mt-2 text-sm text-[#e8ddca]">
+                        {formatDateTimeLabel(selectedCleanerJob.slot.declined_at)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-4">
+                      <p className="text-xs uppercase tracking-[0.16em] text-[#b08b47]">Team Slots</p>
+                      <p className="mt-2 text-sm text-[#e8ddca]">
+                        {selectedCleanerJob.acceptedSlots} accepted of {selectedCleanerJob.totalSlots}
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-4">
+                      <p className="text-xs uppercase tracking-[0.16em] text-[#b08b47]">Job Status</p>
+                      <p className="mt-2 text-sm text-[#e8ddca]">
+                        {selectedCleanerJob.job.staffing_status || selectedCleanerJob.job.status || "—"}
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-4">
+                      <p className="text-xs uppercase tracking-[0.16em] text-[#b08b47]">Slot Number</p>
+                      <p className="mt-2 text-sm text-[#e8ddca]">
+                        {selectedCleanerJob.slot.slot_number ?? "—"}
+                      </p>
+                    </div>
+                  </div>
+
                   <div className="mt-4 flex flex-wrap gap-3">
                     <button
                       onClick={handleAcceptJob}
-                      disabled={actionLoading !== null || selectedJob.status === "accepted"}
+                      disabled={
+                        actionLoading !== null ||
+                        (selectedCleanerJob.slot.status || "").toLowerCase().trim() !== "offered"
+                      }
                       className="rounded-full bg-emerald-500 px-5 py-2 text-sm font-medium text-[#08110c] transition hover:bg-emerald-400 disabled:opacity-50"
                     >
                       {actionLoading === "accept" ? "Accepting..." : "Accept Job"}
@@ -1143,48 +1408,28 @@ export default function CleanerPage() {
 
                     <button
                       onClick={handleDeclineJob}
-                      disabled={actionLoading !== null || selectedJob.status === "declined"}
+                      disabled={
+                        actionLoading !== null ||
+                        (selectedCleanerJob.slot.status || "").toLowerCase().trim() !== "offered"
+                      }
                       className="rounded-full bg-red-500 px-5 py-2 text-sm font-medium text-white transition hover:bg-red-400 disabled:opacity-50"
                     >
                       {actionLoading === "decline" ? "Declining..." : "Decline Job"}
                     </button>
 
                     <button
-                      onClick={() => setSelectedJobId(null)}
+                      onClick={() => setSelectedSlotId(null)}
                       className="rounded-full border border-[#7a5c2e]/50 px-5 py-2 text-sm font-medium text-[#f5efe4] transition hover:bg-[#241a14]"
                     >
                       Close Details
                     </button>
                   </div>
 
-                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                    <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-4">
-                      <p className="text-xs uppercase tracking-[0.16em] text-[#b08b47]">Offered</p>
-                      <p className="mt-2 text-sm text-[#e8ddca]">
-                        {formatDateTimeLabel(selectedJob.offered_at)}
-                      </p>
-                    </div>
-
-                    <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-4">
-                      <p className="text-xs uppercase tracking-[0.16em] text-[#b08b47]">Accepted</p>
-                      <p className="mt-2 text-sm text-[#e8ddca]">
-                        {formatDateTimeLabel(selectedJob.accepted_at)}
-                      </p>
-                    </div>
-
-                    <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-4">
-                      <p className="text-xs uppercase tracking-[0.16em] text-[#b08b47]">Declined</p>
-                      <p className="mt-2 text-sm text-[#e8ddca]">
-                        {formatDateTimeLabel(selectedJob.declined_at)}
-                      </p>
-                    </div>
-                  </div>
-
                   <div className="mt-5 grid gap-4 lg:grid-cols-2">
                     <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-4">
                       <p className="text-xs uppercase tracking-[0.18em] text-[#b08b47]">Job Notes</p>
                       <p className="mt-2 whitespace-pre-wrap text-sm text-[#e8ddca]">
-                        {selectedJob.notes || "No job notes."}
+                        {selectedCleanerJob.job.notes || "No job notes."}
                       </p>
                     </div>
 
@@ -1286,12 +1531,12 @@ export default function CleanerPage() {
                       {collapsedPreviewJob && (
                         <span
                           className={`rounded-full px-3 py-1 text-xs uppercase tracking-[0.18em] ${
-                            !isAcceptedStatus(collapsedPreviewJob.status) || !collapsedPreviewJob.accepted_at
+                            (collapsedPreviewJob.slot.status || "").toLowerCase().trim() === "offered"
                               ? "border border-red-400/70 bg-red-500 text-white animate-pulse"
                               : "border border-sky-400/25 bg-sky-400/10 text-sky-200"
                           }`}
                         >
-                          {!isAcceptedStatus(collapsedPreviewJob.status) || !collapsedPreviewJob.accepted_at
+                          {(collapsedPreviewJob.slot.status || "").toLowerCase().trim() === "offered"
                             ? "Needs Response"
                             : "Next Upcoming Job"}
                         </span>
@@ -1312,18 +1557,18 @@ export default function CleanerPage() {
                   ) : (
                     <div className="space-y-4">
                       {(() => {
-                        const job = collapsedPreviewJob;
-                        const property = properties.find((p) => p.id === job.property_id);
-                        const isSelected = selectedJobId === job.id;
-                        const tone = getStatusTone(job.status);
-                        const isAccepted = isAcceptedStatus(job.status) && !!job.accepted_at;
-                        const remainingMs = !isAccepted ? getTimeRemainingMs(job, now) : null;
+                        const item = collapsedPreviewJob;
+                        const property = properties.find((p) => p.id === item.job.property_id);
+                        const isSelected = selectedSlotId === item.slot.id;
+                        const tone = getStatusTone(item.slot.status, item.job.staffing_status);
+                        const waiting = (item.slot.status || "").toLowerCase().trim() === "offered";
+                        const remainingMs = waiting ? getTimeRemainingMs(item, now) : null;
                         const countdownTone = getCountdownTone(remainingMs);
 
                         return (
                           <button
-                            key={job.id}
-                            onClick={() => handleJobClick(job.id)}
+                            key={item.slot.id}
+                            onClick={() => handleJobClick(item.slot.id)}
                             className={[
                               "block w-full rounded-2xl border p-5 text-left transition duration-200",
                               tone.card,
@@ -1333,15 +1578,9 @@ export default function CleanerPage() {
                             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                               <div>
                                 <div className="flex flex-wrap items-center gap-2">
-                                  {!isAccepted ? (
-                                    <span className="rounded-full border border-red-400/70 bg-red-500 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white shadow-[0_0_16px_rgba(239,68,68,0.28)] animate-pulse">
-                                      Unaccepted
-                                    </span>
-                                  ) : (
-                                    <span className="rounded-full border border-emerald-400/40 bg-emerald-500/20 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-200 shadow-[0_0_14px_rgba(16,185,129,0.16)]">
-                                      Accepted
-                                    </span>
-                                  )}
+                                  <span className={tone.badge}>
+                                    {getSlotDisplayStatus(item.slot.status, item.job.staffing_status)}
+                                  </span>
                                 </div>
 
                                 <h3 className="mt-3 text-lg font-semibold text-[#f8f2e8]">
@@ -1353,10 +1592,12 @@ export default function CleanerPage() {
                                 </p>
 
                                 <p className="mt-2 text-sm font-medium text-[#f0d59f]">
-                                  Cleaning date: {formatDateLabel(job.jobDate)}
+                                  Cleaning date: {formatDateLabel(item.jobDate)}
                                 </p>
 
-                                {!isAccepted && remainingMs !== null && (
+                                <p className="mt-2 text-sm text-[#d9c5a1]">{getTeamMessage(item)}</p>
+
+                                {waiting && remainingMs !== null && (
                                   <p className={`mt-2 text-sm font-semibold ${countdownTone}`}>
                                     {remainingMs < 0
                                       ? `Overdue by ${formatRemaining(remainingMs)}`
@@ -1378,7 +1619,7 @@ export default function CleanerPage() {
                                 Job Notes
                               </p>
                               <p className="mt-2 line-clamp-4 whitespace-pre-wrap text-sm text-[#e8ddca]">
-                                {job.notes || "No job notes."}
+                                {item.job.notes || "No job notes."}
                               </p>
                             </div>
                           </button>
@@ -1395,18 +1636,18 @@ export default function CleanerPage() {
                     </p>
                   ) : (
                     <div className="space-y-4">
-                      {filteredJobs.map((job) => {
-                        const property = properties.find((p) => p.id === job.property_id);
-                        const isSelected = selectedJobId === job.id;
-                        const tone = getStatusTone(job.status);
-                        const isAccepted = isAcceptedStatus(job.status) && !!job.accepted_at;
-                        const remainingMs = !isAccepted ? getTimeRemainingMs(job, now) : null;
+                      {filteredJobs.map((item) => {
+                        const property = properties.find((p) => p.id === item.job.property_id);
+                        const isSelected = selectedSlotId === item.slot.id;
+                        const tone = getStatusTone(item.slot.status, item.job.staffing_status);
+                        const waiting = (item.slot.status || "").toLowerCase().trim() === "offered";
+                        const remainingMs = waiting ? getTimeRemainingMs(item, now) : null;
                         const countdownTone = getCountdownTone(remainingMs);
 
                         return (
                           <button
-                            key={job.id}
-                            onClick={() => handleJobClick(job.id)}
+                            key={item.slot.id}
+                            onClick={() => handleJobClick(item.slot.id)}
                             className={[
                               "block w-full rounded-2xl border p-5 text-left transition duration-200",
                               tone.card,
@@ -1416,15 +1657,9 @@ export default function CleanerPage() {
                             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                               <div>
                                 <div className="flex flex-wrap items-center gap-2">
-                                  {!isAccepted ? (
-                                    <span className="rounded-full border border-red-400/70 bg-red-500 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white shadow-[0_0_16px_rgba(239,68,68,0.28)] animate-pulse">
-                                      Unaccepted
-                                    </span>
-                                  ) : (
-                                    <span className="rounded-full border border-emerald-400/40 bg-emerald-500/20 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-200 shadow-[0_0_14px_rgba(16,185,129,0.16)]">
-                                      Accepted
-                                    </span>
-                                  )}
+                                  <span className={tone.badge}>
+                                    {getSlotDisplayStatus(item.slot.status, item.job.staffing_status)}
+                                  </span>
 
                                   {isSelected && (
                                     <span className="rounded-full border border-[#b08b47]/35 bg-[#b08b47]/10 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[#f0d59f]">
@@ -1442,10 +1677,12 @@ export default function CleanerPage() {
                                 </p>
 
                                 <p className="mt-2 text-sm font-medium text-[#f0d59f]">
-                                  Cleaning date: {formatDateLabel(job.jobDate)}
+                                  Cleaning date: {formatDateLabel(item.jobDate)}
                                 </p>
 
-                                {!isAccepted && remainingMs !== null && (
+                                <p className="mt-2 text-sm text-[#d9c5a1]">{getTeamMessage(item)}</p>
+
+                                {waiting && remainingMs !== null && (
                                   <p className={`mt-2 text-sm font-semibold ${countdownTone}`}>
                                     {remainingMs < 0
                                       ? `Overdue by ${formatRemaining(remainingMs)}`
@@ -1467,7 +1704,7 @@ export default function CleanerPage() {
                                 Job Notes
                               </p>
                               <p className="mt-2 line-clamp-4 whitespace-pre-wrap text-sm text-[#e8ddca]">
-                                {job.notes || "No job notes."}
+                                {item.job.notes || "No job notes."}
                               </p>
                             </div>
                           </button>
@@ -1511,7 +1748,7 @@ export default function CleanerPage() {
 
                         {propertyJobs.length > 0 && (
                           <p className="mt-2 text-sm text-[#cdbda0]">
-                            {propertyJobs.length} active or assigned job
+                            {propertyJobs.length} visible slot
                             {propertyJobs.length === 1 ? "" : "s"} linked to this property.
                           </p>
                         )}
