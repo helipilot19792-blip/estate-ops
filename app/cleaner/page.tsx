@@ -203,6 +203,8 @@ export default function CleanerPage() {
   const [jobsCollapsed, setJobsCollapsed] = useState(true);
 
   const selectedJobPanelRef = useRef<HTMLElement | null>(null);
+  const jobsSectionRef = useRef<HTMLElement | null>(null);
+  const hasAutoSelectedInitialJob = useRef(false);
 
   useEffect(() => {
     let mounted = true;
@@ -619,13 +621,18 @@ export default function CleanerPage() {
   }, [unacceptedCount]);
 
   useEffect(() => {
+    if (hasAutoSelectedInitialJob.current) return;
     if (selectedJobId) return;
+
     if (unacceptedJobs.length > 0) {
       setSelectedJobId(unacceptedJobs[0].id);
+      hasAutoSelectedInitialJob.current = true;
       return;
     }
+
     if (calendarJobs.length > 0) {
       setSelectedJobId(calendarJobs[0].id);
+      hasAutoSelectedInitialJob.current = true;
     }
   }, [selectedJobId, unacceptedJobs, calendarJobs]);
 
@@ -639,6 +646,17 @@ export default function CleanerPage() {
   function handleJobClick(jobId: string) {
     setSelectedJobId(jobId);
     setJobsCollapsed(false);
+  }
+
+  function scrollToJobsSection() {
+    setJobsCollapsed(false);
+
+    window.setTimeout(() => {
+      jobsSectionRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 80);
   }
 
   if (loading) {
@@ -758,8 +776,8 @@ export default function CleanerPage() {
                     onClick={() => {
                       if (unacceptedJobs[0]) {
                         setSelectedJobId(unacceptedJobs[0].id);
-                        setJobsCollapsed(false);
                       }
+                      scrollToJobsSection();
                     }}
                     className="rounded-full border border-white/25 bg-white/10 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/20"
                   >
@@ -958,7 +976,10 @@ export default function CleanerPage() {
               </div>
             </section>
 
-            <section className="rounded-2xl border border-[#7a5c2e]/25 bg-[#15110d] p-5">
+            <section
+              ref={jobsSectionRef}
+              className="rounded-2xl border border-[#7a5c2e]/25 bg-[#15110d] p-5"
+            >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <h2 className="text-xl font-semibold text-[#f8f2e8]">
@@ -1034,7 +1055,7 @@ export default function CleanerPage() {
                     <button
                       onClick={handleAcceptJob}
                       disabled={actionLoading !== null || selectedJob.status === "accepted"}
-                      className="rounded-full bg-[#b08b47] px-5 py-2 text-sm font-medium text-[#120f0b] transition hover:opacity-90 disabled:opacity-50"
+                      className="rounded-full bg-emerald-500 px-5 py-2 text-sm font-medium text-[#08110c] transition hover:bg-emerald-400 disabled:opacity-50"
                     >
                       {actionLoading === "accept" ? "Accepting..." : "Accept Job"}
                     </button>
@@ -1042,7 +1063,7 @@ export default function CleanerPage() {
                     <button
                       onClick={handleDeclineJob}
                       disabled={actionLoading !== null || selectedJob.status === "declined"}
-                      className="rounded-full border border-[#7a5c2e]/50 px-5 py-2 text-sm font-medium text-[#f5efe4] transition hover:bg-[#241a14] disabled:opacity-50"
+                      className="rounded-full bg-red-500 px-5 py-2 text-sm font-medium text-white transition hover:bg-red-400 disabled:opacity-50"
                     >
                       {actionLoading === "decline" ? "Declining..." : "Decline Job"}
                     </button>
