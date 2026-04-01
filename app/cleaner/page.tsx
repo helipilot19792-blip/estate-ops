@@ -228,7 +228,7 @@ function getSlotDisplayStatus(slotStatus: string | null, staffingStatus: string 
   return slotStatus || "Unknown";
 }
 
-function getStatusTone(slotStatus: string | null, staffingStatus: string | null) {
+function getStatusTone(slotStatus: string | null | undefined, staffingStatus: string | null | undefined) {
   const slot = (slotStatus || "").toLowerCase().trim();
   const staffing = (staffingStatus || "").toLowerCase().trim();
 
