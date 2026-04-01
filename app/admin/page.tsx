@@ -747,7 +747,7 @@ useEffect(() => {
         </div>
 
         {strandedJobs.length > 0 ? (
-         <div className="mb-6 rounded-[30px] border border-[#f0b4b4] bg-[linear-gradient(135deg,#fff5f5_0%,#ffe9e9_100%)] p-5 shadow-[0_18px_45px_rgba(140,32,32,0.12)] sticky top-4 z-50">
+        <div className="mb-6 rounded-[30px] border border-[#f0b4b4] bg-[linear-gradient(135deg,#fff5f5_0%,#ffe9e9_100%)] p-5 shadow-[0_18px_45px_rgba(140,32,32,0.12)]">
             <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
               <div>
                 <div className="text-[11px] uppercase tracking-[0.24em] text-[#b14b4b]">
