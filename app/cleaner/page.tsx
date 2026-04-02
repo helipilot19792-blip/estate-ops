@@ -479,75 +479,78 @@ export default function CleanerPage() {
     return () => window.clearTimeout(timer);
   }, [selectedSlotId]);
 
-  useEffect(() => {
-    if (!cleanerAccount?.id) return;
+useEffect(() => {
+  if (!cleanerAccount?.id) return;
 
-    const slotChannel = supabase
-      .channel(`cleaner-slot-live-${cleanerAccount.id}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "turnover_job_slots" },
-        (payload) => {
-          const nextCleanerAccountId =
-            (payload.new as { cleaner_account_id?: string | null } | null)?.cleaner_account_id ?? null;
-          const previousCleanerAccountId =
-            (payload.old as { cleaner_account_id?: string | null } | null)?.cleaner_account_id ?? null;
-
-          if (
-            nextCleanerAccountId === cleanerAccount.id ||
-            previousCleanerAccountId === cleanerAccount.id
-          ) {
-            if (realtimeRefreshTimeoutRef.current) {
-              window.clearTimeout(realtimeRefreshTimeoutRef.current);
-            }
-
-            realtimeRefreshTimeoutRef.current = window.setTimeout(() => {
-              void refreshCleanerJobs();
-            }, 150);
-          }
+  const slotChannel = supabase
+    .channel(`cleaner-slot-live-${cleanerAccount.id}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "turnover_job_slots",
+      },
+      () => {
+        if (realtimeRefreshTimeoutRef.current) {
+          window.clearTimeout(realtimeRefreshTimeoutRef.current);
         }
-      )
-      .subscribe();
 
-    const membershipChannel = profile?.id
-      ? supabase
-          .channel(`cleaner-membership-live-${profile.id}`)
-          .on(
-            "postgres_changes",
-            {
-              event: "*",
-              schema: "public",
-              table: "cleaner_account_members",
-              filter: `profile_id=eq.${profile.id}`,
-            },
-            async () => {
-              const accountData = await loadCleanerAccount(profile.id);
-              setCleanerAccount(accountData.account);
-              setAccountWarning(accountData.warning);
+        realtimeRefreshTimeoutRef.current = window.setTimeout(() => {
+          void refreshCleanerJobs();
+        }, 200);
+      }
+    )
+    .subscribe();
 
-              if (accountData.account) {
-                const loadedJobs = await loadCleanerJobs(accountData.account.id);
-                setCleanerJobs(loadedJobs);
-              } else {
-                setCleanerJobs([]);
-              }
+  const membershipChannel = profile?.id
+    ? supabase
+        .channel(`cleaner-membership-live-${profile.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "cleaner_account_members",
+            filter: `profile_id=eq.${profile.id}`,
+          },
+          async () => {
+            const accountData = await loadCleanerAccount(profile.id);
+            setCleanerAccount(accountData.account);
+            setAccountWarning(accountData.warning);
+
+            if (accountData.account) {
+              const loadedJobs = await loadCleanerJobs(accountData.account.id);
+              setCleanerJobs(loadedJobs);
+            } else {
+              setCleanerJobs([]);
             }
-          )
-          .subscribe()
-      : null;
+          }
+        )
+        .subscribe()
+    : null;
 
-    return () => {
-      if (realtimeRefreshTimeoutRef.current) {
-        window.clearTimeout(realtimeRefreshTimeoutRef.current);
-      }
-      void supabase.removeChannel(slotChannel);
-      if (membershipChannel) {
-        void supabase.removeChannel(membershipChannel);
-      }
-    };
-  }, [cleanerAccount?.id, profile?.id]);
+  return () => {
+    if (realtimeRefreshTimeoutRef.current) {
+      window.clearTimeout(realtimeRefreshTimeoutRef.current);
+    }
+    void supabase.removeChannel(slotChannel);
+    if (membershipChannel) {
+      void supabase.removeChannel(membershipChannel);
+    }
+  };
+}, [cleanerAccount?.id, profile?.id]);
+useEffect(() => {
+  if (!cleanerAccount?.id) return;
 
-  async function loadCleanerAccount(profileId: string): Promise<{
+  const interval = window.setInterval(() => {
+    void refreshCleanerJobs();
+  }, 15000);
+
+  return () => window.clearInterval(interval);
+}, [cleanerAccount?.id]);
+      
+    async function loadCleanerAccount(profileId: string): Promise<{
     account: CleanerAccount | null;
     warning: string | null;
   }> {
