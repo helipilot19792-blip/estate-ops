@@ -1155,90 +1155,107 @@ export default function AdminPage() {
   ];
 
   function renderUsersSection() {
-    return (
-      <div className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-semibold tracking-tight">User Management</h2>
-            <p className="mt-1 text-sm text-[#7f7263]">
-              Approve pending users, change access roles, remove users from the portal, or permanently delete them.
-            </p>
-          </div>
-        </div>
+  return (
+    <div className="rounded-[30px] border border-[#e7ddd0] bg-white p-4 md:p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+      <div className="mb-4">
+        <h2 className="text-xl font-semibold tracking-tight">User Management</h2>
+        <p className="mt-1 text-sm text-[#7f7263]">
+          Approve pending users, change access roles, remove users from the portal, or permanently delete them.
+        </p>
+      </div>
 
-        <div className="space-y-3">
-          {profiles.map((profile) => {
-            const isBusy = savingRoleId === profile.id || actingOnProfileId === profile.id;
-            const isSelf = profile.id === currentAdminUserId;
+      <div className="space-y-3">
+        {profiles.map((profile) => {
+          const isBusy =
+            savingRoleId === profile.id || actingOnProfileId === profile.id;
+          const isSelf = profile.id === currentAdminUserId;
 
-            return (
-              <div
-                key={profile.id}
-                className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4"
-              >
-                <div className="grid gap-4 xl:grid-cols-[1.3fr_180px_220px_1fr]">
-                  <div>
-                    <div className="text-base font-semibold text-[#241c15]">{profile.full_name || "No name"}</div>
-                    <div className="mt-1 text-sm text-[#6f6255]">{profile.email || "No email"}</div>
-                    <div className="mt-1 text-sm text-[#8a7b68]">{profile.phone || "No phone"}</div>
-                    <div className="mt-2 text-xs text-[#8a7b68]">
-                      {isSelf ? "This is your account." : "User account"}
+          return (
+            <div
+              key={profile.id}
+              className="rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] p-3 md:p-4"
+            >
+              <div className="grid gap-3 lg:grid-cols-[1.2fr_180px_220px] xl:grid-cols-[1.4fr_180px_220px_300px] xl:items-center">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="text-base font-semibold text-[#241c15]">
+                      {profile.full_name || "No name"}
                     </div>
-                  </div>
 
-                  <div>
-                    <div className="text-xs uppercase tracking-[0.18em] text-[#8a7b68]">Current role</div>
-                    <div className="mt-2 inline-flex rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-medium text-[#7f7263]">
+                    <span className="inline-flex rounded-full border border-[#d8c7ab] bg-white px-2.5 py-0.5 text-[11px] font-medium text-[#7f7263]">
                       {profile.role}
-                    </div>
+                    </span>
+
+                    {isSelf ? (
+                      <span className="inline-flex rounded-full border border-[#d8c7ab] bg-[#fffaf3] px-2.5 py-0.5 text-[11px] font-medium text-[#7f7263]">
+                        Your account
+                      </span>
+                    ) : null}
                   </div>
 
-                  <div>
-                    <div className="text-xs uppercase tracking-[0.18em] text-[#8a7b68]">Change role</div>
-                    <select
-                      className="mt-2 w-full rounded-[16px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none transition focus:border-[#b48d4e]"
-                      value={profile.role}
-                      onChange={(e) => void updateUserRole(profile.id, e.target.value)}
+                  <div className="mt-1 truncate text-sm text-[#6f6255]">
+                    {profile.email || "No email"}
+                  </div>
+
+                  <div className="mt-0.5 text-sm text-[#8a7b68]">
+                    {profile.phone || "No phone"}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-1 text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">
+                    Change role
+                  </div>
+
+                  <select
+                    className="w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none transition focus:border-[#b48d4e]"
+                    value={profile.role}
+                    onChange={(e) => void updateUserRole(profile.id, e.target.value)}
+                    disabled={isBusy}
+                  >
+                    <option value="pending">pending</option>
+                    <option value="cleaner">cleaner</option>
+                    <option value="admin">admin</option>
+                  </select>
+                </div>
+
+                <div className="xl:col-span-2">
+                  <div className="mb-1 text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">
+                    Account actions
+                  </div>
+
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <button
+                      className="rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm text-[#5f5245] transition hover:bg-[#f7f3ee] disabled:opacity-50"
+                      onClick={() => void removeUserFromPortal(profile)}
                       disabled={isBusy}
                     >
-                      <option value="pending">pending</option>
-                      <option value="cleaner">cleaner</option>
-                      <option value="admin">admin</option>
-                    </select>
-                    <div className="mt-2 text-xs text-[#8a7b68]">
-                      {savingRoleId === profile.id ? "Saving..." : "Admin promotion requires confirmation"}
-                    </div>
+                      {actingOnProfileId === profile.id ? "Working..." : "Remove from portal"}
+                    </button>
+
+                    <button
+                      className="rounded-[14px] border border-[#efc6c6] bg-[#fff5f5] px-3 py-2 text-sm text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-50"
+                      onClick={() => void permanentlyDeleteUser(profile)}
+                      disabled={isBusy}
+                    >
+                      {actingOnProfileId === profile.id ? "Working..." : "Permanently delete"}
+                    </button>
                   </div>
 
-                  <div>
-                    <div className="text-xs uppercase tracking-[0.18em] text-[#8a7b68]">Account actions</div>
-                    <div className="mt-2 flex flex-col gap-2">
-                      <button
-                        className="rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm text-[#5f5245] transition hover:bg-[#f7f3ee] disabled:opacity-50"
-                        onClick={() => void removeUserFromPortal(profile)}
-                        disabled={isBusy}
-                      >
-                        {actingOnProfileId === profile.id ? "Working..." : "Remove from portal"}
-                      </button>
-
-                      <button
-                        className="rounded-[14px] border border-[#efc6c6] bg-[#fff5f5] px-3 py-2 text-sm text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-50"
-                        onClick={() => void permanentlyDeleteUser(profile)}
-                        disabled={isBusy}
-                      >
-                        {actingOnProfileId === profile.id ? "Working..." : "Permanently delete"}
-                      </button>
-                    </div>
+                  <div className="mt-1 text-[11px] text-[#8a7b68]">
+                    {savingRoleId === profile.id
+                      ? "Saving..."
+                      : "Admin promotion requires confirmation"}
                   </div>
                 </div>
               </div>
-            );
-          })}
-        </div>
+            </div>
+          );
+        })}
       </div>
-    );
-  }
-
+    </div>
+  );
+}
   function renderPropertiesSection() {
     return (
       <div className="space-y-6">
