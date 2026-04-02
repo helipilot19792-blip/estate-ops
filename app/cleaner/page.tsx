@@ -1167,43 +1167,45 @@ useEffect(() => {
               </div>
             </section>
 
-            <section className="rounded-2xl border border-[#7a5c2e]/25 bg-[#15110d] p-4 sm:p-5">
-              <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <h2 className="text-xl font-semibold text-[#f8f2e8]">Cleaning Calendar</h2>
-                  <p className="mt-1 text-sm text-[#cdbda0]">
-                    Tap a date to filter jobs for that day.
-                  </p>
-                </div>
+            <section className="rounded-2xl border border-[#7a5c2e]/25 bg-[#15110d] p-3 sm:p-5">
+          <div className="mb-5 space-y-3">
+  <div>
+    <h2 className="text-xl font-semibold text-[#f8f2e8]">Cleaning Calendar</h2>
+    <p className="mt-1 text-sm text-[#cdbda0]">
+      Tap a date to filter jobs for that day.
+    </p>
+  </div>
 
-                <div className="grid w-full grid-cols-3 items-center gap-2 sm:flex sm:w-auto sm:justify-end">
-                  <button
-                    onClick={() =>
-                      setCalendarMonth(
-                        new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1)
-                      )
-                    }
-                    className="rounded-full border border-[#7a5c2e]/40 px-4 py-2 text-sm text-[#f5efe4] hover:bg-[#1b1510]"
-                  >
-                    Prev
-                  </button>
+  <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-3">
+    <div className="text-center text-sm font-medium text-[#f8f2e8]">
+      {formatMonthLabel(calendarMonth)}
+    </div>
 
-                  <div className="min-w-0 text-center text-sm font-medium text-[#f8f2e8]">
-                    {formatMonthLabel(calendarMonth)}
-                  </div>
+    <div className="mt-3 grid grid-cols-2 gap-2">
+      <button
+        onClick={() =>
+          setCalendarMonth(
+            new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1)
+          )
+        }
+        className="rounded-full border border-[#7a5c2e]/40 px-3 py-2 text-sm text-[#f5efe4] hover:bg-[#1b1510]"
+      >
+        Prev
+      </button>
 
-                  <button
-                    onClick={() =>
-                      setCalendarMonth(
-                        new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1)
-                      )
-                    }
-                    className="rounded-full border border-[#7a5c2e]/40 px-4 py-2 text-sm text-[#f5efe4] hover:bg-[#1b1510]"
-                  >
-                    Next
-                  </button>
-                </div>
-              </div>
+      <button
+        onClick={() =>
+          setCalendarMonth(
+            new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1)
+          )
+        }
+        className="rounded-full border border-[#7a5c2e]/40 px-3 py-2 text-sm text-[#f5efe4] hover:bg-[#1b1510]"
+      >
+        Next
+      </button>
+    </div>
+  </div>
+</div>
 
               <div className="mb-3 hidden grid-cols-7 gap-2 text-center text-xs uppercase tracking-[0.16em] text-[#b08b47] sm:grid">
                 <div>Sun</div>
@@ -1230,7 +1232,7 @@ useEffect(() => {
                     <div
                       key={ymd}
                       className={[
-                        "min-h-[112px] rounded-2xl border p-2 sm:min-h-[120px]",
+                        "min-h-[88px] rounded-2xl border p-2 sm:min-h-[120px]",
                         isSelected
                           ? "border-[#b08b47] bg-[#221a13]"
                           : hasUnacceptedOnDay
