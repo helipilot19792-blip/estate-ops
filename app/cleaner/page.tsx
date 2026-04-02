@@ -1055,7 +1055,7 @@ useEffect(() => {
 
   return (
     <main className="min-h-screen bg-[#0f0d0a] text-[#f5efe4]">
-      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
+      <div className="mx-auto w-full max-w-6xl overflow-x-hidden px-3 py-4 sm:px-6 sm:py-8">
         <div className="overflow-hidden rounded-3xl border border-[#7a5c2e]/35 bg-[linear-gradient(180deg,#17130f_0%,#100d09_100%)] shadow-2xl">
           <div className="border-b border-[#7a5c2e]/25 px-4 py-5 sm:px-6 sm:py-6 md:px-8">
             <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
