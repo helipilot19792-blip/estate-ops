@@ -211,6 +211,8 @@ export default function AdminPage() {
   const [reassignSelections, setReassignSelections] = useState<Record<string, string>>({});
   const [reassigningJobId, setReassigningJobId] = useState<string | null>(null);
   const [highlightedJobId, setHighlightedJobId] = useState<string | null>(null);
+  const [syncingCalendarsNow, setSyncingCalendarsNow] = useState(false);
+  const [actionMessage, setActionMessage] = useState("");
 
   const [propertyName, setPropertyName] = useState("");
   const [propertyAddress, setPropertyAddress] = useState("");
@@ -541,10 +543,39 @@ export default function AdminPage() {
       payload.show_team_status_to_cleaners = property.show_team_status_to_cleaners;
     }
 
-    const { error } = await supabase.from("turnover_jobs").insert(payload);
-    if (error) {
-      setError(error.message);
+    setError("");
+    setActionMessage("");
+
+    const { data: insertedJob, error } = await supabase
+      .from("turnover_jobs")
+      .insert(payload)
+      .select()
+      .single();
+
+    if (error || !insertedJob) {
+      console.log("CREATE JOB ERROR:", error);
+      setError(error?.message || "Could not create job.");
       return;
+    }
+
+    const slotCheck = await supabase
+      .from("turnover_job_slots")
+      .select("id", { count: "exact", head: true })
+      .eq("job_id", insertedJob.id);
+
+    if (!slotCheck.error && (slotCheck.count ?? 0) === 0) {
+      const slotCreate = await supabase.rpc("create_slots_for_job", {
+        p_job_id: insertedJob.id,
+      });
+
+      if (slotCreate.error) {
+        console.log("CREATE SLOTS FALLBACK ERROR:", slotCreate.error);
+        setError(
+          `Job created, but slot creation failed: ${slotCreate.error.message}`
+        );
+        await loadData();
+        return;
+      }
     }
 
     setJobPropertyId("");
@@ -553,7 +584,38 @@ export default function AdminPage() {
     setJobUnitsNeeded("1");
     setJobUnitsStrict(false);
     setJobShowTeamStatus(true);
+    setActionMessage("Job created successfully.");
     await loadData();
+  }
+
+  async function syncCalendarsNow() {
+    setError("");
+    setActionMessage("");
+    setSyncingCalendarsNow(true);
+
+    try {
+      const response = await fetch("/api/sync-calendars", {
+        method: "POST",
+      });
+
+      let payload: any = null;
+      try {
+        payload = await response.json();
+      } catch {
+        payload = null;
+      }
+
+      if (!response.ok) {
+        throw new Error(payload?.error || payload?.message || "Calendar sync failed.");
+      }
+
+      setActionMessage(payload?.message || "Calendars synced successfully.");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Calendar sync failed.");
+    } finally {
+      setSyncingCalendarsNow(false);
+    }
   }
 
   async function reassignStrandedJob(jobId: string) {
@@ -895,14 +957,12 @@ export default function AdminPage() {
     const stranded = slots.filter((slot) => slot.status === "stranded").length;
 
     if (accepted >= needed) return "Fully staffed";
-    if (accepted > 0 && job.cleaner_units_required_strict) return `Partially filled`;
+    if (accepted > 0 && job.cleaner_units_required_strict) return "Partially filled";
     if (accepted > 0 && !job.cleaner_units_required_strict) return "Ready";
     if (stranded > 0 || job.staffing_status === "stranded") return "Stranded";
     if (offered > 0) return "Awaiting responses";
     if (declined > 0) return "Reoffer needed";
-  <div>
-  Staffing: {job.cleaner_units_needed} {job.cleaner_units_required_strict ? "(strict team)" : "(flexible)"}
-</div>
+    return job.staffing_status || job.status || "Unknown";
   }
 
   const visibleJobs = jobsExpanded ? jobs : jobs.slice(0, 3);
@@ -1006,6 +1066,12 @@ export default function AdminPage() {
           </div>
         ) : null}
 
+        {actionMessage ? (
+          <div className="mb-6 rounded-[24px] border border-[#cfe4cf] bg-[#f4fbf4] px-4 py-3 text-sm text-[#2f6b2f] shadow-sm">
+            {actionMessage}
+          </div>
+        ) : null}
+
         {strandedJobs.length > 0 && (
           <div className="sticky top-0 z-40 mb-4 rounded-[20px] border border-[#f0b4b4] bg-[#7e1f1f] px-4 py-3 text-white shadow-lg">
             <div className="flex items-center justify-between gap-3">
@@ -1106,16 +1172,16 @@ export default function AdminPage() {
           </section>
 
           <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-            <h2 className="text-xl font-semibold tracking-tight">Create Cleaner Account</h2>
-            <p className="mt-1 text-sm text-[#7f7263]">Use this for shared teams like husband-and-wife logins.</p>
+            <h2 className="text-xl font-semibold tracking-tight">Link Existing Cleaner Users</h2>
+            <p className="mt-1 text-sm text-[#7f7263]">Real cleaner logins are created from the sign up page. Use this section only when you want multiple existing cleaner users to share the same jobs, such as a husband-and-wife team.</p>
 
             <div className="mt-5 space-y-3">
-              <input className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" placeholder="Cleaner account name (example: Sam & Sean)" value={cleanerAccountName} onChange={(e) => setCleanerAccountName(e.target.value)} />
+              <input className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" placeholder="Shared jobs group name (example: Sam & Sean)" value={cleanerAccountName} onChange={(e) => setCleanerAccountName(e.target.value)} />
               <input className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" placeholder="Shared email (optional)" value={cleanerAccountEmail} onChange={(e) => setCleanerAccountEmail(e.target.value)} />
               <input className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" placeholder="Shared phone (optional)" value={cleanerAccountPhone} onChange={(e) => setCleanerAccountPhone(e.target.value)} />
 
               <div className="rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] p-4">
-                <div className="mb-2 text-sm font-medium text-[#5f5245]">Link cleaner logins</div>
+                <div className="mb-2 text-sm font-medium text-[#5f5245]">Select existing cleaner users to share jobs</div>
                 <div className="space-y-2">
                   {eligibleCleanerProfiles.length === 0 ? (
                     <div className="text-sm text-[#8a7b68]">No cleaner-role users available yet.</div>
@@ -1141,7 +1207,7 @@ export default function AdminPage() {
               </div>
 
               <button className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]" onClick={() => void addCleanerAccount()}>
-                Create Cleaner Account
+                Link Selected Cleaners
               </button>
             </div>
           </section>
@@ -1289,6 +1355,7 @@ export default function AdminPage() {
 
                 <div className="rounded-[26px] border border-[#eadfce] bg-[#fcfaf7] p-5">
                   <h3 className="text-lg font-semibold">Booking Calendars</h3>
+                  <p className="mt-1 text-sm text-[#7f7263]">Use Save Calendars after editing URLs. Use Sync Calendars Now to pull the latest Airbnb/VRBO bookings immediately.</p>
                   <div className="mt-4 space-y-4">
                     <div>
                       <label className="mb-2 block text-sm font-medium text-[#5f5245]">Airbnb iCal URL</label>
@@ -1308,6 +1375,10 @@ export default function AdminPage() {
 
                     <button className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60" onClick={() => void saveCalendars()} disabled={savingCalendars}>
                       {savingCalendars ? "Saving..." : "Save Calendars"}
+                    </button>
+
+                    <button className="inline-flex items-center justify-center rounded-full border border-[#241c15] bg-white px-5 py-2.5 text-sm font-medium text-[#241c15] transition hover:bg-[#f7f3ee] disabled:opacity-60" onClick={() => void syncCalendarsNow()} disabled={syncingCalendarsNow}>
+                      {syncingCalendarsNow ? "Syncing..." : "Sync Calendars Now"}
                     </button>
                   </div>
                 </div>
