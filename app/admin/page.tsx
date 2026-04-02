@@ -551,15 +551,20 @@ export default function AdminPage() {
     setActingOnProfileId(profile.id);
 
     try {
-      const response = await fetch("/api/admin/delete-user", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          profileId: profile.id,
-        }),
-      });
+    const {
+  data: { session },
+} = await supabase.auth.getSession();
+
+const response = await fetch("/api/admin/delete-user", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${session?.access_token || ""}`,
+  },
+  body: JSON.stringify({
+    profileId: profile.id,
+  }),
+});
 
       const payload = await response.json().catch(() => null);
 
