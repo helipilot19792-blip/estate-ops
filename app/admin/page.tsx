@@ -238,7 +238,7 @@ export default function AdminPage() {
   const [selectedCleanerMemberProfileIds, setSelectedCleanerMemberProfileIds] = useState<string[]>([]);
 
   const [assignmentPropertyId, setAssignmentPropertyId] = useState("");
-  const [assignmentCleanerAccountId, setAssignmentCleanerAccountId] = useState("");
+  const [assignmentCleanerProfileId, setAssignmentCleanerProfileId] = useState("");
   const [assignmentPriority, setAssignmentPriority] = useState("1");
 
   const [jobPropertyId, setJobPropertyId] = useState("");
@@ -551,20 +551,15 @@ export default function AdminPage() {
     setActingOnProfileId(profile.id);
 
     try {
-    const {
-  data: { session },
-} = await supabase.auth.getSession();
-
-const response = await fetch("/api/admin/delete-user", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${session?.access_token || ""}`,
-  },
-  body: JSON.stringify({
-    profileId: profile.id,
-  }),
-});
+      const response = await fetch("/api/admin/delete-user", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          profileId: profile.id,
+        }),
+      });
 
       const payload = await response.json().catch(() => null);
 
@@ -699,11 +694,60 @@ const response = await fetch("/api/admin/delete-user", {
   }
 
   async function addAssignment() {
-    if (!assignmentPropertyId || !assignmentCleanerAccountId) return;
+    if (!assignmentPropertyId || !assignmentCleanerProfileId) {
+      setError("Select property and cleaner.");
+      return;
+    }
+
+    setError("");
+    setActionMessage("");
+
+    let cleanerAccountId: string | null = null;
+
+    const existingMembership = cleanerAccountMembers.find(
+      (member) => member.profile_id === assignmentCleanerProfileId
+    );
+
+    if (existingMembership) {
+      cleanerAccountId = existingMembership.cleaner_account_id;
+    } else {
+      const cleanerProfile = profiles.find((p) => p.id === assignmentCleanerProfileId);
+
+      const { data: insertedAccount, error: insertedAccountError } = await supabase
+        .from("cleaner_accounts")
+        .insert({
+          display_name:
+            cleanerProfile?.full_name || cleanerProfile?.email || "Cleaner account",
+          email: cleanerProfile?.email || null,
+          phone: cleanerProfile?.phone || null,
+          active: true,
+        })
+        .select()
+        .single();
+
+      if (insertedAccountError || !insertedAccount) {
+        setError(insertedAccountError?.message || "Could not create cleaner account.");
+        return;
+      }
+
+      cleanerAccountId = insertedAccount.id;
+
+      const { error: memberInsertError } = await supabase
+        .from("cleaner_account_members")
+        .insert({
+          cleaner_account_id: cleanerAccountId,
+          profile_id: assignmentCleanerProfileId,
+        });
+
+      if (memberInsertError) {
+        setError(memberInsertError.message);
+        return;
+      }
+    }
 
     const { error } = await supabase.from("property_cleaner_account_assignments").insert({
       property_id: assignmentPropertyId,
-      cleaner_account_id: assignmentCleanerAccountId,
+      cleaner_account_id: cleanerAccountId,
       priority: Number(assignmentPriority),
     });
 
@@ -713,9 +757,9 @@ const response = await fetch("/api/admin/delete-user", {
     }
 
     setAssignmentPropertyId("");
-    setAssignmentCleanerAccountId("");
+    setAssignmentCleanerProfileId("");
     setAssignmentPriority("1");
-    setActionMessage("Assignment saved.");
+    setActionMessage("Cleaner assigned to property.");
     await loadData();
   }
 
@@ -1620,8 +1664,10 @@ function jumpToJobs(type: "waiting" | "stranded") {
     return (
       <div className="space-y-6">
         <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-          <h2 className="text-xl font-semibold tracking-tight">Assign Cleaner Account</h2>
-          <p className="mt-1 text-sm text-[#7f7263]">Set primary and backup cleaner account order.</p>
+          <h2 className="text-xl font-semibold tracking-tight">Assign Cleaner to Property</h2>
+          <p className="mt-1 text-sm text-[#7f7263]">
+            Choose an approved cleaner and assign them as primary or backup. If they are not linked to a cleaner account yet, the system will create that link automatically.
+          </p>
 
           <div className="mt-5 space-y-3">
             <select className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" value={assignmentPropertyId} onChange={(e) => setAssignmentPropertyId(e.target.value)}>
@@ -1629,9 +1675,13 @@ function jumpToJobs(type: "waiting" | "stranded") {
               {properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
 
-            <select className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" value={assignmentCleanerAccountId} onChange={(e) => setAssignmentCleanerAccountId(e.target.value)}>
-              <option value="">Select cleaner account</option>
-              {cleanerAccounts.map((c) => <option key={c.id} value={c.id}>{c.display_name || "Unnamed cleaner account"}</option>)}
+            <select className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" value={assignmentCleanerProfileId} onChange={(e) => setAssignmentCleanerProfileId(e.target.value)}>
+              <option value="">Select cleaner</option>
+              {eligibleCleanerProfiles.map((profile) => (
+                <option key={profile.id} value={profile.id}>
+                  {profile.full_name || profile.email || profile.id}
+                </option>
+              ))}
             </select>
 
             <select className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" value={assignmentPriority} onChange={(e) => setAssignmentPriority(e.target.value)}>
@@ -1652,15 +1702,23 @@ function jumpToJobs(type: "waiting" | "stranded") {
             <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">{assignments.length}</span>
           </div>
           <div className="space-y-3">
-            {assignments.map((a) => (
-              <div key={a.id} className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
-                <div className="text-base font-semibold">{getPropertyName(a.property_id)}</div>
-                <div className="mt-1 text-sm text-[#6f6255]">{getCleanerAccountName(a.cleaner_account_id)}</div>
-                <div className="mt-2 inline-flex rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-medium text-[#7f7263]">
-                  {getPriorityLabel(a.priority)}
+            {assignments.map((a) => {
+              const members = cleanerMembersByAccountId[a.cleaner_account_id] ?? [];
+              const memberLabel = members.length
+                ? members.map((m) => m.full_name || m.email || m.id).join(", ")
+                : getCleanerAccountName(a.cleaner_account_id);
+
+              return (
+                <div key={a.id} className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+                  <div className="text-base font-semibold">{getPropertyName(a.property_id)}</div>
+                  <div className="mt-1 text-sm text-[#6f6255]">{memberLabel}</div>
+                  <div className="mt-1 text-xs text-[#8a7b68]">Cleaner account: {getCleanerAccountName(a.cleaner_account_id)}</div>
+                  <div className="mt-2 inline-flex rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-medium text-[#7f7263]">
+                    {getPriorityLabel(a.priority)}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       </div>
