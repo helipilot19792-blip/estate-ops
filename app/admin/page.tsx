@@ -809,6 +809,103 @@ export default function AdminPage() {
     setReassigningJobId(null);
   }
 
+  function getNextOpenSlot(jobId: string) {
+    return jobSlots
+      .filter((x) => x.job_id === jobId)
+      .sort((a, b) => a.slot_number - b.slot_number)
+      .find((x) => x.status !== "accepted");
+  }
+
+  async function reassignOpenJob(jobId: string) {
+    const cleanerAccountId = reassignSelections[jobId];
+    if (!cleanerAccountId) {
+      setError("Please select a cleaner account before reassigning.");
+      return;
+    }
+
+    const slot = getNextOpenSlot(jobId);
+
+    if (!slot) {
+      setError("No open slot was found for that job.");
+      return;
+    }
+
+    setError("");
+    setActionMessage("");
+    setReassigningJobId(jobId);
+
+    const responseHours = getResponseWindowHours(
+      jobs.find((j) => j.id === jobId)?.scheduled_for ||
+        extractCheckoutDate(jobs.find((j) => j.id === jobId)?.notes || null),
+      new Date()
+    );
+
+    const { error } = await supabase
+      .from("turnover_job_slots")
+      .update({
+        cleaner_account_id: cleanerAccountId,
+        status: "offered",
+        offered_at: new Date().toISOString(),
+        expires_at: new Date(Date.now() + responseHours * 60 * 60 * 1000).toISOString(),
+        accepted_at: null,
+        declined_at: null,
+        accepted_by_profile_id: null,
+        declined_by_profile_id: null,
+      })
+      .eq("id", slot.id);
+
+    if (error) {
+      setError(error.message);
+      setReassigningJobId(null);
+      return;
+    }
+
+    setActionMessage("Job reassigned.");
+    await loadData();
+    setReassigningJobId(null);
+
+    setTimeout(() => {
+      document.getElementById(`job-${jobId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 50);
+  }
+
+  async function deleteCleanerAccount(account: CleanerAccount) {
+    const displayName = account.display_name || account.email || "this cleaner account";
+    const confirmed = window.confirm(
+      `Delete ${displayName}?\n\nThis removes its linked members and deletes the cleaner account.`
+    );
+    if (!confirmed) return;
+
+    setError("");
+    setActionMessage("");
+    setReassigningJobId(account.id);
+
+    try {
+      const response = await fetch("/api/admin/delete-cleaner-account", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          cleanerAccountId: account.id,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(payload?.error || "Could not delete cleaner account.");
+      }
+
+      setActionMessage("Cleaner account deleted.");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Could not delete cleaner account.");
+    } finally {
+      setReassigningJobId(null);
+    }
+  }
+
   async function saveAccess() {
     if (!selectedPropertyId) return;
     const existing = accessRows.find((x) => x.property_id === selectedPropertyId);
@@ -1278,7 +1375,6 @@ function jumpToJobs(type: "waiting" | "stranded") {
     return (
       <div className="space-y-6">
 <section
-  id="waiting-jobs-section"
   className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]"
 >
           <h2 className="text-xl font-semibold tracking-tight">Add Property</h2>
@@ -1388,11 +1484,25 @@ function jumpToJobs(type: "waiting" | "stranded") {
           <div className="space-y-3">
             {cleanerAccounts.map((account) => (
               <div key={account.id} className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
-                <div className="text-base font-semibold">{account.display_name || "No name"}</div>
-                <div className="mt-1 text-sm text-[#6f6255]">{account.email || "No email"}</div>
-                <div className="mt-1 text-sm text-[#8a7b68]">{account.phone || "No phone"}</div>
-                <div className="mt-2 text-xs text-[#8a7b68]">
-                  Members: {(cleanerMembersByAccountId[account.id] ?? []).map((m) => m.full_name || m.email || m.id).join(", ") || "No linked members"}
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <div className="text-base font-semibold">{account.display_name || "No name"}</div>
+                    <div className="mt-1 text-sm text-[#6f6255]">{account.email || "No email"}</div>
+                    <div className="mt-1 text-sm text-[#8a7b68]">{account.phone || "No phone"}</div>
+                    <div className="mt-2 text-xs text-[#8a7b68]">
+                      Members: {(cleanerMembersByAccountId[account.id] ?? []).map((m) => m.full_name || m.email || m.id).join(", ") || "No linked members"}
+                    </div>
+                  </div>
+
+                  <div className="w-full md:w-[220px]">
+                    <button
+                      className="w-full rounded-[14px] border border-[#efc6c6] bg-[#fff5f5] px-3 py-2 text-sm text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-50"
+                      onClick={() => void deleteCleanerAccount(account)}
+                      disabled={reassigningJobId === account.id}
+                    >
+                      {reassigningJobId === account.id ? "Deleting..." : "Delete cleaner account"}
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -1508,7 +1618,10 @@ function jumpToJobs(type: "waiting" | "stranded") {
           </div>
         </section>
 
-        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+        <section
+          id="waiting-jobs-section"
+          className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]"
+        >
           <div className="mb-4 flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <h2 className="text-xl font-semibold tracking-tight">Jobs</h2>
@@ -1568,6 +1681,42 @@ function jumpToJobs(type: "waiting" | "stranded") {
                       </div>
                     ))}
                   </div>
+
+                  {acceptedCount < job.cleaner_units_needed ? (
+                    <div className="mt-3 rounded-[18px] border border-[#eadfce] bg-white p-3">
+                      <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">
+                        Reassign next open slot
+                      </div>
+
+                      <div className="grid gap-2 md:grid-cols-[1fr_220px]">
+                        <select
+                          className="w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none transition focus:border-[#b48d4e]"
+                          value={reassignSelections[job.id] || ""}
+                          onChange={(e) =>
+                            setReassignSelections((prev) => ({ ...prev, [job.id]: e.target.value }))
+                          }
+                        >
+                          <option value="">Select cleaner account</option>
+                          {cleanerAccounts.map((account) => (
+                            <option key={account.id} value={account.id}>
+                              {account.display_name || "Unnamed cleaner account"}
+                            </option>
+                          ))}
+                        </select>
+
+                        <button
+                          className="rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void reassignOpenJob(job.id);
+                          }}
+                          disabled={reassigningJobId === job.id}
+                        >
+                          {reassigningJobId === job.id ? "Reassigning..." : "Reassign next open slot"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
 
                   <div className="mt-3 text-sm leading-6 text-[#6f6255]">{job.notes || "No notes"}</div>
                 </div>
