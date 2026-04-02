@@ -371,6 +371,7 @@ export default function CleanerPage() {
   const selectedJobPanelRef = useRef<HTMLElement | null>(null);
   const jobsSectionRef = useRef<HTMLElement | null>(null);
   const hasAutoSelectedInitialJob = useRef(false);
+  const realtimeRefreshTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -477,6 +478,74 @@ export default function CleanerPage() {
 
     return () => window.clearTimeout(timer);
   }, [selectedSlotId]);
+
+  useEffect(() => {
+    if (!cleanerAccount?.id) return;
+
+    const slotChannel = supabase
+      .channel(`cleaner-slot-live-${cleanerAccount.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "turnover_job_slots" },
+        (payload) => {
+          const nextCleanerAccountId =
+            (payload.new as { cleaner_account_id?: string | null } | null)?.cleaner_account_id ?? null;
+          const previousCleanerAccountId =
+            (payload.old as { cleaner_account_id?: string | null } | null)?.cleaner_account_id ?? null;
+
+          if (
+            nextCleanerAccountId === cleanerAccount.id ||
+            previousCleanerAccountId === cleanerAccount.id
+          ) {
+            if (realtimeRefreshTimeoutRef.current) {
+              window.clearTimeout(realtimeRefreshTimeoutRef.current);
+            }
+
+            realtimeRefreshTimeoutRef.current = window.setTimeout(() => {
+              void refreshCleanerJobs();
+            }, 150);
+          }
+        }
+      )
+      .subscribe();
+
+    const membershipChannel = profile?.id
+      ? supabase
+          .channel(`cleaner-membership-live-${profile.id}`)
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema: "public",
+              table: "cleaner_account_members",
+              filter: `profile_id=eq.${profile.id}`,
+            },
+            async () => {
+              const accountData = await loadCleanerAccount(profile.id);
+              setCleanerAccount(accountData.account);
+              setAccountWarning(accountData.warning);
+
+              if (accountData.account) {
+                const loadedJobs = await loadCleanerJobs(accountData.account.id);
+                setCleanerJobs(loadedJobs);
+              } else {
+                setCleanerJobs([]);
+              }
+            }
+          )
+          .subscribe()
+      : null;
+
+    return () => {
+      if (realtimeRefreshTimeoutRef.current) {
+        window.clearTimeout(realtimeRefreshTimeoutRef.current);
+      }
+      void supabase.removeChannel(slotChannel);
+      if (membershipChannel) {
+        void supabase.removeChannel(membershipChannel);
+      }
+    };
+  }, [cleanerAccount?.id, profile?.id]);
 
   async function loadCleanerAccount(profileId: string): Promise<{
     account: CleanerAccount | null;
@@ -887,6 +956,24 @@ export default function CleanerPage() {
       hasAutoSelectedInitialJob.current = true;
     }
   }, [selectedSlotId, unacceptedJobs, cleanerJobs]);
+
+  useEffect(() => {
+    if (selectedSlotId && cleanerJobs.some((item) => item.slot.id === selectedSlotId)) {
+      return;
+    }
+
+    if (unacceptedJobs.length > 0) {
+      setSelectedSlotId(unacceptedJobs[0].slot.id);
+      return;
+    }
+
+    if (cleanerJobs.length > 0) {
+      setSelectedSlotId(cleanerJobs[0].slot.id);
+      return;
+    }
+
+    setSelectedSlotId(null);
+  }, [cleanerJobs, selectedSlotId, unacceptedJobs]);
 
   function handleDateClick(dateYmd: string) {
     setSelectedDate(dateYmd);
