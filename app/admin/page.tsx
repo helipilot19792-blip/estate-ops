@@ -265,6 +265,8 @@ export default function AdminPage() {
   const [sopTitle, setSopTitle] = useState("");
   const [sopContent, setSopContent] = useState("");
   const [sopFiles, setSopFiles] = useState<File[]>([]);
+  
+  const [linkSelections, setLinkSelections] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(new Date()), 1000);
@@ -641,6 +643,53 @@ export default function AdminPage() {
     setCleanerAccountPhone("");
     setSelectedCleanerMemberProfileIds([]);
     setActionMessage("Cleaner account linked.");
+    await loadData();
+  }
+
+
+  async function linkCleanerToAccount(cleanerAccountId: string, profileId: string) {
+    if (!cleanerAccountId || !profileId) {
+      setError("Missing cleaner or account.");
+      return;
+    }
+
+    setError("");
+    setActionMessage("");
+
+    const { error } = await supabase.from("cleaner_account_members").insert({
+      cleaner_account_id: cleanerAccountId,
+      profile_id: profileId,
+    });
+
+    if (error) {
+      setError(error.message);
+      return;
+    }
+
+    setLinkSelections((prev) => ({ ...prev, [cleanerAccountId]: "" }));
+    setActionMessage("Cleaner linked to account.");
+    await loadData();
+  }
+
+  async function unlinkCleanerFromAccount(cleanerAccountId: string, profileId: string) {
+    const confirmed = window.confirm("Remove this cleaner from the account?");
+    if (!confirmed) return;
+
+    setError("");
+    setActionMessage("");
+
+    const { error } = await supabase
+      .from("cleaner_account_members")
+      .delete()
+      .eq("cleaner_account_id", cleanerAccountId)
+      .eq("profile_id", profileId);
+
+    if (error) {
+      setError(error.message);
+      return;
+    }
+
+    setActionMessage("Cleaner removed.");
     await loadData();
   }
 
@@ -1485,12 +1534,62 @@ function jumpToJobs(type: "waiting" | "stranded") {
             {cleanerAccounts.map((account) => (
               <div key={account.id} className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <div className="text-base font-semibold">{account.display_name || "No name"}</div>
                     <div className="mt-1 text-sm text-[#6f6255]">{account.email || "No email"}</div>
                     <div className="mt-1 text-sm text-[#8a7b68]">{account.phone || "No phone"}</div>
-                    <div className="mt-2 text-xs text-[#8a7b68]">
-                      Members: {(cleanerMembersByAccountId[account.id] ?? []).map((m) => m.full_name || m.email || m.id).join(", ") || "No linked members"}
+
+                    <div className="mt-2 text-xs text-[#8a7b68]">Members:</div>
+
+                    <div className="mt-2 space-y-2">
+                      {(cleanerMembersByAccountId[account.id] ?? []).length === 0 ? (
+                        <div className="text-sm text-[#8a7b68]">No linked members</div>
+                      ) : (
+                        (cleanerMembersByAccountId[account.id] ?? []).map((member) => (
+                          <div
+                            key={member.id}
+                            className="flex items-center justify-between gap-3 rounded-[14px] border border-[#eadfce] bg-white px-3 py-2"
+                          >
+                            <div className="min-w-0 text-sm text-[#5f5245]">
+                              {member.full_name || member.email || member.id}
+                            </div>
+
+                            <button
+                              className="rounded-full border border-[#efc6c6] bg-[#fff5f5] px-3 py-1 text-xs text-[#8a2e22] transition hover:bg-[#fff0f0]"
+                              onClick={() => void unlinkCleanerFromAccount(account.id, member.id)}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    <div className="mt-3 grid gap-2 md:grid-cols-[1fr_auto]">
+                      <select
+                        className="w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none transition focus:border-[#b48d4e]"
+                        value={linkSelections[account.id] || ""}
+                        onChange={(e) =>
+                          setLinkSelections((prev) => ({
+                            ...prev,
+                            [account.id]: e.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">Select cleaner to link</option>
+                        {eligibleCleanerProfiles.map((profile) => (
+                          <option key={profile.id} value={profile.id}>
+                            {profile.full_name || profile.email || profile.id}
+                          </option>
+                        ))}
+                      </select>
+
+                      <button
+                        className="rounded-full bg-[#241c15] px-4 py-2 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]"
+                        onClick={() => void linkCleanerToAccount(account.id, linkSelections[account.id])}
+                      >
+                        Link user
+                      </button>
                     </div>
                   </div>
 
