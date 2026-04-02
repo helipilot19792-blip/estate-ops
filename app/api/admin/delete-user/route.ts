@@ -20,9 +20,7 @@ export async function POST(req: NextRequest) {
               cookiesToSet.forEach(({ name, value, options }) => {
                 cookieStore.set(name, value, options);
               });
-            } catch {
-              // ignore cookie set issues in route handlers
-            }
+            } catch {}
           },
         },
       }
@@ -61,41 +59,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const adminCountRes = await supabase
-      .from("profiles")
-      .select("id", { count: "exact", head: true })
-      .eq("role", "admin");
-
-    if (adminCountRes.error) {
-      return NextResponse.json(
-        { error: adminCountRes.error.message },
-        { status: 500 }
-      );
-    }
-
-    const { data: targetProfile, error: targetProfileError } = await supabase
-      .from("profiles")
-      .select("id, role, email, full_name")
-      .eq("id", profileId)
-      .single();
-
-    if (targetProfileError || !targetProfile) {
-      return NextResponse.json({ error: "User profile not found." }, { status: 404 });
-    }
-
-    if (targetProfile.role === "admin" && (adminCountRes.count ?? 0) <= 1) {
-      return NextResponse.json(
-        { error: "You cannot delete the last admin." },
-        { status: 400 }
-      );
-    }
-
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (!supabaseUrl || !serviceRoleKey) {
       return NextResponse.json(
-        { error: "Missing server environment variables." },
+        { error: "Missing SUPABASE_SERVICE_ROLE_KEY or Supabase URL in production." },
         { status: 500 }
       );
     }
@@ -111,7 +80,7 @@ export async function POST(req: NextRequest) {
 
     if (acceptedClear.error) {
       return NextResponse.json(
-        { error: acceptedClear.error.message },
+        { error: `Failed clearing accepted_by_profile_id: ${acceptedClear.error.message}` },
         { status: 500 }
       );
     }
@@ -123,7 +92,7 @@ export async function POST(req: NextRequest) {
 
     if (declinedClear.error) {
       return NextResponse.json(
-        { error: declinedClear.error.message },
+        { error: `Failed clearing declined_by_profile_id: ${declinedClear.error.message}` },
         { status: 500 }
       );
     }
@@ -135,64 +104,32 @@ export async function POST(req: NextRequest) {
 
     if (membershipDelete.error) {
       return NextResponse.json(
-        { error: membershipDelete.error.message },
+        { error: `Failed deleting cleaner account memberships: ${membershipDelete.error.message}` },
         { status: 500 }
       );
     }
 
-    // Delete auth user FIRST so we know whether auth removal truly worked
+    const profileDelete = await service.from("profiles").delete().eq("id", profileId);
+
+    if (profileDelete.error) {
+      return NextResponse.json(
+        { error: `Failed deleting profile row: ${profileDelete.error.message}` },
+        { status: 500 }
+      );
+    }
+
     const authDelete = await service.auth.admin.deleteUser(profileId);
 
     if (authDelete.error) {
       return NextResponse.json(
-        { error: `Auth delete failed: ${authDelete.error.message}` },
-        { status: 500 }
-      );
-    }
-
-    const authCheck = await service.auth.admin.getUserById(profileId);
-    if (!authCheck.error && authCheck.data?.user) {
-      return NextResponse.json(
-        { error: "Auth user still exists after delete attempt." },
-        { status: 500 }
-      );
-    }
-
-    const profileDelete = await service
-      .from("profiles")
-      .delete()
-      .eq("id", profileId);
-
-    if (profileDelete.error) {
-      return NextResponse.json(
-        { error: profileDelete.error.message },
-        { status: 500 }
-      );
-    }
-
-    const profileVerify = await service
-      .from("profiles")
-      .select("id")
-      .eq("id", profileId)
-      .maybeSingle();
-
-    if (profileVerify.error) {
-      return NextResponse.json(
-        { error: profileVerify.error.message },
-        { status: 500 }
-      );
-    }
-
-    if (profileVerify.data) {
-      return NextResponse.json(
-        { error: "Profile row still exists after delete attempt." },
+        { error: `Failed deleting auth user: ${authDelete.error.message}` },
         { status: 500 }
       );
     }
 
     return NextResponse.json({
       success: true,
-      message: `Deleted ${targetProfile.full_name || targetProfile.email || "user"} permanently.`,
+      message: `Deleted user ${profileId} permanently.`,
     });
   } catch (error: any) {
     return NextResponse.json(
