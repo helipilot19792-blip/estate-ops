@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
                 cookieStore.set(name, value, options);
               });
             } catch {
-              // Route handlers can ignore this if cookies cannot be set here
+              // ignore cookie set issues in route handlers
             }
           },
         },
@@ -140,7 +140,28 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const profileDelete = await service.from("profiles").delete().eq("id", profileId);
+    // Delete auth user FIRST so we know whether auth removal truly worked
+    const authDelete = await service.auth.admin.deleteUser(profileId);
+
+    if (authDelete.error) {
+      return NextResponse.json(
+        { error: `Auth delete failed: ${authDelete.error.message}` },
+        { status: 500 }
+      );
+    }
+
+    const authCheck = await service.auth.admin.getUserById(profileId);
+    if (!authCheck.error && authCheck.data?.user) {
+      return NextResponse.json(
+        { error: "Auth user still exists after delete attempt." },
+        { status: 500 }
+      );
+    }
+
+    const profileDelete = await service
+      .from("profiles")
+      .delete()
+      .eq("id", profileId);
 
     if (profileDelete.error) {
       return NextResponse.json(
@@ -149,16 +170,28 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const authDelete = await service.auth.admin.deleteUser(profileId);
+    const profileVerify = await service
+      .from("profiles")
+      .select("id")
+      .eq("id", profileId)
+      .maybeSingle();
 
-    if (authDelete.error) {
+    if (profileVerify.error) {
       return NextResponse.json(
-        { error: authDelete.error.message },
+        { error: profileVerify.error.message },
+        { status: 500 }
+      );
+    }
+
+    if (profileVerify.data) {
+      return NextResponse.json(
+        { error: "Profile row still exists after delete attempt." },
         { status: 500 }
       );
     }
 
     return NextResponse.json({
+      success: true,
       message: `Deleted ${targetProfile.full_name || targetProfile.email || "user"} permanently.`,
     });
   } catch (error: any) {
@@ -168,4 +201,5 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
 export {};
