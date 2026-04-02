@@ -1004,7 +1004,7 @@ useEffect(() => {
   if (loading) {
     return (
       <main className="min-h-screen bg-[#0f0d0a] text-[#f5efe4]">
-        <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
+        <div className="mx-auto w-full max-w-6xl overflow-x-hidden px-3 py-4 sm:px-6 sm:py-8">
           <div className="animate-pulse rounded-3xl border border-[#7a5c2e]/30 bg-[#17130f] p-8">
             <div className="h-8 w-48 rounded bg-[#2a2219]" />
             <div className="mt-6 h-5 w-72 rounded bg-[#2a2219]" />
@@ -1059,7 +1059,7 @@ useEffect(() => {
         <div className="overflow-hidden rounded-3xl border border-[#7a5c2e]/35 bg-[linear-gradient(180deg,#17130f_0%,#100d09_100%)] shadow-2xl">
           <div className="border-b border-[#7a5c2e]/25 px-4 py-5 sm:px-6 sm:py-6 md:px-8">
             <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-              <div className="flex items-center gap-4">
+              <div className="flex min-w-0 items-center gap-3 sm:gap-4">
                 <Image
                   src="/eomlogo.png"
                   alt="Estate of Mind logo"
@@ -1068,14 +1068,14 @@ useEffect(() => {
                   className="h-14 w-auto object-contain sm:h-16 md:h-20"
                   priority
                 />
-                <div>
+                <div className="min-w-0">
                   <p className="text-xs uppercase tracking-[0.25em] text-[#b08b47]">
                     Cleaner Portal
                   </p>
-                  <h1 className="mt-1 text-xl font-semibold text-[#f8f2e8] sm:text-2xl md:text-3xl">
+                  <h1 className="mt-1 break-words text-lg font-semibold text-[#f8f2e8] sm:text-2xl md:text-3xl">
                     Welcome{profile?.full_name ? `, ${profile.full_name}` : ""}
                   </h1>
-                  <p className="mt-1 text-sm text-[#d4c4a8]">
+                  <p className="mt-1 break-words text-sm text-[#d4c4a8]">
                     {cleanerAccount?.display_name
                       ? `Account: ${cleanerAccount.display_name}`
                       : "Your assigned jobs, access notes, and SOPs."}
@@ -1176,7 +1176,7 @@ useEffect(() => {
                   </p>
                 </div>
 
-                <div className="flex items-center justify-between gap-2 sm:justify-end">
+                <div className="grid w-full grid-cols-3 items-center gap-2 sm:flex sm:w-auto sm:justify-end">
                   <button
                     onClick={() =>
                       setCalendarMonth(
@@ -1188,7 +1188,7 @@ useEffect(() => {
                     Prev
                   </button>
 
-                  <div className="min-w-[150px] text-center text-sm font-medium text-[#f8f2e8] sm:min-w-[180px]">
+                  <div className="min-w-0 text-center text-sm font-medium text-[#f8f2e8]">
                     {formatMonthLabel(calendarMonth)}
                   </div>
 
