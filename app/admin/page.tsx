@@ -1127,11 +1127,29 @@ export default function AdminPage() {
     if (accepted > 0 && job.cleaner_units_required_strict) return "Partially filled";
     if (accepted > 0 && !job.cleaner_units_required_strict) return "Ready";
     if (stranded > 0 || job.staffing_status === "stranded") return "Stranded";
-    if (offered > 0) return "Awaiting responses";
+    if (offered > 0) return "Jobs waiting for acceptance";
     if (declined > 0) return "Reoffer needed";
     return job.staffing_status || job.status || "Unknown";
   }
+const waitingJobs = useMemo(
+  () =>
+    jobs.filter((job) =>
+      (jobSlotsByJobId[job.id] ?? []).some((slot) => slot.status === "offered")
+    ),
+  [jobs, jobSlotsByJobId]
+);
 
+function jumpToJobs(type: "waiting" | "stranded") {
+  setActiveSection("jobs");
+
+  setTimeout(() => {
+    document
+      .getElementById(
+        type === "waiting" ? "waiting-jobs-section" : "stranded-jobs-section"
+      )
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, 50);
+}
   const visibleJobs = jobsExpanded ? jobs : jobs.slice(0, 3);
 
   const recentDeclinedJobs = useMemo(
@@ -1259,7 +1277,10 @@ export default function AdminPage() {
   function renderPropertiesSection() {
     return (
       <div className="space-y-6">
-        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+<section
+  id="waiting-jobs-section"
+  className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]"
+>
           <h2 className="text-xl font-semibold tracking-tight">Add Property</h2>
           <p className="mt-1 text-sm text-[#7f7263]">Add a managed property and set default staffing rules.</p>
 
@@ -1555,8 +1576,11 @@ export default function AdminPage() {
           </div>
         </section>
 
-        {strandedJobs.length > 0 ? (
-          <section className="rounded-[30px] border border-[#f0b4b4] bg-[linear-gradient(135deg,#fff5f5_0%,#ffe9e9_100%)] p-5 shadow-[0_18px_45px_rgba(140,32,32,0.12)]">
+       {strandedJobs.length > 0 ? (
+  <section
+    id="stranded-jobs-section"
+    className="rounded-[30px] border border-[#f0b4b4] bg-[linear-gradient(135deg,#fff5f5_0%,#ffe9e9_100%)] p-5 shadow-[0_18px_45px_rgba(140,32,32,0.12)]"
+  >
             <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
               <div>
                 <div className="text-[11px] uppercase tracking-[0.24em] text-[#b14b4b]">Immediate Attention Needed</div>
@@ -1943,21 +1967,37 @@ export default function AdminPage() {
           </div>
         ) : null}
 
-        {strandedJobs.length > 0 && activeSection !== "jobs" && (
-          <div className="sticky top-0 z-40 mb-4 rounded-[20px] border border-[#f0b4b4] bg-[#7e1f1f] px-4 py-3 text-white shadow-lg">
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-sm font-semibold">
-                🚨 {strandedJobs.length} stranded job{strandedJobs.length === 1 ? "" : "s"} need attention
-              </div>
-              <button
-                onClick={() => setActiveSection("jobs")}
-                className="rounded-full border border-white/20 px-3 py-1 text-xs font-medium text-white transition hover:bg-white/10"
-              >
-                View Jobs
-              </button>
-            </div>
-          </div>
-        )}
+     {(waitingJobs.length > 0 || strandedJobs.length > 0) && (
+  <div className="sticky top-0 z-40 mb-4 space-y-2">
+    {waitingJobs.length > 0 && (
+      <button
+        onClick={() => jumpToJobs("waiting")}
+        className="flex w-full items-center justify-between gap-3 rounded-[18px] border border-[#ecd7a8] bg-[#b58a1a] px-4 py-3 text-left text-white shadow-lg transition hover:brightness-105"
+      >
+        <div className="text-sm font-semibold">
+          ⚠️ {waitingJobs.length} job{waitingJobs.length === 1 ? "" : "s"} waiting for acceptance
+        </div>
+        <span className="rounded-full border border-white/30 px-3 py-1 text-xs font-medium">
+          View
+        </span>
+      </button>
+    )}
+
+    {strandedJobs.length > 0 && (
+      <button
+        onClick={() => jumpToJobs("stranded")}
+        className="flex w-full items-center justify-between gap-3 rounded-[18px] border border-[#f0b4b4] bg-[#7e1f1f] px-4 py-3 text-left text-white shadow-lg transition hover:brightness-105"
+      >
+        <div className="text-sm font-semibold">
+          🚨 {strandedJobs.length} stranded job{strandedJobs.length === 1 ? "" : "s"}
+        </div>
+        <span className="rounded-full border border-white/30 px-3 py-1 text-xs font-medium">
+          View
+        </span>
+      </button>
+    )}
+  </div>
+)}
 
         <div className="mb-6 rounded-[30px] border border-[#e7ddd0] bg-white p-3 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
           <div className="flex flex-wrap gap-2">
