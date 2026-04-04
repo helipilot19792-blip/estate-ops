@@ -134,6 +134,36 @@ type AdminSection =
   | "jobs"
   | "propertySetup";
 
+function getMonthGrid(baseDate: Date) {
+  const year = baseDate.getFullYear();
+  const month = baseDate.getMonth();
+
+  const firstOfMonth = new Date(year, month, 1);
+  const startDay = firstOfMonth.getDay();
+  const gridStart = new Date(year, month, 1 - startDay);
+
+  const days: Date[] = [];
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(gridStart);
+    d.setDate(gridStart.getDate() + i);
+    days.push(d);
+  }
+
+  return days;
+}
+
+function formatDateLabel(dateString: string | null) {
+  if (!dateString) return "Not set";
+  const [year, month, day] = dateString.split("-").map(Number);
+  const d = new Date(year, month - 1, day);
+  return d.toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 function extractCheckoutDate(notes: string | null): string | null {
   if (!notes) return null;
   const match = notes.match(/Checkout date:\s*(\d{4}-\d{2}-\d{2})/i);
@@ -198,6 +228,11 @@ export default function AdminPage() {
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [currentAdminUserId, setCurrentAdminUserId] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
+  const [adminCalendarMonth, setAdminCalendarMonth] = useState(() => {
+    const today = new Date();
+    return new Date(today.getFullYear(), today.getMonth(), 1);
+  });
+  const [adminSelectedDate, setAdminSelectedDate] = useState<string | null>(() => toYmd(new Date()));
   const [activeSection, setActiveSection] = useState<AdminSection>("users");
 
   const [properties, setProperties] = useState<Property[]>([]);
@@ -1485,6 +1520,39 @@ export default function AdminPage() {
     [jobSlots]
   );
 
+  const adminJobsByDate = useMemo(() => {
+    const map = new Map<string, Job[]>();
+
+    for (const job of jobs) {
+      const jobDate = job.scheduled_for || extractCheckoutDate(job.notes);
+      if (!jobDate) continue;
+      if (!map.has(jobDate)) map.set(jobDate, []);
+      map.get(jobDate)!.push(job);
+    }
+
+    for (const [key, value] of map.entries()) {
+      value.sort((a, b) => {
+        const aName = getPropertyName(a.property_id);
+        const bName = getPropertyName(b.property_id);
+        return aName.localeCompare(bName);
+      });
+      map.set(key, value);
+    }
+
+    return map;
+  }, [jobs, properties]);
+
+  const adminCalendarDays = useMemo(() => getMonthGrid(adminCalendarMonth), [adminCalendarMonth]);
+
+  const adminSelectedDayJobs = useMemo(() => {
+    if (!adminSelectedDate) return [];
+    return adminJobsByDate.get(adminSelectedDate) ?? [];
+  }, [adminJobsByDate, adminSelectedDate]);
+
+  function selectAdminCalendarDate(dateYmd: string) {
+    setAdminSelectedDate(dateYmd);
+  }
+
   const selectedPropertyDefaults = properties.find((p) => p.id === jobPropertyId);
 
   const menuItems: Array<{ key: AdminSection; label: string }> = [
@@ -1929,6 +1997,214 @@ export default function AdminPage() {
           </div>
         </section>
 
+        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h2 className="text-xl font-semibold tracking-tight">Admin Calendar</h2>
+              <p className="mt-1 text-sm text-[#7f7263]">
+                Month view of all scheduled cleanings. Click a day to see everything happening on that date.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-medium text-[#6f6255] transition hover:bg-white"
+                onClick={() =>
+                  setAdminCalendarMonth(
+                    (prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1)
+                  )
+                }
+              >
+                Prev
+              </button>
+              <div className="min-w-[170px] text-center text-sm font-semibold text-[#241c15]">
+                {formatMonthLabel(adminCalendarMonth)}
+              </div>
+              <button
+                type="button"
+                className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-medium text-[#6f6255] transition hover:bg-white"
+                onClick={() =>
+                  setAdminCalendarMonth(
+                    (prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1)
+                  )
+                }
+              >
+                Next
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-5 overflow-hidden rounded-[26px] border border-[#eadfce]">
+            <div className="grid grid-cols-7 border-b border-[#eadfce] bg-[#f8f4ee]">
+              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+                <div key={day} className="px-2 py-3 text-center text-xs font-semibold uppercase tracking-[0.18em] text-[#8a7b68]">
+                  {day}
+                </div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-7 bg-white">
+              {adminCalendarDays.map((day) => {
+                const dateYmd = toYmd(day);
+                const dayJobs = adminJobsByDate.get(dateYmd) ?? [];
+                const urgentCount = dayJobs.filter((job) => {
+                  const slots = jobSlotsByJobId[job.id] ?? [];
+                  return slots.some((slot) => slot.status === "offered" || slot.status === "stranded");
+                }).length;
+                const isCurrentMonth = day.getMonth() === adminCalendarMonth.getMonth();
+                const isSelected = adminSelectedDate === dateYmd;
+                const isToday = dateYmd === toYmd(now);
+
+                return (
+                  <button
+                    key={dateYmd}
+                    type="button"
+                    onClick={() => selectAdminCalendarDate(dateYmd)}
+                    className={`min-h-[118px] border-r border-b border-[#eadfce] p-2 text-left align-top transition ${
+                      isSelected
+                        ? "bg-[#fffaf3] shadow-[inset_0_0_0_2px_rgba(180,141,78,0.65)]"
+                        : "hover:bg-[#fcfaf7]"
+                    } ${!isCurrentMonth ? "bg-[#fbf9f5] text-[#b1a392]" : "text-[#241c15]"}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div
+                        className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold ${
+                          isToday ? "bg-[#241c15] text-[#f8f2e8]" : "bg-transparent"
+                        }`}
+                      >
+                        {day.getDate()}
+                      </div>
+
+                      {dayJobs.length > 0 ? (
+                        <span className="rounded-full border border-[#d8c7ab] bg-white px-2 py-0.5 text-[11px] font-medium text-[#7f7263]">
+                          {dayJobs.length}
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <div className="mt-2 space-y-1">
+                      {dayJobs.slice(0, 2).map((job) => (
+                        <div
+                          key={job.id}
+                          className={`truncate rounded-full px-2 py-1 text-[11px] font-medium ${
+                            (jobSlotsByJobId[job.id] ?? []).some((slot) => slot.status === "stranded")
+                              ? "bg-[#fff1f1] text-[#8a2e22]"
+                              : (jobSlotsByJobId[job.id] ?? []).some((slot) => slot.status === "offered")
+                              ? "bg-[#fff7e7] text-[#8a5a0a]"
+                              : "bg-[#f4efe8] text-[#6f6255]"
+                          }`}
+                        >
+                          {getPropertyName(job.property_id)}
+                        </div>
+                      ))}
+
+                      {dayJobs.length > 2 ? (
+                        <div className="text-[11px] text-[#8a7b68]">+{dayJobs.length - 2} more</div>
+                      ) : null}
+
+                      {urgentCount > 0 ? (
+                        <div className="pt-1 text-[11px] font-semibold text-[#8a2e22]">
+                          {urgentCount} urgent
+                        </div>
+                      ) : null}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="mt-5 rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+            <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h3 className="text-lg font-semibold">Happenings for {formatDateLabel(adminSelectedDate)}</h3>
+                <div className="mt-1 text-sm text-[#7f7263]">
+                  {adminSelectedDayJobs.length} job{adminSelectedDayJobs.length === 1 ? "" : "s"} on this day
+                </div>
+              </div>
+
+              <button
+                type="button"
+                className="mt-2 rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-medium text-[#6f6255] transition hover:bg-[#f7f3ee] md:mt-0"
+                onClick={() => {
+                  const today = new Date();
+                  setAdminCalendarMonth(new Date(today.getFullYear(), today.getMonth(), 1));
+                  setAdminSelectedDate(toYmd(today));
+                }}
+              >
+                Jump to Today
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {adminSelectedDayJobs.length === 0 ? (
+                <div className="rounded-[18px] border border-dashed border-[#d8c7ab] bg-white px-4 py-4 text-sm text-[#7f7263]">
+                  Nothing scheduled for this day yet.
+                </div>
+              ) : (
+                adminSelectedDayJobs.map((job) => {
+                  const slots = jobSlotsByJobId[job.id] ?? [];
+                  const acceptedCount = slots.filter((slot) => slot.status === "accepted").length;
+                  const offeredCount = slots.filter((slot) => slot.status === "offered").length;
+                  const strandedCount = slots.filter((slot) => slot.status === "stranded").length;
+                  const declinedCount = slots.filter((slot) => slot.status === "declined").length;
+
+                  return (
+                    <button
+                      key={job.id}
+                      type="button"
+                      onClick={() => {
+                        setHighlightedJobId(job.id);
+                        setTimeout(() => {
+                          document.getElementById(`job-${job.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+                        }, 50);
+                      }}
+                      className="block w-full rounded-[20px] border border-[#eadfce] bg-white p-4 text-left transition hover:shadow-sm"
+                    >
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                        <div>
+                          <div className="text-base font-semibold text-[#241c15]">
+                            {getPropertyName(job.property_id)}
+                          </div>
+                          <div className="mt-1 text-sm text-[#6f6255]">
+                            {getJobDisplayStatus(job, slots)}
+                          </div>
+                          <div className="mt-1 text-sm text-[#8a7b68]">
+                            Team progress: {acceptedCount}/{job.cleaner_units_needed} accepted
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          <span className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">
+                            Offered: {offeredCount}
+                          </span>
+                          <span className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">
+                            Declined: {declinedCount}
+                          </span>
+                          <span className={`rounded-full px-3 py-1 text-xs font-medium ${
+                            strandedCount > 0
+                              ? "border border-[#efc6c6] bg-[#fff5f5] text-[#8a2e22]"
+                              : "border border-[#d8c7ab] bg-[#fcfaf7] text-[#7f7263]"
+                          }`}>
+                            Stranded: {strandedCount}
+                          </span>
+                        </div>
+                      </div>
+
+                      {job.notes ? (
+                        <div className="mt-3 line-clamp-2 text-sm leading-6 text-[#6f6255]">
+                          {job.notes}
+                        </div>
+                      ) : null}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </section>
+
         <section
           id="waiting-jobs-section"
           className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]"
@@ -2158,7 +2434,7 @@ export default function AdminPage() {
     );
   }
 
-  function renderPropertySetupSection() {
+  function renderPropertySetupSection  function renderPropertySetupSection() {
     return (
       <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
         <h2 className="text-xl font-semibold tracking-tight">Property Setup</h2>
