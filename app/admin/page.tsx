@@ -119,7 +119,7 @@ type ProfileRow = {
 type PropertyCalendarRow = {
   id: string;
   property_id: string;
-  source: "airbnb" | "vrbo";
+  source: string;
   ical_url: string;
   is_active: boolean | null;
   last_synced_at?: string | null;
@@ -257,15 +257,14 @@ export default function AdminPage() {
   const [alarmCode, setAlarmCode] = useState("");
   const [accessNotes, setAccessNotes] = useState("");
 
-  const [airbnbCalendarUrl, setAirbnbCalendarUrl] = useState("");
-  const [vrboCalendarUrl, setVrboCalendarUrl] = useState("");
-  const [airbnbCalendarActive, setAirbnbCalendarActive] = useState(true);
-  const [vrboCalendarActive, setVrboCalendarActive] = useState(true);
+   const [calendarRowsDraft, setCalendarRowsDraft] = useState<
+    Array<{ id?: string; source: string; ical_url: string; is_active: boolean }>
+  >([]);
 
   const [sopTitle, setSopTitle] = useState("");
   const [sopContent, setSopContent] = useState("");
   const [sopFiles, setSopFiles] = useState<File[]>([]);
-  
+
   const [linkSelections, setLinkSelections] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -319,10 +318,7 @@ export default function AdminPage() {
       setDoorCode("");
       setAlarmCode("");
       setAccessNotes("");
-      setAirbnbCalendarUrl("");
-      setVrboCalendarUrl("");
-      setAirbnbCalendarActive(true);
-      setVrboCalendarActive(true);
+      setCalendarRowsDraft([]);
       return;
     }
 
@@ -331,17 +327,16 @@ export default function AdminPage() {
     setAlarmCode(existingAccess?.alarm_code ?? "");
     setAccessNotes(existingAccess?.notes ?? "");
 
-    const airbnbCalendar = propertyCalendars.find(
-      (x) => x.property_id === selectedPropertyId && x.source === "airbnb"
-    );
-    const vrboCalendar = propertyCalendars.find(
-      (x) => x.property_id === selectedPropertyId && x.source === "vrbo"
-    );
+    const selectedCalendars = propertyCalendars
+      .filter((x) => x.property_id === selectedPropertyId)
+      .map((x) => ({
+        id: x.id,
+        source: x.source || "",
+        ical_url: x.ical_url || "",
+        is_active: x.is_active !== false,
+      }));
 
-    setAirbnbCalendarUrl(airbnbCalendar?.ical_url ?? "");
-    setVrboCalendarUrl(vrboCalendar?.ical_url ?? "");
-    setAirbnbCalendarActive(airbnbCalendar?.is_active ?? true);
-    setVrboCalendarActive(vrboCalendar?.is_active ?? true);
+    setCalendarRowsDraft(selectedCalendars);
 
     const selectedProperty = properties.find((p) => p.id === selectedPropertyId);
     setSelectedPropertyUnitsNeeded(String(selectedProperty?.default_cleaner_units_needed || 1));
@@ -878,7 +873,7 @@ export default function AdminPage() {
 
     const responseHours = getResponseWindowHours(
       jobs.find((j) => j.id === jobId)?.scheduled_for ||
-        extractCheckoutDate(jobs.find((j) => j.id === jobId)?.notes || null),
+      extractCheckoutDate(jobs.find((j) => j.id === jobId)?.notes || null),
       new Date()
     );
 
@@ -934,7 +929,7 @@ export default function AdminPage() {
 
     const responseHours = getResponseWindowHours(
       jobs.find((j) => j.id === jobId)?.scheduled_for ||
-        extractCheckoutDate(jobs.find((j) => j.id === jobId)?.notes || null),
+      extractCheckoutDate(jobs.find((j) => j.id === jobId)?.notes || null),
       new Date()
     );
 
@@ -1065,6 +1060,29 @@ export default function AdminPage() {
     }
   }
 
+  function addCalendarDraftRow() {
+    setCalendarRowsDraft((prev) => [
+      ...prev,
+      { source: "", ical_url: "", is_active: true },
+    ]);
+  }
+
+  function updateCalendarDraftRow(
+    index: number,
+    field: "source" | "ical_url" | "is_active",
+    value: string | boolean
+  ) {
+    setCalendarRowsDraft((prev) =>
+      prev.map((row, rowIndex) =>
+        rowIndex === index ? { ...row, [field]: value } : row
+      )
+    );
+  }
+
+  function removeCalendarDraftRow(index: number) {
+    setCalendarRowsDraft((prev) => prev.filter((_, rowIndex) => rowIndex !== index));
+  }
+
   async function saveCalendars() {
     if (!selectedPropertyId) {
       setError("Please select a property first.");
@@ -1072,78 +1090,77 @@ export default function AdminPage() {
     }
 
     setError("");
+    setActionMessage("");
     setSavingCalendars(true);
 
     try {
-      const existingAirbnb = propertyCalendars.find(
-        (x) => x.property_id === selectedPropertyId && x.source === "airbnb"
-      );
-      const existingVrbo = propertyCalendars.find(
-        (x) => x.property_id === selectedPropertyId && x.source === "vrbo"
+      const existingRows = propertyCalendars.filter(
+        (x) => x.property_id === selectedPropertyId
       );
 
-      if (airbnbCalendarUrl.trim()) {
-        if (existingAirbnb) {
-          const { error } = await supabase
-            .from("property_calendars")
-            .update({ ical_url: airbnbCalendarUrl.trim(), is_active: airbnbCalendarActive })
-            .eq("id", existingAirbnb.id);
-          if (error) {
-            setError(error.message);
-            return;
-          }
-        } else {
-          const { error } = await supabase.from("property_calendars").insert({
-            property_id: selectedPropertyId,
-            source: "airbnb",
-            ical_url: airbnbCalendarUrl.trim(),
-            is_active: airbnbCalendarActive,
-          });
-          if (error) {
-            setError(error.message);
-            return;
-          }
+      const normalizedRows = calendarRowsDraft
+        .map((row) => ({
+          id: row.id,
+          source: row.source.trim(),
+          ical_url: row.ical_url.trim(),
+          is_active: row.is_active,
+        }))
+        .filter((row) => row.source || row.ical_url);
+
+      for (const row of normalizedRows) {
+        if (!row.source) {
+          throw new Error("Each calendar row needs a source name.");
         }
-      } else if (existingAirbnb) {
-        const { error } = await supabase.from("property_calendars").delete().eq("id", existingAirbnb.id);
-        if (error) {
-          setError(error.message);
-          return;
+        if (!row.ical_url) {
+          throw new Error(`Calendar URL is missing for ${row.source}.`);
         }
       }
 
-      if (vrboCalendarUrl.trim()) {
-        if (existingVrbo) {
+      const draftIds = new Set(
+        normalizedRows
+          .map((row) => row.id)
+          .filter((id): id is string => typeof id === "string" && id.length > 0)
+      );
+
+      const rowsToDelete = existingRows.filter((row) => !draftIds.has(row.id));
+
+      if (rowsToDelete.length > 0) {
+        const { error } = await supabase
+          .from("property_calendars")
+          .delete()
+          .in("id", rowsToDelete.map((row) => row.id));
+
+        if (error) throw error;
+      }
+
+      for (const row of normalizedRows) {
+        if (row.id) {
           const { error } = await supabase
             .from("property_calendars")
-            .update({ ical_url: vrboCalendarUrl.trim(), is_active: vrboCalendarActive })
-            .eq("id", existingVrbo.id);
-          if (error) {
-            setError(error.message);
-            return;
-          }
+            .update({
+              source: row.source,
+              ical_url: row.ical_url,
+              is_active: row.is_active,
+            })
+            .eq("id", row.id);
+
+          if (error) throw error;
         } else {
           const { error } = await supabase.from("property_calendars").insert({
             property_id: selectedPropertyId,
-            source: "vrbo",
-            ical_url: vrboCalendarUrl.trim(),
-            is_active: vrboCalendarActive,
+            source: row.source,
+            ical_url: row.ical_url,
+            is_active: row.is_active,
           });
-          if (error) {
-            setError(error.message);
-            return;
-          }
-        }
-      } else if (existingVrbo) {
-        const { error } = await supabase.from("property_calendars").delete().eq("id", existingVrbo.id);
-        if (error) {
-          setError(error.message);
-          return;
+
+          if (error) throw error;
         }
       }
 
       setActionMessage("Calendars saved.");
       await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Could not save calendars.");
     } finally {
       setSavingCalendars(false);
     }
@@ -1326,27 +1343,43 @@ export default function AdminPage() {
     if (declined > 0) return "Reoffer needed";
     return job.staffing_status || job.status || "Unknown";
   }
-const waitingJobs = useMemo(
-  () =>
-    jobs.filter((job) =>
-      (jobSlotsByJobId[job.id] ?? []).some((slot) => slot.status === "offered")
-    ),
-  [jobs, jobSlotsByJobId]
-);
+  const waitingJobs = useMemo(
+    () =>
+      jobs.filter((job) =>
+        (jobSlotsByJobId[job.id] ?? []).some((slot) => slot.status === "offered")
+      ),
+    [jobs, jobSlotsByJobId]
+  );
 
-function jumpToJobs(type: "waiting" | "stranded") {
-  setActiveSection("jobs");
+  const overdueWaitingJobs = useMemo(
+    () =>
+      waitingJobs.filter((job) => {
+        const slots = jobSlotsByJobId[job.id] ?? [];
+        const firstOffered = slots
+          .filter((slot) => slot.status === "offered")
+          .sort(
+            (a, b) =>
+              new Date(a.offered_at || 0).getTime() - new Date(b.offered_at || 0).getTime()
+          )[0];
 
-  setTimeout(() => {
-    document
-      .getElementById(
-        type === "waiting" ? "waiting-jobs-section" : "stranded-jobs-section"
-      )
-      ?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, 50);
-}
+        const remainingMs = getTimeRemainingMs(job, firstOffered?.offered_at, now);
+        return remainingMs !== null && remainingMs < 0;
+      }),
+    [waitingJobs, jobSlotsByJobId, now]
+  );
+
+  function jumpToJobs(type: "waiting" | "stranded") {
+    setActiveSection("jobs");
+
+    setTimeout(() => {
+      document
+        .getElementById(
+          type === "waiting" ? "waiting-jobs-section" : "stranded-jobs-section"
+        )
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
+  }
   const visibleJobs = jobsExpanded ? jobs : jobs.slice(0, 3);
-
   const recentDeclinedJobs = useMemo(
     () =>
       [...jobSlots]
@@ -1368,113 +1401,113 @@ function jumpToJobs(type: "waiting" | "stranded") {
   ];
 
   function renderUsersSection() {
-  return (
-    <div className="rounded-[30px] border border-[#e7ddd0] bg-white p-4 md:p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-      <div className="mb-4">
-        <h2 className="text-xl font-semibold tracking-tight">User Management</h2>
-        <p className="mt-1 text-sm text-[#7f7263]">
-          Approve pending users, change access roles, remove users from the portal, or permanently delete them.
-        </p>
-      </div>
+    return (
+      <div className="rounded-[30px] border border-[#e7ddd0] bg-white p-4 md:p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+        <div className="mb-4">
+          <h2 className="text-xl font-semibold tracking-tight">User Management</h2>
+          <p className="mt-1 text-sm text-[#7f7263]">
+            Approve pending users, change access roles, remove users from the portal, or permanently delete them.
+          </p>
+        </div>
 
-      <div className="space-y-3">
-        {profiles.map((profile) => {
-          const isBusy =
-            savingRoleId === profile.id || actingOnProfileId === profile.id;
-          const isSelf = profile.id === currentAdminUserId;
+        <div className="space-y-3">
+          {profiles.map((profile) => {
+            const isBusy =
+              savingRoleId === profile.id || actingOnProfileId === profile.id;
+            const isSelf = profile.id === currentAdminUserId;
 
-          return (
-            <div
-              key={profile.id}
-              className="rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] p-3 md:p-4"
-            >
-              <div className="grid gap-3 lg:grid-cols-[1.2fr_180px_220px] xl:grid-cols-[1.4fr_180px_220px_300px] xl:items-center">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div className="text-base font-semibold text-[#241c15]">
-                      {profile.full_name || "No name"}
+            return (
+              <div
+                key={profile.id}
+                className="rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] p-3 md:p-4"
+              >
+                <div className="grid gap-3 lg:grid-cols-[1.2fr_180px_220px] xl:grid-cols-[1.4fr_180px_220px_300px] xl:items-center">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="text-base font-semibold text-[#241c15]">
+                        {profile.full_name || "No name"}
+                      </div>
+
+                      <span className="inline-flex rounded-full border border-[#d8c7ab] bg-white px-2.5 py-0.5 text-[11px] font-medium text-[#7f7263]">
+                        {profile.role}
+                      </span>
+
+                      {isSelf ? (
+                        <span className="inline-flex rounded-full border border-[#d8c7ab] bg-[#fffaf3] px-2.5 py-0.5 text-[11px] font-medium text-[#7f7263]">
+                          Your account
+                        </span>
+                      ) : null}
                     </div>
 
-                    <span className="inline-flex rounded-full border border-[#d8c7ab] bg-white px-2.5 py-0.5 text-[11px] font-medium text-[#7f7263]">
-                      {profile.role}
-                    </span>
+                    <div className="mt-1 truncate text-sm text-[#6f6255]">
+                      {profile.email || "No email"}
+                    </div>
 
-                    {isSelf ? (
-                      <span className="inline-flex rounded-full border border-[#d8c7ab] bg-[#fffaf3] px-2.5 py-0.5 text-[11px] font-medium text-[#7f7263]">
-                        Your account
-                      </span>
-                    ) : null}
+                    <div className="mt-0.5 text-sm text-[#8a7b68]">
+                      {profile.phone || "No phone"}
+                    </div>
                   </div>
 
-                  <div className="mt-1 truncate text-sm text-[#6f6255]">
-                    {profile.email || "No email"}
-                  </div>
+                  <div>
+                    <div className="mb-1 text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">
+                      Change role
+                    </div>
 
-                  <div className="mt-0.5 text-sm text-[#8a7b68]">
-                    {profile.phone || "No phone"}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="mb-1 text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">
-                    Change role
-                  </div>
-
-                  <select
-                    className="w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none transition focus:border-[#b48d4e]"
-                    value={profile.role}
-                    onChange={(e) => void updateUserRole(profile.id, e.target.value)}
-                    disabled={isBusy}
-                  >
-                    <option value="pending">pending</option>
-                    <option value="cleaner">cleaner</option>
-                    <option value="admin">admin</option>
-                  </select>
-                </div>
-
-                <div className="xl:col-span-2">
-                  <div className="mb-1 text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">
-                    Account actions
-                  </div>
-
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <button
-                      className="rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm text-[#5f5245] transition hover:bg-[#f7f3ee] disabled:opacity-50"
-                      onClick={() => void removeUserFromPortal(profile)}
+                    <select
+                      className="w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none transition focus:border-[#b48d4e]"
+                      value={profile.role}
+                      onChange={(e) => void updateUserRole(profile.id, e.target.value)}
                       disabled={isBusy}
                     >
-                      {actingOnProfileId === profile.id ? "Working..." : "Remove from portal"}
-                    </button>
-
-                    <button
-                      className="rounded-[14px] border border-[#efc6c6] bg-[#fff5f5] px-3 py-2 text-sm text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-50"
-                      onClick={() => void permanentlyDeleteUser(profile)}
-                      disabled={isBusy}
-                    >
-                      {actingOnProfileId === profile.id ? "Working..." : "Permanently delete"}
-                    </button>
+                      <option value="pending">pending</option>
+                      <option value="cleaner">cleaner</option>
+                      <option value="admin">admin</option>
+                    </select>
                   </div>
 
-                  <div className="mt-1 text-[11px] text-[#8a7b68]">
-                    {savingRoleId === profile.id
-                      ? "Saving..."
-                      : "Admin promotion requires confirmation"}
+                  <div className="xl:col-span-2">
+                    <div className="mb-1 text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">
+                      Account actions
+                    </div>
+
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <button
+                        className="rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm text-[#5f5245] transition hover:bg-[#f7f3ee] disabled:opacity-50"
+                        onClick={() => void removeUserFromPortal(profile)}
+                        disabled={isBusy}
+                      >
+                        {actingOnProfileId === profile.id ? "Working..." : "Remove from portal"}
+                      </button>
+
+                      <button
+                        className="rounded-[14px] border border-[#efc6c6] bg-[#fff5f5] px-3 py-2 text-sm text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-50"
+                        onClick={() => void permanentlyDeleteUser(profile)}
+                        disabled={isBusy}
+                      >
+                        {actingOnProfileId === profile.id ? "Working..." : "Permanently delete"}
+                      </button>
+                    </div>
+
+                    <div className="mt-1 text-[11px] text-[#8a7b68]">
+                      {savingRoleId === profile.id
+                        ? "Saving..."
+                        : "Admin promotion requires confirmation"}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
   function renderPropertiesSection() {
     return (
       <div className="space-y-6">
-<section
-  className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]"
->
+        <section
+          className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]"
+        >
           <h2 className="text-xl font-semibold tracking-tight">Add Property</h2>
           <p className="mt-1 text-sm text-[#7f7263]">Add a managed property and set default staffing rules.</p>
 
@@ -1887,11 +1920,11 @@ function jumpToJobs(type: "waiting" | "stranded") {
           </div>
         </section>
 
-       {strandedJobs.length > 0 ? (
-  <section
-    id="stranded-jobs-section"
-    className="rounded-[30px] border border-[#f0b4b4] bg-[linear-gradient(135deg,#fff5f5_0%,#ffe9e9_100%)] p-5 shadow-[0_18px_45px_rgba(140,32,32,0.12)]"
-  >
+        {strandedJobs.length > 0 ? (
+          <section
+            id="stranded-jobs-section"
+            className="rounded-[30px] border border-[#f0b4b4] bg-[linear-gradient(135deg,#fff5f5_0%,#ffe9e9_100%)] p-5 shadow-[0_18px_45px_rgba(140,32,32,0.12)]"
+          >
             <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
               <div>
                 <div className="text-[11px] uppercase tracking-[0.24em] text-[#b14b4b]">Immediate Attention Needed</div>
@@ -2075,31 +2108,93 @@ function jumpToJobs(type: "waiting" | "stranded") {
 
             <div className="rounded-[26px] border border-[#eadfce] bg-[#fcfaf7] p-5">
               <h3 className="text-lg font-semibold">Booking Calendars</h3>
-              <p className="mt-1 text-sm text-[#7f7263]">Use Save Calendars after editing URLs. Use Sync Calendars Now to pull the latest Airbnb/VRBO bookings immediately.</p>
+              <p className="mt-1 text-sm text-[#7f7263]">
+                Add as many calendar feeds as you need for this property. Examples:
+                Airbnb, VRBO, Booking.com, direct booking, Hospitable, or any custom iCal URL.
+              </p>
+
               <div className="mt-4 space-y-4">
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-[#5f5245]">Airbnb iCal URL</label>
-                  <input className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" placeholder="Paste Airbnb calendar URL" value={airbnbCalendarUrl} onChange={(e) => setAirbnbCalendarUrl(e.target.value)} />
-                  <label className="mt-2 flex items-center gap-2 text-sm text-[#6f6255]">
-                    <input type="checkbox" checked={airbnbCalendarActive} onChange={(e) => setAirbnbCalendarActive(e.target.checked)} /> Active
-                  </label>
+                {calendarRowsDraft.length === 0 ? (
+                  <div className="rounded-[18px] border border-dashed border-[#d8c7ab] bg-white px-4 py-4 text-sm text-[#7f7263]">
+                    No calendars added yet.
+                  </div>
+                ) : null}
+
+                {calendarRowsDraft.map((row, index) => (
+                  <div
+                    key={row.id ?? `draft-${index}`}
+                    className="rounded-[20px] border border-[#eadfce] bg-white p-4"
+                  >
+                    <div className="grid gap-3">
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-[#5f5245]">
+                          Source name
+                        </label>
+                        <input
+                          className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                          placeholder="Airbnb, VRBO, Booking.com, Direct, etc."
+                          value={row.source}
+                          onChange={(e) =>
+                            updateCalendarDraftRow(index, "source", e.target.value)
+                          }
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-[#5f5245]">
+                          iCal URL
+                        </label>
+                        <input
+                          className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                          placeholder="Paste calendar URL"
+                          value={row.ical_url}
+                          onChange={(e) =>
+                            updateCalendarDraftRow(index, "ical_url", e.target.value)
+                          }
+                        />
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <label className="flex items-center gap-2 text-sm text-[#6f6255]">
+                          <input
+                            type="checkbox"
+                            checked={row.is_active}
+                            onChange={(e) =>
+                              updateCalendarDraftRow(index, "is_active", e.target.checked)
+                            }
+                          />
+                          Active
+                        </label>
+
+                        <button
+                          type="button"
+                          className="rounded-full border border-[#efc6c6] bg-[#fff5f5] px-4 py-2 text-sm text-[#8a2e22] transition hover:bg-[#fff0f0]"
+                          onClick={() => removeCalendarDraftRow(index)}
+                        >
+                          Remove calendar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    className="inline-flex items-center justify-center rounded-full border border-[#241c15] bg-white px-5 py-2.5 text-sm font-medium text-[#241c15] transition hover:bg-[#f7f3ee]"
+                    onClick={addCalendarDraftRow}
+                  >
+                    Add Calendar
+                  </button>
+
+                  <button className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60" onClick={() => void saveCalendars()} disabled={savingCalendars}>
+                    {savingCalendars ? "Saving..." : "Save Calendars"}
+                  </button>
+
+                  <button className="inline-flex items-center justify-center rounded-full border border-[#241c15] bg-white px-5 py-2.5 text-sm font-medium text-[#241c15] transition hover:bg-[#f7f3ee] disabled:opacity-60" onClick={() => void syncCalendarsNow()} disabled={syncingCalendarsNow}>
+                    {syncingCalendarsNow ? "Syncing..." : "Sync Calendars Now"}
+                  </button>
                 </div>
-
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-[#5f5245]">VRBO iCal URL</label>
-                  <input className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" placeholder="Paste VRBO calendar URL" value={vrboCalendarUrl} onChange={(e) => setVrboCalendarUrl(e.target.value)} />
-                  <label className="mt-2 flex items-center gap-2 text-sm text-[#6f6255]">
-                    <input type="checkbox" checked={vrboCalendarActive} onChange={(e) => setVrboCalendarActive(e.target.checked)} /> Active
-                  </label>
-                </div>
-
-                <button className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60" onClick={() => void saveCalendars()} disabled={savingCalendars}>
-                  {savingCalendars ? "Saving..." : "Save Calendars"}
-                </button>
-
-                <button className="inline-flex items-center justify-center rounded-full border border-[#241c15] bg-white px-5 py-2.5 text-sm font-medium text-[#241c15] transition hover:bg-[#f7f3ee] disabled:opacity-60" onClick={() => void syncCalendarsNow()} disabled={syncingCalendarsNow}>
-                  {syncingCalendarsNow ? "Syncing..." : "Sync Calendars Now"}
-                </button>
               </div>
             </div>
 
@@ -2278,58 +2373,61 @@ function jumpToJobs(type: "waiting" | "stranded") {
           </div>
         ) : null}
 
-     {(waitingJobs.length > 0 || strandedJobs.length > 0) && (
-  <div className="sticky top-0 z-40 mb-4 space-y-2">
-    {waitingJobs.length > 0 && (
-      <button
-        onClick={() => jumpToJobs("waiting")}
-        className="flex w-full items-center justify-between gap-3 rounded-[18px] border border-[#ecd7a8] bg-[#b58a1a] px-4 py-3 text-left text-white shadow-lg transition hover:brightness-105"
-      >
-        <div className="text-sm font-semibold">
-          ⚠️ {waitingJobs.length} job{waitingJobs.length === 1 ? "" : "s"} waiting for acceptance
-        </div>
-        <span className="rounded-full border border-white/30 px-3 py-1 text-xs font-medium">
-          View
-        </span>
-      </button>
-    )}
+                   {(waitingJobs.length > 0 || strandedJobs.length > 0 || overdueWaitingJobs.length > 0) && (
+              <div className="sticky top-0 z-40 mb-4 space-y-2">
+                {waitingJobs.length > 0 && (
+                  <button
+                    onClick={() => jumpToJobs("waiting")}
+                    className="flex w-full items-center justify-between gap-3 rounded-[18px] border border-[#ecd7a8] bg-[#b58a1a] px-4 py-3 text-left text-white shadow-lg transition hover:brightness-105"
+                  >
+                    <div className="text-sm font-semibold">
+                      ⚠️ {waitingJobs.length} job{waitingJobs.length === 1 ? "" : "s"} waiting for acceptance
+                    </div>
+                    <span className="rounded-full border border-white/30 px-3 py-1 text-xs font-medium">
+                      View
+                    </span>
+                  </button>
+                )}
 
-    {strandedJobs.length > 0 && (
-      <button
-        onClick={() => jumpToJobs("stranded")}
-        className="flex w-full items-center justify-between gap-3 rounded-[18px] border border-[#f0b4b4] bg-[#7e1f1f] px-4 py-3 text-left text-white shadow-lg transition hover:brightness-105"
-      >
-        <div className="text-sm font-semibold">
-          🚨 {strandedJobs.length} stranded job{strandedJobs.length === 1 ? "" : "s"}
-        </div>
-        <span className="rounded-full border border-white/30 px-3 py-1 text-xs font-medium">
-          View
-        </span>
-      </button>
-    )}
-  </div>
-)}
+                {(strandedJobs.length > 0 || overdueWaitingJobs.length > 0) && (
+                  <button
+                    onClick={() => jumpToJobs(strandedJobs.length > 0 ? "stranded" : "waiting")}
+                    className="flex w-full items-center justify-between gap-3 rounded-[18px] border border-[#f0b4b4] bg-[#7e1f1f] px-4 py-3 text-left text-white shadow-lg transition hover:brightness-105"
+                  >
+                    <div className="text-sm font-semibold">
+                      🚨{" "}
+                      {strandedJobs.length > 0
+                        ? `${strandedJobs.length} stranded job${strandedJobs.length === 1 ? "" : "s"}`
+                        : `${overdueWaitingJobs.length} overdue job${overdueWaitingJobs.length === 1 ? "" : "s"} needing attention`}
+                    </div>
+                    <span className="rounded-full border border-white/30 px-3 py-1 text-xs font-medium">
+                      View
+                    </span>
+                  </button>
+                )}
+              </div>
+            )}
 
-        <div className="mb-6 rounded-[30px] border border-[#e7ddd0] bg-white p-3 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-          <div className="flex flex-wrap gap-2">
-            {menuItems.map((item) => (
-              <button
-                key={item.key}
-                onClick={() => setActiveSection(item.key)}
-                className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                  activeSection === item.key
-                    ? "bg-[#241c15] text-[#f8f2e8]"
-                    : "border border-[#d8c7ab] bg-[#fcfaf7] text-[#6f6255] hover:bg-white"
-                }`}
-              >
-                {item.label}
-              </button>
-            ))}
+            <div className="mb-6 rounded-[30px] border border-[#e7ddd0] bg-white p-3 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+              <div className="flex flex-wrap gap-2">
+                {menuItems.map((item) => (
+                  <button
+                    key={item.key}
+                    onClick={() => setActiveSection(item.key)}
+                    className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                      activeSection === item.key
+                        ? "bg-[#241c15] text-[#f8f2e8]"
+                        : "border border-[#d8c7ab] bg-[#fcfaf7] text-[#6f6255] hover:bg-white"
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+                   {renderActiveSection()}
           </div>
-        </div>
-
-        {renderActiveSection()}
-      </div>
-    </main>
-  );
-}
+        </main>
+      );
+    }
