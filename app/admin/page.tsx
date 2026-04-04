@@ -223,6 +223,7 @@ export default function AdminPage() {
   const [reassigningJobId, setReassigningJobId] = useState<string | null>(null);
   const [highlightedJobId, setHighlightedJobId] = useState<string | null>(null);
   const [syncingCalendarsNow, setSyncingCalendarsNow] = useState(false);
+  const [deletingPropertyId, setDeletingPropertyId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState("");
 
   const [propertyName, setPropertyName] = useState("");
@@ -576,6 +577,88 @@ export default function AdminPage() {
       setError(err?.message || "Permanent delete failed.");
     } finally {
       setActingOnProfileId(null);
+    }
+  }
+
+  async function deleteProperty(property: Property) {
+    const propertyName = property.name || property.address || "this property";
+    const confirmed = window.confirm(
+      `Delete ${propertyName}?\n\nThis will also delete its calendars, access notes, SOPs, assignments, turnover jobs, and job slots.\n\nThis cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    setError("");
+    setActionMessage("");
+    setDeletingPropertyId(property.id);
+
+    try {
+      const propertyJobIds = jobs.filter((job) => job.property_id === property.id).map((job) => job.id);
+      const propertySopIds = sops.filter((sop) => sop.property_id === property.id).map((sop) => sop.id);
+
+      if (propertyJobIds.length > 0) {
+        const { error: slotDeleteError } = await supabase
+          .from("turnover_job_slots")
+          .delete()
+          .in("job_id", propertyJobIds);
+
+        if (slotDeleteError) throw slotDeleteError;
+
+        const { error: jobDeleteError } = await supabase
+          .from("turnover_jobs")
+          .delete()
+          .in("id", propertyJobIds);
+
+        if (jobDeleteError) throw jobDeleteError;
+      }
+
+      if (propertySopIds.length > 0) {
+        const { error: sopImageDeleteError } = await supabase
+          .from("property_sop_images")
+          .delete()
+          .in("sop_id", propertySopIds);
+
+        if (sopImageDeleteError) throw sopImageDeleteError;
+
+        const { error: sopDeleteError } = await supabase
+          .from("property_sops")
+          .delete()
+          .in("id", propertySopIds);
+
+        if (sopDeleteError) throw sopDeleteError;
+      }
+
+      const cleanupTables = [
+        ["property_calendars", "property_id"],
+        ["property_access", "property_id"],
+        ["property_cleaner_account_assignments", "property_id"],
+      ] as const;
+
+      for (const [table, column] of cleanupTables) {
+        const { error: cleanupError } = await supabase
+          .from(table)
+          .delete()
+          .eq(column, property.id);
+
+        if (cleanupError) throw cleanupError;
+      }
+
+      const { error: propertyDeleteError } = await supabase
+        .from("properties")
+        .delete()
+        .eq("id", property.id);
+
+      if (propertyDeleteError) throw propertyDeleteError;
+
+      if (selectedPropertyId === property.id) {
+        setSelectedPropertyId("");
+      }
+
+      setActionMessage(`Property deleted: ${propertyName}`);
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Could not delete property.");
+    } finally {
+      setDeletingPropertyId(null);
     }
   }
 
@@ -1169,7 +1252,8 @@ export default function AdminPage() {
       }
 
       setCalendarDraftDirty(false);
-      setActionMessage("Calendars saved.");
+      const activeCount = normalizedRows.filter((row) => row.is_active).length;
+      setActionMessage(`Calendars saved. ${normalizedRows.length} feed${normalizedRows.length === 1 ? "" : "s"} configured, ${activeCount} active.`);
       await loadData();
     } catch (err: any) {
       setError(err?.message || "Could not save calendars.");
@@ -1556,17 +1640,37 @@ export default function AdminPage() {
             <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">{properties.length}</span>
           </div>
           <div className="space-y-3">
-            {properties.map((p) => (
-              <div key={p.id} className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
-                <div className="text-base font-semibold">{p.name}</div>
-                <div className="mt-1 text-sm text-[#6f6255]">{p.address || "No address"}</div>
-                <div className="mt-2 text-sm text-[#8a7b68]">{p.notes || "No notes"}</div>
-                <div className="mt-2 text-xs text-[#8a7b68]">
-                  Default staffing: {p.default_cleaner_units_needed} unit{p.default_cleaner_units_needed === 1 ? "" : "s"}
-                  {p.cleaner_units_required_strict ? ", strict" : ", flexible"}
+            {properties.map((p) => {
+              const propertyCalendarCount = propertyCalendars.filter((calendar) => calendar.property_id === p.id).length;
+              return (
+                <div key={p.id} className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-base font-semibold">{p.name}</div>
+                      <div className="mt-1 text-sm text-[#6f6255]">{p.address || "No address"}</div>
+                      <div className="mt-2 text-sm text-[#8a7b68]">{p.notes || "No notes"}</div>
+                      <div className="mt-2 text-xs text-[#8a7b68]">
+                        Default staffing: {p.default_cleaner_units_needed} unit{p.default_cleaner_units_needed === 1 ? "" : "s"}
+                        {p.cleaner_units_required_strict ? ", strict" : ", flexible"}
+                      </div>
+                      <div className="mt-2 text-xs text-[#8a7b68]">
+                        Calendars configured: {propertyCalendarCount}
+                      </div>
+                    </div>
+
+                    <div className="w-full md:w-[220px]">
+                      <button
+                        className="w-full rounded-[14px] border border-[#efc6c6] bg-[#fff5f5] px-3 py-2 text-sm text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-50"
+                        onClick={() => void deleteProperty(p)}
+                        disabled={deletingPropertyId === p.id}
+                      >
+                        {deletingPropertyId === p.id ? "Deleting..." : "Delete property"}
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       </div>
@@ -2070,7 +2174,21 @@ export default function AdminPage() {
         {selectedPropertyId ? (
           <div className="mt-6 grid gap-6 lg:grid-cols-3">
             <div className="rounded-[26px] border border-[#eadfce] bg-[#fcfaf7] p-5 lg:col-span-3">
-              <h3 className="text-lg font-semibold">Property Staffing Defaults</h3>
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold">Property Staffing Defaults</h3>
+                    </div>
+                <button
+                  className="inline-flex items-center justify-center rounded-full border border-[#efc6c6] bg-[#fff5f5] px-5 py-2.5 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-50"
+                  onClick={() => {
+                    const property = properties.find((p) => p.id === selectedPropertyId);
+                    if (property) void deleteProperty(property);
+                  }}
+                  disabled={deletingPropertyId === selectedPropertyId}
+                >
+                  {deletingPropertyId === selectedPropertyId ? "Deleting property..." : "Delete This Property"}
+                </button>
+              </div>
               <p className="mt-1 text-sm text-[#7f7263]">Edit how many cleaner units this property usually needs, whether the full team must accept, and whether cleaners can see team progress.</p>
               <div className="mt-4 grid gap-4 md:grid-cols-3">
                 <div>
@@ -2126,6 +2244,34 @@ export default function AdminPage() {
               </p>
 
               <div className="mt-4 space-y-4">
+                <div className="rounded-[18px] border border-[#eadfce] bg-white px-4 py-3 text-sm text-[#6f6255]">
+                  Draft rows: {calendarRowsDraft.length}. Saved rows for this property: {propertyCalendars.filter((calendar) => calendar.property_id === selectedPropertyId).length}.
+                </div>
+
+                {propertyCalendars.filter((calendar) => calendar.property_id === selectedPropertyId).length > 0 ? (
+                  <div className="rounded-[20px] border border-[#eadfce] bg-white p-4">
+                    <div className="mb-3 text-sm font-medium text-[#5f5245]">Currently saved calendars</div>
+                    <div className="space-y-2">
+                      {propertyCalendars
+                        .filter((calendar) => calendar.property_id === selectedPropertyId)
+                        .map((calendar) => (
+                          <div
+                            key={calendar.id}
+                            className="flex flex-wrap items-center justify-between gap-3 rounded-[16px] border border-[#eadfce] bg-[#fcfaf7] px-3 py-2"
+                          >
+                            <div className="min-w-0">
+                              <div className="text-sm font-medium text-[#241c15]">{calendar.source || "Unnamed calendar"}</div>
+                              <div className="truncate text-xs text-[#8a7b68]">{calendar.ical_url}</div>
+                            </div>
+                            <div className="text-xs text-[#8a7b68]">
+                              {calendar.is_active === false ? "Inactive" : "Active"}
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                ) : null}
+
                 {calendarRowsDraft.length === 0 ? (
                   <div className="rounded-[18px] border border-dashed border-[#d8c7ab] bg-white px-4 py-4 text-sm text-[#7f7263]">
                     No calendars added yet.
