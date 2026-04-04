@@ -151,7 +151,19 @@ function getMonthGrid(baseDate: Date) {
 
   return days;
 }
+function formatMonthLabel(date: Date) {
+  return date.toLocaleDateString(undefined, {
+    month: "long",
+    year: "numeric",
+  });
+}
 
+function toYmd(date: Date) {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 function formatDateLabel(dateString: string | null) {
   if (!dateString) return "Not set";
   const [year, month, day] = dateString.split("-").map(Number);
@@ -2434,7 +2446,7 @@ export default function AdminPage() {
     );
   }
 
-  function renderPropertySetupSection  function renderPropertySetupSection() {
+  function renderPropertySetupSection() {
     return (
       <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
         <h2 className="text-xl font-semibold tracking-tight">Property Setup</h2>
