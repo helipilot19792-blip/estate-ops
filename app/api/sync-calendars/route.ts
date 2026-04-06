@@ -146,23 +146,6 @@ function buildSyncMarker(source: string, uid: string): string {
   return `[AUTO_SYNC:${source}:${uid}]`;
 }
 
-function buildJobNotes(params: {
-  source: string;
-  summary: string;
-  checkoutDate: string;
-  propertyName: string;
-  marker: string;
-}): string {
-  return [
-    `Auto-created from ${params.source.toUpperCase()} calendar sync.`,
-    `Property: ${params.propertyName}`,
-    `Guest / reservation: ${params.summary || "Reservation"}`,
-    `Checkout date: ${params.checkoutDate}`,
-    "",
-    params.marker,
-  ].join("\n");
-}
-
 function isFutureOrToday(dateString: string): boolean {
   const today = new Date();
   const todayYmd = new Date(
@@ -222,14 +205,15 @@ async function loadPropertiesMap() {
 async function jobAlreadyExists(propertyId: string, marker: string): Promise<boolean> {
   const { data, error } = await supabase
     .from("turnover_jobs")
-    .select("id, property_id, notes")
+    .select("id, notes")
     .eq("property_id", propertyId)
-    .ilike("notes", `%${marker}%`)
-    .limit(1);
+    .limit(200);
 
   if (error) throw error;
 
-  return ((data ?? []) as TurnoverJobRow[]).length > 0;
+  return ((data ?? []) as Array<{ id: string; notes: string | null }>).some(
+    (row) => (row.notes || "").includes(marker)
+  );
 }
 
 async function getCalendarEvents(calendar: PropertyCalendarRow): Promise<ParsedEvent[]> {
@@ -358,13 +342,14 @@ export async function POST() {
             continue;
           }
 
-          const notes = buildJobNotes({
-            source: calendar.source,
-            summary: event.summary,
-            checkoutDate: event.checkoutDate,
-            propertyName,
+          const notes = [
+            `Auto-created from ${calendar.source.toUpperCase()} calendar sync.`,
+            `Property: ${propertyName}`,
+            `Guest / reservation: ${event.summary || "Reservation"}`,
+            `Checkout date: ${event.checkoutDate}`,
+            "",
             marker,
-          });
+          ].join("\n");
 
           const { data: insertedJob, error: insertError } = await supabase
             .from("turnover_jobs")
