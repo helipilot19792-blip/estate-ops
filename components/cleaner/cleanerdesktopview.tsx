@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Image from "next/image";
 import type { CleanerJob, CleanerViewProps } from "@/components/cleaner/cleanershell";
 
@@ -132,6 +132,7 @@ export default function CleanerDesktopView({
   scrollToJobsSection,
   handleAcceptJob,
   handleDeclineJob,
+  handleCloseDetails,
   handleSignOut,
   formatMonthLabel,
   toYmd,
@@ -146,18 +147,11 @@ export default function CleanerDesktopView({
 }: CleanerViewProps) {
   const [jobView, setJobView] = useState<"active" | "history">("active");
 
-  const selectedIsHistory = useMemo(
-    () => !!selectedCleanerJob && historyJobs.some((item) => item.slot.id === selectedCleanerJob.slot.id),
-    [historyJobs, selectedCleanerJob]
-  );
-
-  useEffect(() => {
-    if (selectedIsHistory) {
-      setJobView("history");
-    }
-  }, [selectedIsHistory]);
-
   const visibleJobs = jobView === "history" ? historyJobs : activeJobs;
+  const selectedJobInVisibleView = useMemo(() => {
+    if (!selectedCleanerJob) return null;
+    return visibleJobs.find((item) => item.slot.id === selectedCleanerJob.slot.id) || null;
+  }, [selectedCleanerJob, visibleJobs]);
 
   function renderJobList(items: CleanerJob[], emptyText: string) {
     if (items.length === 0) {
@@ -577,7 +571,7 @@ export default function CleanerDesktopView({
                 </p>
               )}
 
-              {selectedCleanerJob && (
+              {selectedJobInVisibleView && (
                 <section className="mt-4 rounded-2xl border border-[#b08b47]/30 bg-[#18120e] p-4 shadow-lg sm:p-5">
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div>
@@ -591,23 +585,23 @@ export default function CleanerDesktopView({
                         {selectedJobProperty?.address || "No property address"}
                       </p>
                       <p className="mt-2 text-sm text-[#e7c98a]">
-                        Cleaning date: {formatDateLabel(selectedCleanerJob.jobDate)}
+                        Cleaning date: {formatDateLabel(selectedJobInVisibleView.jobDate)}
                       </p>
                       <p className="mt-2 text-sm text-[#d9c5a1]">
-                        {getTeamMessage(selectedCleanerJob)}
+                        {getTeamMessage(selectedJobInVisibleView)}
                       </p>
                     </div>
 
                     <div>
                       {(() => {
                         const display = getSlotDisplayStatus(
-                          selectedCleanerJob.slot.status ?? null,
-                          selectedCleanerJob.job.staffing_status ?? null
+                          selectedJobInVisibleView.slot.status ?? null,
+                          selectedJobInVisibleView.job.staffing_status ?? null
                         );
                         const isOffered =
-                          (selectedCleanerJob.slot.status || "").toLowerCase().trim() === "offered";
+                          (selectedJobInVisibleView.slot.status || "").toLowerCase().trim() === "offered";
                         const isAccepted =
-                          (selectedCleanerJob.slot.status || "").toLowerCase().trim() === "accepted";
+                          (selectedJobInVisibleView.slot.status || "").toLowerCase().trim() === "accepted";
 
                         return (
                           <span
@@ -626,10 +620,10 @@ export default function CleanerDesktopView({
 
                       {(() => {
                         const isOffered =
-                          (selectedCleanerJob.slot.status || "").toLowerCase().trim() === "offered";
+                          (selectedJobInVisibleView.slot.status || "").toLowerCase().trim() === "offered";
                         if (!isOffered) return null;
 
-                        const remainingMs = getTimeRemainingMs(selectedCleanerJob, now);
+                        const remainingMs = getTimeRemainingMs(selectedJobInVisibleView, now);
                         if (remainingMs === null) return null;
 
                         const tone = getCountdownTone(remainingMs);
@@ -651,7 +645,7 @@ export default function CleanerDesktopView({
                         Slot Offered
                       </p>
                       <p className="mt-2 text-sm text-[#e8ddca]">
-                        {formatDateTimeLabel(selectedCleanerJob.slot.offered_at)}
+                        {formatDateTimeLabel(selectedJobInVisibleView.slot.offered_at)}
                       </p>
                     </div>
 
@@ -660,7 +654,7 @@ export default function CleanerDesktopView({
                         Slot Accepted
                       </p>
                       <p className="mt-2 text-sm text-[#e8ddca]">
-                        {formatDateTimeLabel(selectedCleanerJob.slot.accepted_at)}
+                        {formatDateTimeLabel(selectedJobInVisibleView.slot.accepted_at)}
                       </p>
                     </div>
 
@@ -669,7 +663,7 @@ export default function CleanerDesktopView({
                         Slot Declined
                       </p>
                       <p className="mt-2 text-sm text-[#e8ddca]">
-                        {formatDateTimeLabel(selectedCleanerJob.slot.declined_at)}
+                        {formatDateTimeLabel(selectedJobInVisibleView.slot.declined_at)}
                       </p>
                     </div>
                   </div>
@@ -680,7 +674,7 @@ export default function CleanerDesktopView({
                         Team Slots
                       </p>
                       <p className="mt-2 text-sm text-[#e8ddca]">
-                        {selectedCleanerJob.acceptedSlots} accepted of {selectedCleanerJob.totalSlots}
+                        {selectedJobInVisibleView.acceptedSlots} accepted of {selectedJobInVisibleView.totalSlots}
                       </p>
                     </div>
 
@@ -689,8 +683,8 @@ export default function CleanerDesktopView({
                         Job Status
                       </p>
                       <p className="mt-2 text-sm text-[#e8ddca]">
-                        {selectedCleanerJob.job.staffing_status ||
-                          selectedCleanerJob.job.status ||
+                        {selectedJobInVisibleView.job.staffing_status ||
+                          selectedJobInVisibleView.job.status ||
                           "—"}
                       </p>
                     </div>
@@ -700,7 +694,7 @@ export default function CleanerDesktopView({
                         Slot Number
                       </p>
                       <p className="mt-2 text-sm text-[#e8ddca]">
-                        {selectedCleanerJob.slot.slot_number ?? "—"}
+                        {selectedJobInVisibleView.slot.slot_number ?? "—"}
                       </p>
                     </div>
                   </div>
@@ -710,7 +704,7 @@ export default function CleanerDesktopView({
                       onClick={handleAcceptJob}
                       disabled={
                         actionLoading !== null ||
-                        (selectedCleanerJob.slot.status || "").toLowerCase().trim() !== "offered"
+                        (selectedJobInVisibleView.slot.status || "").toLowerCase().trim() !== "offered"
                       }
                       className="rounded-full bg-emerald-500 px-5 py-2 text-sm font-medium text-[#08110c] transition hover:bg-emerald-400 disabled:opacity-50"
                     >
@@ -721,7 +715,7 @@ export default function CleanerDesktopView({
                       onClick={handleDeclineJob}
                       disabled={
                         actionLoading !== null ||
-                        (selectedCleanerJob.slot.status || "").toLowerCase().trim() !== "offered"
+                        (selectedJobInVisibleView.slot.status || "").toLowerCase().trim() !== "offered"
                       }
                       className="rounded-full bg-red-500 px-5 py-2 text-sm font-medium text-white transition hover:bg-red-400 disabled:opacity-50"
                     >
@@ -729,7 +723,7 @@ export default function CleanerDesktopView({
                     </button>
 
                     <button
-                      onClick={() => setSelectedSlotId(null)}
+                      onClick={handleCloseDetails}
                       className="rounded-full border border-[#7a5c2e]/50 px-5 py-2 text-sm font-medium text-[#f5efe4] transition hover:bg-[#241a14]"
                     >
                       Close Details
@@ -740,7 +734,7 @@ export default function CleanerDesktopView({
                     <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-4">
                       <p className="text-xs uppercase tracking-[0.18em] text-[#b08b47]">Job Notes</p>
                       <p className="mt-2 whitespace-pre-wrap text-sm text-[#e8ddca]">
-                        {selectedCleanerJob.job.notes || "No job notes."}
+                        {selectedJobInVisibleView.job.notes || "No job notes."}
                       </p>
                     </div>
 

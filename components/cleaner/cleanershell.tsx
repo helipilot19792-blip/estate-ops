@@ -150,6 +150,7 @@ export type CleanerViewProps = {
   scrollToJobsSection: () => void;
   handleAcceptJob: () => Promise<void>;
   handleDeclineJob: () => Promise<void>;
+  handleCloseDetails: () => void;
   handleSignOut: () => Promise<void>;
   refreshCleanerJobs: () => Promise<void>;
   formatMonthLabel: (date: Date) => string;
@@ -451,6 +452,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
   });
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
+  const [selectionDismissed, setSelectionDismissed] = useState(false);
   const [jobsCollapsed, setJobsCollapsed] = useState(true);
   const [now, setNow] = useState(() => new Date());
 
@@ -851,6 +853,11 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     setSopImages(sopImageRows);
   }
 
+  function handleCloseDetails() {
+    setSelectionDismissed(true);
+    setSelectedSlotId(null);
+  }
+
   async function handleAcceptJob() {
     if (!selectedCleanerJob || !profile?.id) return;
 
@@ -1066,35 +1073,49 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     if (hasAutoSelectedInitialJob.current) return;
     if (selectedSlotId) return;
 
-    if (unacceptedJobs.length > 0) {
-      setSelectedSlotId(unacceptedJobs[0].slot.id);
-      hasAutoSelectedInitialJob.current = true;
-      return;
-    }
+    const preferredInitialJob =
+      unacceptedJobs[0] ??
+      activeJobs[0] ??
+      historyJobs[0] ??
+      null;
 
-    if (cleanerJobs.length > 0) {
-      setSelectedSlotId(cleanerJobs[0].slot.id);
+    if (preferredInitialJob) {
+      setSelectedSlotId(preferredInitialJob.slot.id);
       hasAutoSelectedInitialJob.current = true;
     }
-  }, [selectedSlotId, unacceptedJobs, cleanerJobs]);
+  }, [selectedSlotId, unacceptedJobs, activeJobs, historyJobs]);
 
   useEffect(() => {
     if (selectedSlotId && cleanerJobs.some((item) => item.slot.id === selectedSlotId)) {
       return;
     }
 
-    if (unacceptedJobs.length > 0) {
-      setSelectedSlotId(unacceptedJobs[0].slot.id);
+    if (selectionDismissed) {
+      if (cleanerJobs.length === 0) {
+        setSelectionDismissed(false);
+      }
       return;
     }
 
-    if (cleanerJobs.length > 0) {
-      setSelectedSlotId(cleanerJobs[0].slot.id);
+    const nextSelectedJob =
+      unacceptedJobs[0] ??
+      activeJobs[0] ??
+      historyJobs[0] ??
+      null;
+
+    if (nextSelectedJob) {
+      setSelectedSlotId(nextSelectedJob.slot.id);
       return;
     }
 
     setSelectedSlotId(null);
-  }, [cleanerJobs, selectedSlotId, unacceptedJobs]);
+  }, [cleanerJobs, selectedSlotId, unacceptedJobs, activeJobs, historyJobs, selectionDismissed]);
+
+  useEffect(() => {
+    if (selectedSlotId) {
+      setSelectionDismissed(false);
+    }
+  }, [selectedSlotId]);
 
   function handleDateClick(dateYmd: string) {
     setSelectedDate(dateYmd);
@@ -1160,6 +1181,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     scrollToJobsSection,
     handleAcceptJob,
     handleDeclineJob,
+    handleCloseDetails,
     handleSignOut,
     refreshCleanerJobs,
     formatMonthLabel,

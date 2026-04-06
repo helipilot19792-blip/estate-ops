@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import type { CleanerJob, CleanerViewProps } from "@/components/cleaner/cleanershell";
 
 export default function CleanerMobileView({
@@ -12,6 +12,7 @@ export default function CleanerMobileView({
   setSelectedSlotId,
   handleAcceptJob,
   handleDeclineJob,
+  handleCloseDetails,
   actionLoading,
   getStatusTone,
   getSlotDisplayStatus,
@@ -27,17 +28,6 @@ export default function CleanerMobileView({
   sopImagesBySopId,
 }: CleanerViewProps) {
   const [jobView, setJobView] = useState<"active" | "history">("active");
-
-  const selectedIsHistory = useMemo(
-    () => !!selectedCleanerJob && historyJobs.some((item) => item.slot.id === selectedCleanerJob.slot.id),
-    [historyJobs, selectedCleanerJob]
-  );
-
-  useEffect(() => {
-    if (selectedIsHistory) {
-      setJobView("history");
-    }
-  }, [selectedIsHistory]);
 
   function normalizeJobDate(value: string | null | undefined) {
     if (!value) return null;
@@ -290,7 +280,7 @@ export default function CleanerMobileView({
 
                 <button
                   type="button"
-                  onClick={() => setSelectedSlotId(null)}
+                  onClick={handleCloseDetails}
                   className="rounded-full border border-[#7a5c2e]/40 bg-[#100d0a] px-4 py-3 text-sm font-semibold text-[#f5efe4] transition hover:bg-[#1b1510]"
                 >
                   Close Details
