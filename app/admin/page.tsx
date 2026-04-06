@@ -1566,7 +1566,31 @@ export default function AdminPage() {
         ?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 50);
   }
-  const visibleJobs = jobsExpanded ? jobs : jobs.slice(0, 3);
+  const sortedJobs = useMemo(() => {
+    function getSortableJobDate(job: Job) {
+      return job.scheduled_for || extractCheckoutDate(job.notes) || "9999-12-31";
+    }
+
+    return [...jobs].sort((a, b) => {
+      const aDate = getSortableJobDate(a);
+      const bDate = getSortableJobDate(b);
+
+      if (aDate !== bDate) {
+        return aDate.localeCompare(bDate);
+      }
+
+      const aName = getPropertyName(a.property_id);
+      const bName = getPropertyName(b.property_id);
+
+      if (aName !== bName) {
+        return aName.localeCompare(bName);
+      }
+
+      return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+    });
+  }, [jobs, properties]);
+
+  const visibleJobs = jobsExpanded ? sortedJobs : sortedJobs.slice(0, 3);
   const recentDeclinedJobs = useMemo(
     () =>
       [...jobSlots]
@@ -2455,8 +2479,8 @@ export default function AdminPage() {
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                       <div>
                         <div className="text-base font-semibold text-[#241c15]">{job.property_name || getPropertyName(job.property_id)}</div>
-                        <div className="mt-1 text-sm text-[#8a5d4b]">
-                          Cleaning date: {formatScheduledFor(job.scheduled_for || extractCheckoutDate(job.notes))}
+                        <div className="mt-3 inline-block rounded-xl border border-[#c89a4b] bg-[#fff8ec] px-4 py-2 text-lg font-bold text-[#8a5d12] shadow-sm">
+                          {formatScheduledFor(job.scheduled_for || extractCheckoutDate(job.notes))}
                         </div>
                         <div className="mt-1 text-sm text-[#8a5d4b]">
                           Status: {job.staffing_status || job.status || "Stranded"}
@@ -2791,10 +2815,57 @@ export default function AdminPage() {
                     {images.length > 0 ? (
                       <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                         {images.map((image) => (
-                          <a key={image.id} href={image.image_url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] transition hover:shadow-md">
-                            <img src={image.image_url} alt={image.caption || s.title || "SOP image"} className="h-48 w-full cursor-zoom-in object-cover" />
-                            {image.caption ? <div className="px-3 py-2 text-sm text-[#6f6255]">{image.caption}</div> : null}
-                          </a>
+                          <div
+                            key={image.id}
+                            className="overflow-hidden rounded-[20px] border border-[#eadfce] bg-[#fcfaf7]"
+                          >
+                            <a
+                              href={image.image_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="block transition hover:shadow-md"
+                            >
+                              <img
+                                src={image.image_url}
+                                alt={image.caption || s.title || "SOP image"}
+                                className="h-48 w-full cursor-zoom-in object-cover"
+                              />
+                            </a>
+
+                            <div className="flex items-center justify-between gap-3 px-3 py-2">
+                              {image.caption ? (
+                                <div className="text-sm text-[#6f6255]">{image.caption}</div>
+                              ) : (
+                                <div />
+                              )}
+
+                              <button
+                                onClick={async () => {
+                                  const confirmed = window.confirm("Delete this image?");
+                                  if (!confirmed) return;
+
+                                  setError("");
+                                  setActionMessage("");
+
+                                  const { error } = await supabase
+                                    .from("property_sop_images")
+                                    .delete()
+                                    .eq("id", image.id);
+
+                                  if (error) {
+                                    setError(error.message);
+                                    return;
+                                  }
+
+                                  setActionMessage("SOP image deleted.");
+                                  await loadData();
+                                }}
+                                className="text-sm font-medium text-red-500 transition hover:text-red-700"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
                         ))}
                       </div>
                     ) : (
