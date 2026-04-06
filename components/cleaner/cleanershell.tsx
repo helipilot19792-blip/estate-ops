@@ -861,18 +861,28 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
   async function handleAcceptJob() {
     if (!selectedCleanerJob || !profile?.id) return;
 
+    const acceptedSlotId = selectedCleanerJob.slot.id;
+    const acceptedJobDate = selectedCleanerJob.jobDate;
+
     setJobsWarning(null);
     setActionLoading("accept");
+    setSelectionDismissed(false);
 
     try {
       const { error } = await supabase.rpc("accept_turnover_job_slot", {
-        p_slot_id: selectedCleanerJob.slot.id,
+        p_slot_id: acceptedSlotId,
         p_profile_id: profile.id,
       });
 
       if (error) throw error;
 
       await refreshCleanerJobs();
+
+      if (acceptedJobDate) {
+        setSelectedDate(acceptedJobDate);
+      }
+
+      setSelectedSlotId(acceptedSlotId);
     } catch (error: any) {
       setJobsWarning(error?.message || "Could not accept job.");
     } finally {
