@@ -2279,9 +2279,9 @@ export default function AdminPage() {
                   <div className="mt-1 text-sm text-[#8a7b68]">
                     Slots: {slots.filter((slot) => slot.status === "offered").length} offered, {slots.filter((slot) => slot.status === "declined").length} declined, {slots.filter((slot) => slot.status === "stranded").length} stranded
                   </div>
-                  <div className="mt-1 text-sm text-[#8a7b68]">
-                    Cleaning date: {formatScheduledFor(job.scheduled_for || extractCheckoutDate(job.notes))}
-                  </div>
+                 <div className="mt-3 inline-block rounded-xl border border-[#c89a4b] bg-[#fff8ec] px-4 py-2 text-lg font-bold text-[#8a5d12] shadow-sm">
+  {formatScheduledFor(job.scheduled_for || extractCheckoutDate(job.notes))}
+</div>
 
                   {getActiveCountdownMs(job.id) !== null && acceptedCount < job.cleaner_units_needed && (
                     <div className={`mt-1 text-sm font-semibold ${getCountdownTone(getActiveCountdownMs(job.id))}`}>
