@@ -135,6 +135,8 @@ export type CleanerViewProps = {
   jobsByDate: Map<string, CleanerJob[]>;
   calendarDays: Date[];
   filteredJobs: CleanerJob[];
+  activeJobs: CleanerJob[];
+  historyJobs: CleanerJob[];
   upcomingFilteredJobs: CleanerJob[];
   collapsedPreviewJob: CleanerJob | null;
   hiddenJobsCount: number;
@@ -361,6 +363,11 @@ function sortCleanerJobsNearestFirst(items: CleanerJob[]) {
     const bTime = b.slot.offered_at ?? b.job.created_at ?? "";
     return bTime.localeCompare(aTime);
   });
+}
+
+function isPastHistoryJob(item: CleanerJob, todayYmd: string) {
+  if (!item.jobDate) return false;
+  return item.jobDate < todayYmd;
 }
 
 function getTeamMessage(item: CleanerJob) {
@@ -973,6 +980,32 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     return sortCleanerJobsNearestFirst(items);
   }, [cleanerJobs, selectedDate]);
 
+  const activeJobs = useMemo(() => {
+    const todayYmd = toYmd(now);
+
+    return filteredJobs.filter((item) => {
+      const slotStatus = (item.slot.status || "").toLowerCase().trim();
+      const staffingStatus = (item.job.staffing_status || "").toLowerCase().trim();
+      const isUrgent = slotStatus === "offered" || slotStatus === "stranded" || staffingStatus === "stranded";
+
+      if (isUrgent) return true;
+      return !isPastHistoryJob(item, todayYmd);
+    });
+  }, [filteredJobs, now]);
+
+  const historyJobs = useMemo(() => {
+    const todayYmd = toYmd(now);
+
+    return filteredJobs.filter((item) => {
+      const slotStatus = (item.slot.status || "").toLowerCase().trim();
+      const staffingStatus = (item.job.staffing_status || "").toLowerCase().trim();
+      const isUrgent = slotStatus === "offered" || slotStatus === "stranded" || staffingStatus === "stranded";
+
+      if (isUrgent) return false;
+      return isPastHistoryJob(item, todayYmd);
+    });
+  }, [filteredJobs, now]);
+
   const upcomingFilteredJobs = useMemo(() => {
     const today = toYmd(new Date());
     return filteredJobs.filter((item) => {
@@ -982,20 +1015,21 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
   }, [filteredJobs]);
 
   const collapsedPreviewJob = useMemo(() => {
-    const urgentUnaccepted = filteredJobs.find(
+    const urgentUnaccepted = activeJobs.find(
       (item) => (item.slot.status || "").toLowerCase().trim() === "offered"
     );
     if (urgentUnaccepted) return urgentUnaccepted;
 
     if (upcomingFilteredJobs.length > 0) return upcomingFilteredJobs[0];
-    if (filteredJobs.length > 0) return filteredJobs[0];
+    if (activeJobs.length > 0) return activeJobs[0];
+    if (historyJobs.length > 0) return historyJobs[0];
     return null;
-  }, [upcomingFilteredJobs, filteredJobs]);
+  }, [upcomingFilteredJobs, activeJobs, historyJobs]);
 
   const hiddenJobsCount = useMemo(() => {
     if (!collapsedPreviewJob) return 0;
-    return Math.max(filteredJobs.length - 1, 0);
-  }, [collapsedPreviewJob, filteredJobs.length]);
+    return Math.max(activeJobs.length - 1, 0);
+  }, [collapsedPreviewJob, activeJobs.length]);
 
   const selectedDateLabel = useMemo(() => {
     if (!selectedDate) return null;
@@ -1111,6 +1145,8 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     jobsByDate,
     calendarDays,
     filteredJobs,
+    activeJobs,
+    historyJobs,
     upcomingFilteredJobs,
     collapsedPreviewJob,
     hiddenJobsCount,
