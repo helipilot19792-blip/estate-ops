@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { CleanerJob, CleanerViewProps } from "@/components/cleaner/cleanershell";
 
 export default function CleanerMobileView({
@@ -28,6 +28,8 @@ export default function CleanerMobileView({
   sopImagesBySopId,
 }: CleanerViewProps) {
   const [jobView, setJobView] = useState<"active" | "history">("active");
+  const [recentlyAcceptedJobId, setRecentlyAcceptedJobId] = useState<string | null>(null);
+  const [showAcceptedMessage, setShowAcceptedMessage] = useState(false);
 
   function normalizeJobDate(value: string | null | undefined) {
     if (!value) return null;
@@ -77,19 +79,51 @@ export default function CleanerMobileView({
     return (status || "").toLowerCase().trim() === "accepted";
   }
 
+  function canShowCalendarButton(item: CleanerJob | null | undefined) {
+    if (!item) return false;
+
+    const status = (item.slot.status || "").toLowerCase().trim();
+
+    if (status === "declined") return false;
+    if (status === "offered") return false;
+    if (status === "accepted") return true;
+
+    return recentlyAcceptedJobId === item.job.id;
+  }
+
   function handleCardTap(slotId: string) {
     setSelectedSlotId((current) => (current === slotId ? null : slotId));
+    setShowAcceptedMessage(false);
   }
 
   async function onDeclineClick() {
     const confirmed = window.confirm("Are you sure you want to decline this job?");
     if (!confirmed) return;
     await handleDeclineJob();
+    setRecentlyAcceptedJobId(null);
+    setShowAcceptedMessage(false);
+  }
+
+  async function onAcceptClick(item: CleanerJob) {
+    await handleAcceptJob();
+    setSelectedSlotId(item.slot.id);
+    setRecentlyAcceptedJobId(item.job.id);
+    setShowAcceptedMessage(true);
   }
 
   function getCalendarUrl(jobId: string) {
     return `/api/cleaner-calendar-event?jobId=${encodeURIComponent(jobId)}`;
   }
+
+  useEffect(() => {
+    if (!showAcceptedMessage) return;
+
+    const timeout = window.setTimeout(() => {
+      setShowAcceptedMessage(false);
+    }, 5000);
+
+    return () => window.clearTimeout(timeout);
+  }, [showAcceptedMessage]);
 
   function renderJobList(items: CleanerJob[], emptyText: string) {
     if (items.length === 0) {
@@ -169,6 +203,12 @@ export default function CleanerMobileView({
                   )}
                 </span>
               </div>
+
+              {showAcceptedMessage && recentlyAcceptedJobId === selectedCleanerJob.job.id ? (
+                <div className="mt-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/15 px-4 py-3 text-sm font-medium text-emerald-200">
+                  Job accepted. Add it to your calendar now.
+                </div>
+              ) : null}
 
               <div className="mt-4 space-y-3 text-sm text-[#e8ddca]">
                 <div>
@@ -269,7 +309,7 @@ export default function CleanerMobileView({
                 {isOffered(selectedCleanerJob.slot.status) ? (
                   <button
                     type="button"
-                    onClick={() => void handleAcceptJob()}
+                    onClick={() => void onAcceptClick(selectedCleanerJob)}
                     disabled={actionLoading !== null}
                     className="rounded-full border border-emerald-500/40 bg-emerald-500/20 px-4 py-3 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-500/30 disabled:opacity-50"
                   >
@@ -277,7 +317,7 @@ export default function CleanerMobileView({
                   </button>
                 ) : null}
 
-                {isAccepted(selectedCleanerJob.slot.status) ? (
+                {canShowCalendarButton(selectedCleanerJob) ? (
                   <a
                     href={getCalendarUrl(selectedCleanerJob.job.id)}
                     className="rounded-full border border-[#b08b47]/40 bg-[#b08b47]/15 px-4 py-3 text-sm font-semibold text-[#f5efe4] transition hover:bg-[#b08b47]/25"
@@ -378,6 +418,7 @@ export default function CleanerMobileView({
                     setSelectedDate(ymd);
                     const first = jobsForDay[0];
                     setSelectedSlotId(first?.slot.id || null);
+                    setShowAcceptedMessage(false);
                   }}
                   className={`min-w-[74px] rounded-xl border p-2 text-center transition ${
                     isSelected
