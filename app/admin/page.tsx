@@ -271,6 +271,7 @@ export default function AdminPage() {
   const [highlightedJobId, setHighlightedJobId] = useState<string | null>(null);
   const [syncingCalendarsNow, setSyncingCalendarsNow] = useState(false);
   const [deletingPropertyId, setDeletingPropertyId] = useState<string | null>(null);
+  const [releasingCleanerAccountId, setReleasingCleanerAccountId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState("");
 
   const [propertyName, setPropertyName] = useState("");
@@ -1100,6 +1101,49 @@ export default function AdminPage() {
     }, 50);
   }
 
+  async function releaseCleanerFutureJobs(
+    cleanerAccountId: string,
+    mode: "reoffer_to_backups" | "leave_unassigned" = "reoffer_to_backups"
+  ) {
+    setError("");
+    setActionMessage("");
+    setReleasingCleanerAccountId(cleanerAccountId);
+
+    try {
+      const response = await fetch("/api/admin/release-cleaner-future-jobs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          cleanerAccountId,
+          mode,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(payload?.error || "Could not release future accepted jobs.");
+      }
+
+      const affected = payload?.affected ?? payload?.affected_slots ?? 0;
+      const reoffered = payload?.reoffered ?? 0;
+      const stranded = payload?.stranded ?? 0;
+
+      setActionMessage(
+        payload?.message ||
+          `Released ${affected} future accepted job${affected === 1 ? "" : "s"} (${reoffered} reoffered, ${stranded} stranded).`
+      );
+
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Could not release future accepted jobs.");
+    } finally {
+      setReleasingCleanerAccountId(null);
+    }
+  }
+
   async function deleteCleanerAccount(account: CleanerAccount) {
     const displayName = account.display_name || account.email || "this cleaner account";
     const confirmed = window.confirm(
@@ -1522,31 +1566,7 @@ export default function AdminPage() {
         ?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 50);
   }
-  const sortedJobs = useMemo(() => {
-    function getSortableJobDate(job: Job) {
-      return job.scheduled_for || extractCheckoutDate(job.notes) || "9999-12-31";
-    }
-
-    return [...jobs].sort((a, b) => {
-      const aDate = getSortableJobDate(a);
-      const bDate = getSortableJobDate(b);
-
-      if (aDate !== bDate) {
-        return aDate.localeCompare(bDate);
-      }
-
-      const aName = getPropertyName(a.property_id);
-      const bName = getPropertyName(b.property_id);
-
-      if (aName !== bName) {
-        return aName.localeCompare(bName);
-      }
-
-      return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
-    });
-  }, [jobs, properties]);
-
-  const visibleJobs = jobsExpanded ? sortedJobs : sortedJobs.slice(0, 3);
+  const visibleJobs = jobsExpanded ? jobs : jobs.slice(0, 3);
   const recentDeclinedJobs = useMemo(
     () =>
       [...jobSlots]
@@ -1893,13 +1913,73 @@ export default function AdminPage() {
                         Link user
                       </button>
                     </div>
+
+                    <div className="mt-4 rounded-[16px] border border-[#eadfce] bg-white p-3">
+                      <div className="text-xs uppercase tracking-[0.18em] text-[#8a7b68]">
+                        Future accepted jobs
+                      </div>
+                      <div className="mt-2 text-sm text-[#5f5245]">
+                        {
+                          jobSlots.filter((slot) => {
+                            if (slot.cleaner_account_id !== account.id) return false;
+                            if (slot.status !== "accepted") return false;
+                            const job = jobs.find((j) => j.id === slot.job_id);
+                            const jobDate = job?.scheduled_for || extractCheckoutDate(job?.notes || null);
+                            return !!jobDate && jobDate >= toYmd(new Date());
+                          }).length
+                        } future accepted slot
+                        {
+                          jobSlots.filter((slot) => {
+                            if (slot.cleaner_account_id !== account.id) return false;
+                            if (slot.status !== "accepted") return false;
+                            const job = jobs.find((j) => j.id === slot.job_id);
+                            const jobDate = job?.scheduled_for || extractCheckoutDate(job?.notes || null);
+                            return !!jobDate && jobDate >= toYmd(new Date());
+                          }).length === 1 ? "" : "s"
+                        }
+                      </div>
+
+                      <div className="mt-3 grid gap-2">
+                        <button
+                          className="rounded-[14px] border border-[#d9ccbb] bg-[#fffaf3] px-3 py-2 text-sm text-[#5f5245] transition hover:bg-[#f7f3ee] disabled:opacity-50"
+                          onClick={() => {
+                            const confirmed = window.confirm(
+                              "Release all future accepted jobs for this cleaner and immediately reoffer them to the next assigned backup cleaner where available?"
+                            );
+                            if (!confirmed) return;
+                            void releaseCleanerFutureJobs(account.id, "reoffer_to_backups");
+                          }}
+                          disabled={releasingCleanerAccountId === account.id}
+                        >
+                          {releasingCleanerAccountId === account.id
+                            ? "Releasing..."
+                            : "Release future jobs to backups"}
+                        </button>
+
+                        <button
+                          className="rounded-[14px] border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 transition hover:bg-amber-100 disabled:opacity-50"
+                          onClick={() => {
+                            const confirmed = window.confirm(
+                              "Release all future accepted jobs for this cleaner and leave them unassigned/stranded for manual pickup?"
+                            );
+                            if (!confirmed) return;
+                            void releaseCleanerFutureJobs(account.id, "leave_unassigned");
+                          }}
+                          disabled={releasingCleanerAccountId === account.id}
+                        >
+                          {releasingCleanerAccountId === account.id
+                            ? "Releasing..."
+                            : "Release future jobs and leave unassigned"}
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="w-full md:w-[220px]">
                     <button
                       className="w-full rounded-[14px] border border-[#efc6c6] bg-[#fff5f5] px-3 py-2 text-sm text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-50"
                       onClick={() => void deleteCleanerAccount(account)}
-                      disabled={reassigningJobId === account.id}
+                      disabled={reassigningJobId === account.id || releasingCleanerAccountId === account.id}
                     >
                       {reassigningJobId === account.id ? "Deleting..." : "Delete cleaner account"}
                     </button>
@@ -2279,9 +2359,9 @@ export default function AdminPage() {
                   <div className="mt-1 text-sm text-[#8a7b68]">
                     Slots: {slots.filter((slot) => slot.status === "offered").length} offered, {slots.filter((slot) => slot.status === "declined").length} declined, {slots.filter((slot) => slot.status === "stranded").length} stranded
                   </div>
-                 <div className="mt-3 inline-block rounded-xl border border-[#c89a4b] bg-[#fff8ec] px-4 py-2 text-lg font-bold text-[#8a5d12] shadow-sm">
-  {formatScheduledFor(job.scheduled_for || extractCheckoutDate(job.notes))}
-</div>
+                  <div className="mt-1 text-sm text-[#8a7b68]">
+                    Cleaning date: {formatScheduledFor(job.scheduled_for || extractCheckoutDate(job.notes))}
+                  </div>
 
                   {getActiveCountdownMs(job.id) !== null && acceptedCount < job.cleaner_units_needed && (
                     <div className={`mt-1 text-sm font-semibold ${getCountdownTone(getActiveCountdownMs(job.id))}`}>
@@ -2375,10 +2455,10 @@ export default function AdminPage() {
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                       <div>
                         <div className="text-base font-semibold text-[#241c15]">{job.property_name || getPropertyName(job.property_id)}</div>
-                        <div className="mt-3 inline-flex rounded-full border border-[#c89a4b] bg-[#fff8ec] px-4 py-2 text-base font-semibold text-[#8a5d12] shadow-sm">
+                        <div className="mt-1 text-sm text-[#8a5d4b]">
                           Cleaning date: {formatScheduledFor(job.scheduled_for || extractCheckoutDate(job.notes))}
                         </div>
-                        <div className="mt-3 text-sm text-[#8a5d4b]">
+                        <div className="mt-1 text-sm text-[#8a5d4b]">
                           Status: {job.staffing_status || job.status || "Stranded"}
                         </div>
                         {remainingMs !== null ? (
