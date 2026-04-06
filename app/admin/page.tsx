@@ -295,6 +295,7 @@ export default function AdminPage() {
   const [syncingCalendarsNow, setSyncingCalendarsNow] = useState(false);
   const [deletingPropertyId, setDeletingPropertyId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState("");
+  const [selectedJobsPropertyFilter, setSelectedJobsPropertyFilter] = useState("all");
 
   const [propertyName, setPropertyName] = useState("");
  const [propertyStreet, setPropertyStreet] = useState("");
@@ -1571,14 +1572,35 @@ setPropertyPostal("");
         ?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 50);
   }
-  const visibleJobs = jobsExpanded ? jobs : jobs.slice(0, 3);
+  const filteredJobs = useMemo(
+    () =>
+      selectedJobsPropertyFilter === "all"
+        ? jobs
+        : jobs.filter((job) => job.property_id === selectedJobsPropertyFilter),
+    [jobs, selectedJobsPropertyFilter]
+  );
+
+  const visibleJobs = jobsExpanded ? filteredJobs : filteredJobs.slice(0, 3);
   const recentDeclinedJobs = useMemo(
     () =>
       [...jobSlots]
         .filter((slot) => !!slot.declined_at)
+        .filter((slot) => {
+          if (selectedJobsPropertyFilter === "all") return true
+          const matchingJob = jobs.find((job) => job.id === slot.job_id)
+          return matchingJob?.property_id === selectedJobsPropertyFilter
+        })
         .sort((a, b) => new Date(b.declined_at || 0).getTime() - new Date(a.declined_at || 0).getTime())
         .slice(0, 10),
-    [jobSlots]
+    [jobSlots, jobs, selectedJobsPropertyFilter]
+  );
+
+  const filteredStrandedJobs = useMemo(
+    () =>
+      selectedJobsPropertyFilter === "all"
+        ? strandedJobs
+        : strandedJobs.filter((job) => job.property_id === selectedJobsPropertyFilter),
+    [strandedJobs, selectedJobsPropertyFilter]
   );
 
   const adminJobsByDate = useMemo(() => {
@@ -1607,8 +1629,11 @@ setPropertyPostal("");
 
   const adminSelectedDayJobs = useMemo(() => {
     if (!adminSelectedDate) return [];
-    return adminJobsByDate.get(adminSelectedDate) ?? [];
-  }, [adminJobsByDate, adminSelectedDate]);
+    const dayJobs = adminJobsByDate.get(adminSelectedDate) ?? [];
+    return selectedJobsPropertyFilter === "all"
+      ? dayJobs
+      : dayJobs.filter((job) => job.property_id === selectedJobsPropertyFilter);
+  }, [adminJobsByDate, adminSelectedDate, selectedJobsPropertyFilter]);
 
   function selectAdminCalendarDate(dateYmd: string) {
     setAdminSelectedDate(dateYmd);
@@ -2340,16 +2365,35 @@ function renderPropertiesSection() {
           id="waiting-jobs-section"
           className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]"
         >
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
+          <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap items-center gap-3">
               <h2 className="text-xl font-semibold tracking-tight">Jobs</h2>
-              <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">{jobs.length}</span>
+              <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">{filteredJobs.length}</span>
             </div>
-            {jobs.length > 3 ? (
-              <button onClick={() => setJobsExpanded((prev) => !prev)} className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1.5 text-xs font-medium text-[#6f6255] transition hover:bg-white">
-                {jobsExpanded ? "Collapse Jobs" : `Show All ${jobs.length} Jobs`}
-              </button>
-            ) : null}
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <select
+                className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-medium text-[#6f6255] outline-none transition focus:border-[#b48d4e]"
+                value={selectedJobsPropertyFilter}
+                onChange={(e) => {
+                  setSelectedJobsPropertyFilter(e.target.value);
+                  setJobsExpanded(false);
+                }}
+              >
+                <option value="all">All properties</option>
+                {properties.map((property) => (
+                  <option key={property.id} value={property.id}>
+                    {property.name || property.address || "Unnamed property"}
+                  </option>
+                ))}
+              </select>
+
+              {filteredJobs.length > 3 ? (
+                <button onClick={() => setJobsExpanded((prev) => !prev)} className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1.5 text-xs font-medium text-[#6f6255] transition hover:bg-white">
+                  {jobsExpanded ? "Collapse Jobs" : `Show All ${filteredJobs.length} Jobs`}
+                </button>
+              ) : null}
+            </div>
           </div>
 
           <div className="space-y-3">
@@ -2443,7 +2487,7 @@ function renderPropertiesSection() {
           </div>
         </section>
 
-        {strandedJobs.length > 0 ? (
+        {filteredStrandedJobs.length > 0 ? (
           <section
             id="stranded-jobs-section"
             className="rounded-[30px] border border-[#f0b4b4] bg-[linear-gradient(135deg,#fff5f5_0%,#ffe9e9_100%)] p-5 shadow-[0_18px_45px_rgba(140,32,32,0.12)]"
@@ -2452,7 +2496,7 @@ function renderPropertiesSection() {
               <div>
                 <div className="text-[11px] uppercase tracking-[0.24em] text-[#b14b4b]">Immediate Attention Needed</div>
                 <h2 className="mt-2 text-3xl font-bold tracking-tight text-[#7e1f1f] animate-pulse">
-                  🚨 {strandedJobs.length} stranded job{strandedJobs.length === 1 ? "" : "s"}
+                  🚨 {filteredStrandedJobs.length} stranded job{filteredStrandedJobs.length === 1 ? "" : "s"}
                 </h2>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-[#8b3838]">
                   These jobs have missing cleaner units and need manual assignment.
@@ -2461,7 +2505,7 @@ function renderPropertiesSection() {
             </div>
 
             <div className="mt-4 grid gap-3">
-              {strandedJobs.map((job) => {
+              {filteredStrandedJobs.map((job) => {
                 const slots = jobSlotsByJobId[job.id] ?? [];
                 const remainingMs = getActiveCountdownMs(job.id);
 
