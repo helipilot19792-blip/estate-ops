@@ -358,6 +358,7 @@ export async function POST() {
               status: "pending",
               notes,
               scheduled_for: event.checkoutDate,
+              cleaners_needed: 1,
               cleaner_units_needed: 1,
               cleaner_units_required_strict: false,
               show_team_status_to_cleaners: true,
