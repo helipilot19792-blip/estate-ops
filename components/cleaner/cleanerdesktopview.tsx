@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { useEffect, useState } from "react";
 import type { CleanerViewProps } from "@/components/cleaner/cleanershell";
 
 export default function CleanerDesktopView({
@@ -27,6 +28,8 @@ export default function CleanerDesktopView({
   jobsByDate,
   calendarDays,
   filteredJobs,
+  activeJobs,
+  historyJobs,
   collapsedPreviewJob,
   hiddenJobsCount,
   selectedDateLabel,
@@ -96,6 +99,96 @@ export default function CleanerDesktopView({
       </main>
     );
   }
+
+  const hasHistoryJobs = historyJobs.length > 0;
+  const [historyExpanded, setHistoryExpanded] = useState(false);
+
+  useEffect(() => {
+    if (!selectedSlotId) return;
+    if (historyJobs.some((item) => item.slot.id === selectedSlotId)) {
+      setHistoryExpanded(true);
+    }
+  }, [selectedSlotId, historyJobs]);
+
+  function renderJobCard(item: CleanerViewProps["cleanerJobs"][number], options?: { selectedLabel?: string }) {
+    const property = properties.find((p) => p.id === item.job.property_id);
+    const isSelected = selectedSlotId === item.slot.id;
+    const tone = getStatusTone(item.slot.status, item.job.staffing_status);
+    const waiting = (item.slot.status || "").toLowerCase().trim() === "offered";
+    const remainingMs = waiting ? getTimeRemainingMs(item, now) : null;
+    const countdownTone = getCountdownTone(remainingMs);
+
+    return (
+      <button
+        key={item.slot.id}
+        onClick={() => handleJobClick(item.slot.id)}
+        className={[
+          "block w-full rounded-2xl border p-5 text-left transition duration-200",
+          tone.card,
+          isSelected ? tone.selectedRing : "hover:-translate-y-[1px] hover:bg-[#18120e]",
+        ].join(" ")}
+      >
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={tone.badge}>
+                {getSlotDisplayStatus(item.slot.status, item.job.staffing_status)}
+              </span>
+
+              {isSelected && (
+                <span className="rounded-full border border-[#b08b47]/35 bg-[#b08b47]/10 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[#f0d59f]">
+                  Selected
+                </span>
+              )}
+
+              {options?.selectedLabel && !isSelected && (
+                <span className="rounded-full border border-[#7a5c2e]/30 bg-[#120f0b] px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[#d9c5a1]">
+                  {options.selectedLabel}
+                </span>
+              )}
+            </div>
+
+            <h3 className="mt-3 text-lg font-semibold text-[#f8f2e8]">
+              {property?.name || "Property job"}
+            </h3>
+
+            <p className="mt-1 text-sm text-[#d4c4a8]">
+              {property?.address || "No property address"}
+            </p>
+
+            <p className="mt-2 text-sm font-medium text-[#f0d59f]">
+              Cleaning date: {formatDateLabel(item.jobDate)}
+            </p>
+
+            <p className="mt-2 text-sm text-[#d9c5a1]">{getTeamMessage(item)}</p>
+
+            {waiting && remainingMs !== null && (
+              <p className={`mt-2 text-sm font-semibold ${countdownTone}`}>
+                {remainingMs < 0
+                  ? `Overdue by ${formatRemaining(remainingMs)}`
+                  : `Accept within ${formatRemaining(remainingMs)}`}
+              </p>
+            )}
+          </div>
+
+          <div className="flex items-start md:justify-end">
+            <span className="inline-flex items-center gap-2 rounded-full border border-[#7a5c2e]/25 bg-[#120f0b] px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[#d9c5a1]">
+              <span className={`h-2 w-2 rounded-full ${tone.dot}`} />
+              Tap to open
+            </span>
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <p className="text-xs uppercase tracking-[0.18em] text-[#b08b47]">Job Notes</p>
+          <p className="mt-2 line-clamp-4 whitespace-pre-wrap text-sm text-[#e8ddca]">
+            {item.job.notes || "No job notes."}
+          </p>
+        </div>
+      </button>
+    );
+  }
+
 
   return (
     <main className="min-h-screen bg-[#0f0d0a] text-[#f5efe4]">
@@ -799,83 +892,78 @@ export default function CleanerDesktopView({
                       {selectedDate ? "No jobs for that date." : "No jobs assigned yet."}
                     </p>
                   ) : (
-                    <div className="space-y-4">
-                      {filteredJobs.map((item) => {
-                        const property = properties.find((p) => p.id === item.job.property_id);
-                        const isSelected = selectedSlotId === item.slot.id;
-                        const tone = getStatusTone(item.slot.status, item.job.staffing_status);
-                        const waiting = (item.slot.status || "").toLowerCase().trim() === "offered";
-                        const remainingMs = waiting ? getTimeRemainingMs(item, now) : null;
-                        const countdownTone = getCountdownTone(remainingMs);
+                    <div className="space-y-6">
+                      <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#110d09] p-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded-full border border-[#b08b47]/35 bg-[#b08b47]/10 px-3 py-1 text-xs uppercase tracking-[0.18em] text-[#e7c98a]">
+                            Active Jobs
+                          </span>
 
-                        return (
-                          <button
-                            key={item.slot.id}
-                            onClick={() => handleJobClick(item.slot.id)}
-                            className={[
-                              "block w-full rounded-2xl border p-5 text-left transition duration-200",
-                              tone.card,
-                              isSelected
-                                ? tone.selectedRing
-                                : "hover:-translate-y-[1px] hover:bg-[#18120e]",
-                            ].join(" ")}
-                          >
-                            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                              <div>
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <span className={tone.badge}>
-                                    {getSlotDisplayStatus(item.slot.status, item.job.staffing_status)}
-                                  </span>
+                          {unacceptedCount > 0 && (
+                            <span className="rounded-full border border-red-400/70 bg-red-500 px-3 py-1 text-xs uppercase tracking-[0.18em] text-white shadow-[0_0_16px_rgba(239,68,68,0.25)]">
+                              {unacceptedCount} urgent
+                            </span>
+                          )}
 
-                                  {isSelected && (
-                                    <span className="rounded-full border border-[#b08b47]/35 bg-[#b08b47]/10 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[#f0d59f]">
-                                      Selected
-                                    </span>
-                                  )}
-                                </div>
+                          <span className="rounded-full border border-[#7a5c2e]/30 bg-[#1a140f] px-3 py-1 text-xs text-[#d8c7ab]">
+                            {activeJobs.length} active slot{activeJobs.length === 1 ? "" : "s"}
+                          </span>
+                        </div>
 
-                                <h3 className="mt-3 text-lg font-semibold text-[#f8f2e8]">
-                                  {property?.name || "Property job"}
-                                </h3>
+                        <p className="mt-3 text-sm text-[#cdbda0]">
+                          Today and future jobs stay here. Urgent unresolved jobs stay here even if their date has already passed.
+                        </p>
+                      </div>
 
-                                <p className="mt-1 text-sm text-[#d4c4a8]">
-                                  {property?.address || "No property address"}
-                                </p>
+                      {activeJobs.length === 0 ? (
+                        <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#110d09] p-4 text-sm text-[#cdbda0]">
+                          No active jobs in this view.
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          {activeJobs.map((item) => renderJobCard(item))}
+                        </div>
+                      )}
 
-                                <p className="mt-2 text-sm font-medium text-[#f0d59f]">
-                                  Cleaning date: {formatDateLabel(item.jobDate)}
-                                </p>
+                      <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#110d09] p-4">
+                        <button
+                          type="button"
+                          onClick={() => setHistoryExpanded((current) => !current)}
+                          className="flex w-full items-center justify-between gap-3 rounded-2xl border border-[#7a5c2e]/30 bg-[#17120d] px-4 py-3 text-left transition hover:bg-[#1d1610]"
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="rounded-full border border-[#7a5c2e]/35 bg-[#120f0b] px-3 py-1 text-xs uppercase tracking-[0.18em] text-[#d8c7ab]">
+                              History
+                            </span>
 
-                                <p className="mt-2 text-sm text-[#d9c5a1]">{getTeamMessage(item)}</p>
+                            <span className="rounded-full border border-[#7a5c2e]/30 bg-[#1a140f] px-3 py-1 text-xs text-[#d8c7ab]">
+                              {historyJobs.length} past slot{historyJobs.length === 1 ? "" : "s"}
+                            </span>
+                          </div>
 
-                                {waiting && remainingMs !== null && (
-                                  <p className={`mt-2 text-sm font-semibold ${countdownTone}`}>
-                                    {remainingMs < 0
-                                      ? `Overdue by ${formatRemaining(remainingMs)}`
-                                      : `Accept within ${formatRemaining(remainingMs)}`}
-                                  </p>
-                                )}
-                              </div>
+                          <span className="rounded-full border border-[#7a5c2e]/30 bg-[#120f0b] px-3 py-1 text-xs text-[#f5efe4]">
+                            {historyExpanded ? "Hide history ▲" : "Show history ▼"}
+                          </span>
+                        </button>
 
-                              <div className="flex items-start md:justify-end">
-                                <span className="inline-flex items-center gap-2 rounded-full border border-[#7a5c2e]/25 bg-[#120f0b] px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[#d9c5a1]">
-                                  <span className={`h-2 w-2 rounded-full ${tone.dot}`} />
-                                  Tap to open
-                                </span>
-                              </div>
-                            </div>
+                        <p className="mt-3 text-sm text-[#a99a82]">
+                          Past-dated jobs move here automatically so old jobs do not stay at the top forever.
+                        </p>
+                      </div>
 
-                            <div className="mt-4">
-                              <p className="text-xs uppercase tracking-[0.18em] text-[#b08b47]">
-                                Job Notes
-                              </p>
-                              <p className="mt-2 line-clamp-4 whitespace-pre-wrap text-sm text-[#e8ddca]">
-                                {item.job.notes || "No job notes."}
-                              </p>
-                            </div>
-                          </button>
-                        );
-                      })}
+                      {!hasHistoryJobs ? (
+                        <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#110d09] p-4 text-sm text-[#cdbda0]">
+                          No history jobs yet.
+                        </div>
+                      ) : historyExpanded ? (
+                        <div className="space-y-4">
+                          {historyJobs.map((item) => renderJobCard(item, { selectedLabel: "History" }))}
+                        </div>
+                      ) : (
+                        <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#110d09] p-4 text-sm text-[#cdbda0]">
+                          History is collapsed. Use the button above to show past jobs.
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
