@@ -233,6 +233,30 @@ function getCountdownTone(ms: number | null) {
   return "text-[#7f5d28]";
 }
 
+const PROPERTY_CALENDAR_COLORS = [
+  { bg: "#e8f1ff", text: "#1d4ed8", border: "#bfdbfe" },
+  { bg: "#ecfdf3", text: "#047857", border: "#a7f3d0" },
+  { bg: "#fff7ed", text: "#c2410c", border: "#fdba74" },
+  { bg: "#faf5ff", text: "#7c3aed", border: "#d8b4fe" },
+  { bg: "#fdf2f8", text: "#be185d", border: "#f9a8d4" },
+  { bg: "#eff6ff", text: "#2563eb", border: "#93c5fd" },
+  { bg: "#f0fdf4", text: "#15803d", border: "#86efac" },
+  { bg: "#fff1f2", text: "#be123c", border: "#fda4af" },
+];
+
+function getPropertyColor(propertyId: string | null) {
+  if (!propertyId) {
+    return { bg: "#f4efe8", text: "#6f6255", border: "#d8c7ab" };
+  }
+
+  let hash = 0;
+  for (let i = 0; i < propertyId.length; i += 1) {
+    hash = (hash * 31 + propertyId.charCodeAt(i)) >>> 0;
+  }
+
+  return PROPERTY_CALENDAR_COLORS[hash % PROPERTY_CALENDAR_COLORS.length];
+}
+
 export default function AdminPage() {
   const router = useRouter();
 
@@ -2178,20 +2202,25 @@ function renderPropertiesSection() {
                     </div>
 
                     <div className="mt-2 space-y-1">
-                      {dayJobs.slice(0, 2).map((job) => (
-                        <div
-                          key={job.id}
-                          className={`truncate rounded-full px-2 py-1 text-[11px] font-medium ${
-                            (jobSlotsByJobId[job.id] ?? []).some((slot) => slot.status === "stranded")
-                              ? "bg-[#fff1f1] text-[#8a2e22]"
-                              : (jobSlotsByJobId[job.id] ?? []).some((slot) => slot.status === "offered")
-                              ? "bg-[#fff7e7] text-[#8a5a0a]"
-                              : "bg-[#f4efe8] text-[#6f6255]"
-                          }`}
-                        >
-                          {getPropertyName(job.property_id)}
-                        </div>
-                      ))}
+                      {dayJobs.slice(0, 2).map((job) => {
+                        const propertyColor = getPropertyColor(job.property_id);
+                        const isStranded = (jobSlotsByJobId[job.id] ?? []).some((slot) => slot.status === "stranded");
+                        const isOffered = (jobSlotsByJobId[job.id] ?? []).some((slot) => slot.status === "offered");
+
+                        return (
+                          <div
+                            key={job.id}
+                            className="truncate rounded-full border px-2 py-1 text-[11px] font-medium"
+                            style={{
+                              backgroundColor: propertyColor.bg,
+                              color: isStranded ? "#8a2e22" : isOffered ? "#8a5a0a" : propertyColor.text,
+                              borderColor: isStranded ? "#efc6c6" : isOffered ? "#f2d49b" : propertyColor.border,
+                            }}
+                          >
+                            {getPropertyName(job.property_id)}
+                          </div>
+                        );
+                      })}
 
                       {dayJobs.length > 2 ? (
                         <div className="text-[11px] text-[#8a7b68]">+{dayJobs.length - 2} more</div>
@@ -2243,6 +2272,7 @@ function renderPropertiesSection() {
                   const offeredCount = slots.filter((slot) => slot.status === "offered").length;
                   const strandedCount = slots.filter((slot) => slot.status === "stranded").length;
                   const declinedCount = slots.filter((slot) => slot.status === "declined").length;
+                  const propertyColor = getPropertyColor(job.property_id);
 
                   return (
                     <button
@@ -2254,12 +2284,19 @@ function renderPropertiesSection() {
                           document.getElementById(`job-${job.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
                         }, 50);
                       }}
-                      className="block w-full rounded-[20px] border border-[#eadfce] bg-white p-4 text-left transition hover:shadow-sm"
+                      className="block w-full rounded-[20px] border bg-white p-4 text-left transition hover:shadow-sm"
+                      style={{ borderColor: propertyColor.border, boxShadow: `inset 4px 0 0 ${propertyColor.text}` }}
                     >
                       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                         <div>
-                          <div className="text-base font-semibold text-[#241c15]">
-                            {getPropertyName(job.property_id)}
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span
+                              className="inline-block h-3 w-3 rounded-full border"
+                              style={{ backgroundColor: propertyColor.text, borderColor: propertyColor.border }}
+                            />
+                            <div className="text-base font-semibold text-[#241c15]">
+                              {getPropertyName(job.property_id)}
+                            </div>
                           </div>
                           <div className="mt-1 text-sm text-[#6f6255]">
                             {getJobDisplayStatus(job, slots)}
