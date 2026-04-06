@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 type PropertyCalendarRow = {
   id: string;
   property_id: string;
-  source: "airbnb" | "vrbo";
+  source: string;
   ical_url: string;
   is_active: boolean | null;
 };
@@ -16,21 +16,10 @@ type PropertyRow = {
   address: string | null;
 };
 
-type AssignmentRow = {
-  id: string;
-  property_id: string;
-  cleaner_id: string;
-  priority: number;
-};
-
 type TurnoverJobRow = {
   id: string;
   property_id: string;
-  status: string | null;
-  assigned_cleaner_id: string | null;
   notes: string | null;
-  scheduled_for?: string | null;
-  cleaners_needed?: number | null;
 };
 
 type ParsedEvent = {
@@ -230,30 +219,10 @@ async function loadPropertiesMap() {
   return map;
 }
 
-async function loadAssignmentsMap() {
-  const { data, error } = await supabase
-    .from("property_cleaner_assignments")
-    .select("id, property_id, cleaner_id, priority")
-    .order("priority", { ascending: true });
-
-  if (error) throw error;
-
-  const map = new Map<string, AssignmentRow[]>();
-
-  for (const row of (data ?? []) as AssignmentRow[]) {
-    if (!map.has(row.property_id)) {
-      map.set(row.property_id, []);
-    }
-    map.get(row.property_id)!.push(row);
-  }
-
-  return map;
-}
-
 async function jobAlreadyExists(propertyId: string, marker: string): Promise<boolean> {
   const { data, error } = await supabase
     .from("turnover_jobs")
-    .select("id, property_id, status, assigned_cleaner_id, notes, scheduled_for, cleaners_needed")
+    .select("id, property_id, notes")
     .eq("property_id", propertyId)
     .ilike("notes", `%${marker}%`)
     .limit(1);
@@ -334,7 +303,6 @@ export async function POST() {
   try {
     const calendars = await loadCalendars();
     const propertiesMap = await loadPropertiesMap();
-    const assignmentsMap = await loadAssignmentsMap();
 
     const results: Array<{
       property_id: string;
@@ -350,8 +318,6 @@ export async function POST() {
     for (const calendar of calendars) {
       const property = propertiesMap.get(calendar.property_id);
       const propertyName = property?.name || "Unknown property";
-      const assignments = assignmentsMap.get(calendar.property_id) ?? [];
-      const primaryCleanerId = assignments[0]?.cleaner_id ?? null;
 
       const resultBucket = {
         property_id: calendar.property_id,
@@ -400,19 +366,34 @@ export async function POST() {
             marker,
           });
 
-          const { error: insertError } = await supabase.from("turnover_jobs").insert({
-  property_id: calendar.property_id,
-  status: primaryCleanerId ? "assigned" : "pending",
-  assigned_cleaner_id: primaryCleanerId,
-  notes,
-  scheduled_for: event.checkoutDate,
-  cleaners_needed: 1,
-  cleaners_required_strict: false,
-});
+          const { data: insertedJob, error: insertError } = await supabase
+            .from("turnover_jobs")
+            .insert({
+              property_id: calendar.property_id,
+              status: "pending",
+              notes,
+              scheduled_for: event.checkoutDate,
+              cleaner_units_needed: 1,
+              cleaner_units_required_strict: false,
+              show_team_status_to_cleaners: true,
+            })
+            .select("id")
+            .single();
 
-          if (insertError) {
+          if (insertError || !insertedJob) {
             resultBucket.errors.push(
-              `Failed to create job for ${event.summary || "reservation"} on ${event.checkoutDate}: ${insertError.message}`
+              `Failed to create job for ${event.summary || "reservation"} on ${event.checkoutDate}: ${insertError?.message || "Unknown insert error"}`
+            );
+            continue;
+          }
+
+          const { error: slotError } = await supabase.rpc("create_slots_for_job", {
+            p_job_id: insertedJob.id,
+          });
+
+          if (slotError) {
+            resultBucket.errors.push(
+              `Job created but slot creation failed for ${event.summary || "reservation"} on ${event.checkoutDate}: ${slotError.message}`
             );
             continue;
           }
