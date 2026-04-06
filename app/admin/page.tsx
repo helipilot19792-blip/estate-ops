@@ -1246,7 +1246,7 @@ export default function AdminPage() {
           ical_url: row.ical_url.trim(),
           is_active: row.is_active,
         }))
-        .filter((row) => row.source && row.ical_url);
+        .filter((row) => row.source || row.ical_url);
 
       for (const row of normalizedRows) {
         if (!row.source) {
