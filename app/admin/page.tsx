@@ -1522,7 +1522,31 @@ export default function AdminPage() {
         ?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 50);
   }
-  const visibleJobs = jobsExpanded ? jobs : jobs.slice(0, 3);
+  const sortedJobs = useMemo(() => {
+    function getSortableJobDate(job: Job) {
+      return job.scheduled_for || extractCheckoutDate(job.notes) || "9999-12-31";
+    }
+
+    return [...jobs].sort((a, b) => {
+      const aDate = getSortableJobDate(a);
+      const bDate = getSortableJobDate(b);
+
+      if (aDate !== bDate) {
+        return aDate.localeCompare(bDate);
+      }
+
+      const aName = getPropertyName(a.property_id);
+      const bName = getPropertyName(b.property_id);
+
+      if (aName !== bName) {
+        return aName.localeCompare(bName);
+      }
+
+      return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+    });
+  }, [jobs, properties]);
+
+  const visibleJobs = jobsExpanded ? sortedJobs : sortedJobs.slice(0, 3);
   const recentDeclinedJobs = useMemo(
     () =>
       [...jobSlots]
@@ -2351,10 +2375,10 @@ export default function AdminPage() {
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                       <div>
                         <div className="text-base font-semibold text-[#241c15]">{job.property_name || getPropertyName(job.property_id)}</div>
-                        <div className="mt-1 text-sm text-[#8a5d4b]">
+                        <div className="mt-3 inline-flex rounded-full border border-[#c89a4b] bg-[#fff8ec] px-4 py-2 text-base font-semibold text-[#8a5d12] shadow-sm">
                           Cleaning date: {formatScheduledFor(job.scheduled_for || extractCheckoutDate(job.notes))}
                         </div>
-                        <div className="mt-1 text-sm text-[#8a5d4b]">
+                        <div className="mt-3 text-sm text-[#8a5d4b]">
                           Status: {job.staffing_status || job.status || "Stranded"}
                         </div>
                         {remainingMs !== null ? (
