@@ -5,25 +5,32 @@ export const dynamic = "force-dynamic";
 type PropertyCalendarRow = {
   id: string;
   property_id: string;
-  source: string;
+  source: "airbnb" | "vrbo";
   ical_url: string;
   is_active: boolean | null;
-  last_synced_at?: string | null;
 };
 
 type PropertyRow = {
   id: string;
   name: string | null;
   address: string | null;
-  default_cleaner_units_needed: number | null;
-  cleaner_units_required_strict: boolean | null;
-  show_team_status_to_cleaners: boolean | null;
+};
+
+type AssignmentRow = {
+  id: string;
+  property_id: string;
+  cleaner_id: string;
+  priority: number;
 };
 
 type TurnoverJobRow = {
   id: string;
   property_id: string;
+  status: string | null;
+  assigned_cleaner_id: string | null;
   notes: string | null;
+  scheduled_for?: string | null;
+  cleaners_needed?: number | null;
 };
 
 type ParsedEvent = {
@@ -133,6 +140,7 @@ function parseIcsEvents(icsText: string): ParsedEvent[] {
 
     const namePart = line.split(":")[0] ?? "";
     const key = namePart.split(";")[0]?.toUpperCase().trim();
+
     if (!key) continue;
 
     if (!current[key]) {
@@ -179,20 +187,21 @@ function isFutureOrToday(dateString: string): boolean {
 
 function isRealBookingEvent(summary: string, source: string): boolean {
   const s = (summary || "").toLowerCase().trim();
-  const normalizedSource = (source || "").toLowerCase().trim();
 
-  if (s.includes("not available")) return false;
-  if (s.includes("blocked")) return false;
-  if (s.includes("maintenance")) return false;
-  if (s.includes("unavailable")) return false;
-  if (s.includes("owner stay")) return false;
-  if (s.includes("hold")) return false;
-
-  if (normalizedSource === "airbnb") {
+  if (source === "airbnb") {
+    if (s.includes("not available")) return false;
+    if (s.includes("blocked")) return false;
+    if (s.includes("maintenance")) return false;
+    if (s.includes("unavailable")) return false;
+    if (s.includes("reserved")) return true;
     return true;
   }
 
-  if (normalizedSource === "vrbo") {
+  if (source === "vrbo") {
+    if (s.includes("not available")) return false;
+    if (s.includes("blocked")) return false;
+    if (s.includes("maintenance")) return false;
+    if (s.includes("unavailable")) return false;
     return true;
   }
 
@@ -202,7 +211,7 @@ function isRealBookingEvent(summary: string, source: string): boolean {
 async function loadCalendars() {
   const { data, error } = await supabase
     .from("property_calendars")
-    .select("id, property_id, source, ical_url, is_active, last_synced_at")
+    .select("id, property_id, source, ical_url, is_active")
     .eq("is_active", true);
 
   if (error) throw error;
@@ -210,11 +219,7 @@ async function loadCalendars() {
 }
 
 async function loadPropertiesMap() {
-  const { data, error } = await supabase
-    .from("properties")
-    .select(
-      "id, name, address, default_cleaner_units_needed, cleaner_units_required_strict, show_team_status_to_cleaners"
-    );
+  const { data, error } = await supabase.from("properties").select("id, name, address");
 
   if (error) throw error;
 
@@ -225,10 +230,30 @@ async function loadPropertiesMap() {
   return map;
 }
 
+async function loadAssignmentsMap() {
+  const { data, error } = await supabase
+    .from("property_cleaner_assignments")
+    .select("id, property_id, cleaner_id, priority")
+    .order("priority", { ascending: true });
+
+  if (error) throw error;
+
+  const map = new Map<string, AssignmentRow[]>();
+
+  for (const row of (data ?? []) as AssignmentRow[]) {
+    if (!map.has(row.property_id)) {
+      map.set(row.property_id, []);
+    }
+    map.get(row.property_id)!.push(row);
+  }
+
+  return map;
+}
+
 async function jobAlreadyExists(propertyId: string, marker: string): Promise<boolean> {
   const { data, error } = await supabase
     .from("turnover_jobs")
-    .select("id, property_id, notes")
+    .select("id, property_id, status, assigned_cleaner_id, notes, scheduled_for, cleaners_needed")
     .eq("property_id", propertyId)
     .ilike("notes", `%${marker}%`)
     .limit(1);
@@ -256,17 +281,6 @@ async function getCalendarEvents(calendar: PropertyCalendarRow): Promise<ParsedE
   return parseIcsEvents(icsText);
 }
 
-async function markCalendarSynced(calendarId: string) {
-  const { error } = await supabase
-    .from("property_calendars")
-    .update({ last_synced_at: new Date().toISOString() })
-    .eq("id", calendarId);
-
-  if (error) {
-    throw error;
-  }
-}
-
 export async function GET() {
   try {
     const calendars = await loadCalendars();
@@ -283,7 +297,6 @@ export async function GET() {
     for (const calendar of calendars) {
       const property = propertiesMap.get(calendar.property_id);
       const events = await getCalendarEvents(calendar);
-
       const upcoming = events.filter(
         (event) =>
           event.checkoutDate &&
@@ -321,6 +334,7 @@ export async function POST() {
   try {
     const calendars = await loadCalendars();
     const propertiesMap = await loadPropertiesMap();
+    const assignmentsMap = await loadAssignmentsMap();
 
     const results: Array<{
       property_id: string;
@@ -336,6 +350,8 @@ export async function POST() {
     for (const calendar of calendars) {
       const property = propertiesMap.get(calendar.property_id);
       const propertyName = property?.name || "Unknown property";
+      const assignments = assignmentsMap.get(calendar.property_id) ?? [];
+      const primaryCleanerId = assignments[0]?.cleaner_id ?? null;
 
       const resultBucket = {
         property_id: calendar.property_id,
@@ -384,41 +400,25 @@ export async function POST() {
             marker,
           });
 
-          const { data: insertedJob, error: insertError } = await supabase
-            .from("turnover_jobs")
-            .insert({
-              property_id: calendar.property_id,
-              notes,
-              scheduled_for: event.checkoutDate,
-              cleaner_units_needed: property?.default_cleaner_units_needed ?? 1,
-              cleaner_units_required_strict: property?.cleaner_units_required_strict ?? false,
-              show_team_status_to_cleaners: property?.show_team_status_to_cleaners ?? true,
-            })
-            .select("id")
-            .single();
+          const { error: insertError } = await supabase.from("turnover_jobs").insert({
+  property_id: calendar.property_id,
+  status: primaryCleanerId ? "assigned" : "pending",
+  assigned_cleaner_id: primaryCleanerId,
+  notes,
+  scheduled_for: event.checkoutDate,
+  cleaners_needed: 1,
+  cleaners_required_strict: false,
+});
 
-          if (insertError || !insertedJob) {
+          if (insertError) {
             resultBucket.errors.push(
-              `Failed to create job for ${event.summary || "reservation"} on ${event.checkoutDate}: ${insertError?.message || "Unknown insert error"}`
-            );
-            continue;
-          }
-
-          const { error: slotError } = await supabase.rpc("create_slots_for_job", {
-            p_job_id: insertedJob.id,
-          });
-
-          if (slotError) {
-            resultBucket.errors.push(
-              `Job created for ${event.summary || "reservation"} on ${event.checkoutDate}, but slot creation failed: ${slotError.message}`
+              `Failed to create job for ${event.summary || "reservation"} on ${event.checkoutDate}: ${insertError.message}`
             );
             continue;
           }
 
           resultBucket.created += 1;
         }
-
-        await markCalendarSynced(calendar.id);
       } catch (calendarError: any) {
         resultBucket.errors.push(calendarError?.message || "Calendar processing failed");
       }
