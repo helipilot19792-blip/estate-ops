@@ -1702,73 +1702,102 @@ setPropertyPostal("");
       </div>
     );
   }
-  function renderPropertiesSection() {
-    return (
-      <div className="space-y-6">
-        <section
-          className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]"
-        >
-          <h2 className="text-xl font-semibold tracking-tight">Add Property</h2>
-          <p className="mt-1 text-sm text-[#7f7263]">Add a managed property and set default staffing rules.</p>
+ function renderAddPropertySection() {
+  return (
+    <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+      <h2 className="text-xl font-semibold tracking-tight">Add Property</h2>
+      <p className="mt-1 text-sm text-[#7f7263]">
+        Add a managed property and set default staffing rules.
+      </p>
 
-          <div className="mt-5 space-y-3">
-            <input className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" placeholder="Property name" value={propertyName} onChange={(e) => setPropertyName(e.target.value)} />
-          <div className="grid gap-2">
-  <input
-    className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-    placeholder="Street Address"
-    value={propertyStreet}
-    onChange={(e) => setPropertyStreet(e.target.value)}
-  />
+      <div className="mt-5 space-y-3">
+        <input
+          className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+          placeholder="Property name"
+          value={propertyName}
+          onChange={(e) => setPropertyName(e.target.value)}
+        />
 
-  <div className="grid grid-cols-2 gap-2">
-    <input
-      className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-      placeholder="City"
-      value={propertyCity}
-      onChange={(e) => setPropertyCity(e.target.value)}
-    />
+        <div className="grid gap-2">
+          <input
+            className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+            placeholder="Street Address"
+            value={propertyStreet}
+            onChange={(e) => setPropertyStreet(e.target.value)}
+          />
 
-    <input
-      className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-      placeholder="Province"
-      value={propertyProvince}
-      onChange={(e) => setPropertyProvince(e.target.value)}
-    />
-  </div>
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+              placeholder="City"
+              value={propertyCity}
+              onChange={(e) => setPropertyCity(e.target.value)}
+            />
 
-  <input
-    className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-    placeholder="Postal Code"
-    value={propertyPostal}
-    onChange={(e) => setPropertyPostal(e.target.value)}
-  />
-</div>
-            <textarea className="min-h-[110px] w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" placeholder="Internal notes" value={propertyNotes} onChange={(e) => setPropertyNotes(e.target.value)} />
-
-            <select className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" value={propertyUnitsNeeded} onChange={(e) => setPropertyUnitsNeeded(e.target.value)}>
-              <option value="1">Default cleaner units: 1</option>
-              <option value="2">Default cleaner units: 2</option>
-              <option value="3">Default cleaner units: 3</option>
-            </select>
-
-            <label className="flex items-center gap-2 text-sm text-[#6f6255]">
-              <input type="checkbox" checked={propertyUnitsStrict} onChange={(e) => setPropertyUnitsStrict(e.target.checked)} />
-              Full team required before the job is fully staffed
-            </label>
-
-            <label className="flex items-center gap-2 text-sm text-[#6f6255]">
-              <input type="checkbox" checked={propertyShowTeamStatus} onChange={(e) => setPropertyShowTeamStatus(e.target.checked)} />
-              Show team status on cleaner page
-            </label>
-
-            <button className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]" onClick={() => void addProperty()}>
-              Add Property
-            </button>
+            <input
+              className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+              placeholder="Province"
+              value={propertyProvince}
+              onChange={(e) => setPropertyProvince(e.target.value)}
+            />
           </div>
-        </section>
 
-        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <input
+            className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+            placeholder="Postal Code"
+            value={propertyPostal}
+            onChange={(e) => setPropertyPostal(e.target.value)}
+          />
+        </div>
+
+        <textarea
+          className="min-h-[110px] w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+          placeholder="Internal notes"
+          value={propertyNotes}
+          onChange={(e) => setPropertyNotes(e.target.value)}
+        />
+
+        <select
+          className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+          value={propertyUnitsNeeded}
+          onChange={(e) => setPropertyUnitsNeeded(e.target.value)}
+        >
+          <option value="1">Default cleaner units: 1</option>
+          <option value="2">Default cleaner units: 2</option>
+          <option value="3">Default cleaner units: 3</option>
+        </select>
+
+        <label className="flex items-center gap-2 text-sm text-[#6f6255]">
+          <input
+            type="checkbox"
+            checked={propertyUnitsStrict}
+            onChange={(e) => setPropertyUnitsStrict(e.target.checked)}
+          />
+          Full team required before the job is fully staffed
+        </label>
+
+        <label className="flex items-center gap-2 text-sm text-[#6f6255]">
+          <input
+            type="checkbox"
+            checked={propertyShowTeamStatus}
+            onChange={(e) => setPropertyShowTeamStatus(e.target.checked)}
+          />
+          Show team status on cleaner page
+        </label>
+
+        <button
+          className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]"
+          onClick={() => void addProperty()}
+        >
+          Add Property
+        </button>
+      </div>
+    </section>
+  );
+}
+function renderPropertiesSection() {
+  return (
+    <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-xl font-semibold tracking-tight">Properties</h2>
             <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">{properties.length}</span>
@@ -1806,10 +1835,9 @@ setPropertyPostal("");
               );
             })}
           </div>
-        </section>
-      </div>
-    );
-  }
+     </section>
+  );
+}
 
   function renderCleanerAccountsSection() {
     return (
@@ -2782,13 +2810,14 @@ setPropertyPostal("");
     switch (activeSection) {
       case "users":
         return renderUsersSection();
-      case "properties":
-        return (
-          <div className="space-y-6">
-            {renderPropertiesSection()}
-            {renderPropertySetupSection()}
-          </div>
-        );
+case "properties":
+  return (
+    <div className="space-y-6">
+      {renderAddPropertySection()}
+      {renderPropertySetupSection()}
+      {renderPropertiesSection()}
+    </div>
+  );
       case "cleanerAccounts":
         return renderCleanerAccountsSection();
       case "assignments":
