@@ -273,7 +273,10 @@ export default function AdminPage() {
   const [actionMessage, setActionMessage] = useState("");
 
   const [propertyName, setPropertyName] = useState("");
-  const [propertyAddress, setPropertyAddress] = useState("");
+ const [propertyStreet, setPropertyStreet] = useState("");
+const [propertyCity, setPropertyCity] = useState("");
+const [propertyProvince, setPropertyProvince] = useState("");
+const [propertyPostal, setPropertyPostal] = useState("");
   const [propertyNotes, setPropertyNotes] = useState("");
   const [propertyUnitsNeeded, setPropertyUnitsNeeded] = useState("1");
   const [propertyUnitsStrict, setPropertyUnitsStrict] = useState(false);
@@ -731,7 +734,7 @@ export default function AdminPage() {
 
     const { error } = await supabase.from("properties").insert({
       name: propertyName.trim(),
-      address: propertyAddress.trim() || null,
+     address: `${propertyStreet}, ${propertyCity}, ${propertyProvince}, ${propertyPostal}`,
       notes: propertyNotes.trim() || null,
       default_cleaner_units_needed: Number(propertyUnitsNeeded),
       cleaner_units_required_strict: propertyUnitsStrict,
@@ -744,7 +747,10 @@ export default function AdminPage() {
     }
 
     setPropertyName("");
-    setPropertyAddress("");
+   setPropertyStreet("");
+setPropertyCity("");
+setPropertyProvince("");
+setPropertyPostal("");
     setPropertyNotes("");
     setPropertyUnitsNeeded("1");
     setPropertyUnitsStrict(false);
@@ -1707,7 +1713,37 @@ export default function AdminPage() {
 
           <div className="mt-5 space-y-3">
             <input className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" placeholder="Property name" value={propertyName} onChange={(e) => setPropertyName(e.target.value)} />
-            <input className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" placeholder="Address" value={propertyAddress} onChange={(e) => setPropertyAddress(e.target.value)} />
+          <div className="grid gap-2">
+  <input
+    className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+    placeholder="Street Address"
+    value={propertyStreet}
+    onChange={(e) => setPropertyStreet(e.target.value)}
+  />
+
+  <div className="grid grid-cols-2 gap-2">
+    <input
+      className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+      placeholder="City"
+      value={propertyCity}
+      onChange={(e) => setPropertyCity(e.target.value)}
+    />
+
+    <input
+      className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+      placeholder="Province"
+      value={propertyProvince}
+      onChange={(e) => setPropertyProvince(e.target.value)}
+    />
+  </div>
+
+  <input
+    className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+    placeholder="Postal Code"
+    value={propertyPostal}
+    onChange={(e) => setPropertyPostal(e.target.value)}
+  />
+</div>
             <textarea className="min-h-[110px] w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" placeholder="Internal notes" value={propertyNotes} onChange={(e) => setPropertyNotes(e.target.value)} />
 
             <select className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" value={propertyUnitsNeeded} onChange={(e) => setPropertyUnitsNeeded(e.target.value)}>
