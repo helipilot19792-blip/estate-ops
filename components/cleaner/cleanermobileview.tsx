@@ -73,6 +73,10 @@ export default function CleanerMobileView({
     return (status || "").toLowerCase().trim() === "offered";
   }
 
+  function isAccepted(status: string | null | undefined) {
+    return (status || "").toLowerCase().trim() === "accepted";
+  }
+
   function handleCardTap(slotId: string) {
     setSelectedSlotId((current) => (current === slotId ? null : slotId));
   }
@@ -81,6 +85,10 @@ export default function CleanerMobileView({
     const confirmed = window.confirm("Are you sure you want to decline this job?");
     if (!confirmed) return;
     await handleDeclineJob();
+  }
+
+  function getCalendarUrl(jobId: string) {
+    return `/api/cleaner-calendar-event?jobId=${encodeURIComponent(jobId)}`;
   }
 
   function renderJobList(items: CleanerJob[], emptyText: string) {
@@ -267,6 +275,15 @@ export default function CleanerMobileView({
                   >
                     {actionLoading === "accept" ? "Accepting..." : "Accept Job"}
                   </button>
+                ) : null}
+
+                {isAccepted(selectedCleanerJob.slot.status) ? (
+                  <a
+                    href={getCalendarUrl(selectedCleanerJob.job.id)}
+                    className="rounded-full border border-[#b08b47]/40 bg-[#b08b47]/15 px-4 py-3 text-sm font-semibold text-[#f5efe4] transition hover:bg-[#b08b47]/25"
+                  >
+                    Add to Calendar
+                  </a>
                 ) : null}
 
                 <button
