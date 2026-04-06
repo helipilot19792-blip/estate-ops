@@ -359,6 +359,7 @@ export async function POST() {
               notes,
               scheduled_for: event.checkoutDate,
               cleaners_needed: 1,
+              cleaners_required_strict: false,
               cleaner_units_needed: 1,
               cleaner_units_required_strict: false,
               show_team_status_to_cleaners: true,
