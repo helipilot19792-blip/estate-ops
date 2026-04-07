@@ -85,10 +85,18 @@ export default function CleanerMobileView({
     setSelectedSlotId((current) => (current === slotId ? null : slotId));
   }
 
-  async function onDeclineClick() {
+  async function onAcceptClick() {
+    await handleAcceptJob();
+    setSelectedSlotId(null);
+    setSelectedDate(null);
+  }
+
+  async function onDeclineAndReturn() {
     const confirmed = window.confirm("Are you sure you want to decline this job?");
     if (!confirmed) return;
     await handleDeclineJob();
+    setSelectedSlotId(null);
+    setSelectedDate(null);
   }
 
   function getCalendarUrl(jobId: string) {
@@ -310,7 +318,7 @@ export default function CleanerMobileView({
                   <>
                     <button
                       type="button"
-                      onClick={() => void handleAcceptJob()}
+                      onClick={() => void onAcceptClick()}
                       disabled={actionLoading !== null}
                       className="rounded-full border border-emerald-500/40 bg-emerald-500/20 px-4 py-3 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-500/30 disabled:opacity-50"
                     >
@@ -319,7 +327,7 @@ export default function CleanerMobileView({
 
                     <button
                       type="button"
-                      onClick={() => void onDeclineClick()}
+                      onClick={() => void onDeclineAndReturn()}
                       disabled={actionLoading !== null}
                       className="rounded-full border border-red-500/40 bg-red-500/20 px-4 py-3 text-sm font-semibold text-red-200 transition hover:bg-red-500/30 disabled:opacity-50"
                     >
