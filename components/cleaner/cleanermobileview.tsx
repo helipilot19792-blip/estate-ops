@@ -13,6 +13,8 @@ export default function CleanerMobileView({
   handleAcceptJob,
   handleDeclineJob,
   handleCloseDetails,
+  handleSignOut,
+  signingOut,
   actionLoading,
   getStatusTone,
   getSlotDisplayStatus,
@@ -26,6 +28,8 @@ export default function CleanerMobileView({
   selectedJobAccess,
   selectedJobSops,
   sopImagesBySopId,
+  profile,
+  cleanerAccount,
 }: CleanerViewProps) {
   const [jobView, setJobView] = useState<"active" | "history">("active");
 
@@ -316,10 +320,40 @@ export default function CleanerMobileView({
     <main className="min-h-screen bg-[#0f0d0a] px-3 py-4 text-[#f5efe4]">
       <div className="mx-auto max-w-md space-y-4">
         <div className="rounded-2xl border border-[#7a5c2e]/30 bg-[#15110d] p-4">
-          <h1 className="text-xl font-semibold">Cleaner Jobs</h1>
-          <p className="text-sm text-[#cdbda0]">
-            Active Jobs is the default view. Job History is in its own tab.
-          </p>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h1 className="text-xl font-semibold">Cleaner Jobs</h1>
+              <p className="mt-1 text-sm text-[#cdbda0]">
+                Active Jobs is the default view. Job History is in its own tab.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => void handleSignOut()}
+              disabled={signingOut}
+              className="shrink-0 rounded-full border border-[#b08b47]/60 px-3 py-2 text-xs font-semibold text-[#f5efe4] transition hover:bg-[#b08b47] hover:text-[#120f0b] disabled:opacity-50"
+            >
+              {signingOut ? "Signing out..." : "Logout"}
+            </button>
+          </div>
+
+          <div className="mt-4 rounded-xl border border-[#7a5c2e]/20 bg-[#100d0a] p-3">
+            <div className="text-xs uppercase tracking-[0.16em] text-[#b08b47]">
+              Logged in as
+            </div>
+            <div className="mt-1 text-sm font-medium text-[#f8f2e8]">
+              {profile?.full_name || cleanerAccount?.display_name || "Cleaner"}
+            </div>
+            <div className="mt-1 text-xs text-[#cdbda0] break-all">
+              {profile?.email || "No email available"}
+            </div>
+            {cleanerAccount?.display_name ? (
+              <div className="mt-2 text-xs text-[#d4c4a8]">
+                Account: {cleanerAccount.display_name}
+              </div>
+            ) : null}
+          </div>
         </div>
 
         <div className="inline-flex w-full rounded-2xl border border-[#7a5c2e]/30 bg-[#100d0a] p-1">
