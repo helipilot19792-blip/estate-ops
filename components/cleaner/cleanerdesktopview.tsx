@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import Image from "next/image";
 import type { CleanerJob, CleanerViewProps } from "@/components/cleaner/cleanershell";
 
@@ -15,9 +16,19 @@ function JobCard({
   remainingMs,
   countdownTone,
   formatDateLabel,
+  formatDateTimeLabel,
   formatRemaining,
   getSlotDisplayStatus,
   getTeamMessage,
+  parseJobNotes,
+  selectedJobProperty,
+  selectedJobAccess,
+  selectedJobSops,
+  sopImagesBySopId,
+  actionLoading,
+  handleAcceptJob,
+  handleDeclineJob,
+  handleCloseDetails,
 }: {
   item: CleanerJob;
   isSelected: boolean;
@@ -29,67 +40,284 @@ function JobCard({
   remainingMs: number | null;
   countdownTone: string;
   formatDateLabel: (dateString: string | null) => string;
+  formatDateTimeLabel: (dateString: string | null | undefined) => string;
   formatRemaining: (ms: number) => string;
   getSlotDisplayStatus: CleanerViewProps["getSlotDisplayStatus"];
   getTeamMessage: CleanerViewProps["getTeamMessage"];
+  parseJobNotes: CleanerViewProps["parseJobNotes"];
+  selectedJobProperty: CleanerViewProps["selectedJobProperty"];
+  selectedJobAccess: CleanerViewProps["selectedJobAccess"];
+  selectedJobSops: CleanerViewProps["selectedJobSops"];
+  sopImagesBySopId: CleanerViewProps["sopImagesBySopId"];
+  actionLoading: CleanerViewProps["actionLoading"];
+  handleAcceptJob: CleanerViewProps["handleAcceptJob"];
+  handleDeclineJob: CleanerViewProps["handleDeclineJob"];
+  handleCloseDetails: CleanerViewProps["handleCloseDetails"];
 }) {
+  const parsedNotes = parseJobNotes(item.job.notes);
+  const selectedStatus = (item.slot.status || "").toLowerCase().trim();
+  const isOffered = selectedStatus === "offered";
+  const isAccepted = selectedStatus === "accepted";
+
   return (
-    <button
-      onClick={onClick}
+    <div
       className={[
-        "block w-full rounded-2xl border p-5 text-left transition duration-200",
+        "rounded-2xl border p-5 text-left transition duration-200",
         tone.card,
         isSelected ? tone.selectedRing : "hover:-translate-y-[1px] hover:bg-[#18120e]",
       ].join(" ")}
     >
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className={tone.badge}>
-              {getSlotDisplayStatus(item.slot.status, item.job.staffing_status)}
-            </span>
-
-            {isSelected && (
-              <span className="rounded-full border border-[#b08b47]/35 bg-[#b08b47]/10 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[#f0d59f]">
-                Selected
+      <button type="button" onClick={onClick} className="block w-full text-left">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={tone.badge}>
+                {getSlotDisplayStatus(item.slot.status, item.job.staffing_status)}
               </span>
+
+              {isSelected && (
+                <span className="rounded-full border border-[#b08b47]/35 bg-[#b08b47]/10 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[#f0d59f]">
+                  Open
+                </span>
+              )}
+            </div>
+
+            <h3 className="mt-3 text-lg font-semibold text-[#f8f2e8]">{propertyName}</h3>
+            <p className="mt-1 text-sm text-[#d4c4a8]">{propertyAddress}</p>
+
+            <p className="mt-2 text-sm font-medium text-[#f0d59f]">
+              Cleaning date: {formatDateLabel(item.jobDate)}
+            </p>
+
+            <p className="mt-2 text-sm text-[#d9c5a1]">{getTeamMessage(item)}</p>
+
+            {waiting && remainingMs !== null && (
+              <p className={`mt-2 text-sm font-semibold ${countdownTone}`}>
+                {remainingMs < 0
+                  ? `Overdue by ${formatRemaining(remainingMs)}`
+                  : `Accept within ${formatRemaining(remainingMs)}`}
+              </p>
             )}
           </div>
 
-          <h3 className="mt-3 text-lg font-semibold text-[#f8f2e8]">{propertyName}</h3>
+          <div className="flex items-start md:justify-end">
+            <span className="inline-flex items-center gap-2 rounded-full border border-[#7a5c2e]/25 bg-[#120f0b] px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[#d9c5a1]">
+              <span className={`h-2 w-2 rounded-full ${tone.dot}`} />
+              {isSelected ? "Tap to close" : "Tap to open"}
+            </span>
+          </div>
+        </div>
 
-          <p className="mt-1 text-sm text-[#d4c4a8]">{propertyAddress}</p>
+        <div className="mt-4">
+          <p className="text-xs uppercase tracking-[0.18em] text-[#b08b47]">Job Summary</p>
+          <div className="mt-2 space-y-1 text-sm text-[#e8ddca]">
+            {parsedNotes.summaryLines.length > 0 ? (
+              parsedNotes.summaryLines.slice(0, 3).map((line, index) => <p key={index}>{line}</p>)
+            ) : (
+              <p>No job notes.</p>
+            )}
+          </div>
+        </div>
+      </button>
 
-          <p className="mt-2 text-sm font-medium text-[#f0d59f]">
-            Cleaning date: {formatDateLabel(item.jobDate)}
-          </p>
+      {isSelected && (
+        <div className="mt-5 border-t border-[#7a5c2e]/20 pt-5">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.18em] text-[#b08b47]">Job details</p>
+              <h3 className="mt-1 text-xl font-semibold text-[#f8f2e8]">
+                {selectedJobProperty?.name || propertyName}
+              </h3>
+              <p className="mt-1 text-sm text-[#d4c4a8]">
+                {selectedJobProperty?.address || propertyAddress}
+              </p>
+              <p className="mt-2 text-sm text-[#e7c98a]">
+                Cleaning date: {formatDateLabel(item.jobDate)}
+              </p>
+              <p className="mt-2 text-sm text-[#d9c5a1]">{getTeamMessage(item)}</p>
+            </div>
 
-          <p className="mt-2 text-sm text-[#d9c5a1]">{getTeamMessage(item)}</p>
+            <div>
+              <span
+                className={`inline-flex w-fit rounded-full px-3 py-1 text-xs uppercase tracking-[0.16em] ${
+                  isOffered
+                    ? "border border-red-400/70 bg-red-500 text-white animate-pulse"
+                    : isAccepted
+                      ? "border border-emerald-400/40 bg-emerald-500/20 text-emerald-200"
+                      : "border border-[#7a5c2e]/35 bg-[#b08b47]/10 text-[#e7c98a]"
+                }`}
+              >
+                {getSlotDisplayStatus(item.slot.status ?? null, item.job.staffing_status ?? null)}
+              </span>
 
-          {waiting && remainingMs !== null && (
-            <p className={`mt-2 text-sm font-semibold ${countdownTone}`}>
-              {remainingMs < 0
-                ? `Overdue by ${formatRemaining(remainingMs)}`
-                : `Accept within ${formatRemaining(remainingMs)}`}
+              {isOffered && remainingMs !== null && (
+                <div className={`mt-3 text-sm font-semibold ${countdownTone}`}>
+                  {remainingMs < 0
+                    ? `Overdue by ${formatRemaining(remainingMs)}`
+                    : `Accept within ${formatRemaining(remainingMs)}`}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-4">
+              <p className="text-xs uppercase tracking-[0.16em] text-[#b08b47]">Slot Offered</p>
+              <p className="mt-2 text-sm text-[#e8ddca]">{formatDateTimeLabel(item.slot.offered_at)}</p>
+            </div>
+
+            <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-4">
+              <p className="text-xs uppercase tracking-[0.16em] text-[#b08b47]">Slot Accepted</p>
+              <p className="mt-2 text-sm text-[#e8ddca]">{formatDateTimeLabel(item.slot.accepted_at)}</p>
+            </div>
+
+            <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-4">
+              <p className="text-xs uppercase tracking-[0.16em] text-[#b08b47]">Slot Declined</p>
+              <p className="mt-2 text-sm text-[#e8ddca]">{formatDateTimeLabel(item.slot.declined_at)}</p>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-4">
+              <p className="text-xs uppercase tracking-[0.16em] text-[#b08b47]">Team Slots</p>
+              <p className="mt-2 text-sm text-[#e8ddca]">
+                {item.acceptedSlots} accepted of {item.totalSlots}
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-4">
+              <p className="text-xs uppercase tracking-[0.16em] text-[#b08b47]">Job Status</p>
+              <p className="mt-2 text-sm text-[#e8ddca]">
+                {item.job.staffing_status || item.job.status || "—"}
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-4">
+              <p className="text-xs uppercase tracking-[0.16em] text-[#b08b47]">Slot Number</p>
+              <p className="mt-2 text-sm text-[#e8ddca]">{item.slot.slot_number ?? "—"}</p>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-3">
+            {isOffered && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => void handleAcceptJob()}
+                  disabled={actionLoading !== null}
+                  className="rounded-full bg-emerald-500 px-5 py-2 text-sm font-medium text-[#08110c] transition hover:bg-emerald-400 disabled:opacity-50"
+                >
+                  {actionLoading === "accept" ? "Accepting..." : "Accept Job"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void handleDeclineJob()}
+                  disabled={actionLoading !== null}
+                  className="rounded-full bg-red-500 px-5 py-2 text-sm font-medium text-white transition hover:bg-red-400 disabled:opacity-50"
+                >
+                  {actionLoading === "decline" ? "Declining..." : "Decline Job"}
+                </button>
+              </>
+            )}
+
+            <button
+              type="button"
+              onClick={handleCloseDetails}
+              className="rounded-full border border-[#7a5c2e]/50 px-5 py-2 text-sm font-medium text-[#f5efe4] transition hover:bg-[#241a14]"
+            >
+              Close Details
+            </button>
+          </div>
+
+          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-[#b08b47]">Job Notes</p>
+              <div className="mt-2 space-y-2 text-sm text-[#e8ddca]">
+                {parsedNotes.summaryLines.map((line, index) => (
+                  <p key={`summary-${index}`}>{line}</p>
+                ))}
+                {parsedNotes.detailLines.map((line, index) => (
+                  <p key={`detail-${index}`}>{line}</p>
+                ))}
+                {parsedNotes.summaryLines.length === 0 && parsedNotes.detailLines.length === 0 && (
+                  <p>No job notes.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-[#b08b47]">Access Details</p>
+              <div className="mt-2 space-y-2 text-sm text-[#e8ddca]">
+                <p><span className="text-[#d4c4a8]">Door code:</span> {selectedJobAccess?.door_code || "Not added"}</p>
+                <p><span className="text-[#d4c4a8]">Alarm code:</span> {selectedJobAccess?.alarm_code || "Not added"}</p>
+                <p className="whitespace-pre-wrap">
+                  <span className="text-[#d4c4a8]">Notes:</span> {selectedJobAccess?.notes || "No access notes added yet."}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-4">
+            <p className="text-xs uppercase tracking-[0.18em] text-[#b08b47]">Property Notes</p>
+            <p className="mt-2 whitespace-pre-wrap text-sm text-[#e8ddca]">
+              {selectedJobProperty?.notes || "No property notes."}
             </p>
-          )}
-        </div>
+          </div>
 
-        <div className="flex items-start md:justify-end">
-          <span className="inline-flex items-center gap-2 rounded-full border border-[#7a5c2e]/25 bg-[#120f0b] px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[#d9c5a1]">
-            <span className={`h-2 w-2 rounded-full ${tone.dot}`} />
-            Tap to open
-          </span>
-        </div>
-      </div>
+          <div className="mt-4 rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-4">
+            <p className="text-xs uppercase tracking-[0.18em] text-[#b08b47]">SOPs</p>
 
-      <div className="mt-4">
-        <p className="text-xs uppercase tracking-[0.18em] text-[#b08b47]">Job Notes</p>
-        <p className="mt-2 line-clamp-4 whitespace-pre-wrap text-sm text-[#e8ddca]">
-          {item.job.notes || "No job notes."}
-        </p>
-      </div>
-    </button>
+            {selectedJobSops.length === 0 ? (
+              <p className="mt-2 text-sm text-[#cdbda0]">No SOPs added yet.</p>
+            ) : (
+              <div className="mt-3 space-y-4">
+                {selectedJobSops.map((sop) => {
+                  const images = sopImagesBySopId.get(sop.id) || [];
+
+                  return (
+                    <div
+                      key={sop.id}
+                      className="rounded-2xl border border-[#7a5c2e]/15 bg-[#15110d] p-4"
+                    >
+                      {sop.title && (
+                        <h4 className="text-base font-semibold text-[#f8f2e8]">{sop.title}</h4>
+                      )}
+
+                      {sop.content && (
+                        <p className="mt-2 whitespace-pre-wrap text-sm text-[#e8ddca]">
+                          {sop.content}
+                        </p>
+                      )}
+
+                      {images.length > 0 && (
+                        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                          {images.map((image) => (
+                            <a
+                              key={image.id}
+                              href={image.image_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="block overflow-hidden rounded-xl border border-[#7a5c2e]/20"
+                            >
+                              <img
+                                src={image.image_url}
+                                alt={image.caption || sop.title || "SOP image"}
+                                className="h-40 w-full object-cover transition hover:scale-[1.02]"
+                              />
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -143,15 +371,12 @@ export default function CleanerDesktopView({
   getCountdownTone,
   getSlotDisplayStatus,
   getStatusTone,
+  parseJobNotes,
   getTeamMessage,
 }: CleanerViewProps) {
   const [jobView, setJobView] = useState<"active" | "history">("active");
 
   const visibleJobs = jobView === "history" ? historyJobs : activeJobs;
-  const selectedJobInVisibleView = useMemo(() => {
-    if (!selectedCleanerJob) return null;
-    return visibleJobs.find((item) => item.slot.id === selectedCleanerJob.slot.id) || null;
-  }, [selectedCleanerJob, visibleJobs]);
 
   function renderJobList(items: CleanerJob[], emptyText: string) {
     if (items.length === 0) {
@@ -179,9 +404,25 @@ export default function CleanerDesktopView({
               remainingMs={remainingMs}
               countdownTone={getCountdownTone(remainingMs)}
               formatDateLabel={formatDateLabel}
+              formatDateTimeLabel={formatDateTimeLabel}
               formatRemaining={formatRemaining}
               getSlotDisplayStatus={getSlotDisplayStatus}
               getTeamMessage={getTeamMessage}
+              parseJobNotes={parseJobNotes}
+              selectedJobProperty={
+                selectedCleanerJob?.slot.id === item.slot.id ? selectedJobProperty : property || null
+              }
+              selectedJobAccess={
+                selectedCleanerJob?.slot.id === item.slot.id ? selectedJobAccess : null
+              }
+              selectedJobSops={
+                selectedCleanerJob?.slot.id === item.slot.id ? selectedJobSops : []
+              }
+              sopImagesBySopId={sopImagesBySopId}
+              actionLoading={actionLoading}
+              handleAcceptJob={handleAcceptJob}
+              handleDeclineJob={handleDeclineJob}
+              handleCloseDetails={handleCloseDetails}
             />
           );
         })}
@@ -571,258 +812,6 @@ export default function CleanerDesktopView({
                 </p>
               )}
 
-              {selectedJobInVisibleView && (
-                <section className="mt-4 rounded-2xl border border-[#b08b47]/30 bg-[#18120e] p-4 shadow-lg sm:p-5">
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.18em] text-[#b08b47]">
-                        Selected Job Details
-                      </p>
-                      <h3 className="mt-1 text-xl font-semibold text-[#f8f2e8]">
-                        {selectedJobProperty?.name || "Property job"}
-                      </h3>
-                      <p className="mt-1 text-sm text-[#d4c4a8]">
-                        {selectedJobProperty?.address || "No property address"}
-                      </p>
-                      <p className="mt-2 text-sm text-[#e7c98a]">
-                        Cleaning date: {formatDateLabel(selectedJobInVisibleView.jobDate)}
-                      </p>
-                      <p className="mt-2 text-sm text-[#d9c5a1]">
-                        {getTeamMessage(selectedJobInVisibleView)}
-                      </p>
-                    </div>
-
-                    <div>
-                      {(() => {
-                        const display = getSlotDisplayStatus(
-                          selectedJobInVisibleView.slot.status ?? null,
-                          selectedJobInVisibleView.job.staffing_status ?? null
-                        );
-                        const isOffered =
-                          (selectedJobInVisibleView.slot.status || "").toLowerCase().trim() === "offered";
-                        const isAccepted =
-                          (selectedJobInVisibleView.slot.status || "").toLowerCase().trim() === "accepted";
-
-                        return (
-                          <span
-                            className={`inline-flex w-fit rounded-full px-3 py-1 text-xs uppercase tracking-[0.16em] ${
-                              isOffered
-                                ? "border border-red-400/70 bg-red-500 text-white animate-pulse"
-                                : isAccepted
-                                  ? "border border-emerald-400/40 bg-emerald-500/20 text-emerald-200"
-                                  : "border border-[#7a5c2e]/35 bg-[#b08b47]/10 text-[#e7c98a]"
-                            }`}
-                          >
-                            {display}
-                          </span>
-                        );
-                      })()}
-
-                      {(() => {
-                        const isOffered =
-                          (selectedJobInVisibleView.slot.status || "").toLowerCase().trim() === "offered";
-                        if (!isOffered) return null;
-
-                        const remainingMs = getTimeRemainingMs(selectedJobInVisibleView, now);
-                        if (remainingMs === null) return null;
-
-                        const tone = getCountdownTone(remainingMs);
-
-                        return (
-                          <div className={`mt-3 text-sm font-semibold ${tone}`}>
-                            {remainingMs < 0
-                              ? `Overdue by ${formatRemaining(remainingMs)}`
-                              : `Accept within ${formatRemaining(remainingMs)}`}
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  </div>
-
-                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                    <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-4">
-                      <p className="text-xs uppercase tracking-[0.16em] text-[#b08b47]">
-                        Slot Offered
-                      </p>
-                      <p className="mt-2 text-sm text-[#e8ddca]">
-                        {formatDateTimeLabel(selectedJobInVisibleView.slot.offered_at)}
-                      </p>
-                    </div>
-
-                    <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-4">
-                      <p className="text-xs uppercase tracking-[0.16em] text-[#b08b47]">
-                        Slot Accepted
-                      </p>
-                      <p className="mt-2 text-sm text-[#e8ddca]">
-                        {formatDateTimeLabel(selectedJobInVisibleView.slot.accepted_at)}
-                      </p>
-                    </div>
-
-                    <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-4">
-                      <p className="text-xs uppercase tracking-[0.16em] text-[#b08b47]">
-                        Slot Declined
-                      </p>
-                      <p className="mt-2 text-sm text-[#e8ddca]">
-                        {formatDateTimeLabel(selectedJobInVisibleView.slot.declined_at)}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                    <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-4">
-                      <p className="text-xs uppercase tracking-[0.16em] text-[#b08b47]">
-                        Team Slots
-                      </p>
-                      <p className="mt-2 text-sm text-[#e8ddca]">
-                        {selectedJobInVisibleView.acceptedSlots} accepted of {selectedJobInVisibleView.totalSlots}
-                      </p>
-                    </div>
-
-                    <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-4">
-                      <p className="text-xs uppercase tracking-[0.16em] text-[#b08b47]">
-                        Job Status
-                      </p>
-                      <p className="mt-2 text-sm text-[#e8ddca]">
-                        {selectedJobInVisibleView.job.staffing_status ||
-                          selectedJobInVisibleView.job.status ||
-                          "—"}
-                      </p>
-                    </div>
-
-                    <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-4">
-                      <p className="text-xs uppercase tracking-[0.16em] text-[#b08b47]">
-                        Slot Number
-                      </p>
-                      <p className="mt-2 text-sm text-[#e8ddca]">
-                        {selectedJobInVisibleView.slot.slot_number ?? "—"}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 flex flex-wrap gap-3">
-                    <button
-                      onClick={handleAcceptJob}
-                      disabled={
-                        actionLoading !== null ||
-                        (selectedJobInVisibleView.slot.status || "").toLowerCase().trim() !== "offered"
-                      }
-                      className="rounded-full bg-emerald-500 px-5 py-2 text-sm font-medium text-[#08110c] transition hover:bg-emerald-400 disabled:opacity-50"
-                    >
-                      {actionLoading === "accept" ? "Accepting..." : "Accept Job"}
-                    </button>
-
-                    <button
-                      onClick={handleDeclineJob}
-                      disabled={
-                        actionLoading !== null ||
-                        (selectedJobInVisibleView.slot.status || "").toLowerCase().trim() !== "offered"
-                      }
-                      className="rounded-full bg-red-500 px-5 py-2 text-sm font-medium text-white transition hover:bg-red-400 disabled:opacity-50"
-                    >
-                      {actionLoading === "decline" ? "Declining..." : "Decline Job"}
-                    </button>
-
-                    <button
-                      onClick={handleCloseDetails}
-                      className="rounded-full border border-[#7a5c2e]/50 px-5 py-2 text-sm font-medium text-[#f5efe4] transition hover:bg-[#241a14]"
-                    >
-                      Close Details
-                    </button>
-                  </div>
-
-                  <div className="mt-5 grid gap-4 lg:grid-cols-2">
-                    <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-4">
-                      <p className="text-xs uppercase tracking-[0.18em] text-[#b08b47]">Job Notes</p>
-                      <p className="mt-2 whitespace-pre-wrap text-sm text-[#e8ddca]">
-                        {selectedJobInVisibleView.job.notes || "No job notes."}
-                      </p>
-                    </div>
-
-                    <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-4">
-                      <p className="text-xs uppercase tracking-[0.18em] text-[#b08b47]">
-                        Access Details
-                      </p>
-                      <div className="mt-2 space-y-2 text-sm text-[#e8ddca]">
-                        <p>
-                          <span className="text-[#d4c4a8]">Door code:</span>{" "}
-                          {selectedJobAccess?.door_code || "Not added"}
-                        </p>
-                        <p>
-                          <span className="text-[#d4c4a8]">Alarm code:</span>{" "}
-                          {selectedJobAccess?.alarm_code || "Not added"}
-                        </p>
-                        <p className="whitespace-pre-wrap">
-                          <span className="text-[#d4c4a8]">Notes:</span>{" "}
-                          {selectedJobAccess?.notes || "No access notes added yet."}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-4">
-                    <p className="text-xs uppercase tracking-[0.18em] text-[#b08b47]">
-                      Property Notes
-                    </p>
-                    <p className="mt-2 whitespace-pre-wrap text-sm text-[#e8ddca]">
-                      {selectedJobProperty?.notes || "No property notes."}
-                    </p>
-                  </div>
-
-                  <div className="mt-4 rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-4">
-                    <p className="text-xs uppercase tracking-[0.18em] text-[#b08b47]">SOPs</p>
-
-                    {selectedJobSops.length === 0 ? (
-                      <p className="mt-2 text-sm text-[#cdbda0]">No SOPs added yet.</p>
-                    ) : (
-                      <div className="mt-3 space-y-4">
-                        {selectedJobSops.map((sop) => {
-                          const images = sopImagesBySopId.get(sop.id) || [];
-
-                          return (
-                            <div
-                              key={sop.id}
-                              className="rounded-2xl border border-[#7a5c2e]/15 bg-[#15110d] p-4"
-                            >
-                              {sop.title && (
-                                <h4 className="text-base font-semibold text-[#f8f2e8]">
-                                  {sop.title}
-                                </h4>
-                              )}
-
-                              {sop.content && (
-                                <p className="mt-2 whitespace-pre-wrap text-sm text-[#e8ddca]">
-                                  {sop.content}
-                                </p>
-                              )}
-
-                              {images.length > 0 && (
-                                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                                  {images.map((image) => (
-                                    <a
-                                      key={image.id}
-                                      href={image.image_url}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="block overflow-hidden rounded-xl border border-[#7a5c2e]/20"
-                                    >
-                                      <img
-                                        src={image.image_url}
-                                        alt={image.caption || sop.title || "SOP image"}
-                                        className="h-40 w-full object-cover transition hover:scale-[1.02]"
-                                      />
-                                    </a>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </section>
-              )}
-
               <div className="mt-4">
                 {jobView === "active" && jobsCollapsed ? (
                   <div className="mb-4 rounded-2xl border border-[#b08b47]/20 bg-[#110d09] p-4">
@@ -898,9 +887,27 @@ export default function CleanerDesktopView({
                             : null
                         )}
                         formatDateLabel={formatDateLabel}
+                        formatDateTimeLabel={formatDateTimeLabel}
                         formatRemaining={formatRemaining}
                         getSlotDisplayStatus={getSlotDisplayStatus}
                         getTeamMessage={getTeamMessage}
+                        parseJobNotes={parseJobNotes}
+                        selectedJobProperty={
+                          selectedCleanerJob?.slot.id === collapsedPreviewJob.slot.id
+                            ? selectedJobProperty
+                            : properties.find((p) => p.id === collapsedPreviewJob.job.property_id) || null
+                        }
+                        selectedJobAccess={
+                          selectedCleanerJob?.slot.id === collapsedPreviewJob.slot.id ? selectedJobAccess : null
+                        }
+                        selectedJobSops={
+                          selectedCleanerJob?.slot.id === collapsedPreviewJob.slot.id ? selectedJobSops : []
+                        }
+                        sopImagesBySopId={sopImagesBySopId}
+                        actionLoading={actionLoading}
+                        handleAcceptJob={handleAcceptJob}
+                        handleDeclineJob={handleDeclineJob}
+                        handleCloseDetails={handleCloseDetails}
                       />
                     ) : (
                       <p className="text-sm text-[#cdbda0]">
