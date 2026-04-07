@@ -95,6 +95,33 @@ export default function CleanerMobileView({
     return `/api/cleaner-calendar-event?jobId=${encodeURIComponent(jobId)}`;
   }
 
+  function getParsedNotes(notes: string | null) {
+    const cleanedLines = notes
+      ? notes
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .filter((line) => !/^\[AUTO_SYNC:/i.test(line))
+          .filter((line) => !/^Auto-created from .*calendar sync\.?$/i.test(line))
+      : [];
+
+    const guestLine =
+      cleanedLines.find((line) => /^Guest\s*\/\s*reservation\s*:/i.test(line)) || null;
+
+    const checkoutLine =
+      cleanedLines.find((line) => /^Checkout date\s*:/i.test(line)) || null;
+
+    return {
+      summaryLines: [guestLine, checkoutLine].filter(Boolean) as string[],
+      detailLines: cleanedLines.filter(
+        (line) =>
+          !/^Property\s*:/i.test(line) &&
+          !/^Guest\s*\/\s*reservation\s*:/i.test(line) &&
+          !/^Checkout date\s*:/i.test(line)
+      ),
+    };
+  }
+
   function renderJobList(items: CleanerJob[], emptyText: string) {
     if (items.length === 0) {
       return (
@@ -111,25 +138,7 @@ export default function CleanerMobileView({
         isSelected && selectedCleanerJob?.slot.id === item.slot.id
           ? selectedJobProperty?.name || "Property job"
           : "Property job";
-          const parsedNotes = {
-        summaryLines: item.job.notes
-          ? item.job.notes
-              .split("\n")
-              .map((line) => line.trim())
-              .filter(Boolean)
-              .filter((line) => !/^\[AUTO_SYNC:/i.test(line))
-              .filter((line) => !/^Auto-created from .*calendar sync\.?$/i.test(line))
-              .slice(0, 3)
-          : [],
-        detailLines: item.job.notes
-          ? item.job.notes
-              .split("\n")
-              .map((line) => line.trim())
-              .filter(Boolean)
-              .filter((line) => !/^\[AUTO_SYNC:/i.test(line))
-              .filter((line) => !/^Auto-created from .*calendar sync\.?$/i.test(line))
-          : [],
-      };
+      const parsedNotes = getParsedNotes(item.job.notes);
 
       return (
         <div
@@ -161,9 +170,7 @@ export default function CleanerMobileView({
 
             <div className="mt-3 space-y-1 text-sm text-[#e8ddca]">
               {parsedNotes.summaryLines.length > 0 ? (
-                parsedNotes.summaryLines.slice(0, 3).map((line, index) => (
-                  <p key={index}>{line}</p>
-                ))
+                parsedNotes.summaryLines.map((line, index) => <p key={index}>{line}</p>)
               ) : (
                 <p>No job notes.</p>
               )}
@@ -211,15 +218,10 @@ export default function CleanerMobileView({
                     Job Notes
                   </div>
                   <div className="mt-1 space-y-1 whitespace-pre-wrap">
-                    {parsedNotes.summaryLines.map((line, index) => (
-                      <p key={`summary-${index}`}>{line}</p>
-                    ))}
                     {parsedNotes.detailLines.map((line, index) => (
                       <p key={`detail-${index}`}>{line}</p>
                     ))}
-                    {parsedNotes.summaryLines.length === 0 && parsedNotes.detailLines.length === 0 ? (
-                      <p>No job notes.</p>
-                    ) : null}
+                    {parsedNotes.detailLines.length === 0 ? <p>No job notes.</p> : null}
                   </div>
                 </div>
 
