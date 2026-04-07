@@ -18,6 +18,7 @@ export default function CleanerMobileView({
   actionLoading,
   getStatusTone,
   getSlotDisplayStatus,
+  parseJobNotes,
   getTeamMessage,
   formatDateLabel,
   formatDateTimeLabel,
@@ -111,15 +112,19 @@ export default function CleanerMobileView({
         isSelected && selectedCleanerJob?.slot.id === item.slot.id
           ? selectedJobProperty?.name || "Property job"
           : "Property job";
+      const parsedNotes = parseJobNotes(item.job.notes);
 
       return (
-        <div key={item.slot.id} className="space-y-2">
+        <div
+          key={item.slot.id}
+          className={`rounded-2xl border text-left transition ${tone.card} ${
+            isSelected ? tone.selectedRing : ""
+          }`}
+        >
           <button
             type="button"
             onClick={() => handleCardTap(item.slot.id)}
-            className={`block w-full rounded-2xl border p-4 text-left transition ${tone.card} ${
-              isSelected ? tone.selectedRing : ""
-            }`}
+            className="block w-full p-4 text-left"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -137,15 +142,19 @@ export default function CleanerMobileView({
               </span>
             </div>
 
-            {item.job.notes ? (
-              <p className="mt-3 line-clamp-3 whitespace-pre-wrap text-sm text-[#e8ddca]">
-                {item.job.notes}
-              </p>
-            ) : null}
+            <div className="mt-3 space-y-1 text-sm text-[#e8ddca]">
+              {parsedNotes.summaryLines.length > 0 ? (
+                parsedNotes.summaryLines.slice(0, 3).map((line, index) => (
+                  <p key={index}>{line}</p>
+                ))
+              ) : (
+                <p>No job notes.</p>
+              )}
+            </div>
           </button>
 
           {isSelected && selectedCleanerJob && selectedCleanerJob.slot.id === item.slot.id ? (
-            <section className="rounded-2xl border border-[#7a5c2e]/30 bg-[#15110d] p-4">
+            <section className="border-t border-[#7a5c2e]/20 px-4 pb-4 pt-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold">
@@ -184,8 +193,16 @@ export default function CleanerMobileView({
                   <div className="text-xs uppercase tracking-[0.18em] text-[#b08b47]">
                     Job Notes
                   </div>
-                  <div className="mt-1 whitespace-pre-wrap">
-                    {selectedCleanerJob.job.notes || "No job notes."}
+                  <div className="mt-1 space-y-1 whitespace-pre-wrap">
+                    {parsedNotes.summaryLines.map((line, index) => (
+                      <p key={`summary-${index}`}>{line}</p>
+                    ))}
+                    {parsedNotes.detailLines.map((line, index) => (
+                      <p key={`detail-${index}`}>{line}</p>
+                    ))}
+                    {parsedNotes.summaryLines.length === 0 && parsedNotes.detailLines.length === 0 ? (
+                      <p>No job notes.</p>
+                    ) : null}
                   </div>
                 </div>
 
