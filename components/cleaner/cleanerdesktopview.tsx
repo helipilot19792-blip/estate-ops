@@ -44,7 +44,14 @@ function JobCard({
   formatRemaining: (ms: number) => string;
   getSlotDisplayStatus: CleanerViewProps["getSlotDisplayStatus"];
   getTeamMessage: CleanerViewProps["getTeamMessage"];
-  parseJobNotes: CleanerViewProps["parseJobNotes"];
+ parseJobNotes: (notes: string | null) => {
+  source: string | null;
+  sourceLabel: string | null;
+  guest: string | null;
+  checkoutDate: string | null;
+  summaryLines: string[];
+  detailLines: string[];
+};
   selectedJobProperty: CleanerViewProps["selectedJobProperty"];
   selectedJobAccess: CleanerViewProps["selectedJobAccess"];
   selectedJobSops: CleanerViewProps["selectedJobSops"];
