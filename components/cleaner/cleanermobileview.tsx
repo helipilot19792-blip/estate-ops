@@ -18,7 +18,6 @@ export default function CleanerMobileView({
   actionLoading,
   getStatusTone,
   getSlotDisplayStatus,
-  parseJobNotes,
   getTeamMessage,
   formatDateLabel,
   formatDateTimeLabel,
@@ -112,7 +111,25 @@ export default function CleanerMobileView({
         isSelected && selectedCleanerJob?.slot.id === item.slot.id
           ? selectedJobProperty?.name || "Property job"
           : "Property job";
-      const parsedNotes = parseJobNotes(item.job.notes);
+          const parsedNotes = {
+        summaryLines: item.job.notes
+          ? item.job.notes
+              .split("\n")
+              .map((line) => line.trim())
+              .filter(Boolean)
+              .filter((line) => !/^\[AUTO_SYNC:/i.test(line))
+              .filter((line) => !/^Auto-created from .*calendar sync\.?$/i.test(line))
+              .slice(0, 3)
+          : [],
+        detailLines: item.job.notes
+          ? item.job.notes
+              .split("\n")
+              .map((line) => line.trim())
+              .filter(Boolean)
+              .filter((line) => !/^\[AUTO_SYNC:/i.test(line))
+              .filter((line) => !/^Auto-created from .*calendar sync\.?$/i.test(line))
+          : [],
+      };
 
       return (
         <div
