@@ -102,6 +102,15 @@ export type CleanerJob = {
   totalSlots: number;
 };
 
+export type ParsedJobNotes = {
+  source: string | null;
+  sourceLabel: string | null;
+  guest: string | null;
+  checkoutDate: string | null;
+  summaryLines: string[];
+  detailLines: string[];
+};
+
 export type CleanerViewProps = {
   loading: boolean;
   signingOut: boolean;
@@ -173,6 +182,7 @@ export type CleanerViewProps = {
     dot: string;
     selectedRing: string;
   };
+  parseJobNotes: (notes: string | null) => ParsedJobNotes;
   getTeamMessage: (item: CleanerJob) => string;
 };
 
@@ -284,6 +294,67 @@ function getCountdownTone(ms: number | null) {
   if (ms < 0) return "text-red-400";
   if (ms <= 2 * 60 * 60 * 1000) return "text-amber-300";
   return "text-[#e7c98a]";
+}
+
+function parseJobNotes(notes: string | null): ParsedJobNotes {
+  if (!notes) {
+    return {
+      source: null,
+      sourceLabel: null,
+      guest: null,
+      checkoutDate: null,
+      summaryLines: [],
+      detailLines: [],
+    };
+  }
+
+  const normalized = notes.replace(/\r\n/g, "\n");
+  const sourceMatch = normalized.match(/\[AUTO_SYNC\s*:\s*([^:\]]+)/i);
+  const rawSource = sourceMatch?.[1]?.trim().toLowerCase() || null;
+
+  const sourceLabel =
+    rawSource === "airbnb"
+      ? "Airbnb"
+      : rawSource === "vrbo"
+        ? "VRBO"
+        : rawSource === "booking" || rawSource === "booking.com"
+          ? "Booking.com"
+          : rawSource
+            ? rawSource.toUpperCase()
+            : null;
+
+  const guestMatch = normalized.match(/Guest\s*\/\s*reservation\s*:\s*(.+)/i);
+  const checkoutMatch = normalized.match(/Checkout date\s*:\s*(\d{4}-\d{2}-\d{2})/i);
+
+  const guest = guestMatch?.[1]?.trim() || null;
+  const checkoutDate = checkoutMatch?.[1] || null;
+
+  const cleanedLines = normalized
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !/^\[AUTO_SYNC:/i.test(line))
+    .filter((line) => !/^Auto-created from .*calendar sync\.?$/i.test(line))
+    .filter((line) => !/^Property\s*:/i.test(line))
+    .filter((line) => !/^Guest\s*\/\s*reservation\s*:/i.test(line))
+    .filter((line) => !/^Checkout date\s*:/i.test(line));
+
+  const summaryLines: string[] = [];
+  if (sourceLabel) summaryLines.push(`Imported from ${sourceLabel}`);
+  if (guest) summaryLines.push(`Guest: ${guest}`);
+  if (checkoutDate) summaryLines.push(`Checkout: ${formatDateLabel(checkoutDate)}`);
+  if (summaryLines.length === 0 && cleanedLines.length > 0) {
+    summaryLines.push(...cleanedLines.slice(0, 3));
+  }
+
+  return {
+    source: rawSource,
+    sourceLabel,
+    guest,
+    checkoutDate,
+    summaryLines,
+    detailLines: cleanedLines,
+  };
 }
 
 function getSlotDisplayStatus(
@@ -1203,6 +1274,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     getCountdownTone,
     getSlotDisplayStatus,
     getStatusTone,
+    parseJobNotes,
     getTeamMessage,
   };
 
