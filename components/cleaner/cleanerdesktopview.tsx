@@ -5,6 +5,26 @@ import { useState } from "react";
 import Image from "next/image";
 import type { CleanerJob, CleanerViewProps } from "@/components/cleaner/cleanershell";
 
+function parseDesktopJobNotes(notes: string | null) {
+  if (!notes) {
+    return {
+      summaryLines: ["No job notes."],
+      detailLines: [],
+    };
+  }
+
+  const cleaned = notes
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !/^\[AUTO_SYNC:/i.test(line))
+    .filter((line) => !/^Auto-created from .*calendar sync\.?$/i.test(line));
+
+  return {
+    summaryLines: cleaned.slice(0, 3),
+    detailLines: cleaned,
+  };
+}
 function JobCard({
   item,
   isSelected,
@@ -20,7 +40,6 @@ function JobCard({
   formatRemaining,
   getSlotDisplayStatus,
   getTeamMessage,
-  parseJobNotes,
   selectedJobProperty,
   selectedJobAccess,
   selectedJobSops,
@@ -44,14 +63,6 @@ function JobCard({
   formatRemaining: (ms: number) => string;
   getSlotDisplayStatus: CleanerViewProps["getSlotDisplayStatus"];
   getTeamMessage: CleanerViewProps["getTeamMessage"];
- parseJobNotes: (notes: string | null) => {
-  source: string | null;
-  sourceLabel: string | null;
-  guest: string | null;
-  checkoutDate: string | null;
-  summaryLines: string[];
-  detailLines: string[];
-};
   selectedJobProperty: CleanerViewProps["selectedJobProperty"];
   selectedJobAccess: CleanerViewProps["selectedJobAccess"];
   selectedJobSops: CleanerViewProps["selectedJobSops"];
@@ -61,7 +72,7 @@ function JobCard({
   handleDeclineJob: CleanerViewProps["handleDeclineJob"];
   handleCloseDetails: CleanerViewProps["handleCloseDetails"];
 }) {
-  const parsedNotes = parseJobNotes(item.job.notes);
+ const parsedNotes = parseDesktopJobNotes(item.job.notes);
   const selectedStatus = (item.slot.status || "").toLowerCase().trim();
   const isOffered = selectedStatus === "offered";
   const isAccepted = selectedStatus === "accepted";
@@ -378,7 +389,6 @@ export default function CleanerDesktopView({
   getCountdownTone,
   getSlotDisplayStatus,
   getStatusTone,
-  parseJobNotes,
   getTeamMessage,
 }: CleanerViewProps) {
   const [jobView, setJobView] = useState<"active" | "history">("active");
@@ -415,7 +425,6 @@ export default function CleanerDesktopView({
               formatRemaining={formatRemaining}
               getSlotDisplayStatus={getSlotDisplayStatus}
               getTeamMessage={getTeamMessage}
-              parseJobNotes={parseJobNotes}
               selectedJobProperty={
                 selectedCleanerJob?.slot.id === item.slot.id ? selectedJobProperty : property || null
               }
@@ -898,7 +907,7 @@ export default function CleanerDesktopView({
                         formatRemaining={formatRemaining}
                         getSlotDisplayStatus={getSlotDisplayStatus}
                         getTeamMessage={getTeamMessage}
-                        parseJobNotes={parseJobNotes}
+                      
                         selectedJobProperty={
                           selectedCleanerJob?.slot.id === collapsedPreviewJob.slot.id
                             ? selectedJobProperty
