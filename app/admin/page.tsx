@@ -256,6 +256,21 @@ function getCountdownTone(ms: number | null) {
   return "text-[#7f5d28]";
 }
 
+const MAINTENANCE_CATEGORY_OPTIONS = [
+  "Lawn / exterior",
+  "Plumbing",
+  "Electrical",
+  "HVAC",
+  "Appliances",
+  "Cleaning issue",
+  "Damage",
+  "Supplies",
+  "Lock / access",
+  "Pest issue",
+  "Safety issue",
+  "Other",
+];
+
 const PROPERTY_CALENDAR_COLORS = [
   { bg: "#e8f1ff", text: "#1d4ed8", border: "#bfdbfe" },
   { bg: "#ecfdf3", text: "#047857", border: "#a7f3d0" },
@@ -1841,6 +1856,72 @@ setPropertyPostal("");
     };
   }, [filteredMaintenanceFlags]);
 
+  const operationsAlerts = useMemo(() => {
+    const alerts: Array<{
+      key: string;
+      label: string;
+      tone: "amber" | "red";
+      onClick: () => void;
+    }> = [];
+
+    if (waitingJobs.length > 0) {
+      alerts.push({
+        key: "waiting",
+        label: `${waitingJobs.length} job${waitingJobs.length === 1 ? "" : "s"} waiting for acceptance`,
+        tone: "amber",
+        onClick: () => jumpToJobs("waiting"),
+      });
+    }
+
+    if (overdueWaitingJobs.length > 0) {
+      alerts.push({
+        key: "overdue",
+        label: `${overdueWaitingJobs.length} overdue job${overdueWaitingJobs.length === 1 ? "" : "s"} needing attention`,
+        tone: "red",
+        onClick: () => jumpToJobs("waiting"),
+      });
+    }
+
+    if (strandedJobs.length > 0) {
+      alerts.push({
+        key: "stranded",
+        label: `${strandedJobs.length} stranded job${strandedJobs.length === 1 ? "" : "s"}`,
+        tone: "red",
+        onClick: () => jumpToJobs("stranded"),
+      });
+    }
+
+    if (maintenanceFlagCounts.open > 0) {
+      alerts.push({
+        key: "maintenance-open",
+        label: `${maintenanceFlagCounts.open} open maintenance flag${maintenanceFlagCounts.open === 1 ? "" : "s"}`,
+        tone: "amber",
+        onClick: () => {
+          setActiveSection("maintenance");
+          setTimeout(() => {
+            document.getElementById("maintenance-flags-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }, 50);
+        },
+      });
+    }
+
+    if (maintenanceFlagCounts.urgent > 0) {
+      alerts.push({
+        key: "maintenance-urgent",
+        label: `${maintenanceFlagCounts.urgent} urgent maintenance flag${maintenanceFlagCounts.urgent === 1 ? "" : "s"}`,
+        tone: "red",
+        onClick: () => {
+          setActiveSection("maintenance");
+          setTimeout(() => {
+            document.getElementById("maintenance-flags-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }, 50);
+        },
+      });
+    }
+
+    return alerts;
+  }, [waitingJobs.length, overdueWaitingJobs.length, strandedJobs.length, maintenanceFlagCounts.open, maintenanceFlagCounts.urgent]);
+
   function selectAdminCalendarDate(dateYmd: string) {
     setAdminSelectedDate(dateYmd);
   }
@@ -1960,7 +2041,7 @@ setPropertyPostal("");
   }
  function renderAddPropertySection() {
   return (
-    <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+    <section id="maintenance-flags-section" className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
       <h2 className="text-xl font-semibold tracking-tight">Add Property</h2>
       <p className="mt-1 text-sm text-[#7f7263]">
         Add a managed property and set default staffing rules.
@@ -3137,14 +3218,53 @@ function renderPropertiesSection() {
 
           <div className="mt-5 grid gap-3 md:grid-cols-4">
             {[
-              { label: "Total Flags", value: maintenanceFlagCounts.total },
-              { label: "Open", value: maintenanceFlagCounts.open },
-              { label: "Resolved", value: maintenanceFlagCounts.resolved },
-              { label: "Urgent", value: maintenanceFlagCounts.urgent },
+              {
+                label: "Total Flags",
+                value: maintenanceFlagCounts.total,
+                highlighted: false,
+                tone: "neutral",
+              },
+              {
+                label: "Open",
+                value: maintenanceFlagCounts.open,
+                highlighted: maintenanceFlagCounts.open > 0,
+                tone: "red",
+              },
+              {
+                label: "Resolved",
+                value: maintenanceFlagCounts.resolved,
+                highlighted: false,
+                tone: "neutral",
+              },
+              {
+                label: "Urgent",
+                value: maintenanceFlagCounts.urgent,
+                highlighted: maintenanceFlagCounts.urgent > 0,
+                tone: "red",
+              },
             ].map((item) => (
-              <div key={item.label} className="rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-4 shadow-sm">
-                <div className="text-[11px] uppercase tracking-[0.22em] text-[#8a7b68]">{item.label}</div>
-                <div className="mt-2 text-3xl font-semibold text-[#241c15]">{item.value}</div>
+              <div
+                key={item.label}
+                className={`rounded-[24px] border px-4 py-4 shadow-sm ${
+                  item.highlighted && item.tone === "red"
+                    ? "border-[#efc6c6] bg-[#fff5f5]"
+                    : "border-[#eadfce] bg-[#fcfaf7]"
+                }`}
+              >
+                <div
+                  className={`text-[11px] uppercase tracking-[0.22em] ${
+                    item.highlighted && item.tone === "red" ? "text-[#8a2e22]" : "text-[#8a7b68]"
+                  }`}
+                >
+                  {item.label}
+                </div>
+                <div
+                  className={`mt-2 text-3xl font-semibold ${
+                    item.highlighted && item.tone === "red" ? "text-[#8a2e22]" : "text-[#241c15]"
+                  }`}
+                >
+                  {item.value}
+                </div>
               </div>
             ))}
           </div>
@@ -3522,40 +3642,37 @@ case "properties":
           </div>
         ) : null}
 
-                   {(waitingJobs.length > 0 || strandedJobs.length > 0 || overdueWaitingJobs.length > 0) && (
-              <div className="sticky top-0 z-40 mb-4 space-y-2">
-                {waitingJobs.length > 0 && (
-                  <button
-                    onClick={() => jumpToJobs("waiting")}
-                    className="flex w-full items-center justify-between gap-3 rounded-[18px] border border-[#ecd7a8] bg-[#b58a1a] px-4 py-3 text-left text-white shadow-lg transition hover:brightness-105"
-                  >
-                    <div className="text-sm font-semibold">
-                      ⚠️ {waitingJobs.length} job{waitingJobs.length === 1 ? "" : "s"} waiting for acceptance
-                    </div>
-                    <span className="rounded-full border border-white/30 px-3 py-1 text-xs font-medium">
-                      View
-                    </span>
-                  </button>
-                )}
-
-                {(strandedJobs.length > 0 || overdueWaitingJobs.length > 0) && (
-                  <button
-                    onClick={() => jumpToJobs(strandedJobs.length > 0 ? "stranded" : "waiting")}
-                    className="flex w-full items-center justify-between gap-3 rounded-[18px] border border-[#f0b4b4] bg-[#7e1f1f] px-4 py-3 text-left text-white shadow-lg transition hover:brightness-105"
-                  >
-                    <div className="text-sm font-semibold">
-                      🚨{" "}
-                      {strandedJobs.length > 0
-                        ? `${strandedJobs.length} stranded job${strandedJobs.length === 1 ? "" : "s"}`
-                        : `${overdueWaitingJobs.length} overdue job${overdueWaitingJobs.length === 1 ? "" : "s"} needing attention`}
-                    </div>
-                    <span className="rounded-full border border-white/30 px-3 py-1 text-xs font-medium">
-                      View
-                    </span>
-                  </button>
-                )}
+        {operationsAlerts.length > 0 ? (
+          <div className="mb-6 rounded-[30px] border border-[#e7ddd0] bg-white p-4 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <div className="text-sm font-semibold text-[#241c15]">Operations Alerts</div>
+                <div className="mt-1 text-sm text-[#7f7263]">
+                  Important items across jobs and maintenance.
+                </div>
               </div>
-            )}
+
+              <div className="flex flex-wrap gap-2">
+                {operationsAlerts.map((alert) => (
+                  <button
+                    key={alert.key}
+                    onClick={alert.onClick}
+                    className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${
+                      alert.tone === "red"
+                        ? "border-[#efc6c6] bg-[#fff5f5] text-[#8a2e22] hover:bg-[#fff0f0]"
+                        : "border-[#ecd7a8] bg-[#fff8e8] text-[#8a6112] hover:bg-[#fff2cf]"
+                    }`}
+                  >
+                    <span>{alert.label}</span>
+                    <span className="rounded-full border border-current/20 px-2 py-0.5 text-[11px]">
+                      View
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : null}
 
             <div className="mb-6 rounded-[30px] border border-[#e7ddd0] bg-white p-3 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
               <div className="flex flex-wrap gap-2">
