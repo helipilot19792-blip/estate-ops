@@ -167,7 +167,7 @@ function ReportIssueModal({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4 py-6">
-      <div className="w-full max-w-2xl rounded-[28px] border border-[#7a5c2e]/35 bg-[#12100c] shadow-[0_30px_80px_rgba(0,0,0,0.45)]">
+     <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[28px] border border-[#7a5c2e]/35 bg-[#12100c] shadow-[0_30px_80px_rgba(0,0,0,0.45)] overscroll-contain">
         <div className="flex items-start justify-between gap-4 border-b border-[#7a5c2e]/20 px-5 py-4 sm:px-6">
           <div>
             <p className="text-xs uppercase tracking-[0.22em] text-[#b08b47]">Maintenance</p>
@@ -514,7 +514,7 @@ export default function CleanerMobileView({
           </button>
 
           {isSelected && selectedCleanerJob && selectedCleanerJob.slot.id === item.slot.id ? (
-            <section className="border-t border-[#7a5c2e]/20 px-4 pb-4 pt-4">
+           <section className="max-h-[75vh] overflow-y-auto border-t border-[#7a5c2e]/20 px-4 pb-4 pt-4 overscroll-contain">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold">
