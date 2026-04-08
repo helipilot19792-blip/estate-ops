@@ -49,6 +49,7 @@ function ReportIssueModal({
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+const [files, setFiles] = useState<File[]>([]);
 
   useEffect(() => {
     if (!open) return;
@@ -63,29 +64,32 @@ function ReportIssueModal({
   if (!open) return null;
 
   async function handleSubmit() {
-    const trimmedNotes = notes.trim();
+  const trimmedNotes = notes.trim();
 
-    if (!propertyId) {
-      setError("Please choose a property.");
-      return;
-    }
-    if (!category) {
-      setError("Please choose a category.");
-      return;
-    }
-    if (!trimmedNotes) {
-      setError("Please add a quick note about what is wrong.");
-      return;
-    }
-    if (!currentProfileId) {
-      setError("Your cleaner profile could not be confirmed.");
-      return;
-    }
+  if (!propertyId) {
+    setError("Please choose a property.");
+    return;
+  }
+  if (!category) {
+    setError("Please choose a category.");
+    return;
+  }
+  if (!trimmedNotes) {
+    setError("Please add a quick note about what is wrong.");
+    return;
+  }
+  if (!currentProfileId) {
+    setError("Your cleaner profile could not be confirmed.");
+    return;
+  }
 
-    setSaving(true);
-    setError("");
+  setSaving(true);
+  setError("");
 
-    const { error: insertError } = await supabase.from("property_maintenance_flags").insert({
+  // 1. create flag first
+  const { data: flag, error: insertError } = await supabase
+    .from("property_maintenance_flags")
+    .insert({
       property_id: propertyId,
       source: "cleaner",
       category,
@@ -94,18 +98,53 @@ function ReportIssueModal({
       notes: trimmedNotes,
       flagged_by_profile_id: currentProfileId,
       flagged_at: new Date().toISOString(),
-    });
+    })
+    .select()
+    .single();
 
-    if (insertError) {
-      setError(insertError.message);
-      setSaving(false);
-      return;
+  if (insertError || !flag) {
+    setError(insertError?.message || "Failed to create issue.");
+    setSaving(false);
+    return;
+  }
+
+  // 2. upload files (if any)
+  if (files.length > 0) {
+    const uploads = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const filePath = `${flag.id}/${Date.now()}-${file.name}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("maintenance-flag-images")
+        .upload(filePath, file);
+
+      if (uploadError) {
+        console.error(uploadError);
+        continue;
+      }
+
+      const { data } = supabase.storage
+        .from("maintenance-flag-images")
+        .getPublicUrl(filePath);
+
+      uploads.push({
+        flag_id: flag.id,
+        image_url: data.publicUrl,
+        sort_order: i,
+      });
     }
 
-    setSaving(false);
-    onSubmitted?.();
-    onClose();
+    if (uploads.length > 0) {
+      await supabase.from("property_maintenance_flag_images").insert(uploads);
+    }
   }
+
+  setSaving(false);
+  onSubmitted?.();
+  onClose();
+}
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4 py-6">
@@ -205,7 +244,28 @@ function ReportIssueModal({
               className="mt-2 min-h-[120px] w-full rounded-2xl border border-[#7a5c2e]/25 bg-[#0f0d0a] px-4 py-3 text-sm text-[#f5efe4] outline-none transition focus:border-[#b08b47]"
             />
           </div>
+<div>
+  <label className="text-xs uppercase tracking-[0.18em] text-[#b08b47]">
+    Photos (optional)
+  </label>
 
+  <input
+    type="file"
+    multiple
+    accept="image/*"
+    onChange={(e) => {
+      if (!e.target.files) return;
+      setFiles(Array.from(e.target.files));
+    }}
+    className="mt-2 block w-full text-sm text-[#f5efe4]"
+  />
+
+  {files.length > 0 && (
+    <p className="mt-1 text-xs text-[#cdbda0]">
+      {files.length} file(s) selected
+    </p>
+  )}
+</div>
           {error ? (
             <div className="rounded-2xl border border-red-500/35 bg-red-950/30 px-4 py-3 text-sm text-red-200">
               {error}
