@@ -348,10 +348,10 @@ export default function AdminPage() {
   const [deletingResolvedMaintenanceFlags, setDeletingResolvedMaintenanceFlags] = useState(false);
 
   const [propertyName, setPropertyName] = useState("");
- const [propertyStreet, setPropertyStreet] = useState("");
-const [propertyCity, setPropertyCity] = useState("");
-const [propertyProvince, setPropertyProvince] = useState("");
-const [propertyPostal, setPropertyPostal] = useState("");
+  const [propertyStreet, setPropertyStreet] = useState("");
+  const [propertyCity, setPropertyCity] = useState("");
+  const [propertyProvince, setPropertyProvince] = useState("");
+  const [propertyPostal, setPropertyPostal] = useState("");
   const [propertyNotes, setPropertyNotes] = useState("");
   const [propertyUnitsNeeded, setPropertyUnitsNeeded] = useState("1");
   const [propertyUnitsStrict, setPropertyUnitsStrict] = useState(false);
@@ -384,7 +384,7 @@ const [propertyPostal, setPropertyPostal] = useState("");
   const [accessDirty, setAccessDirty] = useState(false);
   const [propertyDefaultsDirty, setPropertyDefaultsDirty] = useState(false);
 
-   const [calendarRowsDraft, setCalendarRowsDraft] = useState<
+  const [calendarRowsDraft, setCalendarRowsDraft] = useState<
     Array<{ id?: string; source: string; ical_url: string; is_active: boolean }>
   >([]);
   const [calendarDraftDirty, setCalendarDraftDirty] = useState(false);
@@ -813,7 +813,7 @@ const [propertyPostal, setPropertyPostal] = useState("");
 
     const { error } = await supabase.from("properties").insert({
       name: propertyName.trim(),
-     address: `${propertyStreet}, ${propertyCity}, ${propertyProvince}, ${propertyPostal}`,
+      address: `${propertyStreet}, ${propertyCity}, ${propertyProvince}, ${propertyPostal}`,
       notes: propertyNotes.trim() || null,
       default_cleaner_units_needed: Number(propertyUnitsNeeded),
       cleaner_units_required_strict: propertyUnitsStrict,
@@ -826,10 +826,10 @@ const [propertyPostal, setPropertyPostal] = useState("");
     }
 
     setPropertyName("");
-   setPropertyStreet("");
-setPropertyCity("");
-setPropertyProvince("");
-setPropertyPostal("");
+    setPropertyStreet("");
+    setPropertyCity("");
+    setPropertyProvince("");
+    setPropertyPostal("");
     setPropertyNotes("");
     setPropertyUnitsNeeded("1");
     setPropertyUnitsStrict(false);
@@ -2100,142 +2100,142 @@ setPropertyPostal("");
       </div>
     );
   }
- function renderAddPropertySection() {
-  return (
-    <section id="maintenance-flags-section" className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-      <h2 className="text-xl font-semibold tracking-tight">Add Property</h2>
-      <p className="mt-1 text-sm text-[#7f7263]">
-        Add a managed property and set default staffing rules.
-      </p>
+  function renderAddPropertySection() {
+    return (
+      <section id="maintenance-flags-section" className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+        <h2 className="text-xl font-semibold tracking-tight">Add Property</h2>
+        <p className="mt-1 text-sm text-[#7f7263]">
+          Add a managed property and set default staffing rules.
+        </p>
 
-      <div className="mt-5 space-y-3">
-        <input
-          className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-          placeholder="Property name"
-          value={propertyName}
-          onChange={(e) => setPropertyName(e.target.value)}
-        />
-
-        <div className="grid gap-2">
+        <div className="mt-5 space-y-3">
           <input
             className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-            placeholder="Street Address"
-            value={propertyStreet}
-            onChange={(e) => setPropertyStreet(e.target.value)}
+            placeholder="Property name"
+            value={propertyName}
+            onChange={(e) => setPropertyName(e.target.value)}
           />
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid gap-2">
             <input
               className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-              placeholder="City"
-              value={propertyCity}
-              onChange={(e) => setPropertyCity(e.target.value)}
+              placeholder="Street Address"
+              value={propertyStreet}
+              onChange={(e) => setPropertyStreet(e.target.value)}
             />
+
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                placeholder="City"
+                value={propertyCity}
+                onChange={(e) => setPropertyCity(e.target.value)}
+              />
+
+              <input
+                className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                placeholder="Province"
+                value={propertyProvince}
+                onChange={(e) => setPropertyProvince(e.target.value)}
+              />
+            </div>
 
             <input
               className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-              placeholder="Province"
-              value={propertyProvince}
-              onChange={(e) => setPropertyProvince(e.target.value)}
+              placeholder="Postal Code"
+              value={propertyPostal}
+              onChange={(e) => setPropertyPostal(e.target.value)}
             />
           </div>
 
-          <input
-            className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-            placeholder="Postal Code"
-            value={propertyPostal}
-            onChange={(e) => setPropertyPostal(e.target.value)}
+          <textarea
+            className="min-h-[110px] w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+            placeholder="Internal notes"
+            value={propertyNotes}
+            onChange={(e) => setPropertyNotes(e.target.value)}
           />
+
+          <select
+            className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+            value={propertyUnitsNeeded}
+            onChange={(e) => setPropertyUnitsNeeded(e.target.value)}
+          >
+            <option value="1">Default cleaner units: 1</option>
+            <option value="2">Default cleaner units: 2</option>
+            <option value="3">Default cleaner units: 3</option>
+          </select>
+
+          <label className="flex items-center gap-2 text-sm text-[#6f6255]">
+            <input
+              type="checkbox"
+              checked={propertyUnitsStrict}
+              onChange={(e) => setPropertyUnitsStrict(e.target.checked)}
+            />
+            Full team required before the job is fully staffed
+          </label>
+
+          <label className="flex items-center gap-2 text-sm text-[#6f6255]">
+            <input
+              type="checkbox"
+              checked={propertyShowTeamStatus}
+              onChange={(e) => setPropertyShowTeamStatus(e.target.checked)}
+            />
+            Show team status on cleaner page
+          </label>
+
+          <button
+            className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]"
+            onClick={() => void addProperty()}
+          >
+            Add Property
+          </button>
         </div>
-
-        <textarea
-          className="min-h-[110px] w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-          placeholder="Internal notes"
-          value={propertyNotes}
-          onChange={(e) => setPropertyNotes(e.target.value)}
-        />
-
-        <select
-          className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-          value={propertyUnitsNeeded}
-          onChange={(e) => setPropertyUnitsNeeded(e.target.value)}
-        >
-          <option value="1">Default cleaner units: 1</option>
-          <option value="2">Default cleaner units: 2</option>
-          <option value="3">Default cleaner units: 3</option>
-        </select>
-
-        <label className="flex items-center gap-2 text-sm text-[#6f6255]">
-          <input
-            type="checkbox"
-            checked={propertyUnitsStrict}
-            onChange={(e) => setPropertyUnitsStrict(e.target.checked)}
-          />
-          Full team required before the job is fully staffed
-        </label>
-
-        <label className="flex items-center gap-2 text-sm text-[#6f6255]">
-          <input
-            type="checkbox"
-            checked={propertyShowTeamStatus}
-            onChange={(e) => setPropertyShowTeamStatus(e.target.checked)}
-          />
-          Show team status on cleaner page
-        </label>
-
-        <button
-          className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]"
-          onClick={() => void addProperty()}
-        >
-          Add Property
-        </button>
-      </div>
-    </section>
-  );
-}
-function renderPropertiesSection() {
-  return (
-    <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-xl font-semibold tracking-tight">Properties</h2>
-            <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">{properties.length}</span>
-          </div>
-          <div className="space-y-3">
-            {properties.map((p) => {
-              const propertyCalendarCount = propertyCalendars.filter((calendar) => calendar.property_id === p.id).length;
-              return (
-                <div key={p.id} className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div className="min-w-0 flex-1">
-                      <div className="text-base font-semibold">{p.name}</div>
-                      <div className="mt-1 text-sm text-[#6f6255]">{p.address || "No address"}</div>
-                      <div className="mt-2 text-sm text-[#8a7b68]">{p.notes || "No notes"}</div>
-                      <div className="mt-2 text-xs text-[#8a7b68]">
-                        Default staffing: {p.default_cleaner_units_needed} unit{p.default_cleaner_units_needed === 1 ? "" : "s"}
-                        {p.cleaner_units_required_strict ? ", strict" : ", flexible"}
-                      </div>
-                      <div className="mt-2 text-xs text-[#8a7b68]">
-                        Calendars configured: {propertyCalendarCount}
-                      </div>
+      </section>
+    );
+  }
+  function renderPropertiesSection() {
+    return (
+      <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-xl font-semibold tracking-tight">Properties</h2>
+          <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">{properties.length}</span>
+        </div>
+        <div className="space-y-3">
+          {properties.map((p) => {
+            const propertyCalendarCount = propertyCalendars.filter((calendar) => calendar.property_id === p.id).length;
+            return (
+              <div key={p.id} className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-base font-semibold">{p.name}</div>
+                    <div className="mt-1 text-sm text-[#6f6255]">{p.address || "No address"}</div>
+                    <div className="mt-2 text-sm text-[#8a7b68]">{p.notes || "No notes"}</div>
+                    <div className="mt-2 text-xs text-[#8a7b68]">
+                      Default staffing: {p.default_cleaner_units_needed} unit{p.default_cleaner_units_needed === 1 ? "" : "s"}
+                      {p.cleaner_units_required_strict ? ", strict" : ", flexible"}
                     </div>
-
-                    <div className="w-full md:w-[220px]">
-                      <button
-                        className="w-full rounded-[14px] border border-[#efc6c6] bg-[#fff5f5] px-3 py-2 text-sm text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-50"
-                        onClick={() => void deleteProperty(p)}
-                        disabled={deletingPropertyId === p.id}
-                      >
-                        {deletingPropertyId === p.id ? "Deleting..." : "Delete property"}
-                      </button>
+                    <div className="mt-2 text-xs text-[#8a7b68]">
+                      Calendars configured: {propertyCalendarCount}
                     </div>
                   </div>
+
+                  <div className="w-full md:w-[220px]">
+                    <button
+                      className="w-full rounded-[14px] border border-[#efc6c6] bg-[#fff5f5] px-3 py-2 text-sm text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-50"
+                      onClick={() => void deleteProperty(p)}
+                      disabled={deletingPropertyId === p.id}
+                    >
+                      {deletingPropertyId === p.id ? "Deleting..." : "Delete property"}
+                    </button>
+                  </div>
                 </div>
-              );
-            })}
-          </div>
-     </section>
-  );
-}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+    );
+  }
 
   function renderCleanerAccountsSection() {
     return (
@@ -2553,17 +2553,15 @@ function renderPropertiesSection() {
                     key={dateYmd}
                     type="button"
                     onClick={() => selectAdminCalendarDate(dateYmd)}
-                    className={`min-h-[118px] border-r border-b border-[#eadfce] p-2 text-left align-top transition ${
-                      isSelected
+                    className={`min-h-[118px] border-r border-b border-[#eadfce] p-2 text-left align-top transition ${isSelected
                         ? "bg-[#fffaf3] shadow-[inset_0_0_0_2px_rgba(180,141,78,0.65)]"
                         : "hover:bg-[#fcfaf7]"
-                    } ${!isCurrentMonth ? "bg-[#fbf9f5] text-[#b1a392]" : "text-[#241c15]"}`}
+                      } ${!isCurrentMonth ? "bg-[#fbf9f5] text-[#b1a392]" : "text-[#241c15]"}`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div
-                        className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold ${
-                          isToday ? "bg-[#241c15] text-[#f8f2e8]" : "bg-transparent"
-                        }`}
+                        className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold ${isToday ? "bg-[#241c15] text-[#f8f2e8]" : "bg-transparent"
+                          }`}
                       >
                         {day.getDate()}
                       </div>
@@ -2687,11 +2685,10 @@ function renderPropertiesSection() {
                           <span className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">
                             Declined: {declinedCount}
                           </span>
-                          <span className={`rounded-full px-3 py-1 text-xs font-medium ${
-                            strandedCount > 0
+                          <span className={`rounded-full px-3 py-1 text-xs font-medium ${strandedCount > 0
                               ? "border border-[#efc6c6] bg-[#fff5f5] text-[#8a2e22]"
                               : "border border-[#d8c7ab] bg-[#fcfaf7] text-[#7f7263]"
-                          }`}>
+                            }`}>
                             Stranded: {strandedCount}
                           </span>
                         </div>
@@ -2977,7 +2974,7 @@ function renderPropertiesSection() {
               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div>
                   <h3 className="text-lg font-semibold">Property Staffing Defaults</h3>
-                    </div>
+                </div>
                 <button
                   className="inline-flex items-center justify-center rounded-full border border-[#efc6c6] bg-[#fff5f5] px-5 py-2.5 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-50"
                   onClick={() => {
@@ -2994,9 +2991,9 @@ function renderPropertiesSection() {
                 <div>
                   <label className="mb-2 block text-sm font-medium text-[#5f5245]">Cleaner units needed</label>
                   <select className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" value={selectedPropertyUnitsNeeded} onChange={(e) => {
-                      setSelectedPropertyUnitsNeeded(e.target.value);
-                      setPropertyDefaultsDirty(true);
-                    }}>
+                    setSelectedPropertyUnitsNeeded(e.target.value);
+                    setPropertyDefaultsDirty(true);
+                  }}>
                     <option value="1">1 cleaner unit</option>
                     <option value="2">2 cleaner units</option>
                     <option value="3">3 cleaner units</option>
@@ -3344,158 +3341,155 @@ function renderPropertiesSection() {
                 ) : (
                   <div className="space-y-4">
                     {openMaintenanceFlags.map((flag) => {
-                const state = String(getMaintenanceFlagState(flag) || "open");
-                const stateLower = state.toLowerCase();
-                const urgency = String(flag.urgency || flag.priority || flag.severity || "normal");
-                const urgencyLower = urgency.toLowerCase();
-                const isResolved =
-                  stateLower.includes("resolved") ||
-                  stateLower.includes("closed") ||
-                  stateLower.includes("done");
-                const isUrgent =
-                  urgencyLower.includes("high") ||
-                  urgencyLower.includes("urgent") ||
-                  urgencyLower.includes("critical");
+                      const state = String(getMaintenanceFlagState(flag) || "open");
+                      const stateLower = state.toLowerCase();
+                      const urgency = String(flag.urgency || flag.priority || flag.severity || "normal");
+                      const urgencyLower = urgency.toLowerCase();
+                      const isResolved =
+                        stateLower.includes("resolved") ||
+                        stateLower.includes("closed") ||
+                        stateLower.includes("done");
+                      const isUrgent =
+                        urgencyLower.includes("high") ||
+                        urgencyLower.includes("urgent") ||
+                        urgencyLower.includes("critical");
 
-                const flaggedByName = profiles.find((profile) => profile.id === flag.flagged_by_profile_id)?.full_name;
-                const resolvedByName = profiles.find((profile) => profile.id === flag.resolved_by_profile_id)?.full_name;
-                const labelKeys = Object.keys(flag).filter(
-                  (key) =>
-                    ![
-                      "id",
-                      "property_id",
-                      "source",
-                      "category",
-                      "urgency",
-                      "status",
-                      "notes",
-                      "flagged_by_profile_id",
-                      "flagged_at",
-                      "resolved_at",
-                      "resolved_by_profile_id",
-                      "created_at",
-                      "updated_at",
-                    ].includes(key) && flag[key] !== null && flag[key] !== ""
-                );
+                      const flaggedByName = profiles.find((profile) => profile.id === flag.flagged_by_profile_id)?.full_name;
+                      const resolvedByName = profiles.find((profile) => profile.id === flag.resolved_by_profile_id)?.full_name;
+                      const labelKeys = Object.keys(flag).filter(
+                        (key) =>
+                          ![
+                            "id",
+                            "property_id",
+                            "source",
+                            "category",
+                            "urgency",
+                            "status",
+                            "notes",
+                            "flagged_by_profile_id",
+                            "flagged_at",
+                            "resolved_at",
+                            "resolved_by_profile_id",
+                            "created_at",
+                            "updated_at",
+                          ].includes(key) && flag[key] !== null && flag[key] !== ""
+                      );
 
-                return (
-                  <div
-                    key={flag.id}
-                    className={`rounded-[24px] border p-4 shadow-sm ${
-                      isResolved
-                        ? "border-[#d7e7d7] bg-[#f5fbf5]"
-                        : isUrgent
-                        ? "animate-pulse border-[#b91c1c] bg-[#fff1f2] shadow-[0_16px_34px_rgba(185,28,28,0.16)]"
-                        : "border-[#dc2626] bg-[#fff5f5]"
-                    }`}
-                  >
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <div className="text-base font-semibold text-[#241c15]">
-                            {flag.category || getMaintenanceFlagLabel(flag, labelKeys)}
-                          </div>
-                          <span
-                            className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${
-                              isResolved
-                                ? "border-[#cfe4cf] bg-white text-[#2f6b2f]"
-                                : isUrgent
-                                ? "border-[#fecaca] bg-white text-[#991b1b]"
-                                : "border-[#fecaca] bg-white text-[#991b1b]"
+                      return (
+                        <div
+                          key={flag.id}
+                          className={`rounded-[24px] border p-4 shadow-sm ${isResolved
+                              ? "border-[#d7e7d7] bg-[#f5fbf5]"
+                              : isUrgent
+                                ? "animate-pulse border-[#b91c1c] bg-[#fff1f2] shadow-[0_16px_34px_rgba(185,28,28,0.16)]"
+                                : "border-[#dc2626] bg-[#fff5f5]"
                             }`}
-                          >
-                            {state}
-                          </span>
-                          <span
-                            className={`inline-flex rounded-full border bg-white px-2.5 py-0.5 text-[11px] font-medium ${
-                              isUrgent ? "border-[#fecaca] text-[#991b1b]" : "border-[#d8c7ab] text-[#7f7263]"
-                            }`}
-                          >
-                            {urgency}
-                          </span>
-                          {flag.source ? (
-                            <span className="inline-flex rounded-full border border-[#d8c7ab] bg-white px-2.5 py-0.5 text-[11px] font-medium text-[#7f7263]">
-                              Source: {flag.source}
-                            </span>
-                          ) : null}
-                        </div>
+                        >
+                          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <div className="text-base font-semibold text-[#241c15]">
+                                  {flag.category || getMaintenanceFlagLabel(flag, labelKeys)}
+                                </div>
+                                <span
+                                  className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${isResolved
+                                      ? "border-[#cfe4cf] bg-white text-[#2f6b2f]"
+                                      : isUrgent
+                                        ? "border-[#fecaca] bg-white text-[#991b1b]"
+                                        : "border-[#fecaca] bg-white text-[#991b1b]"
+                                    }`}
+                                >
+                                  {state}
+                                </span>
+                                <span
+                                  className={`inline-flex rounded-full border bg-white px-2.5 py-0.5 text-[11px] font-medium ${isUrgent ? "border-[#fecaca] text-[#991b1b]" : "border-[#d8c7ab] text-[#7f7263]"
+                                    }`}
+                                >
+                                  {urgency}
+                                </span>
+                                {flag.source ? (
+                                  <span className="inline-flex rounded-full border border-[#d8c7ab] bg-white px-2.5 py-0.5 text-[11px] font-medium text-[#7f7263]">
+                                    Source: {flag.source}
+                                  </span>
+                                ) : null}
+                              </div>
 
-                        <div className="mt-2 text-sm text-[#6f6255]">
-                          {getPropertyName(flag.property_id ?? null)}
-                        </div>
+                              <div className="mt-2 text-sm text-[#6f6255]">
+                                {getPropertyName(flag.property_id ?? null)}
+                              </div>
 
-                        {flag.notes ? (
-                          <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[#5f5245]">
-                            {flag.notes}
-                          </div>
-                        ) : null}
+                              {flag.notes ? (
+                                <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[#5f5245]">
+                                  {flag.notes}
+                                </div>
+                              ) : null}
 
-                        {labelKeys.length > 0 ? (
-                          <div className="mt-4 flex flex-wrap gap-2">
-                            {labelKeys.slice(0, 6).map((key) => (
-                              <span
-                                key={key}
-                                className="inline-flex rounded-full border border-[#e2d6c6] bg-white px-3 py-1 text-xs text-[#6f6255]"
-                              >
-                                {key.replace(/_/g, " ")}: {String(flag[key])}
-                              </span>
-                            ))}
-                          </div>
-                        ) : null}
-                      </div>
-
-                      <div className="flex w-full flex-col gap-3 lg:w-[260px]">
-                        <div className="grid gap-2 text-sm text-[#7f7263]">
-                          <div>
-                            <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Flagged</div>
-                            <div>{formatDateTime(flag.flagged_at || flag.created_at)}</div>
-                          </div>
-
-                          {flaggedByName || flag.flagged_by_profile_id ? (
-                            <div>
-                              <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Flagged by</div>
-                              <div>{flaggedByName || flag.flagged_by_profile_id}</div>
+                              {labelKeys.length > 0 ? (
+                                <div className="mt-4 flex flex-wrap gap-2">
+                                  {labelKeys.slice(0, 6).map((key) => (
+                                    <span
+                                      key={key}
+                                      className="inline-flex rounded-full border border-[#e2d6c6] bg-white px-3 py-1 text-xs text-[#6f6255]"
+                                    >
+                                      {key.replace(/_/g, " ")}: {String(flag[key])}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : null}
                             </div>
-                          ) : null}
 
-                          {flag.resolved_at ? (
-                            <div>
-                              <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Resolved</div>
-                              <div>{formatDateTime(flag.resolved_at)}</div>
+                            <div className="flex w-full flex-col gap-3 lg:w-[260px]">
+                              <div className="grid gap-2 text-sm text-[#7f7263]">
+                                <div>
+                                  <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Flagged</div>
+                                  <div>{formatDateTime(flag.flagged_at || flag.created_at)}</div>
+                                </div>
+
+                                {flaggedByName || flag.flagged_by_profile_id ? (
+                                  <div>
+                                    <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Flagged by</div>
+                                    <div>{flaggedByName || flag.flagged_by_profile_id}</div>
+                                  </div>
+                                ) : null}
+
+                                {flag.resolved_at ? (
+                                  <div>
+                                    <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Resolved</div>
+                                    <div>{formatDateTime(flag.resolved_at)}</div>
+                                  </div>
+                                ) : null}
+
+                                {resolvedByName || flag.resolved_by_profile_id ? (
+                                  <div>
+                                    <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Resolved by</div>
+                                    <div>{resolvedByName || flag.resolved_by_profile_id}</div>
+                                  </div>
+                                ) : null}
+                              </div>
+
+                              <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
+                                {!isResolved ? (
+                                  <button
+                                    className="rounded-[16px] bg-[#241c15] px-4 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60"
+                                    onClick={() => void resolveMaintenanceFlag(flag.id)}
+                                    disabled={resolvingMaintenanceFlagId === flag.id || deletingMaintenanceFlagId === flag.id}
+                                  >
+                                    {resolvingMaintenanceFlagId === flag.id ? "Resolving..." : "Mark Resolved"}
+                                  </button>
+                                ) : null}
+
+                                <button
+                                  className="rounded-[16px] border border-[#efc6c6] bg-[#fff5f5] px-4 py-2.5 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-60"
+                                  onClick={() => void deleteMaintenanceFlag(flag.id)}
+                                  disabled={deletingMaintenanceFlagId === flag.id || resolvingMaintenanceFlagId === flag.id}
+                                >
+                                  {deletingMaintenanceFlagId === flag.id ? "Deleting..." : "Delete"}
+                                </button>
+                              </div>
                             </div>
-                          ) : null}
-
-                          {resolvedByName || flag.resolved_by_profile_id ? (
-                            <div>
-                              <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Resolved by</div>
-                              <div>{resolvedByName || flag.resolved_by_profile_id}</div>
-                            </div>
-                          ) : null}
+                          </div>
                         </div>
-
-                        <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
-                          {!isResolved ? (
-                            <button
-                              className="rounded-[16px] bg-[#241c15] px-4 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60"
-                              onClick={() => void resolveMaintenanceFlag(flag.id)}
-                              disabled={resolvingMaintenanceFlagId === flag.id || deletingMaintenanceFlagId === flag.id}
-                            >
-                              {resolvingMaintenanceFlagId === flag.id ? "Resolving..." : "Mark Resolved"}
-                            </button>
-                          ) : null}
-
-                          <button
-                            className="rounded-[16px] border border-[#efc6c6] bg-[#fff5f5] px-4 py-2.5 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-60"
-                            onClick={() => void deleteMaintenanceFlag(flag.id)}
-                            disabled={deletingMaintenanceFlagId === flag.id || resolvingMaintenanceFlagId === flag.id}
-                          >
-                            {deletingMaintenanceFlagId === flag.id ? "Deleting..." : "Delete"}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
+                      );
                     })}
                   </div>
                 )}
@@ -3670,9 +3664,8 @@ function renderPropertiesSection() {
                 <div className="md:col-span-2">
                   <label className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Property</label>
                   <select
-                    className={`w-full rounded-[20px] border bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e] ${
-                    maintenanceFormError && !maintenanceFormPropertyId ? "border-[#dc2626] bg-[#fff5f5]" : "border-[#d9ccbb]"
-                  }`}
+                    className={`w-full rounded-[20px] border bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e] ${maintenanceFormError && !maintenanceFormPropertyId ? "border-[#dc2626] bg-[#fff5f5]" : "border-[#d9ccbb]"
+                      }`}
                     value={maintenanceFormPropertyId}
                     onChange={(e) => setMaintenanceFormPropertyId(e.target.value)}
                   >
@@ -3688,9 +3681,8 @@ function renderPropertiesSection() {
                 <div>
                   <label className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Category</label>
                   <select
-                    className={`w-full rounded-[20px] border bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e] ${
-                    maintenanceFormError && !maintenanceFormCategory ? "border-[#dc2626] bg-[#fff5f5]" : "border-[#d9ccbb]"
-                  }`}
+                    className={`w-full rounded-[20px] border bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e] ${maintenanceFormError && !maintenanceFormCategory ? "border-[#dc2626] bg-[#fff5f5]" : "border-[#d9ccbb]"
+                      }`}
                     value={maintenanceFormCategory}
                     onChange={(e) => setMaintenanceFormCategory(e.target.value)}
                   >
@@ -3719,9 +3711,8 @@ function renderPropertiesSection() {
                 <div className="md:col-span-2">
                   <label className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Notes</label>
                   <textarea
-                    className={`min-h-[160px] w-full rounded-[20px] border bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e] ${
-                      maintenanceFormError && !maintenanceFormNotes.trim() ? "border-[#dc2626] bg-[#fff5f5]" : "border-[#d9ccbb]"
-                    }`}
+                    className={`min-h-[160px] w-full rounded-[20px] border bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e] ${maintenanceFormError && !maintenanceFormNotes.trim() ? "border-[#dc2626] bg-[#fff5f5]" : "border-[#d9ccbb]"
+                      }`}
                     placeholder="Describe the issue clearly so it can be acted on later."
                     value={maintenanceFormNotes}
                     onChange={(e) => setMaintenanceFormNotes(e.target.value)}
@@ -3756,14 +3747,14 @@ function renderPropertiesSection() {
     switch (activeSection) {
       case "users":
         return renderUsersSection();
-case "properties":
-  return (
-    <div className="space-y-6">
-      {renderAddPropertySection()}
-      {renderPropertySetupSection()}
-      {renderPropertiesSection()}
-    </div>
-  );
+      case "properties":
+        return (
+          <div className="space-y-6">
+            {renderAddPropertySection()}
+            {renderPropertySetupSection()}
+            {renderPropertiesSection()}
+          </div>
+        );
       case "cleanerAccounts":
         return renderCleanerAccountsSection();
       case "assignments":
@@ -3786,7 +3777,7 @@ case "properties":
               <div className="w-[180px]">
                 <Image
                   src="/eomlogo.png"
-                  alt="Estate of Mind Property Management"
+                 alt="Gulera OS"
                   width={400}
                   height={120}
                   className="h-auto w-full"
@@ -3813,8 +3804,8 @@ case "properties":
               <div className="flex items-start gap-4">
                 <div className="w-[220px] shrink-0 rounded-[20px] border border-white/10 bg-white/5 p-3 backdrop-blur">
                   <Image
-                    src="/eomlogo.png"
-                    alt="Estate of Mind Property Management"
+                    src="/guleraoslogo.png"
+                    alt="Gulera OS"
                     width={500}
                     height={160}
                     className="h-auto w-full"
@@ -3822,11 +3813,16 @@ case "properties":
                   />
                 </div>
                 <div>
-                  <div className="mb-2 text-xs uppercase tracking-[0.32em] text-[#d8c7ab]">Estate of Mind</div>
-                  <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">Luxury Operations Portal</h1>
+                 <div className="mb-2 text-xs uppercase tracking-[0.4em] text-[#d8c7ab]">
+                    ESTATE OS
+                  </div>
+
+                  <h1 className="text-3xl font-medium tracking-tight md:text-4xl">
+                    Property operations, elevated.
+                  </h1>
+
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-[#e7dccb] md:text-base">
-                    Cleaner accounts, staffing rules, shared household logins, turnover scheduling,
-                    access details, calendars, and SOPs.
+                    Staffing, scheduling, maintenance, and access — all in one place.
                   </p>
                 </div>
               </div>
@@ -3887,13 +3883,12 @@ case "properties":
                   <button
                     key={alert.key}
                     onClick={alert.onClick}
-                    className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${
-                      alert.key === "maintenance-urgent"
+                    className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${alert.key === "maintenance-urgent"
                         ? "animate-pulse border-[#b91c1c] bg-[#dc2626] text-white shadow-[0_8px_22px_rgba(185,28,28,0.28)] hover:bg-[#b91c1c]"
                         : alert.tone === "red"
-                        ? "border-[#fecaca] bg-[#fff1f2] text-[#991b1b] hover:bg-[#ffe4e6]"
-                        : "border-[#ecd7a8] bg-[#fff8e8] text-[#8a6112] hover:bg-[#fff2cf]"
-                    }`}
+                          ? "border-[#fecaca] bg-[#fff1f2] text-[#991b1b] hover:bg-[#ffe4e6]"
+                          : "border-[#ecd7a8] bg-[#fff8e8] text-[#8a6112] hover:bg-[#fff2cf]"
+                      }`}
                   >
                     <span>{alert.label}</span>
                     <span className="rounded-full border border-current/20 px-2 py-0.5 text-[11px]">
@@ -3906,26 +3901,25 @@ case "properties":
           </div>
         ) : null}
 
-            <div className="mb-6 rounded-[30px] border border-[#e7ddd0] bg-white p-3 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-              <div className="flex flex-wrap gap-2">
-                {menuItems.map((item) => (
-                  <button
-                    key={item.key}
-                    onClick={() => setActiveSection(item.key)}
-                    className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                      activeSection === item.key
-                        ? "bg-[#241c15] text-[#f8f2e8]"
-                        : "border border-[#d8c7ab] bg-[#fcfaf7] text-[#6f6255] hover:bg-white"
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-                   {renderActiveSection()}
+        <div className="mb-6 rounded-[30px] border border-[#e7ddd0] bg-white p-3 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <div className="flex flex-wrap gap-2">
+            {menuItems.map((item) => (
+              <button
+                key={item.key}
+                onClick={() => setActiveSection(item.key)}
+                className={`rounded-full px-4 py-2 text-sm font-medium transition ${activeSection === item.key
+                    ? "bg-[#241c15] text-[#f8f2e8]"
+                    : "border border-[#d8c7ab] bg-[#fcfaf7] text-[#6f6255] hover:bg-white"
+                  }`}
+              >
+                {item.label}
+              </button>
+            ))}
           </div>
-        </main>
-      );
-    }
+        </div>
+
+        {renderActiveSection()}
+      </div>
+    </main>
+  );
+}
