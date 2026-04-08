@@ -1,7 +1,242 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "@/lib/supabase";
 import type { CleanerJob, CleanerViewProps } from "@/components/cleaner/cleanershell";
+
+
+const MAINTENANCE_CATEGORIES = [
+  "Cleaning issue",
+  "Damage",
+  "Supplies",
+  "Lock / access",
+  "Plumbing",
+  "Electrical",
+  "Lawn / exterior",
+  "Pest issue",
+  "Safety issue",
+  "Other",
+] as const;
+
+const MAINTENANCE_URGENCY_OPTIONS = [
+  { value: "low", label: "Low" },
+  { value: "normal", label: "Normal" },
+  { value: "urgent", label: "Urgent" },
+] as const;
+
+type ReportIssueModalProps = {
+  open: boolean;
+  onClose: () => void;
+  availableProperties: Array<{ id: string; name: string | null; address: string | null }>;
+  defaultPropertyId: string;
+  currentProfileId: string | null;
+  onSubmitted?: () => void;
+};
+
+function ReportIssueModal({
+  open,
+  onClose,
+  availableProperties,
+  defaultPropertyId,
+  currentProfileId,
+  onSubmitted,
+}: ReportIssueModalProps) {
+  const [propertyId, setPropertyId] = useState(defaultPropertyId);
+  const [category, setCategory] = useState("");
+  const [urgency, setUrgency] = useState("normal");
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    setPropertyId(defaultPropertyId);
+    setCategory("");
+    setUrgency("normal");
+    setNotes("");
+    setError("");
+    setSaving(false);
+  }, [open, defaultPropertyId]);
+
+  if (!open) return null;
+
+  async function handleSubmit() {
+    const trimmedNotes = notes.trim();
+
+    if (!propertyId) {
+      setError("Please choose a property.");
+      return;
+    }
+    if (!category) {
+      setError("Please choose a category.");
+      return;
+    }
+    if (!trimmedNotes) {
+      setError("Please add a quick note about what is wrong.");
+      return;
+    }
+    if (!currentProfileId) {
+      setError("Your cleaner profile could not be confirmed.");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+
+    const { error: insertError } = await supabase.from("property_maintenance_flags").insert({
+      property_id: propertyId,
+      source: "cleaner",
+      category,
+      urgency,
+      status: "open",
+      notes: trimmedNotes,
+      flagged_by_profile_id: currentProfileId,
+      flagged_at: new Date().toISOString(),
+    });
+
+    if (insertError) {
+      setError(insertError.message);
+      setSaving(false);
+      return;
+    }
+
+    setSaving(false);
+    onSubmitted?.();
+    onClose();
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4 py-6">
+      <div className="w-full max-w-2xl rounded-[28px] border border-[#7a5c2e]/35 bg-[#12100c] shadow-[0_30px_80px_rgba(0,0,0,0.45)]">
+        <div className="flex items-start justify-between gap-4 border-b border-[#7a5c2e]/20 px-5 py-4 sm:px-6">
+          <div>
+            <p className="text-xs uppercase tracking-[0.22em] text-[#b08b47]">Maintenance</p>
+            <h3 className="mt-1 text-xl font-semibold text-[#f8f2e8]">Report Issue</h3>
+            <p className="mt-1 text-sm text-[#cdbda0]">
+              Keep it fast. Pick the property, tap the issue type, and add a short note.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full border border-[#7a5c2e]/30 px-3 py-1.5 text-sm text-[#f5efe4] transition hover:bg-[#1b1510]"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="space-y-5 px-5 py-5 sm:px-6">
+          <div>
+            <label className="text-xs uppercase tracking-[0.18em] text-[#b08b47]">Property</label>
+            <select
+              value={propertyId}
+              onChange={(e) => setPropertyId(e.target.value)}
+              className="mt-2 w-full rounded-2xl border border-[#7a5c2e]/25 bg-[#0f0d0a] px-4 py-3 text-sm text-[#f5efe4] outline-none transition focus:border-[#b08b47]"
+            >
+              <option value="">Choose property</option>
+              {availableProperties.map((property) => (
+                <option key={property.id} value={property.id}>
+                  {property.name || property.address || "Property"}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <div className="text-xs uppercase tracking-[0.18em] text-[#b08b47]">Category</div>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {MAINTENANCE_CATEGORIES.map((item) => {
+                const isSelected = category === item;
+                return (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => setCategory(item)}
+                    className={`rounded-2xl border px-4 py-3 text-sm font-medium transition ${
+                      isSelected
+                        ? "border-[#e7c98a] bg-[#b08b47]/20 text-[#f8f2e8] ring-2 ring-[#b08b47]/45"
+                        : "border-[#7a5c2e]/25 bg-[#100d0a] text-[#e8ddca] hover:bg-[#19140f]"
+                    }`}
+                  >
+                    {item}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <div className="text-xs uppercase tracking-[0.18em] text-[#b08b47]">Urgency</div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {MAINTENANCE_URGENCY_OPTIONS.map((option) => {
+                const isSelected = urgency === option.value;
+                const selectedClass =
+                  option.value === "urgent"
+                    ? "border-red-400/80 bg-red-500 text-white"
+                    : option.value === "normal"
+                      ? "border-amber-300/60 bg-amber-400/20 text-[#f8f2e8]"
+                      : "border-sky-300/45 bg-sky-400/10 text-sky-100";
+
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setUrgency(option.value)}
+                    className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                      isSelected
+                        ? selectedClass
+                        : "border-[#7a5c2e]/25 bg-[#100d0a] text-[#e8ddca] hover:bg-[#19140f]"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs uppercase tracking-[0.18em] text-[#b08b47]">Quick note</label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Example: Kitchen sink leaking under cabinet."
+              className="mt-2 min-h-[120px] w-full rounded-2xl border border-[#7a5c2e]/25 bg-[#0f0d0a] px-4 py-3 text-sm text-[#f5efe4] outline-none transition focus:border-[#b08b47]"
+            />
+          </div>
+
+          {error ? (
+            <div className="rounded-2xl border border-red-500/35 bg-red-950/30 px-4 py-3 text-sm text-red-200">
+              {error}
+            </div>
+          ) : null}
+
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={saving}
+              className="rounded-full bg-[#b08b47] px-5 py-2.5 text-sm font-semibold text-[#120f0b] transition hover:bg-[#c79d53] disabled:opacity-50"
+            >
+              {saving ? "Reporting..." : "Report Issue"}
+            </button>
+
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="rounded-full border border-[#7a5c2e]/35 px-5 py-2.5 text-sm font-semibold text-[#f5efe4] transition hover:bg-[#1b1510] disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 export default function CleanerMobileView({
   activeJobs,
@@ -30,8 +265,12 @@ export default function CleanerMobileView({
   sopImagesBySopId,
   profile,
   cleanerAccount,
+  properties,
 }: CleanerViewProps) {
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportSubmittedMessage, setReportSubmittedMessage] = useState("");
   const [jobView, setJobView] = useState<"active" | "history">("active");
+  const reportableProperties = useMemo(() => properties, [properties]);
 
   function normalizeJobDate(value: string | null | undefined) {
     if (!value) return null;
@@ -347,12 +586,38 @@ export default function CleanerMobileView({
 
                 <button
                   type="button"
+                  onClick={() => setReportOpen(true)}
+                  className="rounded-full border border-[#b08b47]/45 bg-[#b08b47]/10 px-4 py-3 text-sm font-semibold text-[#f5efe4] transition hover:bg-[#b08b47]/20"
+                >
+                  Report Issue
+                </button>
+
+                <button
+                  type="button"
                   onClick={handleCloseDetails}
                   className="rounded-full border border-[#7a5c2e]/40 bg-[#100d0a] px-4 py-3 text-sm font-semibold text-[#f5efe4] transition hover:bg-[#1b1510]"
                 >
                   Close Details
                 </button>
               </div>
+
+              {reportSubmittedMessage ? (
+                <div className="mt-4 rounded-2xl border border-emerald-500/35 bg-emerald-950/25 px-4 py-3 text-sm text-emerald-200">
+                  {reportSubmittedMessage}
+                </div>
+              ) : null}
+
+              <ReportIssueModal
+                open={reportOpen}
+                onClose={() => setReportOpen(false)}
+                availableProperties={reportableProperties}
+                defaultPropertyId={selectedJobProperty?.id || selectedCleanerJob.job.property_id}
+                currentProfileId={profile?.id || null}
+                onSubmitted={() => {
+                  setReportSubmittedMessage("Issue reported successfully.");
+                  setTimeout(() => setReportSubmittedMessage(""), 3500);
+                }}
+              />
             </section>
           ) : null}
         </div>

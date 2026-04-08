@@ -1,9 +1,242 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
+import { supabase } from "@/lib/supabase";
 import type { CleanerJob, CleanerViewProps } from "@/components/cleaner/cleanershell";
+
+
+const MAINTENANCE_CATEGORIES = [
+  "Cleaning issue",
+  "Damage",
+  "Supplies",
+  "Lock / access",
+  "Plumbing",
+  "Electrical",
+  "Lawn / exterior",
+  "Pest issue",
+  "Safety issue",
+  "Other",
+] as const;
+
+const MAINTENANCE_URGENCY_OPTIONS = [
+  { value: "low", label: "Low" },
+  { value: "normal", label: "Normal" },
+  { value: "urgent", label: "Urgent" },
+] as const;
+
+type ReportIssueModalProps = {
+  open: boolean;
+  onClose: () => void;
+  availableProperties: Array<{ id: string; name: string | null; address: string | null }>;
+  defaultPropertyId: string;
+  currentProfileId: string | null;
+  onSubmitted?: () => void;
+};
+
+function ReportIssueModal({
+  open,
+  onClose,
+  availableProperties,
+  defaultPropertyId,
+  currentProfileId,
+  onSubmitted,
+}: ReportIssueModalProps) {
+  const [propertyId, setPropertyId] = useState(defaultPropertyId);
+  const [category, setCategory] = useState("");
+  const [urgency, setUrgency] = useState("normal");
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    setPropertyId(defaultPropertyId);
+    setCategory("");
+    setUrgency("normal");
+    setNotes("");
+    setError("");
+    setSaving(false);
+  }, [open, defaultPropertyId]);
+
+  if (!open) return null;
+
+  async function handleSubmit() {
+    const trimmedNotes = notes.trim();
+
+    if (!propertyId) {
+      setError("Please choose a property.");
+      return;
+    }
+    if (!category) {
+      setError("Please choose a category.");
+      return;
+    }
+    if (!trimmedNotes) {
+      setError("Please add a quick note about what is wrong.");
+      return;
+    }
+    if (!currentProfileId) {
+      setError("Your cleaner profile could not be confirmed.");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+
+    const { error: insertError } = await supabase.from("property_maintenance_flags").insert({
+      property_id: propertyId,
+      source: "cleaner",
+      category,
+      urgency,
+      status: "open",
+      notes: trimmedNotes,
+      flagged_by_profile_id: currentProfileId,
+      flagged_at: new Date().toISOString(),
+    });
+
+    if (insertError) {
+      setError(insertError.message);
+      setSaving(false);
+      return;
+    }
+
+    setSaving(false);
+    onSubmitted?.();
+    onClose();
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4 py-6">
+      <div className="w-full max-w-2xl rounded-[28px] border border-[#7a5c2e]/35 bg-[#12100c] shadow-[0_30px_80px_rgba(0,0,0,0.45)]">
+        <div className="flex items-start justify-between gap-4 border-b border-[#7a5c2e]/20 px-5 py-4 sm:px-6">
+          <div>
+            <p className="text-xs uppercase tracking-[0.22em] text-[#b08b47]">Maintenance</p>
+            <h3 className="mt-1 text-xl font-semibold text-[#f8f2e8]">Report Issue</h3>
+            <p className="mt-1 text-sm text-[#cdbda0]">
+              Keep it fast. Pick the property, tap the issue type, and add a short note.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full border border-[#7a5c2e]/30 px-3 py-1.5 text-sm text-[#f5efe4] transition hover:bg-[#1b1510]"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="space-y-5 px-5 py-5 sm:px-6">
+          <div>
+            <label className="text-xs uppercase tracking-[0.18em] text-[#b08b47]">Property</label>
+            <select
+              value={propertyId}
+              onChange={(e) => setPropertyId(e.target.value)}
+              className="mt-2 w-full rounded-2xl border border-[#7a5c2e]/25 bg-[#0f0d0a] px-4 py-3 text-sm text-[#f5efe4] outline-none transition focus:border-[#b08b47]"
+            >
+              <option value="">Choose property</option>
+              {availableProperties.map((property) => (
+                <option key={property.id} value={property.id}>
+                  {property.name || property.address || "Property"}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <div className="text-xs uppercase tracking-[0.18em] text-[#b08b47]">Category</div>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {MAINTENANCE_CATEGORIES.map((item) => {
+                const isSelected = category === item;
+                return (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => setCategory(item)}
+                    className={`rounded-2xl border px-4 py-3 text-sm font-medium transition ${isSelected
+                      ? "border-[#e7c98a] bg-[#b08b47]/20 text-[#f8f2e8] ring-2 ring-[#b08b47]/45"
+                      : "border-[#7a5c2e]/25 bg-[#100d0a] text-[#e8ddca] hover:bg-[#19140f]"
+                      }`}
+                  >
+                    {item}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <div className="text-xs uppercase tracking-[0.18em] text-[#b08b47]">Urgency</div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {MAINTENANCE_URGENCY_OPTIONS.map((option) => {
+                const isSelected = urgency === option.value;
+                const selectedClass =
+                  option.value === "urgent"
+                    ? "border-red-400/80 bg-red-500 text-white"
+                    : option.value === "normal"
+                      ? "border-amber-300/60 bg-amber-400/20 text-[#f8f2e8]"
+                      : "border-sky-300/45 bg-sky-400/10 text-sky-100";
+
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setUrgency(option.value)}
+                    className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${isSelected
+                      ? selectedClass
+                      : "border-[#7a5c2e]/25 bg-[#100d0a] text-[#e8ddca] hover:bg-[#19140f]"
+                      }`}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs uppercase tracking-[0.18em] text-[#b08b47]">Quick note</label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Example: Kitchen sink leaking under cabinet."
+              className="mt-2 min-h-[120px] w-full rounded-2xl border border-[#7a5c2e]/25 bg-[#0f0d0a] px-4 py-3 text-sm text-[#f5efe4] outline-none transition focus:border-[#b08b47]"
+            />
+          </div>
+
+          {error ? (
+            <div className="rounded-2xl border border-red-500/35 bg-red-950/30 px-4 py-3 text-sm text-red-200">
+              {error}
+            </div>
+          ) : null}
+
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={saving}
+              className="rounded-full bg-[#b08b47] px-5 py-2.5 text-sm font-semibold text-[#120f0b] transition hover:bg-[#c79d53] disabled:opacity-50"
+            >
+              {saving ? "Reporting..." : "Report Issue"}
+            </button>
+
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="rounded-full border border-[#7a5c2e]/35 px-5 py-2.5 text-sm font-semibold text-[#f5efe4] transition hover:bg-[#1b1510] disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 function parseDesktopJobNotes(notes: string | null) {
   if (!notes) {
@@ -48,6 +281,8 @@ function JobCard({
   handleAcceptJob,
   handleDeclineJob,
   handleCloseDetails,
+  availableProperties,
+  currentProfileId,
 }: {
   item: CleanerJob;
   isSelected: boolean;
@@ -71,8 +306,12 @@ function JobCard({
   handleAcceptJob: CleanerViewProps["handleAcceptJob"];
   handleDeclineJob: CleanerViewProps["handleDeclineJob"];
   handleCloseDetails: CleanerViewProps["handleCloseDetails"];
+  availableProperties: CleanerViewProps["properties"];
+  currentProfileId: string | null;
 }) {
- const parsedNotes = parseDesktopJobNotes(item.job.notes);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportSubmittedMessage, setReportSubmittedMessage] = useState("");
+  const parsedNotes = parseDesktopJobNotes(item.job.notes);
   const selectedStatus = (item.slot.status || "").toLowerCase().trim();
   const isOffered = selectedStatus === "offered";
   const isAccepted = selectedStatus === "accepted";
@@ -157,13 +396,12 @@ function JobCard({
 
             <div>
               <span
-                className={`inline-flex w-fit rounded-full px-3 py-1 text-xs uppercase tracking-[0.16em] ${
-                  isOffered
-                    ? "border border-red-400/70 bg-red-500 text-white animate-pulse"
-                    : isAccepted
-                      ? "border border-emerald-400/40 bg-emerald-500/20 text-emerald-200"
-                      : "border border-[#7a5c2e]/35 bg-[#b08b47]/10 text-[#e7c98a]"
-                }`}
+                className={`inline-flex w-fit rounded-full px-3 py-1 text-xs uppercase tracking-[0.16em] ${isOffered
+                  ? "border border-red-400/70 bg-red-500 text-white animate-pulse"
+                  : isAccepted
+                    ? "border border-emerald-400/40 bg-emerald-500/20 text-emerald-200"
+                    : "border border-[#7a5c2e]/35 bg-[#b08b47]/10 text-[#e7c98a]"
+                  }`}
               >
                 {getSlotDisplayStatus(item.slot.status ?? null, item.job.staffing_status ?? null)}
               </span>
@@ -241,12 +479,38 @@ function JobCard({
 
             <button
               type="button"
+              onClick={() => setReportOpen(true)}
+              className="rounded-full border border-[#b08b47]/45 bg-[#b08b47]/10 px-5 py-2 text-sm font-medium text-[#f5efe4] transition hover:bg-[#b08b47]/20"
+            >
+              Report Issue
+            </button>
+
+            <button
+              type="button"
               onClick={handleCloseDetails}
               className="rounded-full border border-[#7a5c2e]/50 px-5 py-2 text-sm font-medium text-[#f5efe4] transition hover:bg-[#241a14]"
             >
               Close Details
             </button>
           </div>
+
+          {reportSubmittedMessage ? (
+            <div className="mt-4 rounded-2xl border border-emerald-500/35 bg-emerald-950/25 px-4 py-3 text-sm text-emerald-200">
+              {reportSubmittedMessage}
+            </div>
+          ) : null}
+
+          <ReportIssueModal
+            open={reportOpen}
+            onClose={() => setReportOpen(false)}
+            availableProperties={availableProperties}
+            defaultPropertyId={selectedJobProperty?.id || item.job.property_id}
+            currentProfileId={currentProfileId}
+            onSubmitted={() => {
+              setReportSubmittedMessage("Issue reported successfully.");
+              setTimeout(() => setReportSubmittedMessage(""), 3500);
+            }}
+          />
 
           <div className="mt-5 grid gap-4 lg:grid-cols-2">
             <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-4">
@@ -439,6 +703,8 @@ export default function CleanerDesktopView({
               handleAcceptJob={handleAcceptJob}
               handleDeclineJob={handleDeclineJob}
               handleCloseDetails={handleCloseDetails}
+              availableProperties={properties}
+              currentProfileId={profile?.id || null}
             />
           );
         })}
@@ -584,11 +850,10 @@ export default function CleanerDesktopView({
               </div>
 
               <div
-                className={`rounded-2xl border p-5 ${
-                  unacceptedCount > 0
-                    ? "border-red-500/60 bg-[linear-gradient(180deg,rgba(90,18,18,0.78)_0%,rgba(21,17,13,1)_100%)] shadow-[0_0_28px_rgba(239,68,68,0.16)]"
-                    : "border-[#7a5c2e]/25 bg-[#15110d]"
-                }`}
+                className={`rounded-2xl border p-5 ${unacceptedCount > 0
+                  ? "border-red-500/60 bg-[linear-gradient(180deg,rgba(90,18,18,0.78)_0%,rgba(21,17,13,1)_100%)] shadow-[0_0_28px_rgba(239,68,68,0.16)]"
+                  : "border-[#7a5c2e]/25 bg-[#15110d]"
+                  }`}
               >
                 <p className="text-xs uppercase tracking-[0.2em] text-[#b08b47]">Jobs Waiting</p>
                 <p className="mt-3 text-3xl font-semibold text-[#f8f2e8]">{unacceptedCount}</p>
@@ -696,11 +961,10 @@ export default function CleanerDesktopView({
 
                         {dayJobs.length > 0 && (
                           <span
-                            className={`rounded-full px-2 py-0.5 text-[11px] ${
-                              hasUnacceptedOnDay
-                                ? "bg-red-500 text-white shadow-[0_0_14px_rgba(239,68,68,0.28)]"
-                                : "bg-[#b08b47]/15 text-[#e7c98a]"
-                            }`}
+                            className={`rounded-full px-2 py-0.5 text-[11px] ${hasUnacceptedOnDay
+                              ? "bg-red-500 text-white shadow-[0_0_14px_rgba(239,68,68,0.28)]"
+                              : "bg-[#b08b47]/15 text-[#e7c98a]"
+                              }`}
                           >
                             {dayJobs.length}
                           </span>
@@ -789,22 +1053,20 @@ export default function CleanerDesktopView({
                   <div className="inline-flex rounded-full border border-[#b08b47]/35 bg-[#100d0a] p-1">
                     <button
                       onClick={() => setJobView("active")}
-                      className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                        jobView === "active"
-                          ? "bg-[#b08b47] text-[#120f0b]"
-                          : "text-[#f5efe4] hover:bg-[#1b1510]"
-                      }`}
+                      className={`rounded-full px-4 py-2 text-sm font-medium transition ${jobView === "active"
+                        ? "bg-[#b08b47] text-[#120f0b]"
+                        : "text-[#f5efe4] hover:bg-[#1b1510]"
+                        }`}
                     >
                       Active Jobs ({activeJobs.length})
                     </button>
 
                     <button
                       onClick={() => setJobView("history")}
-                      className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                        jobView === "history"
-                          ? "bg-[#b08b47] text-[#120f0b]"
-                          : "text-[#f5efe4] hover:bg-[#1b1510]"
-                      }`}
+                      className={`rounded-full px-4 py-2 text-sm font-medium transition ${jobView === "history"
+                        ? "bg-[#b08b47] text-[#120f0b]"
+                        : "text-[#f5efe4] hover:bg-[#1b1510]"
+                        }`}
                     >
                       Job History ({historyJobs.length})
                     </button>
@@ -838,11 +1100,10 @@ export default function CleanerDesktopView({
 
                       {collapsedPreviewJob && (
                         <span
-                          className={`rounded-full px-3 py-1 text-xs uppercase tracking-[0.18em] ${
-                            (collapsedPreviewJob.slot.status || "").toLowerCase().trim() === "offered"
-                              ? "border border-red-400/70 bg-red-500 text-white animate-pulse"
-                              : "border border-sky-400/25 bg-sky-400/10 text-sky-200"
-                          }`}
+                          className={`rounded-full px-3 py-1 text-xs uppercase tracking-[0.18em] ${(collapsedPreviewJob.slot.status || "").toLowerCase().trim() === "offered"
+                            ? "border border-red-400/70 bg-red-500 text-white animate-pulse"
+                            : "border border-sky-400/25 bg-sky-400/10 text-sky-200"
+                            }`}
                         >
                           {(collapsedPreviewJob.slot.status || "").toLowerCase().trim() === "offered"
                             ? "Needs Response"
@@ -907,7 +1168,8 @@ export default function CleanerDesktopView({
                         formatRemaining={formatRemaining}
                         getSlotDisplayStatus={getSlotDisplayStatus}
                         getTeamMessage={getTeamMessage}
-                      
+                        availableProperties={properties}
+                        currentProfileId={profile?.id || null}
                         selectedJobProperty={
                           selectedCleanerJob?.slot.id === collapsedPreviewJob.slot.id
                             ? selectedJobProperty
