@@ -1651,7 +1651,7 @@ setPropertyPostal("");
 
   function renderUsersSection() {
     return (
-      <div className="rounded-[30px] border border-[#e6d9c8] bg-[linear-gradient(180deg,#fffdf9_0%,#f7f1e8_100%)] p-4 md:p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+      <div className="rounded-[30px] border border-[#e7ddd0] bg-white p-4 md:p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
         <div className="mb-4">
           <h2 className="text-xl font-semibold tracking-tight">User Management</h2>
           <p className="mt-1 text-sm text-[#7f7263]">
@@ -1753,7 +1753,7 @@ setPropertyPostal("");
   }
  function renderAddPropertySection() {
   return (
-    <section className="rounded-[30px] border border-[#e6d9c8] bg-[linear-gradient(180deg,#fffdf9_0%,#f7f1e8_100%)] p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+    <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
       <h2 className="text-xl font-semibold tracking-tight">Add Property</h2>
       <p className="mt-1 text-sm text-[#7f7263]">
         Add a managed property and set default staffing rules.
@@ -1846,7 +1846,7 @@ setPropertyPostal("");
 }
 function renderPropertiesSection() {
   return (
-    <section className="rounded-[30px] border border-[#e6d9c8] bg-[linear-gradient(180deg,#fffdf9_0%,#f7f1e8_100%)] p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+    <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-xl font-semibold tracking-tight">Properties</h2>
             <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">{properties.length}</span>
@@ -1891,7 +1891,7 @@ function renderPropertiesSection() {
   function renderCleanerAccountsSection() {
     return (
       <div className="space-y-6">
-        <section className="rounded-[30px] border border-[#e6d9c8] bg-[linear-gradient(180deg,#fffdf9_0%,#f7f1e8_100%)] p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
           <h2 className="text-xl font-semibold tracking-tight">Link Existing Cleaner Users</h2>
           <p className="mt-1 text-sm text-[#7f7263]">
             Real cleaner logins are created from the sign up page. Use this section only when you want multiple existing cleaner users to share the same jobs.
@@ -1934,7 +1934,7 @@ function renderPropertiesSection() {
           </div>
         </section>
 
-        <section className="rounded-[30px] border border-[#e6d9c8] bg-[linear-gradient(180deg,#fffdf9_0%,#f7f1e8_100%)] p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-xl font-semibold tracking-tight">Cleaner Accounts</h2>
             <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">{cleanerAccounts.length}</span>
@@ -2023,7 +2023,7 @@ function renderPropertiesSection() {
   function renderAssignmentsSection() {
     return (
       <div className="space-y-6">
-        <section className="rounded-[30px] border border-[#e6d9c8] bg-[linear-gradient(180deg,#fffdf9_0%,#f7f1e8_100%)] p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
           <h2 className="text-xl font-semibold tracking-tight">Assign Cleaner to Property</h2>
           <p className="mt-1 text-sm text-[#7f7263]">
             Choose an approved cleaner and assign them as primary or backup. If they are not linked to a cleaner account yet, the system will create that link automatically.
@@ -2056,7 +2056,7 @@ function renderPropertiesSection() {
           </div>
         </section>
 
-        <section className="rounded-[30px] border border-[#e6d9c8] bg-[linear-gradient(180deg,#fffdf9_0%,#f7f1e8_100%)] p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-xl font-semibold tracking-tight">Assignments</h2>
             <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">{assignments.length}</span>
@@ -2088,7 +2088,7 @@ function renderPropertiesSection() {
   function renderJobsSection() {
     return (
       <div className="space-y-6" id="jobs-section">
-        <section className="rounded-[30px] border border-[#e6d9c8] bg-[linear-gradient(180deg,#fffdf9_0%,#f7f1e8_100%)] p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
           <h2 className="text-xl font-semibold tracking-tight">Create Job</h2>
           <p className="mt-1 text-sm text-[#7f7263]">
             Create a turnover job. Slots are created automatically from cleaner account assignments.
@@ -2140,7 +2140,7 @@ function renderPropertiesSection() {
           </div>
         </section>
 
-        <section className="rounded-[30px] border border-[#e6d9c8] bg-[linear-gradient(180deg,#fffdf9_0%,#f7f1e8_100%)] p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h2 className="text-xl font-semibold tracking-tight">Admin Calendar</h2>
@@ -2363,7 +2363,7 @@ function renderPropertiesSection() {
 
         <section
           id="waiting-jobs-section"
-          className="rounded-[30px] border border-[#e6d9c8] bg-[linear-gradient(180deg,#fffdf9_0%,#f7f1e8_100%)] p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]"
+          className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]"
         >
           <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap items-center gap-3">
@@ -2611,7 +2611,7 @@ function renderPropertiesSection() {
 
   function renderPropertySetupSection() {
     return (
-      <section className="rounded-[30px] border border-[#e6d9c8] bg-[linear-gradient(180deg,#fffdf9_0%,#f7f1e8_100%)] p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+      <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
         <h2 className="text-xl font-semibold tracking-tight">Property Setup</h2>
         <p className="mt-1 text-sm text-[#7f7263]">Manage access notes, booking calendars, and visual SOPs.</p>
 
@@ -2912,14 +2912,14 @@ case "properties":
 
   if (checkingAuth) {
     return (
-      <main className="min-h-screen bg-gradient-to-b from-[#f5efe7] to-[#ece3d7] text-[#241c15]">
+      <main className="min-h-screen bg-[#f7f3ee] text-[#241c15]">
         <div className="mx-auto max-w-7xl p-6">
           <div className="rounded-[32px] border border-[#e7ddd0] bg-white p-8 shadow-[0_20px_50px_rgba(0,0,0,0.06)]">
             <div className="flex items-center gap-4">
               <div className="w-[180px]">
                 <Image
-                  src="/guleraoslogo.png"
-                  alt="Gulera OS"
+                  src="/eomlogo.png"
+                  alt="Estate of Mind Property Management"
                   width={400}
                   height={120}
                   className="h-auto w-full"
@@ -2927,7 +2927,7 @@ case "properties":
                 />
               </div>
               <div>
-                <div className="text-xs uppercase tracking-[0.28em] text-[#8a7b68]">GULERAOS</div>
+                <div className="text-xs uppercase tracking-[0.28em] text-[#8a7b68]">Estate of Mind</div>
                 <div className="mt-1 text-2xl font-semibold">Checking admin access...</div>
               </div>
             </div>
@@ -2938,34 +2938,34 @@ case "properties":
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-[#f5efe7] to-[#ece3d7] text-[#241c15]">
+    <main className="min-h-screen bg-[#f7f3ee] text-[#241c15]">
       <div className="mx-auto max-w-7xl p-4 md:p-6">
-        <div className="mb-6 overflow-hidden rounded-[34px] border border-[#dbc29a]/20 bg-[linear-gradient(180deg,rgba(255,255,255,0.76)_0%,rgba(255,255,255,0.58)_100%)] shadow-[0_30px_70px_rgba(0,0,0,0.08)] backdrop-blur">
-          <div className="relative overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(214,179,106,0.18),transparent_32%),linear-gradient(135deg,#120c08_0%,#1d140d_42%,#2c1d12_68%,#120c08_100%)] px-6 py-8 text-white md:px-10 md:py-10">
-            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.03),transparent_40%)]" />
-            <div className="relative flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-              <div className="flex items-center gap-5">
-                <div className="flex h-[94px] w-[94px] shrink-0 items-center justify-center rounded-[24px] border border-white/10 bg-white/[0.04] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_18px_40px_rgba(0,0,0,0.28)] backdrop-blur-md">
+        <div className="mb-6 overflow-hidden rounded-[34px] border border-[#e7ddd0] bg-white shadow-[0_30px_70px_rgba(0,0,0,0.08)]">
+          <div className="bg-[linear-gradient(135deg,#1f1812_0%,#2a2119_55%,#3a2c1d_100%)] px-6 py-8 text-white md:px-8 md:py-10">
+            <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+              <div className="flex items-start gap-4">
+                <div className="w-[220px] shrink-0 rounded-[20px] border border-white/10 bg-white/5 p-3 backdrop-blur">
                   <Image
-                    src="/guleraoslogo.png"
-                    alt="Gulera OS"
-                    width={70}
-                    height={70}
-                    className="h-auto w-auto max-h-[70px] max-w-[70px] object-contain"
+                    src="/eomlogo.png"
+                    alt="Estate of Mind Property Management"
+                    width={500}
+                    height={160}
+                    className="h-auto w-full"
                     priority
                   />
                 </div>
                 <div>
-                  <div className="mb-2 text-[11px] uppercase tracking-[0.46em] text-[#d6b36a]">GULERAOS</div>
-                  <h1 className="text-4xl font-semibold tracking-tight text-[#fffaf2] md:text-5xl">Operations, refined.</h1>
-                  <p className="mt-3 max-w-2xl text-sm leading-6 text-[#d8c8b2] md:text-base">
-                    Precision tooling for modern property management.
+                  <div className="mb-2 text-xs uppercase tracking-[0.32em] text-[#d8c7ab]">Estate of Mind</div>
+                  <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">Luxury Operations Portal</h1>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-[#e7dccb] md:text-base">
+                    Cleaner accounts, staffing rules, shared household logins, turnover scheduling,
+                    access details, calendars, and SOPs.
                   </p>
                 </div>
               </div>
 
               <button
-                className="inline-flex items-center justify-center rounded-full border border-[#d6b36a]/35 bg-white/[0.05] px-5 py-2.5 text-sm font-medium text-[#f5e7c8] shadow-[0_10px_24px_rgba(0,0,0,0.18)] transition hover:bg-white/[0.09]"
+                className="inline-flex items-center justify-center rounded-full border border-[#d6b36a]/40 bg-white/10 px-5 py-2.5 text-sm font-medium text-[#f6efe4] shadow-sm transition hover:bg-white/20"
                 onClick={async () => {
                   await supabase.auth.signOut();
                   window.location.href = "/login";
