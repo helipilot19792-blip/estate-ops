@@ -148,6 +148,15 @@ type MaintenanceFlagRow = {
   [key: string]: any;
 };
 
+type MaintenanceFlagImageRow = {
+  id: string;
+  flag_id: string;
+  image_url: string;
+  caption?: string | null;
+  sort_order: number;
+  created_at?: string | null;
+};
+
 type AdminSection =
   | "users"
   | "properties"
@@ -321,6 +330,7 @@ export default function AdminPage() {
   const [profiles, setProfiles] = useState<ProfileRow[]>([]);
   const [propertyCalendars, setPropertyCalendars] = useState<PropertyCalendarRow[]>([]);
   const [maintenanceFlags, setMaintenanceFlags] = useState<MaintenanceFlagRow[]>([]);
+  const [maintenanceFlagImages, setMaintenanceFlagImages] = useState<MaintenanceFlagImageRow[]>([]);
 
   const [error, setError] = useState("");
   const [savingRoleId, setSavingRoleId] = useState<string | null>(null);
@@ -512,6 +522,7 @@ const [propertyPostal, setPropertyPostal] = useState("");
       profilesRes,
       propertyCalendarsRes,
       maintenanceFlagsRes,
+      maintenanceFlagImagesRes,
     ] = await Promise.all([
       supabase.from("properties").select("*").order("created_at", { ascending: false }),
       supabase.from("cleaner_accounts").select("*").order("created_at", { ascending: false }),
@@ -532,6 +543,7 @@ const [propertyPostal, setPropertyPostal] = useState("");
         .order("created_at", { ascending: false }),
       supabase.from("property_calendars").select("*").order("created_at", { ascending: false }),
       supabase.from("property_maintenance_flags").select("*").order("created_at", { ascending: false }),
+      supabase.from("property_maintenance_flag_images").select("*").order("sort_order", { ascending: true }),
     ]);
 
     const responses = [
@@ -548,6 +560,7 @@ const [propertyPostal, setPropertyPostal] = useState("");
       profilesRes,
       propertyCalendarsRes,
       maintenanceFlagsRes,
+      maintenanceFlagImagesRes,
     ];
 
     for (const response of responses) {
@@ -570,6 +583,7 @@ const [propertyPostal, setPropertyPostal] = useState("");
     setProfiles((profilesRes.data ?? []) as ProfileRow[]);
     setPropertyCalendars((propertyCalendarsRes.data ?? []) as PropertyCalendarRow[]);
     setMaintenanceFlags((maintenanceFlagsRes.data ?? []) as MaintenanceFlagRow[]);
+    setMaintenanceFlagImages((maintenanceFlagImagesRes.data ?? []) as MaintenanceFlagImageRow[]);
 
     setReassignSelections((prev) => {
       const next = { ...prev };
@@ -1699,6 +1713,18 @@ setPropertyPostal("");
     () => sops.filter((x) => x.property_id === selectedPropertyId),
     [sops, selectedPropertyId]
   );
+
+  const maintenanceImagesByFlagId = useMemo(() => {
+    const map: Record<string, MaintenanceFlagImageRow[]> = {};
+    for (const image of maintenanceFlagImages) {
+      if (!map[image.flag_id]) map[image.flag_id] = [];
+      map[image.flag_id].push(image);
+    }
+    for (const key of Object.keys(map)) {
+      map[key].sort((a, b) => a.sort_order - b.sort_order);
+    }
+    return map;
+  }, [maintenanceFlagImages]);
 
   const sopImagesBySopId = useMemo(() => {
     const map: Record<string, SopImageRow[]> = {};
@@ -3427,6 +3453,29 @@ function renderPropertiesSection() {
                         {flag.notes ? (
                           <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[#5f5245]">
                             {flag.notes}
+                          </div>
+                        ) : null}
+
+                        {(maintenanceImagesByFlagId[flag.id] ?? []).length > 0 ? (
+                          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                            {(maintenanceImagesByFlagId[flag.id] ?? []).map((image) => (
+                              <a
+                                key={image.id}
+                                href={image.image_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="block overflow-hidden rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] transition hover:shadow-md"
+                              >
+                                <img
+                                  src={image.image_url}
+                                  alt={image.caption || "Maintenance image"}
+                                  className="h-40 w-full object-cover"
+                                />
+                                {image.caption ? (
+                                  <div className="px-3 py-2 text-sm text-[#6f6255]">{image.caption}</div>
+                                ) : null}
+                              </a>
+                            ))}
                           </div>
                         ) : null}
 
