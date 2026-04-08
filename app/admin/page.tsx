@@ -1895,7 +1895,7 @@ setPropertyPostal("");
       alerts.push({
         key: "maintenance-open",
         label: `${maintenanceFlagCounts.open} open maintenance flag${maintenanceFlagCounts.open === 1 ? "" : "s"}`,
-        tone: "amber",
+        tone: "red",
         onClick: () => {
           setActiveSection("maintenance");
           setTimeout(() => {
@@ -3221,50 +3221,41 @@ function renderPropertiesSection() {
               {
                 label: "Total Flags",
                 value: maintenanceFlagCounts.total,
-                highlighted: false,
-                tone: "neutral",
+                cardClass: "border-[#eadfce] bg-[#fcfaf7]",
+                labelClass: "text-[#8a7b68]",
+                valueClass: "text-[#241c15]",
               },
               {
                 label: "Open",
                 value: maintenanceFlagCounts.open,
-                highlighted: maintenanceFlagCounts.open > 0,
-                tone: "red",
+                cardClass:
+                  maintenanceFlagCounts.open > 0
+                    ? "border-[#dc2626] bg-[#fff1f2] shadow-[0_10px_28px_rgba(220,38,38,0.12)]"
+                    : "border-[#eadfce] bg-[#fcfaf7]",
+                labelClass: maintenanceFlagCounts.open > 0 ? "text-[#991b1b]" : "text-[#8a7b68]",
+                valueClass: maintenanceFlagCounts.open > 0 ? "text-[#b91c1c]" : "text-[#241c15]",
               },
               {
                 label: "Resolved",
                 value: maintenanceFlagCounts.resolved,
-                highlighted: false,
-                tone: "neutral",
+                cardClass: "border-[#eadfce] bg-[#fcfaf7]",
+                labelClass: "text-[#8a7b68]",
+                valueClass: "text-[#241c15]",
               },
               {
                 label: "Urgent",
                 value: maintenanceFlagCounts.urgent,
-                highlighted: maintenanceFlagCounts.urgent > 0,
-                tone: "red",
+                cardClass:
+                  maintenanceFlagCounts.urgent > 0
+                    ? "animate-pulse border-[#b91c1c] bg-[#dc2626] shadow-[0_16px_34px_rgba(185,28,28,0.28)]"
+                    : "border-[#eadfce] bg-[#fcfaf7]",
+                labelClass: maintenanceFlagCounts.urgent > 0 ? "text-white/80" : "text-[#8a7b68]",
+                valueClass: maintenanceFlagCounts.urgent > 0 ? "text-white" : "text-[#241c15]",
               },
             ].map((item) => (
-              <div
-                key={item.label}
-                className={`rounded-[24px] border px-4 py-4 shadow-sm ${
-                  item.highlighted && item.tone === "red"
-                    ? "border-[#efc6c6] bg-[#fff5f5]"
-                    : "border-[#eadfce] bg-[#fcfaf7]"
-                }`}
-              >
-                <div
-                  className={`text-[11px] uppercase tracking-[0.22em] ${
-                    item.highlighted && item.tone === "red" ? "text-[#8a2e22]" : "text-[#8a7b68]"
-                  }`}
-                >
-                  {item.label}
-                </div>
-                <div
-                  className={`mt-2 text-3xl font-semibold ${
-                    item.highlighted && item.tone === "red" ? "text-[#8a2e22]" : "text-[#241c15]"
-                  }`}
-                >
-                  {item.value}
-                </div>
+              <div key={item.label} className={`rounded-[24px] border px-4 py-4 shadow-sm ${item.cardClass}`}>
+                <div className={`text-[11px] uppercase tracking-[0.22em] ${item.labelClass}`}>{item.label}</div>
+                <div className={`mt-2 text-3xl font-semibold ${item.valueClass}`}>{item.value}</div>
               </div>
             ))}
           </div>
@@ -3317,8 +3308,8 @@ function renderPropertiesSection() {
                       isResolved
                         ? "border-[#d7e7d7] bg-[#f5fbf5]"
                         : isUrgent
-                        ? "border-[#efc6c6] bg-[#fff7f7]"
-                        : "border-[#eadfce] bg-[#fcfaf7]"
+                        ? "animate-pulse border-[#b91c1c] bg-[#fff1f2] shadow-[0_16px_34px_rgba(185,28,28,0.16)]"
+                        : "border-[#dc2626] bg-[#fff5f5]"
                     }`}
                   >
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -3332,13 +3323,17 @@ function renderPropertiesSection() {
                               isResolved
                                 ? "border-[#cfe4cf] bg-white text-[#2f6b2f]"
                                 : isUrgent
-                                ? "border-[#efc6c6] bg-white text-[#8a2e22]"
-                                : "border-[#d8c7ab] bg-white text-[#7f7263]"
+                                ? "border-[#fecaca] bg-white text-[#991b1b]"
+                                : "border-[#fecaca] bg-white text-[#991b1b]"
                             }`}
                           >
                             {state}
                           </span>
-                          <span className="inline-flex rounded-full border border-[#d8c7ab] bg-white px-2.5 py-0.5 text-[11px] font-medium text-[#7f7263]">
+                          <span
+                            className={`inline-flex rounded-full border bg-white px-2.5 py-0.5 text-[11px] font-medium ${
+                              isUrgent ? "border-[#fecaca] text-[#991b1b]" : "border-[#d8c7ab] text-[#7f7263]"
+                            }`}
+                          >
                             {urgency}
                           </span>
                           {flag.source ? (
@@ -3467,12 +3462,18 @@ function renderPropertiesSection() {
 
                 <div>
                   <label className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Category</label>
-                  <input
+                  <select
                     className="w-full rounded-[20px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                    placeholder="Plumbing, damage, electrical..."
                     value={maintenanceFormCategory}
                     onChange={(e) => setMaintenanceFormCategory(e.target.value)}
-                  />
+                  >
+                    <option value="">Select category</option>
+                    {MAINTENANCE_CATEGORY_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>
@@ -3643,7 +3644,7 @@ case "properties":
         ) : null}
 
         {operationsAlerts.length > 0 ? (
-          <div className="mb-6 rounded-[30px] border border-[#e7ddd0] bg-white p-4 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <div className="sticky top-3 z-40 mb-6 rounded-[30px] border border-[#e7ddd0] bg-[rgba(255,255,255,0.94)] p-4 shadow-[0_18px_45px_rgba(0,0,0,0.08)] backdrop-blur">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <div className="text-sm font-semibold text-[#241c15]">Operations Alerts</div>
@@ -3658,8 +3659,10 @@ case "properties":
                     key={alert.key}
                     onClick={alert.onClick}
                     className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${
-                      alert.tone === "red"
-                        ? "border-[#efc6c6] bg-[#fff5f5] text-[#8a2e22] hover:bg-[#fff0f0]"
+                      alert.key === "maintenance-urgent"
+                        ? "animate-pulse border-[#b91c1c] bg-[#dc2626] text-white shadow-[0_8px_22px_rgba(185,28,28,0.28)] hover:bg-[#b91c1c]"
+                        : alert.tone === "red"
+                        ? "border-[#fecaca] bg-[#fff1f2] text-[#991b1b] hover:bg-[#ffe4e6]"
                         : "border-[#ecd7a8] bg-[#fff8e8] text-[#8a6112] hover:bg-[#fff2cf]"
                     }`}
                   >
