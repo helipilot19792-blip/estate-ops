@@ -331,6 +331,7 @@ export default function AdminPage() {
   const [propertyCalendars, setPropertyCalendars] = useState<PropertyCalendarRow[]>([]);
   const [maintenanceFlags, setMaintenanceFlags] = useState<MaintenanceFlagRow[]>([]);
   const [maintenanceFlagImages, setMaintenanceFlagImages] = useState<MaintenanceFlagImageRow[]>([]);
+  const [expandedImage, setExpandedImage] = useState<string | null>(null);
 
   const [error, setError] = useState("");
   const [savingRoleId, setSavingRoleId] = useState<string | null>(null);
@@ -3459,12 +3460,11 @@ function renderPropertiesSection() {
                         {(maintenanceImagesByFlagId[flag.id] ?? []).length > 0 ? (
                           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                             {(maintenanceImagesByFlagId[flag.id] ?? []).map((image) => (
-                              <a
+                              <button
                                 key={image.id}
-                                href={image.image_url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="block overflow-hidden rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] transition hover:shadow-md"
+                                type="button"
+                                onClick={() => setExpandedImage(image.image_url)}
+                                className="block overflow-hidden rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] text-left transition hover:shadow-md"
                               >
                                 <img
                                   src={image.image_url}
@@ -3474,7 +3474,7 @@ function renderPropertiesSection() {
                                 {image.caption ? (
                                   <div className="px-3 py-2 text-sm text-[#6f6255]">{image.caption}</div>
                                 ) : null}
-                              </a>
+                              </button>
                             ))}
                           </div>
                         ) : null}
@@ -3974,6 +3974,19 @@ case "properties":
 
                    {renderActiveSection()}
           </div>
-        </main>
+        
+        {expandedImage ? (
+          <div
+            className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 p-4"
+            onClick={() => setExpandedImage(null)}
+          >
+            <img
+              src={expandedImage}
+              alt="Expanded maintenance image"
+              className="max-h-[92vh] max-w-[96vw] rounded-[20px] shadow-2xl"
+            />
+          </div>
+        ) : null}
+</main>
       );
     }

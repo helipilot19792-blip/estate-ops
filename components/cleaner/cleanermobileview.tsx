@@ -8,6 +8,7 @@ import type { CleanerJob, CleanerViewProps } from "@/components/cleaner/cleaners
 const MAINTENANCE_CATEGORIES = [
   "Cleaning issue",
   "Damage",
+  "Found items",
   "Supplies",
   "Lock / access",
   "Plumbing",

@@ -7,9 +7,10 @@ import { supabase } from "@/lib/supabase";
 import type { CleanerJob, CleanerViewProps } from "@/components/cleaner/cleanershell";
 
 
-const MAINTENANCE_CATEGORIES = [
+cconst MAINTENANCE_CATEGORIES = [
   "Cleaning issue",
   "Damage",
+  "Found items",
   "Supplies",
   "Lock / access",
   "Plumbing",
