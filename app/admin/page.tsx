@@ -129,19 +129,22 @@ type PropertyCalendarRow = {
 type MaintenanceFlagRow = {
   id: string;
   property_id?: string | null;
-  title?: string | null;
-  description?: string | null;
-  notes?: string | null;
-  status?: string | null;
-  priority?: string | null;
-  severity?: string | null;
+  source?: string | null;
   category?: string | null;
-  created_by?: string | null;
-  assigned_to?: string | null;
+  urgency?: string | null;
+  status?: string | null;
+  notes?: string | null;
+  flagged_by_profile_id?: string | null;
+  flagged_at?: string | null;
   resolved_at?: string | null;
-  due_at?: string | null;
+  resolved_by_profile_id?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+  title?: string | null;
+  description?: string | null;
+  priority?: string | null;
+  severity?: string | null;
+  due_at?: string | null;
   [key: string]: any;
 };
 
@@ -317,6 +320,14 @@ export default function AdminPage() {
   const [deletingPropertyId, setDeletingPropertyId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState("");
   const [selectedJobsPropertyFilter, setSelectedJobsPropertyFilter] = useState("all");
+  const [maintenanceModalOpen, setMaintenanceModalOpen] = useState(false);
+  const [maintenanceFormPropertyId, setMaintenanceFormPropertyId] = useState("");
+  const [maintenanceFormCategory, setMaintenanceFormCategory] = useState("");
+  const [maintenanceFormUrgency, setMaintenanceFormUrgency] = useState("normal");
+  const [maintenanceFormNotes, setMaintenanceFormNotes] = useState("");
+  const [creatingMaintenanceFlag, setCreatingMaintenanceFlag] = useState(false);
+  const [resolvingMaintenanceFlagId, setResolvingMaintenanceFlagId] = useState<string | null>(null);
+  const [deletingMaintenanceFlagId, setDeletingMaintenanceFlagId] = useState<string | null>(null);
 
   const [propertyName, setPropertyName] = useState("");
  const [propertyStreet, setPropertyStreet] = useState("");
@@ -1513,6 +1524,120 @@ setPropertyPostal("");
     return flag.status || (flag.resolved_at ? "resolved" : "open");
   }
 
+  function resetMaintenanceForm() {
+    setMaintenanceFormPropertyId(selectedJobsPropertyFilter !== "all" ? selectedJobsPropertyFilter : "");
+    setMaintenanceFormCategory("");
+    setMaintenanceFormUrgency("normal");
+    setMaintenanceFormNotes("");
+  }
+
+  function openMaintenanceModal() {
+    resetMaintenanceForm();
+    setMaintenanceModalOpen(true);
+  }
+
+  function closeMaintenanceModal() {
+    setMaintenanceModalOpen(false);
+    resetMaintenanceForm();
+  }
+
+  async function createMaintenanceFlag() {
+    if (!maintenanceFormPropertyId) {
+      setError("Please choose a property for the maintenance flag.");
+      return;
+    }
+
+    if (!maintenanceFormCategory.trim()) {
+      setError("Please enter a category.");
+      return;
+    }
+
+    if (!maintenanceFormNotes.trim()) {
+      setError("Please add notes for the maintenance flag.");
+      return;
+    }
+
+    setError("");
+    setActionMessage("");
+    setCreatingMaintenanceFlag(true);
+
+    try {
+      const nowIso = new Date().toISOString();
+      const { error } = await supabase.from("property_maintenance_flags").insert({
+        property_id: maintenanceFormPropertyId,
+        source: "admin",
+        category: maintenanceFormCategory.trim(),
+        urgency: maintenanceFormUrgency,
+        status: "open",
+        notes: maintenanceFormNotes.trim(),
+        flagged_by_profile_id: currentAdminUserId,
+        flagged_at: nowIso,
+      });
+
+      if (error) throw error;
+
+      closeMaintenanceModal();
+      setActionMessage("Maintenance flag created.");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Could not create maintenance flag.");
+    } finally {
+      setCreatingMaintenanceFlag(false);
+    }
+  }
+
+  async function resolveMaintenanceFlag(flagId: string) {
+    if (!currentAdminUserId) {
+      setError("Admin user not found.");
+      return;
+    }
+
+    setError("");
+    setActionMessage("");
+    setResolvingMaintenanceFlagId(flagId);
+
+    try {
+      const { error } = await supabase
+        .from("property_maintenance_flags")
+        .update({
+          status: "resolved",
+          resolved_at: new Date().toISOString(),
+          resolved_by_profile_id: currentAdminUserId,
+        })
+        .eq("id", flagId);
+
+      if (error) throw error;
+
+      setActionMessage("Maintenance flag resolved.");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Could not resolve maintenance flag.");
+    } finally {
+      setResolvingMaintenanceFlagId(null);
+    }
+  }
+
+  async function deleteMaintenanceFlag(flagId: string) {
+    const confirmed = window.confirm("Delete this maintenance flag? This cannot be undone.");
+    if (!confirmed) return;
+
+    setError("");
+    setActionMessage("");
+    setDeletingMaintenanceFlagId(flagId);
+
+    try {
+      const { error } = await supabase.from("property_maintenance_flags").delete().eq("id", flagId);
+      if (error) throw error;
+
+      setActionMessage("Maintenance flag deleted.");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Could not delete maintenance flag.");
+    } finally {
+      setDeletingMaintenanceFlagId(null);
+    }
+  }
+
   const selectedSops = useMemo(
     () => sops.filter((x) => x.property_id === selectedPropertyId),
     [sops, selectedPropertyId]
@@ -1697,13 +1822,13 @@ setPropertyPostal("");
 
     for (const flag of filteredMaintenanceFlags) {
       const state = String(getMaintenanceFlagState(flag) || "").toLowerCase();
-      const priority = String(flag.priority || flag.severity || "").toLowerCase();
+      const urgency = String(flag.urgency || flag.priority || flag.severity || "").toLowerCase();
       if (state.includes("resolved") || state.includes("closed") || state.includes("done")) {
         resolved += 1;
       } else {
         open += 1;
       }
-      if (priority.includes("high") || priority.includes("urgent") || priority.includes("critical")) {
+      if (urgency.includes("high") || urgency.includes("urgent") || urgency.includes("critical")) {
         urgent += 1;
       }
     }
@@ -2972,184 +3097,308 @@ function renderPropertiesSection() {
 
   function renderMaintenanceSection() {
     return (
-      <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div>
-            <h2 className="text-xl font-semibold tracking-tight">Maintenance Flags</h2>
-            <p className="mt-1 text-sm text-[#7f7263]">
-              Admin-only readout from property_maintenance_flags. This is wired in safely as a dashboard first, with no cleaner-side changes.
-            </p>
-          </div>
-
-          <div className="w-full md:w-[280px]">
-            <label className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">
-              Filter by property
-            </label>
-            <select
-              className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-              value={selectedJobsPropertyFilter}
-              onChange={(e) => setSelectedJobsPropertyFilter(e.target.value)}
-            >
-              <option value="all">All properties</option>
-              {properties.map((property) => (
-                <option key={property.id} value={property.id}>
-                  {property.name || property.address || property.id}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="mt-5 grid gap-3 md:grid-cols-4">
-          {[
-            { label: "Total Flags", value: maintenanceFlagCounts.total },
-            { label: "Open", value: maintenanceFlagCounts.open },
-            { label: "Resolved", value: maintenanceFlagCounts.resolved },
-            { label: "Urgent", value: maintenanceFlagCounts.urgent },
-          ].map((item) => (
-            <div key={item.label} className="rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-4 shadow-sm">
-              <div className="text-[11px] uppercase tracking-[0.22em] text-[#8a7b68]">{item.label}</div>
-              <div className="mt-2 text-3xl font-semibold text-[#241c15]">{item.value}</div>
+      <>
+        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+            <div>
+              <h2 className="text-xl font-semibold tracking-tight">Maintenance Flags</h2>
+              <p className="mt-1 text-sm text-[#7f7263]">
+                Admin-only maintenance tracking. Add flags here now, then we can wire cleaner-side reporting in later.
+              </p>
             </div>
-          ))}
-        </div>
 
-        {filteredMaintenanceFlags.length === 0 ? (
-          <div className="mt-6 rounded-[24px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-5 py-8 text-sm text-[#8a7b68]">
-            No maintenance flags found for the current filter.
-          </div>
-        ) : (
-          <div className="mt-6 space-y-4">
-            {filteredMaintenanceFlags.map((flag) => {
-              const state = String(getMaintenanceFlagState(flag) || "open");
-              const stateLower = state.toLowerCase();
-              const priority = String(flag.priority || flag.severity || "standard");
-              const isResolved =
-                stateLower.includes("resolved") ||
-                stateLower.includes("closed") ||
-                stateLower.includes("done");
-              const isUrgent =
-                priority.toLowerCase().includes("high") ||
-                priority.toLowerCase().includes("urgent") ||
-                priority.toLowerCase().includes("critical");
-
-              const labelKeys = Object.keys(flag).filter(
-                (key) =>
-                  ![
-                    "id",
-                    "property_id",
-                    "title",
-                    "description",
-                    "notes",
-                    "status",
-                    "priority",
-                    "severity",
-                    "category",
-                    "created_by",
-                    "assigned_to",
-                    "resolved_at",
-                    "due_at",
-                    "created_at",
-                    "updated_at",
-                  ].includes(key) && flag[key] !== null && flag[key] !== ""
-              );
-
-              return (
-                <div
-                  key={flag.id}
-                  className={`rounded-[24px] border p-4 shadow-sm ${
-                    isResolved
-                      ? "border-[#d7e7d7] bg-[#f5fbf5]"
-                      : isUrgent
-                      ? "border-[#efc6c6] bg-[#fff7f7]"
-                      : "border-[#eadfce] bg-[#fcfaf7]"
-                  }`}
+            <div className="flex w-full flex-col gap-3 md:flex-row xl:w-auto xl:items-end">
+              <div className="w-full md:w-[280px]">
+                <label className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">
+                  Filter by property
+                </label>
+                <select
+                  className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                  value={selectedJobsPropertyFilter}
+                  onChange={(e) => setSelectedJobsPropertyFilter(e.target.value)}
                 >
-                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="text-base font-semibold text-[#241c15]">
-                          {getMaintenanceFlagLabel(flag, labelKeys)}
-                        </div>
-                        <span
-                          className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${
-                            isResolved
-                              ? "border-[#cfe4cf] bg-white text-[#2f6b2f]"
-                              : isUrgent
-                              ? "border-[#efc6c6] bg-white text-[#8a2e22]"
-                              : "border-[#d8c7ab] bg-white text-[#7f7263]"
-                          }`}
-                        >
-                          {state}
-                        </span>
-                        <span className="inline-flex rounded-full border border-[#d8c7ab] bg-white px-2.5 py-0.5 text-[11px] font-medium text-[#7f7263]">
-                          {priority}
-                        </span>
-                        {flag.category ? (
-                          <span className="inline-flex rounded-full border border-[#d8c7ab] bg-white px-2.5 py-0.5 text-[11px] font-medium text-[#7f7263]">
-                            {flag.category}
+                  <option value="all">All properties</option>
+                  {properties.map((property) => (
+                    <option key={property.id} value={property.id}>
+                      {property.name || property.address || property.id}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <button
+                className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-3 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]"
+                onClick={openMaintenanceModal}
+              >
+                Add Flag
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-3 md:grid-cols-4">
+            {[
+              { label: "Total Flags", value: maintenanceFlagCounts.total },
+              { label: "Open", value: maintenanceFlagCounts.open },
+              { label: "Resolved", value: maintenanceFlagCounts.resolved },
+              { label: "Urgent", value: maintenanceFlagCounts.urgent },
+            ].map((item) => (
+              <div key={item.label} className="rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-4 shadow-sm">
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#8a7b68]">{item.label}</div>
+                <div className="mt-2 text-3xl font-semibold text-[#241c15]">{item.value}</div>
+              </div>
+            ))}
+          </div>
+
+          {filteredMaintenanceFlags.length === 0 ? (
+            <div className="mt-6 rounded-[24px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-5 py-8 text-sm text-[#8a7b68]">
+              No maintenance flags found for the current filter.
+            </div>
+          ) : (
+            <div className="mt-6 space-y-4">
+              {filteredMaintenanceFlags.map((flag) => {
+                const state = String(getMaintenanceFlagState(flag) || "open");
+                const stateLower = state.toLowerCase();
+                const urgency = String(flag.urgency || flag.priority || flag.severity || "normal");
+                const urgencyLower = urgency.toLowerCase();
+                const isResolved =
+                  stateLower.includes("resolved") ||
+                  stateLower.includes("closed") ||
+                  stateLower.includes("done");
+                const isUrgent =
+                  urgencyLower.includes("high") ||
+                  urgencyLower.includes("urgent") ||
+                  urgencyLower.includes("critical");
+
+                const flaggedByName = profiles.find((profile) => profile.id === flag.flagged_by_profile_id)?.full_name;
+                const resolvedByName = profiles.find((profile) => profile.id === flag.resolved_by_profile_id)?.full_name;
+                const labelKeys = Object.keys(flag).filter(
+                  (key) =>
+                    ![
+                      "id",
+                      "property_id",
+                      "source",
+                      "category",
+                      "urgency",
+                      "status",
+                      "notes",
+                      "flagged_by_profile_id",
+                      "flagged_at",
+                      "resolved_at",
+                      "resolved_by_profile_id",
+                      "created_at",
+                      "updated_at",
+                    ].includes(key) && flag[key] !== null && flag[key] !== ""
+                );
+
+                return (
+                  <div
+                    key={flag.id}
+                    className={`rounded-[24px] border p-4 shadow-sm ${
+                      isResolved
+                        ? "border-[#d7e7d7] bg-[#f5fbf5]"
+                        : isUrgent
+                        ? "border-[#efc6c6] bg-[#fff7f7]"
+                        : "border-[#eadfce] bg-[#fcfaf7]"
+                    }`}
+                  >
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="text-base font-semibold text-[#241c15]">
+                            {flag.category || getMaintenanceFlagLabel(flag, labelKeys)}
+                          </div>
+                          <span
+                            className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${
+                              isResolved
+                                ? "border-[#cfe4cf] bg-white text-[#2f6b2f]"
+                                : isUrgent
+                                ? "border-[#efc6c6] bg-white text-[#8a2e22]"
+                                : "border-[#d8c7ab] bg-white text-[#7f7263]"
+                            }`}
+                          >
+                            {state}
                           </span>
+                          <span className="inline-flex rounded-full border border-[#d8c7ab] bg-white px-2.5 py-0.5 text-[11px] font-medium text-[#7f7263]">
+                            {urgency}
+                          </span>
+                          {flag.source ? (
+                            <span className="inline-flex rounded-full border border-[#d8c7ab] bg-white px-2.5 py-0.5 text-[11px] font-medium text-[#7f7263]">
+                              Source: {flag.source}
+                            </span>
+                          ) : null}
+                        </div>
+
+                        <div className="mt-2 text-sm text-[#6f6255]">
+                          {getPropertyName(flag.property_id ?? null)}
+                        </div>
+
+                        {flag.notes ? (
+                          <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[#5f5245]">
+                            {flag.notes}
+                          </div>
+                        ) : null}
+
+                        {labelKeys.length > 0 ? (
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            {labelKeys.slice(0, 6).map((key) => (
+                              <span
+                                key={key}
+                                className="inline-flex rounded-full border border-[#e2d6c6] bg-white px-3 py-1 text-xs text-[#6f6255]"
+                              >
+                                {key.replace(/_/g, " ")}: {String(flag[key])}
+                              </span>
+                            ))}
+                          </div>
                         ) : null}
                       </div>
 
-                      <div className="mt-2 text-sm text-[#6f6255]">
-                        {getPropertyName(flag.property_id ?? null)}
-                      </div>
+                      <div className="flex w-full flex-col gap-3 lg:w-[260px]">
+                        <div className="grid gap-2 text-sm text-[#7f7263]">
+                          <div>
+                            <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Flagged</div>
+                            <div>{formatDateTime(flag.flagged_at || flag.created_at)}</div>
+                          </div>
 
-                      {getMaintenanceFlagBody(flag) ? (
-                        <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[#5f5245]">
-                          {getMaintenanceFlagBody(flag)}
+                          {flaggedByName || flag.flagged_by_profile_id ? (
+                            <div>
+                              <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Flagged by</div>
+                              <div>{flaggedByName || flag.flagged_by_profile_id}</div>
+                            </div>
+                          ) : null}
+
+                          {flag.resolved_at ? (
+                            <div>
+                              <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Resolved</div>
+                              <div>{formatDateTime(flag.resolved_at)}</div>
+                            </div>
+                          ) : null}
+
+                          {resolvedByName || flag.resolved_by_profile_id ? (
+                            <div>
+                              <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Resolved by</div>
+                              <div>{resolvedByName || flag.resolved_by_profile_id}</div>
+                            </div>
+                          ) : null}
                         </div>
-                      ) : null}
 
-                      {labelKeys.length > 0 ? (
-                        <div className="mt-4 flex flex-wrap gap-2">
-                          {labelKeys.slice(0, 6).map((key) => (
-                            <span
-                              key={key}
-                              className="inline-flex rounded-full border border-[#e2d6c6] bg-white px-3 py-1 text-xs text-[#6f6255]"
+                        <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
+                          {!isResolved ? (
+                            <button
+                              className="rounded-[16px] bg-[#241c15] px-4 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60"
+                              onClick={() => void resolveMaintenanceFlag(flag.id)}
+                              disabled={resolvingMaintenanceFlagId === flag.id || deletingMaintenanceFlagId === flag.id}
                             >
-                              {key.replace(/_/g, " ")}: {String(flag[key])}
-                            </span>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
+                              {resolvingMaintenanceFlagId === flag.id ? "Resolving..." : "Mark Resolved"}
+                            </button>
+                          ) : null}
 
-                    <div className="grid gap-2 text-sm text-[#7f7263] md:min-w-[220px]">
-                      <div>
-                        <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Created</div>
-                        <div>{formatDateTime(flag.created_at)}</div>
+                          <button
+                            className="rounded-[16px] border border-[#efc6c6] bg-[#fff5f5] px-4 py-2.5 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-60"
+                            onClick={() => void deleteMaintenanceFlag(flag.id)}
+                            disabled={deletingMaintenanceFlagId === flag.id || resolvingMaintenanceFlagId === flag.id}
+                          >
+                            {deletingMaintenanceFlagId === flag.id ? "Deleting..." : "Delete"}
+                          </button>
+                        </div>
                       </div>
-
-                      {flag.updated_at ? (
-                        <div>
-                          <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Updated</div>
-                          <div>{formatDateTime(flag.updated_at)}</div>
-                        </div>
-                      ) : null}
-
-                      {flag.due_at ? (
-                        <div>
-                          <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Due</div>
-                          <div>{formatDateTime(flag.due_at)}</div>
-                        </div>
-                      ) : null}
-
-                      {flag.resolved_at ? (
-                        <div>
-                          <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Resolved</div>
-                          <div>{formatDateTime(flag.resolved_at)}</div>
-                        </div>
-                      ) : null}
                     </div>
                   </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {maintenanceModalOpen ? (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/45 px-4 py-6">
+            <div className="w-full max-w-2xl rounded-[32px] border border-[#d8c7ab] bg-[#f8f3eb] p-5 shadow-[0_30px_80px_rgba(0,0,0,0.28)] md:p-6">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-xl font-semibold tracking-tight text-[#241c15]">Create Maintenance Flag</div>
+                  <p className="mt-1 text-sm text-[#7f7263]">
+                    Add an internal maintenance issue now. This stays admin-only for the moment.
+                  </p>
                 </div>
-              );
-            })}
+                <button
+                  className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1.5 text-sm text-[#6f6255] transition hover:bg-[#f7f3ee]"
+                  onClick={closeMaintenanceModal}
+                  disabled={creatingMaintenanceFlag}
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="mt-5 grid gap-4 md:grid-cols-2">
+                <div className="md:col-span-2">
+                  <label className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Property</label>
+                  <select
+                    className="w-full rounded-[20px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                    value={maintenanceFormPropertyId}
+                    onChange={(e) => setMaintenanceFormPropertyId(e.target.value)}
+                  >
+                    <option value="">Select property</option>
+                    {properties.map((property) => (
+                      <option key={property.id} value={property.id}>
+                        {property.name || property.address || property.id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Category</label>
+                  <input
+                    className="w-full rounded-[20px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                    placeholder="Plumbing, damage, electrical..."
+                    value={maintenanceFormCategory}
+                    onChange={(e) => setMaintenanceFormCategory(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Urgency</label>
+                  <select
+                    className="w-full rounded-[20px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                    value={maintenanceFormUrgency}
+                    onChange={(e) => setMaintenanceFormUrgency(e.target.value)}
+                  >
+                    <option value="low">Low</option>
+                    <option value="normal">Normal</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Notes</label>
+                  <textarea
+                    className="min-h-[160px] w-full rounded-[20px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                    placeholder="Describe the issue clearly so it can be acted on later."
+                    value={maintenanceFormNotes}
+                    onChange={(e) => setMaintenanceFormNotes(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
+                <button
+                  className="rounded-full border border-[#d8c7ab] bg-white px-5 py-2.5 text-sm font-medium text-[#6f6255] transition hover:bg-[#f7f3ee]"
+                  onClick={closeMaintenanceModal}
+                  disabled={creatingMaintenanceFlag}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60"
+                  onClick={() => void createMaintenanceFlag()}
+                  disabled={creatingMaintenanceFlag}
+                >
+                  {creatingMaintenanceFlag ? "Creating..." : "Create Flag"}
+                </button>
+              </div>
+            </div>
           </div>
-        )}
-      </section>
+        ) : null}
+      </>
     );
   }
 
