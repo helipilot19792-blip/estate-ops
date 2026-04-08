@@ -126,12 +126,32 @@ type PropertyCalendarRow = {
   created_at?: string | null;
 };
 
+type MaintenanceFlagRow = {
+  id: string;
+  property_id?: string | null;
+  title?: string | null;
+  description?: string | null;
+  notes?: string | null;
+  status?: string | null;
+  priority?: string | null;
+  severity?: string | null;
+  category?: string | null;
+  created_by?: string | null;
+  assigned_to?: string | null;
+  resolved_at?: string | null;
+  due_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  [key: string]: any;
+};
+
 type AdminSection =
   | "users"
   | "properties"
   | "cleanerAccounts"
   | "assignments"
-  | "jobs";
+  | "jobs"
+  | "maintenance";
 
 function getMonthGrid(baseDate: Date) {
   const year = baseDate.getFullYear();
@@ -282,6 +302,7 @@ export default function AdminPage() {
   const [sopImages, setSopImages] = useState<SopImageRow[]>([]);
   const [profiles, setProfiles] = useState<ProfileRow[]>([]);
   const [propertyCalendars, setPropertyCalendars] = useState<PropertyCalendarRow[]>([]);
+  const [maintenanceFlags, setMaintenanceFlags] = useState<MaintenanceFlagRow[]>([]);
 
   const [error, setError] = useState("");
   const [savingRoleId, setSavingRoleId] = useState<string | null>(null);
@@ -461,6 +482,7 @@ const [propertyPostal, setPropertyPostal] = useState("");
       sopImagesRes,
       profilesRes,
       propertyCalendarsRes,
+      maintenanceFlagsRes,
     ] = await Promise.all([
       supabase.from("properties").select("*").order("created_at", { ascending: false }),
       supabase.from("cleaner_accounts").select("*").order("created_at", { ascending: false }),
@@ -480,6 +502,7 @@ const [propertyPostal, setPropertyPostal] = useState("");
         .select("id,email,full_name,phone,role,created_at")
         .order("created_at", { ascending: false }),
       supabase.from("property_calendars").select("*").order("created_at", { ascending: false }),
+      supabase.from("property_maintenance_flags").select("*").order("created_at", { ascending: false }),
     ]);
 
     const responses = [
@@ -495,6 +518,7 @@ const [propertyPostal, setPropertyPostal] = useState("");
       sopImagesRes,
       profilesRes,
       propertyCalendarsRes,
+      maintenanceFlagsRes,
     ];
 
     for (const response of responses) {
@@ -516,6 +540,7 @@ const [propertyPostal, setPropertyPostal] = useState("");
     setSopImages((sopImagesRes.data ?? []) as SopImageRow[]);
     setProfiles((profilesRes.data ?? []) as ProfileRow[]);
     setPropertyCalendars((propertyCalendarsRes.data ?? []) as PropertyCalendarRow[]);
+    setMaintenanceFlags((maintenanceFlagsRes.data ?? []) as MaintenanceFlagRow[]);
 
     setReassignSelections((prev) => {
       const next = { ...prev };
@@ -1469,6 +1494,25 @@ setPropertyPostal("");
     return d.toLocaleDateString();
   }
 
+  function getMaintenanceFlagLabel(flag: MaintenanceFlagRow, keys: string[]) {
+    return (
+      flag.title ||
+      flag.name ||
+      flag.issue ||
+      flag.flag ||
+      flag.category ||
+      (keys.length > 0 ? keys[0].replace(/_/g, " ") : "Untitled flag")
+    );
+  }
+
+  function getMaintenanceFlagBody(flag: MaintenanceFlagRow) {
+    return flag.description || flag.notes || flag.details || flag.summary || null;
+  }
+
+  function getMaintenanceFlagState(flag: MaintenanceFlagRow) {
+    return flag.status || (flag.resolved_at ? "resolved" : "open");
+  }
+
   const selectedSops = useMemo(
     () => sops.filter((x) => x.property_id === selectedPropertyId),
     [sops, selectedPropertyId]
@@ -1635,6 +1679,43 @@ setPropertyPostal("");
       : dayJobs.filter((job) => job.property_id === selectedJobsPropertyFilter);
   }, [adminJobsByDate, adminSelectedDate, selectedJobsPropertyFilter]);
 
+  const filteredMaintenanceFlags = useMemo(() => {
+    const filteredByProperty =
+      selectedJobsPropertyFilter === "all"
+        ? maintenanceFlags
+        : maintenanceFlags.filter((flag) => flag.property_id === selectedJobsPropertyFilter);
+
+    return [...filteredByProperty].sort(
+      (a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime()
+    );
+  }, [maintenanceFlags, selectedJobsPropertyFilter]);
+
+  const maintenanceFlagCounts = useMemo(() => {
+    let open = 0;
+    let resolved = 0;
+    let urgent = 0;
+
+    for (const flag of filteredMaintenanceFlags) {
+      const state = String(getMaintenanceFlagState(flag) || "").toLowerCase();
+      const priority = String(flag.priority || flag.severity || "").toLowerCase();
+      if (state.includes("resolved") || state.includes("closed") || state.includes("done")) {
+        resolved += 1;
+      } else {
+        open += 1;
+      }
+      if (priority.includes("high") || priority.includes("urgent") || priority.includes("critical")) {
+        urgent += 1;
+      }
+    }
+
+    return {
+      total: filteredMaintenanceFlags.length,
+      open,
+      resolved,
+      urgent,
+    };
+  }, [filteredMaintenanceFlags]);
+
   function selectAdminCalendarDate(dateYmd: string) {
     setAdminSelectedDate(dateYmd);
   }
@@ -1647,6 +1728,7 @@ setPropertyPostal("");
     { key: "cleanerAccounts", label: "Cleaner Accounts" },
     { key: "assignments", label: "Assignments" },
     { key: "jobs", label: "Jobs" },
+    { key: "maintenance", label: "Maintenance Flags" },
   ];
 
   function renderUsersSection() {
@@ -2887,6 +2969,190 @@ function renderPropertiesSection() {
     );
   }
 
+
+  function renderMaintenanceSection() {
+    return (
+      <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold tracking-tight">Maintenance Flags</h2>
+            <p className="mt-1 text-sm text-[#7f7263]">
+              Admin-only readout from property_maintenance_flags. This is wired in safely as a dashboard first, with no cleaner-side changes.
+            </p>
+          </div>
+
+          <div className="w-full md:w-[280px]">
+            <label className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">
+              Filter by property
+            </label>
+            <select
+              className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+              value={selectedJobsPropertyFilter}
+              onChange={(e) => setSelectedJobsPropertyFilter(e.target.value)}
+            >
+              <option value="all">All properties</option>
+              {properties.map((property) => (
+                <option key={property.id} value={property.id}>
+                  {property.name || property.address || property.id}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-3 md:grid-cols-4">
+          {[
+            { label: "Total Flags", value: maintenanceFlagCounts.total },
+            { label: "Open", value: maintenanceFlagCounts.open },
+            { label: "Resolved", value: maintenanceFlagCounts.resolved },
+            { label: "Urgent", value: maintenanceFlagCounts.urgent },
+          ].map((item) => (
+            <div key={item.label} className="rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-4 shadow-sm">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-[#8a7b68]">{item.label}</div>
+              <div className="mt-2 text-3xl font-semibold text-[#241c15]">{item.value}</div>
+            </div>
+          ))}
+        </div>
+
+        {filteredMaintenanceFlags.length === 0 ? (
+          <div className="mt-6 rounded-[24px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-5 py-8 text-sm text-[#8a7b68]">
+            No maintenance flags found for the current filter.
+          </div>
+        ) : (
+          <div className="mt-6 space-y-4">
+            {filteredMaintenanceFlags.map((flag) => {
+              const state = String(getMaintenanceFlagState(flag) || "open");
+              const stateLower = state.toLowerCase();
+              const priority = String(flag.priority || flag.severity || "standard");
+              const isResolved =
+                stateLower.includes("resolved") ||
+                stateLower.includes("closed") ||
+                stateLower.includes("done");
+              const isUrgent =
+                priority.toLowerCase().includes("high") ||
+                priority.toLowerCase().includes("urgent") ||
+                priority.toLowerCase().includes("critical");
+
+              const labelKeys = Object.keys(flag).filter(
+                (key) =>
+                  ![
+                    "id",
+                    "property_id",
+                    "title",
+                    "description",
+                    "notes",
+                    "status",
+                    "priority",
+                    "severity",
+                    "category",
+                    "created_by",
+                    "assigned_to",
+                    "resolved_at",
+                    "due_at",
+                    "created_at",
+                    "updated_at",
+                  ].includes(key) && flag[key] !== null && flag[key] !== ""
+              );
+
+              return (
+                <div
+                  key={flag.id}
+                  className={`rounded-[24px] border p-4 shadow-sm ${
+                    isResolved
+                      ? "border-[#d7e7d7] bg-[#f5fbf5]"
+                      : isUrgent
+                      ? "border-[#efc6c6] bg-[#fff7f7]"
+                      : "border-[#eadfce] bg-[#fcfaf7]"
+                  }`}
+                >
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="text-base font-semibold text-[#241c15]">
+                          {getMaintenanceFlagLabel(flag, labelKeys)}
+                        </div>
+                        <span
+                          className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${
+                            isResolved
+                              ? "border-[#cfe4cf] bg-white text-[#2f6b2f]"
+                              : isUrgent
+                              ? "border-[#efc6c6] bg-white text-[#8a2e22]"
+                              : "border-[#d8c7ab] bg-white text-[#7f7263]"
+                          }`}
+                        >
+                          {state}
+                        </span>
+                        <span className="inline-flex rounded-full border border-[#d8c7ab] bg-white px-2.5 py-0.5 text-[11px] font-medium text-[#7f7263]">
+                          {priority}
+                        </span>
+                        {flag.category ? (
+                          <span className="inline-flex rounded-full border border-[#d8c7ab] bg-white px-2.5 py-0.5 text-[11px] font-medium text-[#7f7263]">
+                            {flag.category}
+                          </span>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-2 text-sm text-[#6f6255]">
+                        {getPropertyName(flag.property_id ?? null)}
+                      </div>
+
+                      {getMaintenanceFlagBody(flag) ? (
+                        <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[#5f5245]">
+                          {getMaintenanceFlagBody(flag)}
+                        </div>
+                      ) : null}
+
+                      {labelKeys.length > 0 ? (
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {labelKeys.slice(0, 6).map((key) => (
+                            <span
+                              key={key}
+                              className="inline-flex rounded-full border border-[#e2d6c6] bg-white px-3 py-1 text-xs text-[#6f6255]"
+                            >
+                              {key.replace(/_/g, " ")}: {String(flag[key])}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="grid gap-2 text-sm text-[#7f7263] md:min-w-[220px]">
+                      <div>
+                        <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Created</div>
+                        <div>{formatDateTime(flag.created_at)}</div>
+                      </div>
+
+                      {flag.updated_at ? (
+                        <div>
+                          <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Updated</div>
+                          <div>{formatDateTime(flag.updated_at)}</div>
+                        </div>
+                      ) : null}
+
+                      {flag.due_at ? (
+                        <div>
+                          <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Due</div>
+                          <div>{formatDateTime(flag.due_at)}</div>
+                        </div>
+                      ) : null}
+
+                      {flag.resolved_at ? (
+                        <div>
+                          <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Resolved</div>
+                          <div>{formatDateTime(flag.resolved_at)}</div>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+    );
+  }
+
   function renderActiveSection() {
     switch (activeSection) {
       case "users":
@@ -2905,6 +3171,8 @@ case "properties":
         return renderAssignmentsSection();
       case "jobs":
         return renderJobsSection();
+      case "maintenance":
+        return renderMaintenanceSection();
       default:
         return renderUsersSection();
     }
@@ -2976,13 +3244,14 @@ case "properties":
             </div>
           </div>
 
-          <div className="grid gap-3 border-t border-[#efe6dc] bg-[#fbf8f4] px-6 py-4 md:grid-cols-5 md:px-8">
+          <div className="grid gap-3 border-t border-[#efe6dc] bg-[#fbf8f4] px-6 py-4 md:grid-cols-6 md:px-8">
             {[
               { label: "Properties", value: properties.length },
               { label: "Cleaner Accounts", value: cleanerAccounts.length },
               { label: "Assignments", value: assignments.length },
               { label: "Jobs", value: jobs.length },
               { label: "Users", value: profiles.length },
+              { label: "Flags", value: maintenanceFlags.length },
             ].map((item) => (
               <div key={item.label} className="rounded-[24px] border border-[#eadfce] bg-white px-4 py-4 shadow-sm">
                 <div className="text-[11px] uppercase tracking-[0.22em] text-[#8a7b68]">{item.label}</div>
