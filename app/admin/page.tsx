@@ -126,35 +126,12 @@ type PropertyCalendarRow = {
   created_at?: string | null;
 };
 
-type MaintenanceFlagRow = {
-  id: string;
-  property_id?: string | null;
-  source?: string | null;
-  category?: string | null;
-  urgency?: string | null;
-  status?: string | null;
-  notes?: string | null;
-  flagged_by_profile_id?: string | null;
-  flagged_at?: string | null;
-  resolved_at?: string | null;
-  resolved_by_profile_id?: string | null;
-  created_at?: string | null;
-  updated_at?: string | null;
-  title?: string | null;
-  description?: string | null;
-  priority?: string | null;
-  severity?: string | null;
-  due_at?: string | null;
-  [key: string]: any;
-};
-
 type AdminSection =
   | "users"
   | "properties"
   | "cleanerAccounts"
   | "assignments"
-  | "jobs"
-  | "maintenance";
+  | "jobs";
 
 function getMonthGrid(baseDate: Date) {
   const year = baseDate.getFullYear();
@@ -256,21 +233,6 @@ function getCountdownTone(ms: number | null) {
   return "text-[#7f5d28]";
 }
 
-const MAINTENANCE_CATEGORY_OPTIONS = [
-  "Lawn / exterior",
-  "Plumbing",
-  "Electrical",
-  "HVAC",
-  "Appliances",
-  "Cleaning issue",
-  "Damage",
-  "Supplies",
-  "Lock / access",
-  "Pest issue",
-  "Safety issue",
-  "Other",
-];
-
 const PROPERTY_CALENDAR_COLORS = [
   { bg: "#e8f1ff", text: "#1d4ed8", border: "#bfdbfe" },
   { bg: "#ecfdf3", text: "#047857", border: "#a7f3d0" },
@@ -320,7 +282,6 @@ export default function AdminPage() {
   const [sopImages, setSopImages] = useState<SopImageRow[]>([]);
   const [profiles, setProfiles] = useState<ProfileRow[]>([]);
   const [propertyCalendars, setPropertyCalendars] = useState<PropertyCalendarRow[]>([]);
-  const [maintenanceFlags, setMaintenanceFlags] = useState<MaintenanceFlagRow[]>([]);
 
   const [error, setError] = useState("");
   const [savingRoleId, setSavingRoleId] = useState<string | null>(null);
@@ -335,23 +296,12 @@ export default function AdminPage() {
   const [deletingPropertyId, setDeletingPropertyId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState("");
   const [selectedJobsPropertyFilter, setSelectedJobsPropertyFilter] = useState("all");
-  const [maintenanceModalOpen, setMaintenanceModalOpen] = useState(false);
-  const [maintenanceFormPropertyId, setMaintenanceFormPropertyId] = useState("");
-  const [maintenanceFormCategory, setMaintenanceFormCategory] = useState("");
-  const [maintenanceFormUrgency, setMaintenanceFormUrgency] = useState("normal");
-  const [maintenanceFormNotes, setMaintenanceFormNotes] = useState("");
-  const [maintenanceFormError, setMaintenanceFormError] = useState("");
-  const [creatingMaintenanceFlag, setCreatingMaintenanceFlag] = useState(false);
-  const [resolvingMaintenanceFlagId, setResolvingMaintenanceFlagId] = useState<string | null>(null);
-  const [deletingMaintenanceFlagId, setDeletingMaintenanceFlagId] = useState<string | null>(null);
-  const [maintenanceHistoryExpanded, setMaintenanceHistoryExpanded] = useState(false);
-  const [deletingResolvedMaintenanceFlags, setDeletingResolvedMaintenanceFlags] = useState(false);
 
   const [propertyName, setPropertyName] = useState("");
-  const [propertyStreet, setPropertyStreet] = useState("");
-  const [propertyCity, setPropertyCity] = useState("");
-  const [propertyProvince, setPropertyProvince] = useState("");
-  const [propertyPostal, setPropertyPostal] = useState("");
+ const [propertyStreet, setPropertyStreet] = useState("");
+const [propertyCity, setPropertyCity] = useState("");
+const [propertyProvince, setPropertyProvince] = useState("");
+const [propertyPostal, setPropertyPostal] = useState("");
   const [propertyNotes, setPropertyNotes] = useState("");
   const [propertyUnitsNeeded, setPropertyUnitsNeeded] = useState("1");
   const [propertyUnitsStrict, setPropertyUnitsStrict] = useState(false);
@@ -384,7 +334,7 @@ export default function AdminPage() {
   const [accessDirty, setAccessDirty] = useState(false);
   const [propertyDefaultsDirty, setPropertyDefaultsDirty] = useState(false);
 
-  const [calendarRowsDraft, setCalendarRowsDraft] = useState<
+   const [calendarRowsDraft, setCalendarRowsDraft] = useState<
     Array<{ id?: string; source: string; ical_url: string; is_active: boolean }>
   >([]);
   const [calendarDraftDirty, setCalendarDraftDirty] = useState(false);
@@ -511,7 +461,6 @@ export default function AdminPage() {
       sopImagesRes,
       profilesRes,
       propertyCalendarsRes,
-      maintenanceFlagsRes,
     ] = await Promise.all([
       supabase.from("properties").select("*").order("created_at", { ascending: false }),
       supabase.from("cleaner_accounts").select("*").order("created_at", { ascending: false }),
@@ -531,7 +480,6 @@ export default function AdminPage() {
         .select("id,email,full_name,phone,role,created_at")
         .order("created_at", { ascending: false }),
       supabase.from("property_calendars").select("*").order("created_at", { ascending: false }),
-      supabase.from("property_maintenance_flags").select("*").order("created_at", { ascending: false }),
     ]);
 
     const responses = [
@@ -547,7 +495,6 @@ export default function AdminPage() {
       sopImagesRes,
       profilesRes,
       propertyCalendarsRes,
-      maintenanceFlagsRes,
     ];
 
     for (const response of responses) {
@@ -569,7 +516,6 @@ export default function AdminPage() {
     setSopImages((sopImagesRes.data ?? []) as SopImageRow[]);
     setProfiles((profilesRes.data ?? []) as ProfileRow[]);
     setPropertyCalendars((propertyCalendarsRes.data ?? []) as PropertyCalendarRow[]);
-    setMaintenanceFlags((maintenanceFlagsRes.data ?? []) as MaintenanceFlagRow[]);
 
     setReassignSelections((prev) => {
       const next = { ...prev };
@@ -813,7 +759,7 @@ export default function AdminPage() {
 
     const { error } = await supabase.from("properties").insert({
       name: propertyName.trim(),
-      address: `${propertyStreet}, ${propertyCity}, ${propertyProvince}, ${propertyPostal}`,
+     address: `${propertyStreet}, ${propertyCity}, ${propertyProvince}, ${propertyPostal}`,
       notes: propertyNotes.trim() || null,
       default_cleaner_units_needed: Number(propertyUnitsNeeded),
       cleaner_units_required_strict: propertyUnitsStrict,
@@ -826,10 +772,10 @@ export default function AdminPage() {
     }
 
     setPropertyName("");
-    setPropertyStreet("");
-    setPropertyCity("");
-    setPropertyProvince("");
-    setPropertyPostal("");
+   setPropertyStreet("");
+setPropertyCity("");
+setPropertyProvince("");
+setPropertyPostal("");
     setPropertyNotes("");
     setPropertyUnitsNeeded("1");
     setPropertyUnitsStrict(false);
@@ -1523,178 +1469,6 @@ export default function AdminPage() {
     return d.toLocaleDateString();
   }
 
-  function getMaintenanceFlagLabel(flag: MaintenanceFlagRow, keys: string[]) {
-    return (
-      flag.title ||
-      flag.name ||
-      flag.issue ||
-      flag.flag ||
-      flag.category ||
-      (keys.length > 0 ? keys[0].replace(/_/g, " ") : "Untitled flag")
-    );
-  }
-
-  function getMaintenanceFlagBody(flag: MaintenanceFlagRow) {
-    return flag.description || flag.notes || flag.details || flag.summary || null;
-  }
-
-  function getMaintenanceFlagState(flag: MaintenanceFlagRow) {
-    if (flag.resolved_at) return "resolved";
-    return flag.status || "open";
-  }
-
-  function resetMaintenanceForm() {
-    setMaintenanceFormPropertyId(selectedJobsPropertyFilter !== "all" ? selectedJobsPropertyFilter : "");
-    setMaintenanceFormCategory("");
-    setMaintenanceFormUrgency("normal");
-    setMaintenanceFormNotes("");
-    setMaintenanceFormError("");
-  }
-
-  function openMaintenanceModal() {
-    resetMaintenanceForm();
-    setMaintenanceModalOpen(true);
-  }
-
-  function closeMaintenanceModal() {
-    setMaintenanceModalOpen(false);
-    resetMaintenanceForm();
-  }
-
-  async function createMaintenanceFlag() {
-    if (!maintenanceFormPropertyId) {
-      setMaintenanceFormError("Please choose a property.");
-      return;
-    }
-
-    if (!maintenanceFormCategory.trim()) {
-      setMaintenanceFormError("Please choose a category.");
-      return;
-    }
-
-    if (!maintenanceFormNotes.trim()) {
-      setMaintenanceFormError("Please add notes describing the issue.");
-      return;
-    }
-
-    setMaintenanceFormError("");
-    setError("");
-    setActionMessage("");
-    setCreatingMaintenanceFlag(true);
-
-    try {
-      const nowIso = new Date().toISOString();
-      const { error } = await supabase.from("property_maintenance_flags").insert({
-        property_id: maintenanceFormPropertyId,
-        source: "admin",
-        category: maintenanceFormCategory.trim(),
-        urgency: maintenanceFormUrgency,
-        status: "open",
-        notes: maintenanceFormNotes.trim(),
-        flagged_by_profile_id: currentAdminUserId,
-        flagged_at: nowIso,
-      });
-
-      if (error) throw error;
-
-      closeMaintenanceModal();
-      setActionMessage("Maintenance flag created.");
-      await loadData();
-    } catch (err: any) {
-      setError(err?.message || "Could not create maintenance flag.");
-    } finally {
-      setCreatingMaintenanceFlag(false);
-    }
-  }
-
-  async function resolveMaintenanceFlag(flagId: string) {
-    if (!currentAdminUserId) {
-      setError("Admin user not found.");
-      return;
-    }
-
-    setError("");
-    setActionMessage("");
-    setResolvingMaintenanceFlagId(flagId);
-
-    try {
-      const { error } = await supabase
-        .from("property_maintenance_flags")
-        .update({
-          status: "resolved",
-          resolved_at: new Date().toISOString(),
-          resolved_by_profile_id: currentAdminUserId,
-        })
-        .eq("id", flagId);
-
-      if (error) throw error;
-
-      setActionMessage("Maintenance flag resolved.");
-      await loadData();
-    } catch (err: any) {
-      setError(err?.message || "Could not resolve maintenance flag.");
-    } finally {
-      setResolvingMaintenanceFlagId(null);
-    }
-  }
-
-  async function deleteMaintenanceFlag(flagId: string) {
-    const confirmed = window.confirm("Delete this maintenance flag? This cannot be undone.");
-    if (!confirmed) return;
-
-    setError("");
-    setActionMessage("");
-    setDeletingMaintenanceFlagId(flagId);
-
-    try {
-      const { error } = await supabase.from("property_maintenance_flags").delete().eq("id", flagId);
-      if (error) throw error;
-
-      setActionMessage("Maintenance flag deleted.");
-      await loadData();
-    } catch (err: any) {
-      setError(err?.message || "Could not delete maintenance flag.");
-    } finally {
-      setDeletingMaintenanceFlagId(null);
-    }
-  }
-
-
-  async function deleteResolvedMaintenanceFlags() {
-    const resolvedIds = filteredMaintenanceFlags
-      .filter((flag) => {
-        const stateLower = String(getMaintenanceFlagState(flag) || "").toLowerCase();
-        return stateLower.includes("resolved") || stateLower.includes("closed") || stateLower.includes("done");
-      })
-      .map((flag) => flag.id);
-
-    if (resolvedIds.length === 0) {
-      setActionMessage("No resolved maintenance flags to delete.");
-      return;
-    }
-
-    const confirmed = window.confirm(
-      `Delete ${resolvedIds.length} resolved maintenance flag${resolvedIds.length === 1 ? "" : "s"}? This cannot be undone.`
-    );
-    if (!confirmed) return;
-
-    setError("");
-    setActionMessage("");
-    setDeletingResolvedMaintenanceFlags(true);
-
-    try {
-      const { error } = await supabase.from("property_maintenance_flags").delete().in("id", resolvedIds);
-      if (error) throw error;
-
-      setActionMessage(`Deleted ${resolvedIds.length} resolved maintenance flag${resolvedIds.length === 1 ? "" : "s"}.`);
-      await loadData();
-    } catch (err: any) {
-      setError(err?.message || "Could not delete resolved maintenance flags.");
-    } finally {
-      setDeletingResolvedMaintenanceFlags(false);
-    }
-  }
-
   const selectedSops = useMemo(
     () => sops.filter((x) => x.property_id === selectedPropertyId),
     [sops, selectedPropertyId]
@@ -1861,128 +1635,6 @@ export default function AdminPage() {
       : dayJobs.filter((job) => job.property_id === selectedJobsPropertyFilter);
   }, [adminJobsByDate, adminSelectedDate, selectedJobsPropertyFilter]);
 
-  const filteredMaintenanceFlags = useMemo(() => {
-    const filteredByProperty =
-      selectedJobsPropertyFilter === "all"
-        ? maintenanceFlags
-        : maintenanceFlags.filter((flag) => flag.property_id === selectedJobsPropertyFilter);
-
-    return [...filteredByProperty].sort(
-      (a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime()
-    );
-  }, [maintenanceFlags, selectedJobsPropertyFilter]);
-
-  const maintenanceFlagCounts = useMemo(() => {
-    let open = 0;
-    let resolved = 0;
-    let urgent = 0;
-
-    for (const flag of filteredMaintenanceFlags) {
-      const state = String(getMaintenanceFlagState(flag) || "").toLowerCase();
-      const urgency = String(flag.urgency || flag.priority || flag.severity || "").toLowerCase();
-      const isResolved = state.includes("resolved") || state.includes("closed") || state.includes("done");
-      const isUrgent = urgency.includes("high") || urgency.includes("urgent") || urgency.includes("critical");
-
-      if (isResolved) {
-        resolved += 1;
-      } else {
-        open += 1;
-        if (isUrgent) urgent += 1;
-      }
-    }
-
-    return {
-      total: filteredMaintenanceFlags.length,
-      open,
-      resolved,
-      urgent,
-    };
-  }, [filteredMaintenanceFlags]);
-
-  const openMaintenanceFlags = useMemo(
-    () =>
-      filteredMaintenanceFlags.filter((flag) => {
-        const stateLower = String(getMaintenanceFlagState(flag) || "").toLowerCase();
-        return !(stateLower.includes("resolved") || stateLower.includes("closed") || stateLower.includes("done"));
-      }),
-    [filteredMaintenanceFlags]
-  );
-
-  const resolvedMaintenanceFlags = useMemo(
-    () =>
-      filteredMaintenanceFlags.filter((flag) => {
-        const stateLower = String(getMaintenanceFlagState(flag) || "").toLowerCase();
-        return stateLower.includes("resolved") || stateLower.includes("closed") || stateLower.includes("done");
-      }),
-    [filteredMaintenanceFlags]
-  );
-
-  const operationsAlerts = useMemo(() => {
-    const alerts: Array<{
-      key: string;
-      label: string;
-      tone: "amber" | "red";
-      onClick: () => void;
-    }> = [];
-
-    if (waitingJobs.length > 0) {
-      alerts.push({
-        key: "waiting",
-        label: `${waitingJobs.length} job${waitingJobs.length === 1 ? "" : "s"} waiting for acceptance`,
-        tone: "amber",
-        onClick: () => jumpToJobs("waiting"),
-      });
-    }
-
-    if (overdueWaitingJobs.length > 0) {
-      alerts.push({
-        key: "overdue",
-        label: `${overdueWaitingJobs.length} overdue job${overdueWaitingJobs.length === 1 ? "" : "s"} needing attention`,
-        tone: "red",
-        onClick: () => jumpToJobs("waiting"),
-      });
-    }
-
-    if (strandedJobs.length > 0) {
-      alerts.push({
-        key: "stranded",
-        label: `${strandedJobs.length} stranded job${strandedJobs.length === 1 ? "" : "s"}`,
-        tone: "red",
-        onClick: () => jumpToJobs("stranded"),
-      });
-    }
-
-    if (maintenanceFlagCounts.open > 0) {
-      alerts.push({
-        key: "maintenance-open",
-        label: `${maintenanceFlagCounts.open} open maintenance flag${maintenanceFlagCounts.open === 1 ? "" : "s"}`,
-        tone: "red",
-        onClick: () => {
-          setActiveSection("maintenance");
-          setTimeout(() => {
-            document.getElementById("maintenance-flags-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
-          }, 50);
-        },
-      });
-    }
-
-    if (maintenanceFlagCounts.urgent > 0) {
-      alerts.push({
-        key: "maintenance-urgent",
-        label: `${maintenanceFlagCounts.urgent} urgent maintenance flag${maintenanceFlagCounts.urgent === 1 ? "" : "s"}`,
-        tone: "red",
-        onClick: () => {
-          setActiveSection("maintenance");
-          setTimeout(() => {
-            document.getElementById("maintenance-flags-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
-          }, 50);
-        },
-      });
-    }
-
-    return alerts;
-  }, [waitingJobs.length, overdueWaitingJobs.length, strandedJobs.length, maintenanceFlagCounts.open, maintenanceFlagCounts.urgent]);
-
   function selectAdminCalendarDate(dateYmd: string) {
     setAdminSelectedDate(dateYmd);
   }
@@ -1995,12 +1647,11 @@ export default function AdminPage() {
     { key: "cleanerAccounts", label: "Cleaner Accounts" },
     { key: "assignments", label: "Assignments" },
     { key: "jobs", label: "Jobs" },
-    { key: "maintenance", label: "Maintenance Flags" },
   ];
 
   function renderUsersSection() {
     return (
-      <div className="rounded-[30px] border border-[#e7ddd0] bg-white p-4 md:p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+      <div className="rounded-[30px] border border-[#e6d9c8] bg-[linear-gradient(180deg,#fffdf9_0%,#f7f1e8_100%)] p-4 md:p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
         <div className="mb-4">
           <h2 className="text-xl font-semibold tracking-tight">User Management</h2>
           <p className="mt-1 text-sm text-[#7f7263]">
@@ -2100,147 +1751,147 @@ export default function AdminPage() {
       </div>
     );
   }
-  function renderAddPropertySection() {
-    return (
-      <section id="maintenance-flags-section" className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-        <h2 className="text-xl font-semibold tracking-tight">Add Property</h2>
-        <p className="mt-1 text-sm text-[#7f7263]">
-          Add a managed property and set default staffing rules.
-        </p>
+ function renderAddPropertySection() {
+  return (
+    <section className="rounded-[30px] border border-[#e6d9c8] bg-[linear-gradient(180deg,#fffdf9_0%,#f7f1e8_100%)] p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+      <h2 className="text-xl font-semibold tracking-tight">Add Property</h2>
+      <p className="mt-1 text-sm text-[#7f7263]">
+        Add a managed property and set default staffing rules.
+      </p>
 
-        <div className="mt-5 space-y-3">
+      <div className="mt-5 space-y-3">
+        <input
+          className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+          placeholder="Property name"
+          value={propertyName}
+          onChange={(e) => setPropertyName(e.target.value)}
+        />
+
+        <div className="grid gap-2">
           <input
             className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-            placeholder="Property name"
-            value={propertyName}
-            onChange={(e) => setPropertyName(e.target.value)}
+            placeholder="Street Address"
+            value={propertyStreet}
+            onChange={(e) => setPropertyStreet(e.target.value)}
           />
 
-          <div className="grid gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <input
               className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-              placeholder="Street Address"
-              value={propertyStreet}
-              onChange={(e) => setPropertyStreet(e.target.value)}
+              placeholder="City"
+              value={propertyCity}
+              onChange={(e) => setPropertyCity(e.target.value)}
             />
 
-            <div className="grid grid-cols-2 gap-2">
-              <input
-                className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                placeholder="City"
-                value={propertyCity}
-                onChange={(e) => setPropertyCity(e.target.value)}
-              />
-
-              <input
-                className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                placeholder="Province"
-                value={propertyProvince}
-                onChange={(e) => setPropertyProvince(e.target.value)}
-              />
-            </div>
-
             <input
               className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-              placeholder="Postal Code"
-              value={propertyPostal}
-              onChange={(e) => setPropertyPostal(e.target.value)}
+              placeholder="Province"
+              value={propertyProvince}
+              onChange={(e) => setPropertyProvince(e.target.value)}
             />
           </div>
 
-          <textarea
-            className="min-h-[110px] w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-            placeholder="Internal notes"
-            value={propertyNotes}
-            onChange={(e) => setPropertyNotes(e.target.value)}
-          />
-
-          <select
+          <input
             className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-            value={propertyUnitsNeeded}
-            onChange={(e) => setPropertyUnitsNeeded(e.target.value)}
-          >
-            <option value="1">Default cleaner units: 1</option>
-            <option value="2">Default cleaner units: 2</option>
-            <option value="3">Default cleaner units: 3</option>
-          </select>
-
-          <label className="flex items-center gap-2 text-sm text-[#6f6255]">
-            <input
-              type="checkbox"
-              checked={propertyUnitsStrict}
-              onChange={(e) => setPropertyUnitsStrict(e.target.checked)}
-            />
-            Full team required before the job is fully staffed
-          </label>
-
-          <label className="flex items-center gap-2 text-sm text-[#6f6255]">
-            <input
-              type="checkbox"
-              checked={propertyShowTeamStatus}
-              onChange={(e) => setPropertyShowTeamStatus(e.target.checked)}
-            />
-            Show team status on cleaner page
-          </label>
-
-          <button
-            className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]"
-            onClick={() => void addProperty()}
-          >
-            Add Property
-          </button>
+            placeholder="Postal Code"
+            value={propertyPostal}
+            onChange={(e) => setPropertyPostal(e.target.value)}
+          />
         </div>
-      </section>
-    );
-  }
-  function renderPropertiesSection() {
-    return (
-      <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-xl font-semibold tracking-tight">Properties</h2>
-          <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">{properties.length}</span>
-        </div>
-        <div className="space-y-3">
-          {properties.map((p) => {
-            const propertyCalendarCount = propertyCalendars.filter((calendar) => calendar.property_id === p.id).length;
-            return (
-              <div key={p.id} className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
-                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                  <div className="min-w-0 flex-1">
-                    <div className="text-base font-semibold">{p.name}</div>
-                    <div className="mt-1 text-sm text-[#6f6255]">{p.address || "No address"}</div>
-                    <div className="mt-2 text-sm text-[#8a7b68]">{p.notes || "No notes"}</div>
-                    <div className="mt-2 text-xs text-[#8a7b68]">
-                      Default staffing: {p.default_cleaner_units_needed} unit{p.default_cleaner_units_needed === 1 ? "" : "s"}
-                      {p.cleaner_units_required_strict ? ", strict" : ", flexible"}
-                    </div>
-                    <div className="mt-2 text-xs text-[#8a7b68]">
-                      Calendars configured: {propertyCalendarCount}
-                    </div>
-                  </div>
 
-                  <div className="w-full md:w-[220px]">
-                    <button
-                      className="w-full rounded-[14px] border border-[#efc6c6] bg-[#fff5f5] px-3 py-2 text-sm text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-50"
-                      onClick={() => void deleteProperty(p)}
-                      disabled={deletingPropertyId === p.id}
-                    >
-                      {deletingPropertyId === p.id ? "Deleting..." : "Delete property"}
-                    </button>
+        <textarea
+          className="min-h-[110px] w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+          placeholder="Internal notes"
+          value={propertyNotes}
+          onChange={(e) => setPropertyNotes(e.target.value)}
+        />
+
+        <select
+          className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+          value={propertyUnitsNeeded}
+          onChange={(e) => setPropertyUnitsNeeded(e.target.value)}
+        >
+          <option value="1">Default cleaner units: 1</option>
+          <option value="2">Default cleaner units: 2</option>
+          <option value="3">Default cleaner units: 3</option>
+        </select>
+
+        <label className="flex items-center gap-2 text-sm text-[#6f6255]">
+          <input
+            type="checkbox"
+            checked={propertyUnitsStrict}
+            onChange={(e) => setPropertyUnitsStrict(e.target.checked)}
+          />
+          Full team required before the job is fully staffed
+        </label>
+
+        <label className="flex items-center gap-2 text-sm text-[#6f6255]">
+          <input
+            type="checkbox"
+            checked={propertyShowTeamStatus}
+            onChange={(e) => setPropertyShowTeamStatus(e.target.checked)}
+          />
+          Show team status on cleaner page
+        </label>
+
+        <button
+          className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]"
+          onClick={() => void addProperty()}
+        >
+          Add Property
+        </button>
+      </div>
+    </section>
+  );
+}
+function renderPropertiesSection() {
+  return (
+    <section className="rounded-[30px] border border-[#e6d9c8] bg-[linear-gradient(180deg,#fffdf9_0%,#f7f1e8_100%)] p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-xl font-semibold tracking-tight">Properties</h2>
+            <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">{properties.length}</span>
+          </div>
+          <div className="space-y-3">
+            {properties.map((p) => {
+              const propertyCalendarCount = propertyCalendars.filter((calendar) => calendar.property_id === p.id).length;
+              return (
+                <div key={p.id} className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-base font-semibold">{p.name}</div>
+                      <div className="mt-1 text-sm text-[#6f6255]">{p.address || "No address"}</div>
+                      <div className="mt-2 text-sm text-[#8a7b68]">{p.notes || "No notes"}</div>
+                      <div className="mt-2 text-xs text-[#8a7b68]">
+                        Default staffing: {p.default_cleaner_units_needed} unit{p.default_cleaner_units_needed === 1 ? "" : "s"}
+                        {p.cleaner_units_required_strict ? ", strict" : ", flexible"}
+                      </div>
+                      <div className="mt-2 text-xs text-[#8a7b68]">
+                        Calendars configured: {propertyCalendarCount}
+                      </div>
+                    </div>
+
+                    <div className="w-full md:w-[220px]">
+                      <button
+                        className="w-full rounded-[14px] border border-[#efc6c6] bg-[#fff5f5] px-3 py-2 text-sm text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-50"
+                        onClick={() => void deleteProperty(p)}
+                        disabled={deletingPropertyId === p.id}
+                      >
+                        {deletingPropertyId === p.id ? "Deleting..." : "Delete property"}
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-    );
-  }
+              );
+            })}
+          </div>
+     </section>
+  );
+}
 
   function renderCleanerAccountsSection() {
     return (
       <div className="space-y-6">
-        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+        <section className="rounded-[30px] border border-[#e6d9c8] bg-[linear-gradient(180deg,#fffdf9_0%,#f7f1e8_100%)] p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
           <h2 className="text-xl font-semibold tracking-tight">Link Existing Cleaner Users</h2>
           <p className="mt-1 text-sm text-[#7f7263]">
             Real cleaner logins are created from the sign up page. Use this section only when you want multiple existing cleaner users to share the same jobs.
@@ -2283,7 +1934,7 @@ export default function AdminPage() {
           </div>
         </section>
 
-        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+        <section className="rounded-[30px] border border-[#e6d9c8] bg-[linear-gradient(180deg,#fffdf9_0%,#f7f1e8_100%)] p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-xl font-semibold tracking-tight">Cleaner Accounts</h2>
             <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">{cleanerAccounts.length}</span>
@@ -2372,7 +2023,7 @@ export default function AdminPage() {
   function renderAssignmentsSection() {
     return (
       <div className="space-y-6">
-        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+        <section className="rounded-[30px] border border-[#e6d9c8] bg-[linear-gradient(180deg,#fffdf9_0%,#f7f1e8_100%)] p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
           <h2 className="text-xl font-semibold tracking-tight">Assign Cleaner to Property</h2>
           <p className="mt-1 text-sm text-[#7f7263]">
             Choose an approved cleaner and assign them as primary or backup. If they are not linked to a cleaner account yet, the system will create that link automatically.
@@ -2405,7 +2056,7 @@ export default function AdminPage() {
           </div>
         </section>
 
-        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+        <section className="rounded-[30px] border border-[#e6d9c8] bg-[linear-gradient(180deg,#fffdf9_0%,#f7f1e8_100%)] p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-xl font-semibold tracking-tight">Assignments</h2>
             <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">{assignments.length}</span>
@@ -2437,7 +2088,7 @@ export default function AdminPage() {
   function renderJobsSection() {
     return (
       <div className="space-y-6" id="jobs-section">
-        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+        <section className="rounded-[30px] border border-[#e6d9c8] bg-[linear-gradient(180deg,#fffdf9_0%,#f7f1e8_100%)] p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
           <h2 className="text-xl font-semibold tracking-tight">Create Job</h2>
           <p className="mt-1 text-sm text-[#7f7263]">
             Create a turnover job. Slots are created automatically from cleaner account assignments.
@@ -2489,7 +2140,7 @@ export default function AdminPage() {
           </div>
         </section>
 
-        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+        <section className="rounded-[30px] border border-[#e6d9c8] bg-[linear-gradient(180deg,#fffdf9_0%,#f7f1e8_100%)] p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h2 className="text-xl font-semibold tracking-tight">Admin Calendar</h2>
@@ -2553,15 +2204,17 @@ export default function AdminPage() {
                     key={dateYmd}
                     type="button"
                     onClick={() => selectAdminCalendarDate(dateYmd)}
-                    className={`min-h-[118px] border-r border-b border-[#eadfce] p-2 text-left align-top transition ${isSelected
+                    className={`min-h-[118px] border-r border-b border-[#eadfce] p-2 text-left align-top transition ${
+                      isSelected
                         ? "bg-[#fffaf3] shadow-[inset_0_0_0_2px_rgba(180,141,78,0.65)]"
                         : "hover:bg-[#fcfaf7]"
-                      } ${!isCurrentMonth ? "bg-[#fbf9f5] text-[#b1a392]" : "text-[#241c15]"}`}
+                    } ${!isCurrentMonth ? "bg-[#fbf9f5] text-[#b1a392]" : "text-[#241c15]"}`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div
-                        className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold ${isToday ? "bg-[#241c15] text-[#f8f2e8]" : "bg-transparent"
-                          }`}
+                        className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold ${
+                          isToday ? "bg-[#241c15] text-[#f8f2e8]" : "bg-transparent"
+                        }`}
                       >
                         {day.getDate()}
                       </div>
@@ -2685,10 +2338,11 @@ export default function AdminPage() {
                           <span className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">
                             Declined: {declinedCount}
                           </span>
-                          <span className={`rounded-full px-3 py-1 text-xs font-medium ${strandedCount > 0
+                          <span className={`rounded-full px-3 py-1 text-xs font-medium ${
+                            strandedCount > 0
                               ? "border border-[#efc6c6] bg-[#fff5f5] text-[#8a2e22]"
                               : "border border-[#d8c7ab] bg-[#fcfaf7] text-[#7f7263]"
-                            }`}>
+                          }`}>
                             Stranded: {strandedCount}
                           </span>
                         </div>
@@ -2709,7 +2363,7 @@ export default function AdminPage() {
 
         <section
           id="waiting-jobs-section"
-          className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]"
+          className="rounded-[30px] border border-[#e6d9c8] bg-[linear-gradient(180deg,#fffdf9_0%,#f7f1e8_100%)] p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]"
         >
           <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap items-center gap-3">
@@ -2957,7 +2611,7 @@ export default function AdminPage() {
 
   function renderPropertySetupSection() {
     return (
-      <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+      <section className="rounded-[30px] border border-[#e6d9c8] bg-[linear-gradient(180deg,#fffdf9_0%,#f7f1e8_100%)] p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
         <h2 className="text-xl font-semibold tracking-tight">Property Setup</h2>
         <p className="mt-1 text-sm text-[#7f7263]">Manage access notes, booking calendars, and visual SOPs.</p>
 
@@ -2974,7 +2628,7 @@ export default function AdminPage() {
               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div>
                   <h3 className="text-lg font-semibold">Property Staffing Defaults</h3>
-                </div>
+                    </div>
                 <button
                   className="inline-flex items-center justify-center rounded-full border border-[#efc6c6] bg-[#fff5f5] px-5 py-2.5 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-50"
                   onClick={() => {
@@ -2991,9 +2645,9 @@ export default function AdminPage() {
                 <div>
                   <label className="mb-2 block text-sm font-medium text-[#5f5245]">Cleaner units needed</label>
                   <select className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" value={selectedPropertyUnitsNeeded} onChange={(e) => {
-                    setSelectedPropertyUnitsNeeded(e.target.value);
-                    setPropertyDefaultsDirty(true);
-                  }}>
+                      setSelectedPropertyUnitsNeeded(e.target.value);
+                      setPropertyDefaultsDirty(true);
+                    }}>
                     <option value="1">1 cleaner unit</option>
                     <option value="2">2 cleaner units</option>
                     <option value="3">3 cleaner units</option>
@@ -3233,536 +2887,24 @@ export default function AdminPage() {
     );
   }
 
-
-  function renderMaintenanceSection() {
-    return (
-      <>
-        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-            <div>
-              <h2 className="text-xl font-semibold tracking-tight">Maintenance Flags</h2>
-              <p className="mt-1 text-sm text-[#7f7263]">
-                Admin-only maintenance tracking. Add flags here now, then we can wire cleaner-side reporting in later.
-              </p>
-            </div>
-
-            <div className="flex w-full flex-col gap-3 md:flex-row xl:w-auto xl:items-end">
-              <div className="w-full md:w-[280px]">
-                <label className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">
-                  Filter by property
-                </label>
-                <select
-                  className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                  value={selectedJobsPropertyFilter}
-                  onChange={(e) => setSelectedJobsPropertyFilter(e.target.value)}
-                >
-                  <option value="all">All properties</option>
-                  {properties.map((property) => (
-                    <option key={property.id} value={property.id}>
-                      {property.name || property.address || property.id}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <button
-                className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-3 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]"
-                onClick={openMaintenanceModal}
-              >
-                Add Flag
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-5 grid gap-3 md:grid-cols-4">
-            {[
-              {
-                label: "Total Flags",
-                value: maintenanceFlagCounts.total,
-                cardClass: "border-[#eadfce] bg-[#fcfaf7]",
-                labelClass: "text-[#8a7b68]",
-                valueClass: "text-[#241c15]",
-              },
-              {
-                label: "Open",
-                value: maintenanceFlagCounts.open,
-                cardClass:
-                  maintenanceFlagCounts.open > 0
-                    ? "border-[#dc2626] bg-[#fff1f2] shadow-[0_10px_28px_rgba(220,38,38,0.12)]"
-                    : "border-[#eadfce] bg-[#fcfaf7]",
-                labelClass: maintenanceFlagCounts.open > 0 ? "text-[#991b1b]" : "text-[#8a7b68]",
-                valueClass: maintenanceFlagCounts.open > 0 ? "text-[#b91c1c]" : "text-[#241c15]",
-              },
-              {
-                label: "Resolved",
-                value: maintenanceFlagCounts.resolved,
-                cardClass: "border-[#eadfce] bg-[#fcfaf7]",
-                labelClass: "text-[#8a7b68]",
-                valueClass: "text-[#241c15]",
-              },
-              {
-                label: "Urgent",
-                value: maintenanceFlagCounts.urgent,
-                cardClass:
-                  maintenanceFlagCounts.urgent > 0
-                    ? "animate-pulse border-[#b91c1c] bg-[#dc2626] shadow-[0_16px_34px_rgba(185,28,28,0.28)]"
-                    : "border-[#eadfce] bg-[#fcfaf7]",
-                labelClass: maintenanceFlagCounts.urgent > 0 ? "text-white/80" : "text-[#8a7b68]",
-                valueClass: maintenanceFlagCounts.urgent > 0 ? "text-white" : "text-[#241c15]",
-              },
-            ].map((item) => (
-              <div key={item.label} className={`rounded-[24px] border px-4 py-4 shadow-sm ${item.cardClass}`}>
-                <div className={`text-[11px] uppercase tracking-[0.22em] ${item.labelClass}`}>{item.label}</div>
-                <div className={`mt-2 text-3xl font-semibold ${item.valueClass}`}>{item.value}</div>
-              </div>
-            ))}
-          </div>
-
-          {filteredMaintenanceFlags.length === 0 ? (
-            <div className="mt-6 rounded-[24px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-5 py-8 text-sm text-[#8a7b68]">
-              No maintenance flags found for the current filter.
-            </div>
-          ) : (
-            <div className="mt-6 space-y-6">
-              <div>
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <div>
-                    <h3 className="text-lg font-semibold text-[#241c15]">Open Flags</h3>
-                    <div className="mt-1 text-sm text-[#7f7263]">
-                      {openMaintenanceFlags.length} active flag{openMaintenanceFlags.length === 1 ? "" : "s"}
-                    </div>
-                  </div>
-                </div>
-
-                {openMaintenanceFlags.length === 0 ? (
-                  <div className="rounded-[22px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-5 py-6 text-sm text-[#8a7b68]">
-                    No open maintenance flags.
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {openMaintenanceFlags.map((flag) => {
-                      const state = String(getMaintenanceFlagState(flag) || "open");
-                      const stateLower = state.toLowerCase();
-                      const urgency = String(flag.urgency || flag.priority || flag.severity || "normal");
-                      const urgencyLower = urgency.toLowerCase();
-                      const isResolved =
-                        stateLower.includes("resolved") ||
-                        stateLower.includes("closed") ||
-                        stateLower.includes("done");
-                      const isUrgent =
-                        urgencyLower.includes("high") ||
-                        urgencyLower.includes("urgent") ||
-                        urgencyLower.includes("critical");
-
-                      const flaggedByName = profiles.find((profile) => profile.id === flag.flagged_by_profile_id)?.full_name;
-                      const resolvedByName = profiles.find((profile) => profile.id === flag.resolved_by_profile_id)?.full_name;
-                      const labelKeys = Object.keys(flag).filter(
-                        (key) =>
-                          ![
-                            "id",
-                            "property_id",
-                            "source",
-                            "category",
-                            "urgency",
-                            "status",
-                            "notes",
-                            "flagged_by_profile_id",
-                            "flagged_at",
-                            "resolved_at",
-                            "resolved_by_profile_id",
-                            "created_at",
-                            "updated_at",
-                          ].includes(key) && flag[key] !== null && flag[key] !== ""
-                      );
-
-                      return (
-                        <div
-                          key={flag.id}
-                          className={`rounded-[24px] border p-4 shadow-sm ${isResolved
-                              ? "border-[#d7e7d7] bg-[#f5fbf5]"
-                              : isUrgent
-                                ? "animate-pulse border-[#b91c1c] bg-[#fff1f2] shadow-[0_16px_34px_rgba(185,28,28,0.16)]"
-                                : "border-[#dc2626] bg-[#fff5f5]"
-                            }`}
-                        >
-                          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                            <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <div className="text-base font-semibold text-[#241c15]">
-                                  {flag.category || getMaintenanceFlagLabel(flag, labelKeys)}
-                                </div>
-                                <span
-                                  className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${isResolved
-                                      ? "border-[#cfe4cf] bg-white text-[#2f6b2f]"
-                                      : isUrgent
-                                        ? "border-[#fecaca] bg-white text-[#991b1b]"
-                                        : "border-[#fecaca] bg-white text-[#991b1b]"
-                                    }`}
-                                >
-                                  {state}
-                                </span>
-                                <span
-                                  className={`inline-flex rounded-full border bg-white px-2.5 py-0.5 text-[11px] font-medium ${isUrgent ? "border-[#fecaca] text-[#991b1b]" : "border-[#d8c7ab] text-[#7f7263]"
-                                    }`}
-                                >
-                                  {urgency}
-                                </span>
-                                {flag.source ? (
-                                  <span className="inline-flex rounded-full border border-[#d8c7ab] bg-white px-2.5 py-0.5 text-[11px] font-medium text-[#7f7263]">
-                                    Source: {flag.source}
-                                  </span>
-                                ) : null}
-                              </div>
-
-                              <div className="mt-2 text-sm text-[#6f6255]">
-                                {getPropertyName(flag.property_id ?? null)}
-                              </div>
-
-                              {flag.notes ? (
-                                <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[#5f5245]">
-                                  {flag.notes}
-                                </div>
-                              ) : null}
-
-                              {labelKeys.length > 0 ? (
-                                <div className="mt-4 flex flex-wrap gap-2">
-                                  {labelKeys.slice(0, 6).map((key) => (
-                                    <span
-                                      key={key}
-                                      className="inline-flex rounded-full border border-[#e2d6c6] bg-white px-3 py-1 text-xs text-[#6f6255]"
-                                    >
-                                      {key.replace(/_/g, " ")}: {String(flag[key])}
-                                    </span>
-                                  ))}
-                                </div>
-                              ) : null}
-                            </div>
-
-                            <div className="flex w-full flex-col gap-3 lg:w-[260px]">
-                              <div className="grid gap-2 text-sm text-[#7f7263]">
-                                <div>
-                                  <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Flagged</div>
-                                  <div>{formatDateTime(flag.flagged_at || flag.created_at)}</div>
-                                </div>
-
-                                {flaggedByName || flag.flagged_by_profile_id ? (
-                                  <div>
-                                    <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Flagged by</div>
-                                    <div>{flaggedByName || flag.flagged_by_profile_id}</div>
-                                  </div>
-                                ) : null}
-
-                                {flag.resolved_at ? (
-                                  <div>
-                                    <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Resolved</div>
-                                    <div>{formatDateTime(flag.resolved_at)}</div>
-                                  </div>
-                                ) : null}
-
-                                {resolvedByName || flag.resolved_by_profile_id ? (
-                                  <div>
-                                    <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Resolved by</div>
-                                    <div>{resolvedByName || flag.resolved_by_profile_id}</div>
-                                  </div>
-                                ) : null}
-                              </div>
-
-                              <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
-                                {!isResolved ? (
-                                  <button
-                                    className="rounded-[16px] bg-[#241c15] px-4 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60"
-                                    onClick={() => void resolveMaintenanceFlag(flag.id)}
-                                    disabled={resolvingMaintenanceFlagId === flag.id || deletingMaintenanceFlagId === flag.id}
-                                  >
-                                    {resolvingMaintenanceFlagId === flag.id ? "Resolving..." : "Mark Resolved"}
-                                  </button>
-                                ) : null}
-
-                                <button
-                                  className="rounded-[16px] border border-[#efc6c6] bg-[#fff5f5] px-4 py-2.5 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-60"
-                                  onClick={() => void deleteMaintenanceFlag(flag.id)}
-                                  disabled={deletingMaintenanceFlagId === flag.id || resolvingMaintenanceFlagId === flag.id}
-                                >
-                                  {deletingMaintenanceFlagId === flag.id ? "Deleting..." : "Delete"}
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              <div className="rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-2 text-left text-lg font-semibold text-[#241c15]"
-                      onClick={() => setMaintenanceHistoryExpanded((prev) => !prev)}
-                    >
-                      <span>{maintenanceHistoryExpanded ? "▾" : "▸"}</span>
-                      Flag History
-                    </button>
-                    <div className="mt-1 text-sm text-[#7f7263]">
-                      {resolvedMaintenanceFlags.length} resolved flag{resolvedMaintenanceFlags.length === 1 ? "" : "s"}
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <button
-                      type="button"
-                      className="rounded-[16px] border border-[#d8c7ab] bg-white px-4 py-2.5 text-sm font-medium text-[#6f6255] transition hover:bg-[#f7f3ee]"
-                      onClick={() => setMaintenanceHistoryExpanded((prev) => !prev)}
-                    >
-                      {maintenanceHistoryExpanded ? "Collapse" : "Expand"}
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded-[16px] border border-[#efc6c6] bg-[#fff5f5] px-4 py-2.5 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-60"
-                      onClick={() => void deleteResolvedMaintenanceFlags()}
-                      disabled={deletingResolvedMaintenanceFlags || resolvedMaintenanceFlags.length === 0}
-                    >
-                      {deletingResolvedMaintenanceFlags ? "Deleting..." : "Delete All Resolved"}
-                    </button>
-                  </div>
-                </div>
-
-                {maintenanceHistoryExpanded ? (
-                  resolvedMaintenanceFlags.length === 0 ? (
-                    <div className="mt-4 rounded-[20px] border border-dashed border-[#d8c7ab] bg-white px-4 py-5 text-sm text-[#8a7b68]">
-                      No resolved maintenance flags yet.
-                    </div>
-                  ) : (
-                    <div className="mt-4 space-y-4">
-                      {resolvedMaintenanceFlags.map((flag) => {
-                        const state = String(getMaintenanceFlagState(flag) || "resolved");
-                        const urgency = String(flag.urgency || flag.priority || flag.severity || "normal");
-                        const flaggedByName = profiles.find((profile) => profile.id === flag.flagged_by_profile_id)?.full_name;
-                        const resolvedByName = profiles.find((profile) => profile.id === flag.resolved_by_profile_id)?.full_name;
-                        const labelKeys = Object.keys(flag).filter(
-                          (key) =>
-                            ![
-                              "id",
-                              "property_id",
-                              "source",
-                              "category",
-                              "urgency",
-                              "status",
-                              "notes",
-                              "flagged_by_profile_id",
-                              "flagged_at",
-                              "resolved_at",
-                              "resolved_by_profile_id",
-                              "created_at",
-                              "updated_at",
-                            ].includes(key) && flag[key] !== null && flag[key] !== ""
-                        );
-
-                        return (
-                          <div key={flag.id} className="rounded-[24px] border border-[#d7e7d7] bg-[#f5fbf5] p-4 shadow-sm">
-                            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                              <div className="min-w-0 flex-1">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <div className="text-base font-semibold text-[#241c15]">
-                                    {flag.category || getMaintenanceFlagLabel(flag, labelKeys)}
-                                  </div>
-                                  <span className="inline-flex rounded-full border border-[#cfe4cf] bg-white px-2.5 py-0.5 text-[11px] font-medium text-[#2f6b2f]">
-                                    {state}
-                                  </span>
-                                  <span className="inline-flex rounded-full border border-[#d8c7ab] bg-white px-2.5 py-0.5 text-[11px] font-medium text-[#7f7263]">
-                                    {urgency}
-                                  </span>
-                                </div>
-                                <div className="mt-2 text-sm text-[#6f6255]">{getPropertyName(flag.property_id ?? null)}</div>
-                                {flag.notes ? <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[#5f5245]">{flag.notes}</div> : null}
-                                {labelKeys.length > 0 ? (
-                                  <div className="mt-4 flex flex-wrap gap-2">
-                                    {labelKeys.slice(0, 6).map((key) => (
-                                      <span key={key} className="inline-flex rounded-full border border-[#e2d6c6] bg-white px-3 py-1 text-xs text-[#6f6255]">
-                                        {key.replace(/_/g, " ")}: {String(flag[key])}
-                                      </span>
-                                    ))}
-                                  </div>
-                                ) : null}
-                              </div>
-
-                              <div className="flex w-full flex-col gap-3 lg:w-[260px]">
-                                <div className="grid gap-2 text-sm text-[#7f7263]">
-                                  <div>
-                                    <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Flagged</div>
-                                    <div>{formatDateTime(flag.flagged_at || flag.created_at)}</div>
-                                  </div>
-                                  {flaggedByName || flag.flagged_by_profile_id ? (
-                                    <div>
-                                      <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Flagged by</div>
-                                      <div>{flaggedByName || flag.flagged_by_profile_id}</div>
-                                    </div>
-                                  ) : null}
-                                  {flag.resolved_at ? (
-                                    <div>
-                                      <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Resolved</div>
-                                      <div>{formatDateTime(flag.resolved_at)}</div>
-                                    </div>
-                                  ) : null}
-                                  {resolvedByName || flag.resolved_by_profile_id ? (
-                                    <div>
-                                      <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Resolved by</div>
-                                      <div>{resolvedByName || flag.resolved_by_profile_id}</div>
-                                    </div>
-                                  ) : null}
-                                </div>
-
-                                <button
-                                  className="rounded-[16px] border border-[#efc6c6] bg-[#fff5f5] px-4 py-2.5 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-60"
-                                  onClick={() => void deleteMaintenanceFlag(flag.id)}
-                                  disabled={deletingMaintenanceFlagId === flag.id || deletingResolvedMaintenanceFlags}
-                                >
-                                  {deletingMaintenanceFlagId === flag.id ? "Deleting..." : "Delete"}
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )
-                ) : null}
-              </div>
-            </div>
-          )}
-        </section>
-
-        {maintenanceModalOpen ? (
-          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/45 px-4 py-6">
-            <div className="w-full max-w-2xl rounded-[32px] border border-[#d8c7ab] bg-[#f8f3eb] p-5 shadow-[0_30px_80px_rgba(0,0,0,0.28)] md:p-6">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="text-xl font-semibold tracking-tight text-[#241c15]">Create Maintenance Flag</div>
-                  <p className="mt-1 text-sm text-[#7f7263]">
-                    Add an internal maintenance issue now. This stays admin-only for the moment.
-                  </p>
-                </div>
-                <button
-                  className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1.5 text-sm text-[#6f6255] transition hover:bg-[#f7f3ee]"
-                  onClick={closeMaintenanceModal}
-                  disabled={creatingMaintenanceFlag}
-                >
-                  Close
-                </button>
-              </div>
-
-              {maintenanceFormError ? (
-                <div className="mt-5 rounded-[18px] border border-[#fecaca] bg-[#fff1f2] px-4 py-3 text-sm text-[#991b1b]">
-                  {maintenanceFormError}
-                </div>
-              ) : null}
-
-              <div className="mt-5 grid gap-4 md:grid-cols-2">
-                <div className="md:col-span-2">
-                  <label className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Property</label>
-                  <select
-                    className={`w-full rounded-[20px] border bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e] ${maintenanceFormError && !maintenanceFormPropertyId ? "border-[#dc2626] bg-[#fff5f5]" : "border-[#d9ccbb]"
-                      }`}
-                    value={maintenanceFormPropertyId}
-                    onChange={(e) => setMaintenanceFormPropertyId(e.target.value)}
-                  >
-                    <option value="">Select property</option>
-                    {properties.map((property) => (
-                      <option key={property.id} value={property.id}>
-                        {property.name || property.address || property.id}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Category</label>
-                  <select
-                    className={`w-full rounded-[20px] border bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e] ${maintenanceFormError && !maintenanceFormCategory ? "border-[#dc2626] bg-[#fff5f5]" : "border-[#d9ccbb]"
-                      }`}
-                    value={maintenanceFormCategory}
-                    onChange={(e) => setMaintenanceFormCategory(e.target.value)}
-                  >
-                    <option value="">Select category</option>
-                    {MAINTENANCE_CATEGORY_OPTIONS.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Urgency</label>
-                  <select
-                    className="w-full rounded-[20px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                    value={maintenanceFormUrgency}
-                    onChange={(e) => setMaintenanceFormUrgency(e.target.value)}
-                  >
-                    <option value="low">Low</option>
-                    <option value="normal">Normal</option>
-                    <option value="urgent">Urgent</option>
-                  </select>
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Notes</label>
-                  <textarea
-                    className={`min-h-[160px] w-full rounded-[20px] border bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e] ${maintenanceFormError && !maintenanceFormNotes.trim() ? "border-[#dc2626] bg-[#fff5f5]" : "border-[#d9ccbb]"
-                      }`}
-                    placeholder="Describe the issue clearly so it can be acted on later."
-                    value={maintenanceFormNotes}
-                    onChange={(e) => setMaintenanceFormNotes(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
-                <button
-                  className="rounded-full border border-[#d8c7ab] bg-white px-5 py-2.5 text-sm font-medium text-[#6f6255] transition hover:bg-[#f7f3ee]"
-                  onClick={closeMaintenanceModal}
-                  disabled={creatingMaintenanceFlag}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60"
-                  onClick={() => void createMaintenanceFlag()}
-                  disabled={creatingMaintenanceFlag}
-                >
-                  {creatingMaintenanceFlag ? "Creating..." : "Create Flag"}
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : null}
-      </>
-    );
-  }
-
   function renderActiveSection() {
     switch (activeSection) {
       case "users":
         return renderUsersSection();
-      case "properties":
-        return (
-          <div className="space-y-6">
-            {renderAddPropertySection()}
-            {renderPropertySetupSection()}
-            {renderPropertiesSection()}
-          </div>
-        );
+case "properties":
+  return (
+    <div className="space-y-6">
+      {renderAddPropertySection()}
+      {renderPropertySetupSection()}
+      {renderPropertiesSection()}
+    </div>
+  );
       case "cleanerAccounts":
         return renderCleanerAccountsSection();
       case "assignments":
         return renderAssignmentsSection();
       case "jobs":
         return renderJobsSection();
-      case "maintenance":
-        return renderMaintenanceSection();
       default:
         return renderUsersSection();
     }
@@ -3770,14 +2912,14 @@ export default function AdminPage() {
 
   if (checkingAuth) {
     return (
-      <main className="min-h-screen bg-[#f7f3ee] text-[#241c15]">
+      <main className="min-h-screen bg-gradient-to-b from-[#f5efe7] to-[#ece3d7] text-[#241c15]">
         <div className="mx-auto max-w-7xl p-6">
           <div className="rounded-[32px] border border-[#e7ddd0] bg-white p-8 shadow-[0_20px_50px_rgba(0,0,0,0.06)]">
             <div className="flex items-center gap-4">
               <div className="w-[180px]">
                 <Image
-                  src="/eomlogo.png"
-                 alt="Gulera OS"
+                  src="/guleraoslogo.png"
+                  alt="Gulera OS"
                   width={400}
                   height={120}
                   className="h-auto w-full"
@@ -3785,7 +2927,7 @@ export default function AdminPage() {
                 />
               </div>
               <div>
-                <div className="text-xs uppercase tracking-[0.28em] text-[#8a7b68]">Estate of Mind</div>
+                <div className="text-xs uppercase tracking-[0.28em] text-[#8a7b68]">GULERAOS</div>
                 <div className="mt-1 text-2xl font-semibold">Checking admin access...</div>
               </div>
             </div>
@@ -3796,39 +2938,34 @@ export default function AdminPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f7f3ee] text-[#241c15]">
+    <main className="min-h-screen bg-gradient-to-b from-[#f5efe7] to-[#ece3d7] text-[#241c15]">
       <div className="mx-auto max-w-7xl p-4 md:p-6">
-        <div className="mb-6 overflow-hidden rounded-[34px] border border-[#e7ddd0] bg-white shadow-[0_30px_70px_rgba(0,0,0,0.08)]">
-          <div className="bg-[linear-gradient(135deg,#1f1812_0%,#2a2119_55%,#3a2c1d_100%)] px-6 py-8 text-white md:px-8 md:py-10">
-            <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-              <div className="flex items-start gap-4">
-                <div className="w-[220px] shrink-0 rounded-[20px] border border-white/10 bg-white/5 p-3 backdrop-blur">
+        <div className="mb-6 overflow-hidden rounded-[34px] border border-[#dbc29a]/20 bg-[linear-gradient(180deg,rgba(255,255,255,0.76)_0%,rgba(255,255,255,0.58)_100%)] shadow-[0_30px_70px_rgba(0,0,0,0.08)] backdrop-blur">
+          <div className="relative overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(214,179,106,0.18),transparent_32%),linear-gradient(135deg,#120c08_0%,#1d140d_42%,#2c1d12_68%,#120c08_100%)] px-6 py-8 text-white md:px-10 md:py-10">
+            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.03),transparent_40%)]" />
+            <div className="relative flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-center gap-5">
+                <div className="flex h-[94px] w-[94px] shrink-0 items-center justify-center rounded-[24px] border border-white/10 bg-white/[0.04] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_18px_40px_rgba(0,0,0,0.28)] backdrop-blur-md">
                   <Image
                     src="/guleraoslogo.png"
                     alt="Gulera OS"
-                    width={500}
-                    height={160}
-                    className="h-auto w-full"
+                    width={70}
+                    height={70}
+                    className="h-auto w-auto max-h-[70px] max-w-[70px] object-contain"
                     priority
                   />
                 </div>
                 <div>
-                 <div className="mb-2 text-xs uppercase tracking-[0.4em] text-[#d8c7ab]">
-                    ESTATE OS
-                  </div>
-
-                  <h1 className="text-3xl font-medium tracking-tight md:text-4xl">
-                    Property operations, elevated.
-                  </h1>
-
-                  <p className="mt-2 max-w-2xl text-sm leading-6 text-[#e7dccb] md:text-base">
-                    Staffing, scheduling, maintenance, and access — all in one place.
+                  <div className="mb-2 text-[11px] uppercase tracking-[0.46em] text-[#d6b36a]">GULERAOS</div>
+                  <h1 className="text-4xl font-semibold tracking-tight text-[#fffaf2] md:text-5xl">Operations, refined.</h1>
+                  <p className="mt-3 max-w-2xl text-sm leading-6 text-[#d8c8b2] md:text-base">
+                    Precision tooling for modern property management.
                   </p>
                 </div>
               </div>
 
               <button
-                className="inline-flex items-center justify-center rounded-full border border-[#d6b36a]/40 bg-white/10 px-5 py-2.5 text-sm font-medium text-[#f6efe4] shadow-sm transition hover:bg-white/20"
+                className="inline-flex items-center justify-center rounded-full border border-[#d6b36a]/35 bg-white/[0.05] px-5 py-2.5 text-sm font-medium text-[#f5e7c8] shadow-[0_10px_24px_rgba(0,0,0,0.18)] transition hover:bg-white/[0.09]"
                 onClick={async () => {
                   await supabase.auth.signOut();
                   window.location.href = "/login";
@@ -3839,14 +2976,13 @@ export default function AdminPage() {
             </div>
           </div>
 
-          <div className="grid gap-3 border-t border-[#efe6dc] bg-[#fbf8f4] px-6 py-4 md:grid-cols-6 md:px-8">
+          <div className="grid gap-3 border-t border-[#efe6dc] bg-[#fbf8f4] px-6 py-4 md:grid-cols-5 md:px-8">
             {[
               { label: "Properties", value: properties.length },
               { label: "Cleaner Accounts", value: cleanerAccounts.length },
               { label: "Assignments", value: assignments.length },
               { label: "Jobs", value: jobs.length },
               { label: "Users", value: profiles.length },
-              { label: "Flags", value: maintenanceFlags.length },
             ].map((item) => (
               <div key={item.label} className="rounded-[24px] border border-[#eadfce] bg-white px-4 py-4 shadow-sm">
                 <div className="text-[11px] uppercase tracking-[0.22em] text-[#8a7b68]">{item.label}</div>
@@ -3868,58 +3004,61 @@ export default function AdminPage() {
           </div>
         ) : null}
 
-        {operationsAlerts.length > 0 ? (
-          <div className="sticky top-3 z-40 mb-6 rounded-[30px] border border-[#e7ddd0] bg-[rgba(255,255,255,0.94)] p-4 shadow-[0_18px_45px_rgba(0,0,0,0.08)] backdrop-blur">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div>
-                <div className="text-sm font-semibold text-[#241c15]">Operations Alerts</div>
-                <div className="mt-1 text-sm text-[#7f7263]">
-                  Important items across jobs and maintenance.
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                {operationsAlerts.map((alert) => (
+                   {(waitingJobs.length > 0 || strandedJobs.length > 0 || overdueWaitingJobs.length > 0) && (
+              <div className="sticky top-0 z-40 mb-4 space-y-2">
+                {waitingJobs.length > 0 && (
                   <button
-                    key={alert.key}
-                    onClick={alert.onClick}
-                    className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${alert.key === "maintenance-urgent"
-                        ? "animate-pulse border-[#b91c1c] bg-[#dc2626] text-white shadow-[0_8px_22px_rgba(185,28,28,0.28)] hover:bg-[#b91c1c]"
-                        : alert.tone === "red"
-                          ? "border-[#fecaca] bg-[#fff1f2] text-[#991b1b] hover:bg-[#ffe4e6]"
-                          : "border-[#ecd7a8] bg-[#fff8e8] text-[#8a6112] hover:bg-[#fff2cf]"
-                      }`}
+                    onClick={() => jumpToJobs("waiting")}
+                    className="flex w-full items-center justify-between gap-3 rounded-[18px] border border-[#ecd7a8] bg-[#b58a1a] px-4 py-3 text-left text-white shadow-lg transition hover:brightness-105"
                   >
-                    <span>{alert.label}</span>
-                    <span className="rounded-full border border-current/20 px-2 py-0.5 text-[11px]">
+                    <div className="text-sm font-semibold">
+                      ⚠️ {waitingJobs.length} job{waitingJobs.length === 1 ? "" : "s"} waiting for acceptance
+                    </div>
+                    <span className="rounded-full border border-white/30 px-3 py-1 text-xs font-medium">
                       View
                     </span>
+                  </button>
+                )}
+
+                {(strandedJobs.length > 0 || overdueWaitingJobs.length > 0) && (
+                  <button
+                    onClick={() => jumpToJobs(strandedJobs.length > 0 ? "stranded" : "waiting")}
+                    className="flex w-full items-center justify-between gap-3 rounded-[18px] border border-[#f0b4b4] bg-[#7e1f1f] px-4 py-3 text-left text-white shadow-lg transition hover:brightness-105"
+                  >
+                    <div className="text-sm font-semibold">
+                      🚨{" "}
+                      {strandedJobs.length > 0
+                        ? `${strandedJobs.length} stranded job${strandedJobs.length === 1 ? "" : "s"}`
+                        : `${overdueWaitingJobs.length} overdue job${overdueWaitingJobs.length === 1 ? "" : "s"} needing attention`}
+                    </div>
+                    <span className="rounded-full border border-white/30 px-3 py-1 text-xs font-medium">
+                      View
+                    </span>
+                  </button>
+                )}
+              </div>
+            )}
+
+            <div className="mb-6 rounded-[30px] border border-[#e7ddd0] bg-white p-3 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+              <div className="flex flex-wrap gap-2">
+                {menuItems.map((item) => (
+                  <button
+                    key={item.key}
+                    onClick={() => setActiveSection(item.key)}
+                    className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                      activeSection === item.key
+                        ? "bg-[#241c15] text-[#f8f2e8]"
+                        : "border border-[#d8c7ab] bg-[#fcfaf7] text-[#6f6255] hover:bg-white"
+                    }`}
+                  >
+                    {item.label}
                   </button>
                 ))}
               </div>
             </div>
-          </div>
-        ) : null}
 
-        <div className="mb-6 rounded-[30px] border border-[#e7ddd0] bg-white p-3 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-          <div className="flex flex-wrap gap-2">
-            {menuItems.map((item) => (
-              <button
-                key={item.key}
-                onClick={() => setActiveSection(item.key)}
-                className={`rounded-full px-4 py-2 text-sm font-medium transition ${activeSection === item.key
-                    ? "bg-[#241c15] text-[#f8f2e8]"
-                    : "border border-[#d8c7ab] bg-[#fcfaf7] text-[#6f6255] hover:bg-white"
-                  }`}
-              >
-                {item.label}
-              </button>
-            ))}
+                   {renderActiveSection()}
           </div>
-        </div>
-
-        {renderActiveSection()}
-      </div>
-    </main>
-  );
-}
+        </main>
+      );
+    }
