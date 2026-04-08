@@ -340,9 +340,12 @@ export default function AdminPage() {
   const [maintenanceFormCategory, setMaintenanceFormCategory] = useState("");
   const [maintenanceFormUrgency, setMaintenanceFormUrgency] = useState("normal");
   const [maintenanceFormNotes, setMaintenanceFormNotes] = useState("");
+  const [maintenanceFormError, setMaintenanceFormError] = useState("");
   const [creatingMaintenanceFlag, setCreatingMaintenanceFlag] = useState(false);
   const [resolvingMaintenanceFlagId, setResolvingMaintenanceFlagId] = useState<string | null>(null);
   const [deletingMaintenanceFlagId, setDeletingMaintenanceFlagId] = useState<string | null>(null);
+  const [maintenanceHistoryExpanded, setMaintenanceHistoryExpanded] = useState(false);
+  const [deletingResolvedMaintenanceFlags, setDeletingResolvedMaintenanceFlags] = useState(false);
 
   const [propertyName, setPropertyName] = useState("");
  const [propertyStreet, setPropertyStreet] = useState("");
@@ -1536,7 +1539,8 @@ setPropertyPostal("");
   }
 
   function getMaintenanceFlagState(flag: MaintenanceFlagRow) {
-    return flag.status || (flag.resolved_at ? "resolved" : "open");
+    if (flag.resolved_at) return "resolved";
+    return flag.status || "open";
   }
 
   function resetMaintenanceForm() {
@@ -1544,6 +1548,7 @@ setPropertyPostal("");
     setMaintenanceFormCategory("");
     setMaintenanceFormUrgency("normal");
     setMaintenanceFormNotes("");
+    setMaintenanceFormError("");
   }
 
   function openMaintenanceModal() {
@@ -1558,20 +1563,21 @@ setPropertyPostal("");
 
   async function createMaintenanceFlag() {
     if (!maintenanceFormPropertyId) {
-      setError("Please choose a property for the maintenance flag.");
+      setMaintenanceFormError("Please choose a property.");
       return;
     }
 
     if (!maintenanceFormCategory.trim()) {
-      setError("Please enter a category.");
+      setMaintenanceFormError("Please choose a category.");
       return;
     }
 
     if (!maintenanceFormNotes.trim()) {
-      setError("Please add notes for the maintenance flag.");
+      setMaintenanceFormError("Please add notes describing the issue.");
       return;
     }
 
+    setMaintenanceFormError("");
     setError("");
     setActionMessage("");
     setCreatingMaintenanceFlag(true);
@@ -1650,6 +1656,42 @@ setPropertyPostal("");
       setError(err?.message || "Could not delete maintenance flag.");
     } finally {
       setDeletingMaintenanceFlagId(null);
+    }
+  }
+
+
+  async function deleteResolvedMaintenanceFlags() {
+    const resolvedIds = filteredMaintenanceFlags
+      .filter((flag) => {
+        const stateLower = String(getMaintenanceFlagState(flag) || "").toLowerCase();
+        return stateLower.includes("resolved") || stateLower.includes("closed") || stateLower.includes("done");
+      })
+      .map((flag) => flag.id);
+
+    if (resolvedIds.length === 0) {
+      setActionMessage("No resolved maintenance flags to delete.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete ${resolvedIds.length} resolved maintenance flag${resolvedIds.length === 1 ? "" : "s"}? This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    setError("");
+    setActionMessage("");
+    setDeletingResolvedMaintenanceFlags(true);
+
+    try {
+      const { error } = await supabase.from("property_maintenance_flags").delete().in("id", resolvedIds);
+      if (error) throw error;
+
+      setActionMessage(`Deleted ${resolvedIds.length} resolved maintenance flag${resolvedIds.length === 1 ? "" : "s"}.`);
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Could not delete resolved maintenance flags.");
+    } finally {
+      setDeletingResolvedMaintenanceFlags(false);
     }
   }
 
@@ -1838,13 +1880,14 @@ setPropertyPostal("");
     for (const flag of filteredMaintenanceFlags) {
       const state = String(getMaintenanceFlagState(flag) || "").toLowerCase();
       const urgency = String(flag.urgency || flag.priority || flag.severity || "").toLowerCase();
-      if (state.includes("resolved") || state.includes("closed") || state.includes("done")) {
+      const isResolved = state.includes("resolved") || state.includes("closed") || state.includes("done");
+      const isUrgent = urgency.includes("high") || urgency.includes("urgent") || urgency.includes("critical");
+
+      if (isResolved) {
         resolved += 1;
       } else {
         open += 1;
-      }
-      if (urgency.includes("high") || urgency.includes("urgent") || urgency.includes("critical")) {
-        urgent += 1;
+        if (isUrgent) urgent += 1;
       }
     }
 
@@ -1855,6 +1898,24 @@ setPropertyPostal("");
       urgent,
     };
   }, [filteredMaintenanceFlags]);
+
+  const openMaintenanceFlags = useMemo(
+    () =>
+      filteredMaintenanceFlags.filter((flag) => {
+        const stateLower = String(getMaintenanceFlagState(flag) || "").toLowerCase();
+        return !(stateLower.includes("resolved") || stateLower.includes("closed") || stateLower.includes("done"));
+      }),
+    [filteredMaintenanceFlags]
+  );
+
+  const resolvedMaintenanceFlags = useMemo(
+    () =>
+      filteredMaintenanceFlags.filter((flag) => {
+        const stateLower = String(getMaintenanceFlagState(flag) || "").toLowerCase();
+        return stateLower.includes("resolved") || stateLower.includes("closed") || stateLower.includes("done");
+      }),
+    [filteredMaintenanceFlags]
+  );
 
   const operationsAlerts = useMemo(() => {
     const alerts: Array<{
@@ -3265,8 +3326,24 @@ function renderPropertiesSection() {
               No maintenance flags found for the current filter.
             </div>
           ) : (
-            <div className="mt-6 space-y-4">
-              {filteredMaintenanceFlags.map((flag) => {
+            <div className="mt-6 space-y-6">
+              <div>
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-lg font-semibold text-[#241c15]">Open Flags</h3>
+                    <div className="mt-1 text-sm text-[#7f7263]">
+                      {openMaintenanceFlags.length} active flag{openMaintenanceFlags.length === 1 ? "" : "s"}
+                    </div>
+                  </div>
+                </div>
+
+                {openMaintenanceFlags.length === 0 ? (
+                  <div className="rounded-[22px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-5 py-6 text-sm text-[#8a7b68]">
+                    No open maintenance flags.
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {openMaintenanceFlags.map((flag) => {
                 const state = String(getMaintenanceFlagState(flag) || "open");
                 const stateLower = state.toLowerCase();
                 const urgency = String(flag.urgency || flag.priority || flag.severity || "normal");
@@ -3419,7 +3496,147 @@ function renderPropertiesSection() {
                     </div>
                   </div>
                 );
-              })}
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-2 text-left text-lg font-semibold text-[#241c15]"
+                      onClick={() => setMaintenanceHistoryExpanded((prev) => !prev)}
+                    >
+                      <span>{maintenanceHistoryExpanded ? "▾" : "▸"}</span>
+                      Flag History
+                    </button>
+                    <div className="mt-1 text-sm text-[#7f7263]">
+                      {resolvedMaintenanceFlags.length} resolved flag{resolvedMaintenanceFlags.length === 1 ? "" : "s"}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <button
+                      type="button"
+                      className="rounded-[16px] border border-[#d8c7ab] bg-white px-4 py-2.5 text-sm font-medium text-[#6f6255] transition hover:bg-[#f7f3ee]"
+                      onClick={() => setMaintenanceHistoryExpanded((prev) => !prev)}
+                    >
+                      {maintenanceHistoryExpanded ? "Collapse" : "Expand"}
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-[16px] border border-[#efc6c6] bg-[#fff5f5] px-4 py-2.5 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-60"
+                      onClick={() => void deleteResolvedMaintenanceFlags()}
+                      disabled={deletingResolvedMaintenanceFlags || resolvedMaintenanceFlags.length === 0}
+                    >
+                      {deletingResolvedMaintenanceFlags ? "Deleting..." : "Delete All Resolved"}
+                    </button>
+                  </div>
+                </div>
+
+                {maintenanceHistoryExpanded ? (
+                  resolvedMaintenanceFlags.length === 0 ? (
+                    <div className="mt-4 rounded-[20px] border border-dashed border-[#d8c7ab] bg-white px-4 py-5 text-sm text-[#8a7b68]">
+                      No resolved maintenance flags yet.
+                    </div>
+                  ) : (
+                    <div className="mt-4 space-y-4">
+                      {resolvedMaintenanceFlags.map((flag) => {
+                        const state = String(getMaintenanceFlagState(flag) || "resolved");
+                        const urgency = String(flag.urgency || flag.priority || flag.severity || "normal");
+                        const flaggedByName = profiles.find((profile) => profile.id === flag.flagged_by_profile_id)?.full_name;
+                        const resolvedByName = profiles.find((profile) => profile.id === flag.resolved_by_profile_id)?.full_name;
+                        const labelKeys = Object.keys(flag).filter(
+                          (key) =>
+                            ![
+                              "id",
+                              "property_id",
+                              "source",
+                              "category",
+                              "urgency",
+                              "status",
+                              "notes",
+                              "flagged_by_profile_id",
+                              "flagged_at",
+                              "resolved_at",
+                              "resolved_by_profile_id",
+                              "created_at",
+                              "updated_at",
+                            ].includes(key) && flag[key] !== null && flag[key] !== ""
+                        );
+
+                        return (
+                          <div key={flag.id} className="rounded-[24px] border border-[#d7e7d7] bg-[#f5fbf5] p-4 shadow-sm">
+                            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <div className="text-base font-semibold text-[#241c15]">
+                                    {flag.category || getMaintenanceFlagLabel(flag, labelKeys)}
+                                  </div>
+                                  <span className="inline-flex rounded-full border border-[#cfe4cf] bg-white px-2.5 py-0.5 text-[11px] font-medium text-[#2f6b2f]">
+                                    {state}
+                                  </span>
+                                  <span className="inline-flex rounded-full border border-[#d8c7ab] bg-white px-2.5 py-0.5 text-[11px] font-medium text-[#7f7263]">
+                                    {urgency}
+                                  </span>
+                                </div>
+                                <div className="mt-2 text-sm text-[#6f6255]">{getPropertyName(flag.property_id ?? null)}</div>
+                                {flag.notes ? <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[#5f5245]">{flag.notes}</div> : null}
+                                {labelKeys.length > 0 ? (
+                                  <div className="mt-4 flex flex-wrap gap-2">
+                                    {labelKeys.slice(0, 6).map((key) => (
+                                      <span key={key} className="inline-flex rounded-full border border-[#e2d6c6] bg-white px-3 py-1 text-xs text-[#6f6255]">
+                                        {key.replace(/_/g, " ")}: {String(flag[key])}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : null}
+                              </div>
+
+                              <div className="flex w-full flex-col gap-3 lg:w-[260px]">
+                                <div className="grid gap-2 text-sm text-[#7f7263]">
+                                  <div>
+                                    <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Flagged</div>
+                                    <div>{formatDateTime(flag.flagged_at || flag.created_at)}</div>
+                                  </div>
+                                  {flaggedByName || flag.flagged_by_profile_id ? (
+                                    <div>
+                                      <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Flagged by</div>
+                                      <div>{flaggedByName || flag.flagged_by_profile_id}</div>
+                                    </div>
+                                  ) : null}
+                                  {flag.resolved_at ? (
+                                    <div>
+                                      <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Resolved</div>
+                                      <div>{formatDateTime(flag.resolved_at)}</div>
+                                    </div>
+                                  ) : null}
+                                  {resolvedByName || flag.resolved_by_profile_id ? (
+                                    <div>
+                                      <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Resolved by</div>
+                                      <div>{resolvedByName || flag.resolved_by_profile_id}</div>
+                                    </div>
+                                  ) : null}
+                                </div>
+
+                                <button
+                                  className="rounded-[16px] border border-[#efc6c6] bg-[#fff5f5] px-4 py-2.5 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-60"
+                                  onClick={() => void deleteMaintenanceFlag(flag.id)}
+                                  disabled={deletingMaintenanceFlagId === flag.id || deletingResolvedMaintenanceFlags}
+                                >
+                                  {deletingMaintenanceFlagId === flag.id ? "Deleting..." : "Delete"}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )
+                ) : null}
+              </div>
             </div>
           )}
         </section>
@@ -3443,11 +3660,19 @@ function renderPropertiesSection() {
                 </button>
               </div>
 
+              {maintenanceFormError ? (
+                <div className="mt-5 rounded-[18px] border border-[#fecaca] bg-[#fff1f2] px-4 py-3 text-sm text-[#991b1b]">
+                  {maintenanceFormError}
+                </div>
+              ) : null}
+
               <div className="mt-5 grid gap-4 md:grid-cols-2">
                 <div className="md:col-span-2">
                   <label className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Property</label>
                   <select
-                    className="w-full rounded-[20px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                    className={`w-full rounded-[20px] border bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e] ${
+                    maintenanceFormError && !maintenanceFormPropertyId ? "border-[#dc2626] bg-[#fff5f5]" : "border-[#d9ccbb]"
+                  }`}
                     value={maintenanceFormPropertyId}
                     onChange={(e) => setMaintenanceFormPropertyId(e.target.value)}
                   >
@@ -3463,7 +3688,9 @@ function renderPropertiesSection() {
                 <div>
                   <label className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Category</label>
                   <select
-                    className="w-full rounded-[20px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                    className={`w-full rounded-[20px] border bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e] ${
+                    maintenanceFormError && !maintenanceFormCategory ? "border-[#dc2626] bg-[#fff5f5]" : "border-[#d9ccbb]"
+                  }`}
                     value={maintenanceFormCategory}
                     onChange={(e) => setMaintenanceFormCategory(e.target.value)}
                   >
@@ -3492,7 +3719,9 @@ function renderPropertiesSection() {
                 <div className="md:col-span-2">
                   <label className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Notes</label>
                   <textarea
-                    className="min-h-[160px] w-full rounded-[20px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                    className={`min-h-[160px] w-full rounded-[20px] border bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e] ${
+                      maintenanceFormError && !maintenanceFormNotes.trim() ? "border-[#dc2626] bg-[#fff5f5]" : "border-[#d9ccbb]"
+                    }`}
                     placeholder="Describe the issue clearly so it can be acted on later."
                     value={maintenanceFormNotes}
                     onChange={(e) => setMaintenanceFormNotes(e.target.value)}
