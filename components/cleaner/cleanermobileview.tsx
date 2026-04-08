@@ -47,7 +47,31 @@ function ReportIssueModal({
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
 
+  <div>
+  <label className="text-xs uppercase tracking-[0.18em] text-[#b08b47]">
+    Photos (optional)
+  </label>
+
+  <input
+    type="file"
+    multiple
+    accept="image/*"
+    capture="environment"
+    onChange={(e) => {
+      if (!e.target.files) return;
+      setFiles(Array.from(e.target.files));
+    }}
+    className="mt-2 block w-full text-sm text-[#f5efe4]"
+  />
+
+  {files.length > 0 && (
+    <p className="mt-1 text-xs text-[#cdbda0]">
+      {files.length} photo(s) selected
+    </p>
+  )}
+</div>
   useEffect(() => {
     if (!open) return;
     setPropertyId(defaultPropertyId);
@@ -60,30 +84,32 @@ function ReportIssueModal({
 
   if (!open) return null;
 
-  async function handleSubmit() {
-    const trimmedNotes = notes.trim();
+ async function handleSubmit() {
+  const trimmedNotes = notes.trim();
 
-    if (!propertyId) {
-      setError("Please choose a property.");
-      return;
-    }
-    if (!category) {
-      setError("Please choose a category.");
-      return;
-    }
-    if (!trimmedNotes) {
-      setError("Please add a quick note about what is wrong.");
-      return;
-    }
-    if (!currentProfileId) {
-      setError("Your cleaner profile could not be confirmed.");
-      return;
-    }
+  if (!propertyId) {
+    setError("Please choose a property.");
+    return;
+  }
+  if (!category) {
+    setError("Please choose a category.");
+    return;
+  }
+  if (!trimmedNotes) {
+    setError("Please add a quick note about what is wrong.");
+    return;
+  }
+  if (!currentProfileId) {
+    setError("Your cleaner profile could not be confirmed.");
+    return;
+  }
 
-    setSaving(true);
-    setError("");
+  setSaving(true);
+  setError("");
 
-    const { error: insertError } = await supabase.from("property_maintenance_flags").insert({
+  const { data: flag, error: insertError } = await supabase
+    .from("property_maintenance_flags")
+    .insert({
       property_id: propertyId,
       source: "cleaner",
       category,
@@ -92,18 +118,52 @@ function ReportIssueModal({
       notes: trimmedNotes,
       flagged_by_profile_id: currentProfileId,
       flagged_at: new Date().toISOString(),
-    });
+    })
+    .select()
+    .single();
 
-    if (insertError) {
-      setError(insertError.message);
-      setSaving(false);
-      return;
+  if (insertError || !flag) {
+    setError(insertError?.message || "Failed to create issue.");
+    setSaving(false);
+    return;
+  }
+
+  if (files.length > 0) {
+    const uploads = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const filePath = `${flag.id}/${Date.now()}-${file.name}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("maintenance-flag-images")
+        .upload(filePath, file);
+
+      if (uploadError) {
+        console.error(uploadError);
+        continue;
+      }
+
+      const { data } = supabase.storage
+        .from("maintenance-flag-images")
+        .getPublicUrl(filePath);
+
+      uploads.push({
+        flag_id: flag.id,
+        image_url: data.publicUrl,
+        sort_order: i,
+      });
     }
 
-    setSaving(false);
-    onSubmitted?.();
-    onClose();
+    if (uploads.length > 0) {
+      await supabase.from("property_maintenance_flag_images").insert(uploads);
+    }
   }
+
+  setSaving(false);
+  onSubmitted?.();
+  onClose();
+}
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4 py-6">
@@ -197,13 +257,42 @@ function ReportIssueModal({
           </div>
 
           <div>
-            <label className="text-xs uppercase tracking-[0.18em] text-[#b08b47]">Quick note</label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Example: Kitchen sink leaking under cabinet."
-              className="mt-2 min-h-[120px] w-full rounded-2xl border border-[#7a5c2e]/25 bg-[#0f0d0a] px-4 py-3 text-sm text-[#f5efe4] outline-none transition focus:border-[#b08b47]"
-            />
+         <label className="text-xs uppercase tracking-[0.18em] text-[#b08b47]">
+  Quick note
+</label>
+
+<textarea
+  value={notes}
+  onChange={(e) => setNotes(e.target.value)}
+  placeholder="Example: Kitchen sink leaking under cabinet."
+  className="mt-2 min-h-[120px] w-full rounded-2xl border border-[#7a5c2e]/25 bg-[#0f0d0a] px-4 py-3 text-sm text-[#f5efe4] outline-none transition focus:border-[#b08b47]"
+/>
+<div className="mt-4">
+  <label className="text-xs uppercase tracking-[0.18em] text-[#b08b47]">
+    Photos
+  </label>
+
+  <label className="mt-2 flex cursor-pointer items-center justify-center rounded-2xl border border-[#7a5c2e]/25 bg-[#100d0a] px-4 py-3 text-sm text-[#f5efe4] hover:bg-[#19140f]">
+    📸 Take / Add Photos
+    <input
+      type="file"
+      multiple
+      accept="image/*"
+      capture="environment"
+      onChange={(e) => {
+        if (!e.target.files) return;
+        setFiles(Array.from(e.target.files));
+      }}
+      className="hidden"
+    />
+  </label>
+
+  {files.length > 0 && (
+    <p className="mt-1 text-xs text-[#cdbda0]">
+      {files.length} photo(s) selected
+    </p>
+  )}
+</div>
           </div>
 
           {error ? (
