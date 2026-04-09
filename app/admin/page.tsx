@@ -2224,6 +2224,30 @@ This removes its linked members and deletes the grounds account.`
     return map;
   }, [groundsAccountMembers, profiles]);
 
+  const cleanerAccountNamesByProfileId = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    for (const member of cleanerAccountMembers) {
+      const label =
+        cleanerAccounts.find((account) => account.id === member.cleaner_account_id)?.display_name ||
+        member.cleaner_account_id;
+      if (!map[member.profile_id]) map[member.profile_id] = [];
+      if (!map[member.profile_id].includes(label)) map[member.profile_id].push(label);
+    }
+    return map;
+  }, [cleanerAccountMembers, cleanerAccounts]);
+
+  const groundsAccountNamesByProfileId = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    for (const member of groundsAccountMembers) {
+      const label =
+        groundsAccounts.find((account) => account.id === member.grounds_account_id)?.display_name ||
+        member.grounds_account_id;
+      if (!map[member.profile_id]) map[member.profile_id] = [];
+      if (!map[member.profile_id].includes(label)) map[member.profile_id].push(label);
+    }
+    return map;
+  }, [groundsAccountMembers, groundsAccounts]);
+
   const eligibleCleanerProfiles = useMemo(
     () => profiles.filter((profile) => profile.role === "cleaner"),
     [profiles]
@@ -2525,6 +2549,9 @@ This removes its linked members and deletes the grounds account.`
           <p className="mt-1 text-sm text-[#7f7263]">
             Approve pending users, change access roles, remove users from the portal, or permanently delete them.
           </p>
+          <div className="mt-3 rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3 text-sm text-[#6f6255]">
+            <span className="font-semibold text-[#241c15]">How access works:</span> Users are linked to Cleaner and/or Grounds teams. Properties are assigned to those teams.
+          </div>
         </div>
 
         <div className="space-y-3">
@@ -2532,6 +2559,8 @@ This removes its linked members and deletes the grounds account.`
             const isBusy =
               savingRoleId === profile.id || actingOnProfileId === profile.id;
             const isSelf = profile.id === currentAdminUserId;
+            const cleanerLinks = cleanerAccountNamesByProfileId[profile.id] ?? [];
+            const groundsLinks = groundsAccountNamesByProfileId[profile.id] ?? [];
 
             return (
               <div
@@ -2562,6 +2591,28 @@ This removes its linked members and deletes the grounds account.`
 
                     <div className="mt-0.5 text-sm text-[#8a7b68]">
                       {profile.phone || "No phone"}
+                    </div>
+
+                    <div className="mt-3 rounded-[16px] border border-[#eadfce] bg-white px-3 py-3">
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">
+                        Connections
+                      </div>
+
+                      <div className="mt-2 space-y-2">
+                        <div className="rounded-[12px] border border-[#e6dfd5] bg-[#fcfaf7] px-3 py-2">
+                          <div className="text-xs font-semibold text-[#241c15]">Cleaner team</div>
+                          <div className="mt-1 text-sm text-[#6f6255]">
+                            {cleanerLinks.length > 0 ? cleanerLinks.join(", ") : "Not linked"}
+                          </div>
+                        </div>
+
+                        <div className="rounded-[12px] border border-[#dce9df] bg-[#f6fbf7] px-3 py-2">
+                          <div className="text-xs font-semibold text-[#173d24]">Grounds team</div>
+                          <div className="mt-1 text-sm text-[#3f6b4b]">
+                            {groundsLinks.length > 0 ? groundsLinks.join(", ") : "Not linked"}
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
