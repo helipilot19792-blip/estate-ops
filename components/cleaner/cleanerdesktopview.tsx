@@ -9,8 +9,8 @@ import type { CleanerJob, CleanerViewProps } from "@/components/cleaner/cleaners
 
 const MAINTENANCE_CATEGORIES = [
   "Cleaning issue",
-  "Damage",
   "Found items",
+  "Damage",
   "Supplies",
   "Lock / access",
   "Plumbing",
@@ -48,6 +48,7 @@ function ReportIssueModal({
   const [category, setCategory] = useState("");
   const [urgency, setUrgency] = useState("normal");
   const [notes, setNotes] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -57,6 +58,7 @@ function ReportIssueModal({
     setCategory("");
     setUrgency("normal");
     setNotes("");
+    setFiles([]);
     setError("");
     setSaving(false);
   }, [open, defaultPropertyId]);
@@ -86,21 +88,68 @@ function ReportIssueModal({
     setSaving(true);
     setError("");
 
-    const { error: insertError } = await supabase.from("property_maintenance_flags").insert({
-      property_id: propertyId,
-      source: "cleaner",
-      category,
-      urgency,
-      status: "open",
-      notes: trimmedNotes,
-      flagged_by_profile_id: currentProfileId,
-      flagged_at: new Date().toISOString(),
-    });
+    const { data: flag, error: insertError } = await supabase
+      .from("property_maintenance_flags")
+      .insert({
+        property_id: propertyId,
+        source: "cleaner",
+        category,
+        urgency,
+        status: "open",
+        notes: trimmedNotes,
+        flagged_by_profile_id: currentProfileId,
+        flagged_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
 
-    if (insertError) {
-      setError(insertError.message);
+    if (insertError || !flag) {
+      setError(insertError?.message || "Failed to create issue.");
       setSaving(false);
       return;
+    }
+
+    if (files.length > 0) {
+      const uploads: Array<{
+        flag_id: string;
+        image_url: string;
+        sort_order: number;
+      }> = [];
+
+      for (let i = 0; i < files.length; i += 1) {
+        const file = files[i];
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const filePath = `${flag.id}/${Date.now()}-${i}-${safeName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from("maintenance-flag-images")
+          .upload(filePath, file);
+
+        if (uploadError) {
+          console.error(uploadError);
+          continue;
+        }
+
+        const { data } = supabase.storage
+          .from("maintenance-flag-images")
+          .getPublicUrl(filePath);
+
+        uploads.push({
+          flag_id: flag.id,
+          image_url: data.publicUrl,
+          sort_order: i,
+        });
+      }
+
+      if (uploads.length > 0) {
+        const { error: imageInsertError } = await supabase
+          .from("property_maintenance_flag_images")
+          .insert(uploads);
+
+        if (imageInsertError) {
+          console.error(imageInsertError);
+        }
+      }
     }
 
     setSaving(false);
@@ -156,11 +205,10 @@ function ReportIssueModal({
                     key={item}
                     type="button"
                     onClick={() => setCategory(item)}
-                    className={`rounded-2xl border px-4 py-3 text-sm font-medium transition ${
-                      isSelected
-                        ? "border-[#e7c98a] bg-[#b08b47]/20 text-[#f8f2e8] ring-2 ring-[#b08b47]/45"
-                        : "border-[#7a5c2e]/25 bg-[#100d0a] text-[#e8ddca] hover:bg-[#19140f]"
-                    }`}
+                    className={`rounded-2xl border px-4 py-3 text-sm font-medium transition ${isSelected
+                      ? "border-[#e7c98a] bg-[#b08b47]/20 text-[#f8f2e8] ring-2 ring-[#b08b47]/45"
+                      : "border-[#7a5c2e]/25 bg-[#100d0a] text-[#e8ddca] hover:bg-[#19140f]"
+                      }`}
                   >
                     {item}
                   </button>
@@ -186,11 +234,10 @@ function ReportIssueModal({
                     key={option.value}
                     type="button"
                     onClick={() => setUrgency(option.value)}
-                    className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                      isSelected
-                        ? selectedClass
-                        : "border-[#7a5c2e]/25 bg-[#100d0a] text-[#e8ddca] hover:bg-[#19140f]"
-                    }`}
+                    className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${isSelected
+                      ? selectedClass
+                      : "border-[#7a5c2e]/25 bg-[#100d0a] text-[#e8ddca] hover:bg-[#19140f]"
+                      }`}
                   >
                     {option.label}
                   </button>
@@ -207,6 +254,29 @@ function ReportIssueModal({
               placeholder="Example: Kitchen sink leaking under cabinet."
               className="mt-2 min-h-[120px] w-full rounded-2xl border border-[#7a5c2e]/25 bg-[#0f0d0a] px-4 py-3 text-sm text-[#f5efe4] outline-none transition focus:border-[#b08b47]"
             />
+          </div>
+
+          <div>
+            <label className="text-xs uppercase tracking-[0.18em] text-[#b08b47]">Photos</label>
+            <label className="mt-2 flex cursor-pointer items-center justify-center rounded-2xl border border-[#7a5c2e]/25 bg-[#100d0a] px-4 py-3 text-sm text-[#f5efe4] hover:bg-[#19140f]">
+              📸 Take / Add Photos
+              <input
+                type="file"
+                multiple
+                accept="image/*"
+                onChange={(e) => {
+                  if (!e.target.files) return;
+                  setFiles(Array.from(e.target.files));
+                }}
+                className="hidden"
+              />
+            </label>
+
+            {files.length > 0 && (
+              <p className="mt-1 text-xs text-[#cdbda0]">
+                {files.length} photo(s) selected
+              </p>
+            )}
           </div>
 
           {error ? (
@@ -314,7 +384,7 @@ function JobCard({
 }) {
   const [reportOpen, setReportOpen] = useState(false);
   const [reportSubmittedMessage, setReportSubmittedMessage] = useState("");
- const parsedNotes = parseDesktopJobNotes(item.job.notes);
+  const parsedNotes = parseDesktopJobNotes(item.job.notes);
   const selectedStatus = (item.slot.status || "").toLowerCase().trim();
   const isOffered = selectedStatus === "offered";
   const isAccepted = selectedStatus === "accepted";
@@ -399,13 +469,12 @@ function JobCard({
 
             <div>
               <span
-                className={`inline-flex w-fit rounded-full px-3 py-1 text-xs uppercase tracking-[0.16em] ${
-                  isOffered
-                    ? "border border-red-400/70 bg-red-500 text-white animate-pulse"
-                    : isAccepted
-                      ? "border border-emerald-400/40 bg-emerald-500/20 text-emerald-200"
-                      : "border border-[#7a5c2e]/35 bg-[#b08b47]/10 text-[#e7c98a]"
-                }`}
+                className={`inline-flex w-fit rounded-full px-3 py-1 text-xs uppercase tracking-[0.16em] ${isOffered
+                  ? "border border-red-400/70 bg-red-500 text-white animate-pulse"
+                  : isAccepted
+                    ? "border border-emerald-400/40 bg-emerald-500/20 text-emerald-200"
+                    : "border border-[#7a5c2e]/35 bg-[#b08b47]/10 text-[#e7c98a]"
+                  }`}
               >
                 {getSlotDisplayStatus(item.slot.status ?? null, item.job.staffing_status ?? null)}
               </span>
@@ -507,7 +576,7 @@ function JobCard({
           <ReportIssueModal
             open={reportOpen}
             onClose={() => setReportOpen(false)}
-            availableProperties={reportableProperties}
+            availableProperties={availableProperties}
             defaultPropertyId={selectedJobProperty?.id || item.job.property_id}
             currentProfileId={currentProfileId}
             onSubmitted={() => {
@@ -709,6 +778,7 @@ export default function CleanerDesktopView({
               handleCloseDetails={handleCloseDetails}
               availableProperties={properties}
               currentProfileId={profile?.id || null}
+
             />
           );
         })}
@@ -854,11 +924,10 @@ export default function CleanerDesktopView({
               </div>
 
               <div
-                className={`rounded-2xl border p-5 ${
-                  unacceptedCount > 0
-                    ? "border-red-500/60 bg-[linear-gradient(180deg,rgba(90,18,18,0.78)_0%,rgba(21,17,13,1)_100%)] shadow-[0_0_28px_rgba(239,68,68,0.16)]"
-                    : "border-[#7a5c2e]/25 bg-[#15110d]"
-                }`}
+                className={`rounded-2xl border p-5 ${unacceptedCount > 0
+                  ? "border-red-500/60 bg-[linear-gradient(180deg,rgba(90,18,18,0.78)_0%,rgba(21,17,13,1)_100%)] shadow-[0_0_28px_rgba(239,68,68,0.16)]"
+                  : "border-[#7a5c2e]/25 bg-[#15110d]"
+                  }`}
               >
                 <p className="text-xs uppercase tracking-[0.2em] text-[#b08b47]">Jobs Waiting</p>
                 <p className="mt-3 text-3xl font-semibold text-[#f8f2e8]">{unacceptedCount}</p>
@@ -966,11 +1035,10 @@ export default function CleanerDesktopView({
 
                         {dayJobs.length > 0 && (
                           <span
-                            className={`rounded-full px-2 py-0.5 text-[11px] ${
-                              hasUnacceptedOnDay
-                                ? "bg-red-500 text-white shadow-[0_0_14px_rgba(239,68,68,0.28)]"
-                                : "bg-[#b08b47]/15 text-[#e7c98a]"
-                            }`}
+                            className={`rounded-full px-2 py-0.5 text-[11px] ${hasUnacceptedOnDay
+                              ? "bg-red-500 text-white shadow-[0_0_14px_rgba(239,68,68,0.28)]"
+                              : "bg-[#b08b47]/15 text-[#e7c98a]"
+                              }`}
                           >
                             {dayJobs.length}
                           </span>
@@ -1059,22 +1127,20 @@ export default function CleanerDesktopView({
                   <div className="inline-flex rounded-full border border-[#b08b47]/35 bg-[#100d0a] p-1">
                     <button
                       onClick={() => setJobView("active")}
-                      className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                        jobView === "active"
-                          ? "bg-[#b08b47] text-[#120f0b]"
-                          : "text-[#f5efe4] hover:bg-[#1b1510]"
-                      }`}
+                      className={`rounded-full px-4 py-2 text-sm font-medium transition ${jobView === "active"
+                        ? "bg-[#b08b47] text-[#120f0b]"
+                        : "text-[#f5efe4] hover:bg-[#1b1510]"
+                        }`}
                     >
                       Active Jobs ({activeJobs.length})
                     </button>
 
                     <button
                       onClick={() => setJobView("history")}
-                      className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                        jobView === "history"
-                          ? "bg-[#b08b47] text-[#120f0b]"
-                          : "text-[#f5efe4] hover:bg-[#1b1510]"
-                      }`}
+                      className={`rounded-full px-4 py-2 text-sm font-medium transition ${jobView === "history"
+                        ? "bg-[#b08b47] text-[#120f0b]"
+                        : "text-[#f5efe4] hover:bg-[#1b1510]"
+                        }`}
                     >
                       Job History ({historyJobs.length})
                     </button>
@@ -1108,11 +1174,10 @@ export default function CleanerDesktopView({
 
                       {collapsedPreviewJob && (
                         <span
-                          className={`rounded-full px-3 py-1 text-xs uppercase tracking-[0.18em] ${
-                            (collapsedPreviewJob.slot.status || "").toLowerCase().trim() === "offered"
-                              ? "border border-red-400/70 bg-red-500 text-white animate-pulse"
-                              : "border border-sky-400/25 bg-sky-400/10 text-sky-200"
-                          }`}
+                          className={`rounded-full px-3 py-1 text-xs uppercase tracking-[0.18em] ${(collapsedPreviewJob.slot.status || "").toLowerCase().trim() === "offered"
+                            ? "border border-red-400/70 bg-red-500 text-white animate-pulse"
+                            : "border border-sky-400/25 bg-sky-400/10 text-sky-200"
+                            }`}
                         >
                           {(collapsedPreviewJob.slot.status || "").toLowerCase().trim() === "offered"
                             ? "Needs Response"
@@ -1177,7 +1242,6 @@ export default function CleanerDesktopView({
                         formatRemaining={formatRemaining}
                         getSlotDisplayStatus={getSlotDisplayStatus}
                         getTeamMessage={getTeamMessage}
-                      
                         selectedJobProperty={
                           selectedCleanerJob?.slot.id === collapsedPreviewJob.slot.id
                             ? selectedJobProperty
@@ -1194,6 +1258,8 @@ export default function CleanerDesktopView({
                         handleAcceptJob={handleAcceptJob}
                         handleDeclineJob={handleDeclineJob}
                         handleCloseDetails={handleCloseDetails}
+                        availableProperties={properties}
+                        currentProfileId={profile?.id || null}
                       />
                     ) : (
                       <p className="text-sm text-[#cdbda0]">
