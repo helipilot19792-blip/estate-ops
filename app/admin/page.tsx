@@ -68,6 +68,91 @@ type JobSlot = {
   updated_at?: string | null;
 };
 
+
+type GroundsAccount = {
+  id: string;
+  display_name: string | null;
+  phone: string | null;
+  email: string | null;
+  active: boolean | null;
+  created_at?: string | null;
+};
+
+type GroundsAccountMember = {
+  id: string;
+  grounds_account_id: string;
+  profile_id: string;
+  created_at?: string | null;
+};
+
+type GroundsAssignment = {
+  id: string;
+  property_id: string;
+  grounds_account_id: string;
+  priority: number;
+  created_at?: string | null;
+};
+
+type GroundsJob = {
+  id: string;
+  property_id: string;
+  status: string | null;
+  notes: string | null;
+  created_at?: string | null;
+  scheduled_for?: string | null;
+  service_window_start?: string | null;
+  service_window_end?: string | null;
+  grounds_units_needed: number;
+  grounds_units_required_strict: boolean;
+  show_team_status_to_grounds: boolean;
+  staffing_status: string | null;
+  job_type: string | null;
+  needs_secure_access: boolean;
+  needs_garage_access: boolean;
+  recurring_task_id?: string | null;
+  offered_at?: string | null;
+  accepted_at?: string | null;
+  completed_at?: string | null;
+  canceled_at?: string | null;
+  updated_at?: string | null;
+};
+
+type GroundsJobSlot = {
+  id: string;
+  job_id: string;
+  slot_number: number;
+  grounds_account_id: string | null;
+  status: string;
+  offered_at?: string | null;
+  accepted_at?: string | null;
+  declined_at?: string | null;
+  expires_at?: string | null;
+  accepted_by_profile_id?: string | null;
+  declined_by_profile_id?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+type GroundsRecurringTask = {
+  id: string;
+  property_id: string;
+  task_type: string;
+  label: string | null;
+  notes: string | null;
+  day_of_week: number;
+  frequency_type: string;
+  interval_weeks: number;
+  week_anchor_date: string;
+  due_time?: string | null;
+  reminder_hours_before: number;
+  needs_photo_proof: boolean;
+  active: boolean;
+  season_start?: string | null;
+  season_end?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
 type StrandedJob = {
   id: string;
   property_id: string | null;
@@ -323,6 +408,12 @@ export default function AdminPage() {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [jobSlots, setJobSlots] = useState<JobSlot[]>([]);
+  const [groundsAccounts, setGroundsAccounts] = useState<GroundsAccount[]>([]);
+  const [groundsAccountMembers, setGroundsAccountMembers] = useState<GroundsAccountMember[]>([]);
+  const [groundsAssignments, setGroundsAssignments] = useState<GroundsAssignment[]>([]);
+  const [groundsJobs, setGroundsJobs] = useState<GroundsJob[]>([]);
+  const [groundsJobSlots, setGroundsJobSlots] = useState<GroundsJobSlot[]>([]);
+  const [groundsRecurringTasks, setGroundsRecurringTasks] = useState<GroundsRecurringTask[]>([]);
   const [strandedJobs, setStrandedJobs] = useState<StrandedJob[]>([]);
   const [accessRows, setAccessRows] = useState<AccessRow[]>([]);
   const [sops, setSops] = useState<SopRow[]>([]);
@@ -516,6 +607,12 @@ const [propertyPostal, setPropertyPostal] = useState("");
       assignmentsRes,
       jobsRes,
       jobSlotsRes,
+      groundsAccountsRes,
+      groundsAccountMembersRes,
+      groundsAssignmentsRes,
+      groundsJobsRes,
+      groundsJobSlotsRes,
+      groundsRecurringTasksRes,
       strandedJobsRes,
       accessRowsRes,
       sopsRes,
@@ -534,6 +631,18 @@ const [propertyPostal, setPropertyPostal] = useState("");
         .order("priority", { ascending: true }),
       supabase.from("turnover_jobs").select("*").order("created_at", { ascending: false }),
       supabase.from("turnover_job_slots").select("*").order("job_id", { ascending: true }),
+      supabase.from("grounds_accounts").select("*").order("created_at", { ascending: false }),
+      supabase.from("grounds_account_members").select("*").order("created_at", { ascending: false }),
+      supabase
+        .from("property_grounds_account_assignments")
+        .select("*")
+        .order("priority", { ascending: true }),
+      supabase.from("grounds_jobs").select("*").order("created_at", { ascending: false }),
+      supabase.from("grounds_job_slots").select("*").order("job_id", { ascending: true }),
+      supabase
+        .from("property_grounds_recurring_tasks")
+        .select("*")
+        .order("created_at", { ascending: false }),
       supabase.from("admin_stranded_jobs").select("*").order("created_at", { ascending: true }),
       supabase.from("property_access").select("*"),
       supabase.from("property_sops").select("*").order("created_at", { ascending: false }),
@@ -554,6 +663,12 @@ const [propertyPostal, setPropertyPostal] = useState("");
       assignmentsRes,
       jobsRes,
       jobSlotsRes,
+      groundsAccountsRes,
+      groundsAccountMembersRes,
+      groundsAssignmentsRes,
+      groundsJobsRes,
+      groundsJobSlotsRes,
+      groundsRecurringTasksRes,
       strandedJobsRes,
       accessRowsRes,
       sopsRes,
@@ -577,6 +692,12 @@ const [propertyPostal, setPropertyPostal] = useState("");
     setAssignments((assignmentsRes.data ?? []) as Assignment[]);
     setJobs((jobsRes.data ?? []) as Job[]);
     setJobSlots((jobSlotsRes.data ?? []) as JobSlot[]);
+    setGroundsAccounts((groundsAccountsRes.data ?? []) as GroundsAccount[]);
+    setGroundsAccountMembers((groundsAccountMembersRes.data ?? []) as GroundsAccountMember[]);
+    setGroundsAssignments((groundsAssignmentsRes.data ?? []) as GroundsAssignment[]);
+    setGroundsJobs((groundsJobsRes.data ?? []) as GroundsJob[]);
+    setGroundsJobSlots((groundsJobSlotsRes.data ?? []) as GroundsJobSlot[]);
+    setGroundsRecurringTasks((groundsRecurringTasksRes.data ?? []) as GroundsRecurringTask[]);
     setStrandedJobs((strandedJobsRes.data ?? []) as StrandedJob[]);
     setAccessRows((accessRowsRes.data ?? []) as AccessRow[]);
     setSops((sopsRes.data ?? []) as SopRow[]);
@@ -1517,6 +1638,15 @@ setPropertyPostal("");
     return cleanerAccounts.find((c) => c.id === id)?.display_name || id;
   }
 
+  function getGroundsAccountName(id: string | null) {
+    if (!id) return "Unassigned";
+    return groundsAccounts.find((g) => g.id === id)?.display_name || id;
+  }
+
+  function getGroundsTaskLabel(task: GroundsRecurringTask) {
+    return task.label || task.task_type || "Recurring grounds task";
+  }
+
   function getPriorityLabel(priority: number) {
     if (priority === 1) return "Primary";
     if (priority === 2) return "Backup";
@@ -2086,6 +2216,7 @@ setPropertyPostal("");
                     >
                       <option value="pending">pending</option>
                       <option value="cleaner">cleaner</option>
+                      <option value="grounds">grounds</option>
                       <option value="admin">admin</option>
                     </select>
                   </div>
