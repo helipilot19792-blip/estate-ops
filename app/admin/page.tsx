@@ -366,6 +366,20 @@ const MAINTENANCE_CATEGORY_OPTIONS = [
   "Other",
 ];
 
+const GROUNDS_JOB_TYPE_OPTIONS = [
+  { value: "lawn_cut", label: "Lawn Cut" },
+  { value: "yard_cleanup", label: "Yard Cleanup" },
+  { value: "garbage_out", label: "Garbage Out" },
+  { value: "recycling_out", label: "Recycling Out" },
+  { value: "yard_waste_out", label: "Yard Waste Out" },
+  { value: "bulk_pickup_out", label: "Bulk Pickup Out" },
+  { value: "snow_clear", label: "Snow Clear" },
+  { value: "salt", label: "Salt / Ice" },
+  { value: "exterior_check", label: "Exterior Check" },
+  { value: "storm_cleanup", label: "Storm Cleanup" },
+  { value: "other", label: "Other" },
+];
+
 const PROPERTY_CALENDAR_COLORS = [
   { bg: "#e8f1ff", text: "#1d4ed8", border: "#bfdbfe" },
   { bg: "#ecfdf3", text: "#047857", border: "#a7f3d0" },
@@ -477,6 +491,17 @@ const [propertyPostal, setPropertyPostal] = useState("");
   const [groundsAssignmentPropertyId, setGroundsAssignmentPropertyId] = useState("");
   const [groundsAssignmentProfileId, setGroundsAssignmentProfileId] = useState("");
   const [groundsAssignmentPriority, setGroundsAssignmentPriority] = useState("1");
+
+  const [groundsJobPropertyId, setGroundsJobPropertyId] = useState("");
+  const [groundsJobType, setGroundsJobType] = useState("lawn_cut");
+  const [groundsJobScheduledFor, setGroundsJobScheduledFor] = useState("");
+  const [groundsJobNotes, setGroundsJobNotes] = useState("");
+  const [groundsJobOverrideUnitsEnabled, setGroundsJobOverrideUnitsEnabled] = useState(false);
+  const [groundsJobUnitsNeeded, setGroundsJobUnitsNeeded] = useState("1");
+  const [groundsJobUnitsStrict, setGroundsJobUnitsStrict] = useState(false);
+  const [groundsJobShowTeamStatus, setGroundsJobShowTeamStatus] = useState(true);
+  const [groundsJobNeedsSecureAccess, setGroundsJobNeedsSecureAccess] = useState(false);
+  const [groundsJobNeedsGarageAccess, setGroundsJobNeedsGarageAccess] = useState(false);
 
   const [jobPropertyId, setJobPropertyId] = useState("");
   const [jobNotes, setJobNotes] = useState("");
@@ -1545,6 +1570,93 @@ setPropertyPostal("");
     await loadData();
   }
 
+  function getGroundsJobStaffingStatus(unitsNeeded: number, slotCount: number) {
+    if (slotCount <= 0) return "unassigned";
+    if (slotCount >= unitsNeeded) return "partially_filled";
+    return "partially_filled";
+  }
+
+  async function createGroundsJob() {
+    if (!groundsJobPropertyId) {
+      setError("Select a property for the grounds job.");
+      return;
+    }
+
+    setError("");
+    setActionMessage("");
+
+    const propertyAssignments = groundsAssignments
+      .filter((assignment) => assignment.property_id === groundsJobPropertyId)
+      .sort((a, b) => a.priority - b.priority);
+
+    const unitsNeeded = Number(groundsJobUnitsNeeded || "1");
+    const assignedAccounts = propertyAssignments.slice(0, unitsNeeded);
+    const staffingStatus = getGroundsJobStaffingStatus(unitsNeeded, assignedAccounts.length);
+    const initialStatus = assignedAccounts.length > 0 ? "offered" : "open";
+
+    const payload = {
+      property_id: groundsJobPropertyId,
+      status: initialStatus,
+      staffing_status: staffingStatus,
+      job_type: groundsJobType,
+      notes: groundsJobNotes.trim() || null,
+      scheduled_for: groundsJobScheduledFor || null,
+      grounds_units_needed: unitsNeeded,
+      grounds_units_required_strict: groundsJobUnitsStrict,
+      show_team_status_to_grounds: groundsJobShowTeamStatus,
+      needs_secure_access: groundsJobNeedsSecureAccess,
+      needs_garage_access: groundsJobNeedsGarageAccess,
+      offered_at: assignedAccounts.length > 0 ? new Date().toISOString() : null,
+      created_by_profile_id: currentAdminUserId,
+    };
+
+    const { data: insertedJob, error: jobError } = await supabase
+      .from("grounds_jobs")
+      .insert(payload)
+      .select()
+      .single();
+
+    if (jobError || !insertedJob) {
+      setError(jobError?.message || "Could not create grounds job.");
+      return;
+    }
+
+    if (assignedAccounts.length > 0) {
+      const responseHours = getResponseWindowHours(groundsJobScheduledFor || null, new Date());
+      const expiresAt = new Date(Date.now() + responseHours * 60 * 60 * 1000).toISOString();
+
+      const slotRows = assignedAccounts.map((assignment, index) => ({
+        job_id: insertedJob.id,
+        slot_number: index + 1,
+        grounds_account_id: assignment.grounds_account_id,
+        status: "offered",
+        offered_at: new Date().toISOString(),
+        expires_at: expiresAt,
+      }));
+
+      const { error: slotError } = await supabase.from("grounds_job_slots").insert(slotRows);
+
+      if (slotError) {
+        setError(`Grounds job created, but slot creation failed: ${slotError.message}`);
+        await loadData();
+        return;
+      }
+    }
+
+    setGroundsJobPropertyId("");
+    setGroundsJobType("lawn_cut");
+    setGroundsJobScheduledFor("");
+    setGroundsJobNotes("");
+    setGroundsJobOverrideUnitsEnabled(false);
+    setGroundsJobUnitsNeeded("1");
+    setGroundsJobUnitsStrict(false);
+    setGroundsJobShowTeamStatus(true);
+    setGroundsJobNeedsSecureAccess(false);
+    setGroundsJobNeedsGarageAccess(false);
+    setActionMessage("Grounds job created.");
+    await loadData();
+  }
+
   async function deleteGroundsAccount(account: GroundsAccount) {
     const displayName = account.display_name || account.email || "this grounds account";
     const confirmed = window.confirm(
@@ -2078,6 +2190,18 @@ This removes its linked members and deletes the grounds account.`
     return map;
   }, [jobSlots]);
 
+  const groundsJobSlotsByJobId = useMemo(() => {
+    const map: Record<string, GroundsJobSlot[]> = {};
+    for (const slot of groundsJobSlots) {
+      if (!map[slot.job_id]) map[slot.job_id] = [];
+      map[slot.job_id].push(slot);
+    }
+    for (const key of Object.keys(map)) {
+      map[key].sort((a, b) => a.slot_number - b.slot_number);
+    }
+    return map;
+  }, [groundsJobSlots]);
+
   const cleanerMembersByAccountId = useMemo(() => {
     const map: Record<string, ProfileRow[]> = {};
     for (const member of cleanerAccountMembers) {
@@ -2361,6 +2485,27 @@ This removes its linked members and deletes the grounds account.`
   }
 
   const selectedPropertyDefaults = properties.find((p) => p.id === jobPropertyId);
+
+  const selectedGroundsPropertyAssignmentCount = useMemo(() =>
+    groundsAssignments.filter((assignment) => assignment.property_id === groundsJobPropertyId).length,
+    [groundsAssignments, groundsJobPropertyId]
+  );
+
+  const selectedGroundsProperty = properties.find((p) => p.id === groundsJobPropertyId);
+
+  function getGroundsJobDisplayStatus(job: GroundsJob, slots: GroundsJobSlot[]) {
+    const needed = job.grounds_units_needed || Math.max(slots.length, 1);
+    const accepted = slots.filter((slot) => slot.status === "accepted").length;
+    const offered = slots.filter((slot) => slot.status === "offered").length;
+    const declined = slots.filter((slot) => slot.status === "declined").length;
+
+    if (accepted >= needed) return "Fully staffed";
+    if (accepted > 0 && job.grounds_units_required_strict) return "Partially filled";
+    if (accepted > 0 && !job.grounds_units_required_strict) return "Ready";
+    if (offered > 0) return "Waiting for response";
+    if (declined > 0) return "Reoffer needed";
+    return job.status || "Open";
+  }
 
   const menuItems: Array<{ key: AdminSection; label: string }> = [
     { key: "users", label: "Users" },
@@ -3029,6 +3174,148 @@ function renderPropertiesSection() {
             <button className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]" onClick={() => void createJob()}>
               Create Job
             </button>
+          </div>
+        </section>
+
+        <section className="rounded-[30px] border border-[#d8e8d8] bg-[linear-gradient(180deg,#f8fcf8_0%,#f2f8f2_100%)] p-5 shadow-[0_18px_45px_rgba(28,86,39,0.08)]">
+          <h2 className="text-xl font-semibold tracking-tight text-[#23422c]">Create Grounds Job</h2>
+          <p className="mt-1 text-sm text-[#5b7460]">
+            Create a grounds job. Grounds slots are offered automatically from the property's grounds assignments.
+          </p>
+
+          <div className="mt-5 space-y-3">
+            <select className="w-full rounded-[20px] border border-[#b7cfb7] bg-white px-4 py-3 text-sm outline-none focus:border-[#4f8a5b]" value={groundsJobPropertyId} onChange={(e) => setGroundsJobPropertyId(e.target.value)}>
+              <option value="">Select property</option>
+              {properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+
+            <select className="w-full rounded-[20px] border border-[#b7cfb7] bg-white px-4 py-3 text-sm outline-none focus:border-[#4f8a5b]" value={groundsJobType} onChange={(e) => setGroundsJobType(e.target.value)}>
+              {GROUNDS_JOB_TYPE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+
+            <input
+              type="date"
+              className="w-full rounded-[20px] border border-[#b7cfb7] bg-white px-4 py-3 text-sm outline-none focus:border-[#4f8a5b]"
+              value={groundsJobScheduledFor}
+              onChange={(e) => setGroundsJobScheduledFor(e.target.value)}
+            />
+
+            {selectedGroundsProperty ? (
+              <div className="rounded-[20px] border border-[#cfe2cf] bg-white p-4 text-sm text-[#46604b]">
+                Property assignments found: {selectedGroundsPropertyAssignmentCount}. Default staffing is currently set from the grounds job form below.
+              </div>
+            ) : null}
+
+            <label className="flex items-center gap-2 text-sm text-[#46604b]">
+              <input type="checkbox" checked={groundsJobOverrideUnitsEnabled} onChange={(e) => setGroundsJobOverrideUnitsEnabled(e.target.checked)} />
+              Set staffing options for this grounds job
+            </label>
+
+            {groundsJobOverrideUnitsEnabled ? (
+              <div className="space-y-3 rounded-[20px] border border-[#cfe2cf] bg-white p-4">
+                <select className="w-full rounded-[16px] border border-[#b7cfb7] bg-white px-4 py-3 text-sm outline-none focus:border-[#4f8a5b]" value={groundsJobUnitsNeeded} onChange={(e) => setGroundsJobUnitsNeeded(e.target.value)}>
+                  <option value="1">Grounds units needed: 1</option>
+                  <option value="2">Grounds units needed: 2</option>
+                  <option value="3">Grounds units needed: 3</option>
+                </select>
+
+                <label className="flex items-center gap-2 text-sm text-[#46604b]">
+                  <input type="checkbox" checked={groundsJobUnitsStrict} onChange={(e) => setGroundsJobUnitsStrict(e.target.checked)} />
+                  Full grounds team required before fully staffed
+                </label>
+
+                <label className="flex items-center gap-2 text-sm text-[#46604b]">
+                  <input type="checkbox" checked={groundsJobShowTeamStatus} onChange={(e) => setGroundsJobShowTeamStatus(e.target.checked)} />
+                  Show team status to grounds workers
+                </label>
+              </div>
+            ) : null}
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="flex items-center gap-2 rounded-[18px] border border-[#cfe2cf] bg-white px-4 py-3 text-sm text-[#46604b]">
+                <input type="checkbox" checked={groundsJobNeedsSecureAccess} onChange={(e) => setGroundsJobNeedsSecureAccess(e.target.checked)} />
+                Needs secure access
+              </label>
+
+              <label className="flex items-center gap-2 rounded-[18px] border border-[#cfe2cf] bg-white px-4 py-3 text-sm text-[#46604b]">
+                <input type="checkbox" checked={groundsJobNeedsGarageAccess} onChange={(e) => setGroundsJobNeedsGarageAccess(e.target.checked)} />
+                Needs garage access
+              </label>
+            </div>
+
+            <textarea className="min-h-[120px] w-full rounded-[20px] border border-[#b7cfb7] bg-white px-4 py-3 text-sm outline-none focus:border-[#4f8a5b]" placeholder="Grounds job notes. Example: Put bins out tonight and return them tomorrow afternoon." value={groundsJobNotes} onChange={(e) => setGroundsJobNotes(e.target.value)} />
+
+            <button className="inline-flex items-center justify-center rounded-full bg-[#23422c] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#1b3423]" onClick={() => void createGroundsJob()}>
+              Create Grounds Job
+            </button>
+          </div>
+        </section>
+
+        <section className="rounded-[30px] border border-[#d8e8d8] bg-[linear-gradient(180deg,#f8fcf8_0%,#f2f8f2_100%)] p-5 shadow-[0_18px_45px_rgba(28,86,39,0.08)]">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-semibold tracking-tight text-[#23422c]">Grounds Jobs</h2>
+              <p className="mt-1 text-sm text-[#5b7460]">Manual grounds jobs now live here. These use the same account-and-slot flow as cleaner jobs.</p>
+            </div>
+            <span className="rounded-full border border-[#cfe2cf] bg-white px-3 py-1 text-xs font-medium text-[#46604b]">{groundsJobs.length}</span>
+          </div>
+
+          <div className="space-y-3">
+            {groundsJobs.length === 0 ? (
+              <div className="rounded-[22px] border border-dashed border-[#b7cfb7] bg-white px-4 py-4 text-sm text-[#5b7460]">No grounds jobs yet.</div>
+            ) : (
+              groundsJobs.map((job) => {
+                const slots = groundsJobSlotsByJobId[job.id] ?? [];
+                const acceptedCount = slots.filter((slot) => slot.status === "accepted").length;
+                const offeredCount = slots.filter((slot) => slot.status === "offered").length;
+                const declinedCount = slots.filter((slot) => slot.status === "declined").length;
+
+                return (
+                  <div key={job.id} className="rounded-[22px] border border-[#cfe2cf] bg-white p-4">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                      <div>
+                        <div className="text-base font-semibold text-[#23422c]">{getPropertyName(job.property_id)}</div>
+                        <div className="mt-1 text-sm text-[#46604b]">{GROUNDS_JOB_TYPE_OPTIONS.find((option) => option.value === job.job_type)?.label || job.job_type || "Grounds job"}</div>
+                        <div className="mt-1 text-sm text-[#5b7460]">Scheduled: {formatScheduledFor(job.scheduled_for)}</div>
+                        <div className="mt-1 text-sm text-[#5b7460]">Status: <span className="font-medium text-[#23422c]">{getGroundsJobDisplayStatus(job, slots)}</span></div>
+                        <div className="mt-1 text-sm text-[#5b7460]">Team progress: {acceptedCount}/{job.grounds_units_needed} accepted</div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <span className="rounded-full border border-[#cfe2cf] bg-[#f7fbf7] px-3 py-1 text-xs font-medium text-[#46604b]">Offered: {offeredCount}</span>
+                        <span className="rounded-full border border-[#cfe2cf] bg-[#f7fbf7] px-3 py-1 text-xs font-medium text-[#46604b]">Declined: {declinedCount}</span>
+                        <span className="rounded-full border border-[#cfe2cf] bg-[#f7fbf7] px-3 py-1 text-xs font-medium text-[#46604b]">Secure access: {job.needs_secure_access ? "Yes" : "No"}</span>
+                      </div>
+                    </div>
+
+                    {job.notes ? (
+                      <div className="mt-3 text-sm leading-6 text-[#46604b]">{job.notes}</div>
+                    ) : null}
+
+                    <div className="mt-3 space-y-2">
+                      {slots.length === 0 ? (
+                        <div className="rounded-[18px] border border-dashed border-[#b7cfb7] bg-[#f7fbf7] px-3 py-3 text-sm text-[#5b7460]">
+                          No grounds slots were created. Add a grounds assignment for this property and create another grounds job.
+                        </div>
+                      ) : (
+                        slots.map((slot) => (
+                          <div key={slot.id} className="rounded-[18px] border border-[#cfe2cf] bg-[#f7fbf7] px-3 py-2 text-xs text-[#46604b]">
+                            <div>Slot {slot.slot_number}: {getGroundsAccountName(slot.grounds_account_id)}</div>
+                            <div>Status: {slot.status}</div>
+                            <div>Offered: {formatDateTime(slot.offered_at)}</div>
+                            <div>Expires: {formatDateTime(slot.expires_at)}</div>
+                            <div>Accepted: {formatDateTime(slot.accepted_at)}</div>
+                            <div>Declined: {formatDateTime(slot.declined_at)}</div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         </section>
 
