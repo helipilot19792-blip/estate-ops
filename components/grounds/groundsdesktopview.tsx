@@ -604,7 +604,7 @@ function JobCard({
             <div className="rounded-2xl border border-[#356046]/20 bg-[#0f1b14] p-4">
               <p className="text-xs uppercase tracking-[0.18em] text-[#7fb685]">Access Details</p>
               <div className="mt-2 space-y-2 text-sm text-[#d8eadc]">
-                {selectedGroundsJob?.job.needs_secure_access || selectedGroundsJob?.job.needs_garage_access ? (
+                {item.job.needs_secure_access || item.job.needs_garage_access ? (
                   <>
                     <p><span className="text-[#a9c9b0]">Door code:</span> {selectedJobAccess?.door_code || "Not added"}</p>
                     <p><span className="text-[#a9c9b0]">Alarm code:</span> {selectedJobAccess?.alarm_code || "Not added"}</p>
@@ -734,10 +734,13 @@ export default function GroundsDesktopView({
   formatDateTimeLabel,
   getTimeRemainingMs,
   formatRemaining,
-  getCountdownTone,
-  getSlotDisplayStatus,
-  getStatusTone,
-  getTeamMessage,
+getCountdownTone,
+getSlotDisplayStatus,
+getStatusTone,
+getTeamMessage,
+canSwitchToCleaner,
+cleanerWaitingCount,
+handleSwitchToCleaner,
 }: GroundsViewProps) {
   const [jobView, setJobView] = useState<"active" | "history">("active");
 
