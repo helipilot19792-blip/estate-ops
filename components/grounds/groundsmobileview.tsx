@@ -330,6 +330,12 @@ export default function GroundsMobileView({
   profile,
   groundsAccount,
   properties,
+
+  // 👇 ADD THESE 3 LINES
+  canSwitchToCleaner,
+  cleanerWaitingCount,
+  handleSwitchToCleaner,
+
 }: GroundsViewProps) {
   const [reportOpen, setReportOpen] = useState(false);
   const [reportSubmittedMessage, setReportSubmittedMessage] = useState("");
