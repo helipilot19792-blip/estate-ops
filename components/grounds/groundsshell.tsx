@@ -185,6 +185,9 @@ export type GroundsViewProps = {
     selectedRing: string;
   };
   getTeamMessage: (item: GroundsJob) => string;
+  canSwitchToCleaner: boolean;
+  cleanerWaitingCount: number;
+  handleSwitchToCleaner: () => void;
 };
 
 type GroundsShellProps = {
@@ -504,6 +507,8 @@ export default function GroundsShell({ mode }: GroundsShellProps) {
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [groundsAccount, setGroundsAccount] = useState<GroundsAccount | null>(null);
+  const [canSwitchToCleaner, setCanSwitchToCleaner] = useState(false);
+  const [cleanerWaitingCount, setCleanerWaitingCount] = useState(0);
 
   const [properties, setProperties] = useState<Property[]>([]);
   const [groundsJobs, setGroundsJobs] = useState<GroundsJob[]>([]);
@@ -1057,6 +1062,64 @@ export default function GroundsShell({ mode }: GroundsShellProps) {
     }
   }
 
+  useEffect(() => {
+    let active = true;
+
+    async function loadCleanerSummary() {
+      if (!profile?.id) {
+        if (active) {
+          setCanSwitchToCleaner(false);
+          setCleanerWaitingCount(0);
+        }
+        return;
+      }
+
+      const { data: memberships, error: membershipsError } = await supabase
+        .from("cleaner_account_members")
+        .select("cleaner_account_id")
+        .eq("profile_id", profile.id);
+
+      if (membershipsError || !memberships?.length) {
+        if (active) {
+          setCanSwitchToCleaner(false);
+          setCleanerWaitingCount(0);
+        }
+        return;
+      }
+
+      const accountIds = [...new Set(memberships.map((row: any) => row.cleaner_account_id).filter(Boolean))];
+
+      if (!accountIds.length) {
+        if (active) {
+          setCanSwitchToCleaner(false);
+          setCleanerWaitingCount(0);
+        }
+        return;
+      }
+
+      const { count, error: countError } = await supabase
+        .from("turnover_job_slots")
+        .select("id", { count: "exact", head: true })
+        .in("cleaner_account_id", accountIds)
+        .eq("status", "offered");
+
+      if (!active) return;
+
+      setCanSwitchToCleaner(true);
+      setCleanerWaitingCount(countError ? 0 : count ?? 0);
+    }
+
+    void loadCleanerSummary();
+
+    return () => {
+      active = false;
+    };
+  }, [profile?.id]);
+
+  function handleSwitchToCleaner() {
+    router.push("/cleaner");
+  }
+
   async function handleSignOut() {
     try {
       setSigningOut(true);
@@ -1347,6 +1410,9 @@ export default function GroundsShell({ mode }: GroundsShellProps) {
     getSlotDisplayStatus,
     getStatusTone,
     getTeamMessage,
+    canSwitchToCleaner,
+    cleanerWaitingCount,
+    handleSwitchToCleaner,
   };
 
   if (mode === "mobile") {

@@ -716,14 +716,26 @@ export default function GroundsMobileView({
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={() => void handleSignOut()}
-              disabled={signingOut}
-              className="shrink-0 rounded-full border border-[#7fb685]/60 px-3 py-2 text-xs font-semibold text-[#eef7ef] transition hover:bg-[#7fb685] hover:text-[#120f0b] disabled:opacity-50"
-            >
-              {signingOut ? "Signing out..." : "Logout"}
-            </button>
+            <div className="flex shrink-0 flex-col gap-2">
+              {canSwitchToCleaner ? (
+                <button
+                  type="button"
+                  onClick={handleSwitchToCleaner}
+                  className="rounded-full border border-[#b08b47]/60 px-3 py-2 text-xs font-semibold text-[#f5efe4] transition hover:bg-[#241c15]"
+                >
+                  {cleanerWaitingCount > 0 ? `Cleaner (${cleanerWaitingCount})` : "Cleaner"}
+                </button>
+              ) : null}
+
+              <button
+                type="button"
+                onClick={() => void handleSignOut()}
+                disabled={signingOut}
+                className="rounded-full border border-[#7fb685]/60 px-3 py-2 text-xs font-semibold text-[#eef7ef] transition hover:bg-[#7fb685] hover:text-[#120f0b] disabled:opacity-50"
+              >
+                {signingOut ? "Signing out..." : "Logout"}
+              </button>
+            </div>
           </div>
 
           <div className="mt-4 rounded-xl border border-[#356046]/20 bg-[#0f1b14] p-3">
@@ -739,6 +751,29 @@ export default function GroundsMobileView({
             ) : null}
           </div>
         </div>
+
+        {canSwitchToCleaner ? (
+          <div className="rounded-2xl border border-[#b08b47]/30 bg-[#1b1611] p-3 text-[#f5efe4]">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.16em] text-[#d8c7ab]">Cleaner Access</div>
+                <div className="mt-1 text-sm">
+                  {cleanerWaitingCount > 0
+                    ? `${cleanerWaitingCount} cleaner job${cleanerWaitingCount === 1 ? "" : "s"} waiting`
+                    : "You can also switch to Cleaner"}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleSwitchToCleaner}
+                className="rounded-full border border-[#b08b47]/60 px-3 py-2 text-xs font-semibold text-[#f5efe4] transition hover:bg-[#241c15]"
+              >
+                Open
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         <div className="inline-flex w-full rounded-2xl border border-[#356046]/30 bg-[#0f1b14] p-1">
           <button

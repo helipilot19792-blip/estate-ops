@@ -330,6 +330,9 @@ export default function CleanerMobileView({
   profile,
   cleanerAccount,
   properties,
+  canSwitchToGrounds,
+  groundsWaitingCount,
+  handleSwitchToGrounds,
 }: CleanerViewProps) {
   const [reportOpen, setReportOpen] = useState(false);
   const [reportSubmittedMessage, setReportSubmittedMessage] = useState("");
@@ -706,14 +709,26 @@ export default function CleanerMobileView({
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={() => void handleSignOut()}
-              disabled={signingOut}
-              className="shrink-0 rounded-full border border-[#b08b47]/60 px-3 py-2 text-xs font-semibold text-[#f5efe4] transition hover:bg-[#b08b47] hover:text-[#120f0b] disabled:opacity-50"
-            >
-              {signingOut ? "Signing out..." : "Logout"}
-            </button>
+            <div className="flex shrink-0 flex-col gap-2">
+              {canSwitchToGrounds ? (
+                <button
+                  type="button"
+                  onClick={handleSwitchToGrounds}
+                  className="rounded-full border border-[#356046]/60 px-3 py-2 text-xs font-semibold text-[#d8f0dc] transition hover:bg-[#173022]"
+                >
+                  {groundsWaitingCount > 0 ? `Grounds (${groundsWaitingCount})` : "Grounds"}
+                </button>
+              ) : null}
+
+              <button
+                type="button"
+                onClick={() => void handleSignOut()}
+                disabled={signingOut}
+                className="rounded-full border border-[#b08b47]/60 px-3 py-2 text-xs font-semibold text-[#f5efe4] transition hover:bg-[#b08b47] hover:text-[#120f0b] disabled:opacity-50"
+              >
+                {signingOut ? "Signing out..." : "Logout"}
+              </button>
+            </div>
           </div>
 
           <div className="mt-4 rounded-xl border border-[#7a5c2e]/20 bg-[#100d0a] p-3">
@@ -729,6 +744,29 @@ export default function CleanerMobileView({
             ) : null}
           </div>
         </div>
+
+        {canSwitchToGrounds ? (
+          <div className="rounded-2xl border border-[#356046]/35 bg-[#112018] p-3 text-[#e8f6eb]">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.16em] text-[#7fb685]">Grounds Access</div>
+                <div className="mt-1 text-sm">
+                  {groundsWaitingCount > 0
+                    ? `${groundsWaitingCount} grounds job${groundsWaitingCount === 1 ? "" : "s"} waiting`
+                    : "You can also switch to Grounds"}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleSwitchToGrounds}
+                className="rounded-full border border-[#7fb685]/60 px-3 py-2 text-xs font-semibold text-[#eef7ef] transition hover:bg-[#173022]"
+              >
+                Open
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         <div className="inline-flex w-full rounded-2xl border border-[#7a5c2e]/30 bg-[#100d0a] p-1">
           <button

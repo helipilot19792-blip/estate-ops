@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { supabase } from "@/lib/supabase";
-import type { GroundsJob, GroundsViewProps } from "./groundsshell";
+import type { GroundsJob, GroundsViewProps } from "@/components/grounds/groundsshell";
 
 
 const MAINTENANCE_CATEGORIES = [
@@ -604,7 +604,7 @@ function JobCard({
             <div className="rounded-2xl border border-[#356046]/20 bg-[#0f1b14] p-4">
               <p className="text-xs uppercase tracking-[0.18em] text-[#7fb685]">Access Details</p>
               <div className="mt-2 space-y-2 text-sm text-[#d8eadc]">
-           {item.job.needs_secure_access || item.job.needs_garage_access ? (
+                {selectedGroundsJob?.job.needs_secure_access || selectedGroundsJob?.job.needs_garage_access ? (
                   <>
                     <p><span className="text-[#a9c9b0]">Door code:</span> {selectedJobAccess?.door_code || "Not added"}</p>
                     <p><span className="text-[#a9c9b0]">Alarm code:</span> {selectedJobAccess?.alarm_code || "Not added"}</p>
@@ -872,13 +872,26 @@ export default function GroundsDesktopView({
                 </div>
               </div>
 
-              <button
-                onClick={handleSignOut}
-                disabled={signingOut}
-                className="rounded-full border border-[#7fb685]/70 px-5 py-2 text-sm font-medium text-[#eef7ef] transition hover:bg-[#7fb685] hover:text-[#120f0b] disabled:opacity-50"
-              >
-                {signingOut ? "Signing out..." : "Sign out"}
-              </button>
+              <div className="flex flex-wrap items-center justify-end gap-3">
+                {canSwitchToCleaner ? (
+                  <button
+                    onClick={handleSwitchToCleaner}
+                    className="rounded-full border border-[#b08b47]/70 px-5 py-2 text-sm font-medium text-[#f5efe4] transition hover:bg-[#1f1812]"
+                  >
+                    {cleanerWaitingCount > 0
+                      ? `Switch to Cleaner (${cleanerWaitingCount})`
+                      : "Switch to Cleaner"}
+                  </button>
+                ) : null}
+
+                <button
+                  onClick={handleSignOut}
+                  disabled={signingOut}
+                  className="rounded-full border border-[#7fb685]/70 px-5 py-2 text-sm font-medium text-[#eef7ef] transition hover:bg-[#7fb685] hover:text-[#120f0b] disabled:opacity-50"
+                >
+                  {signingOut ? "Signing out..." : "Sign out"}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -898,6 +911,28 @@ export default function GroundsDesktopView({
                 {accountWarning}
               </section>
             )}
+
+            {canSwitchToCleaner ? (
+              <section className="rounded-2xl border border-[#b08b47]/30 bg-[#1b1611] p-4 text-[#f5efe4]">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.22em] text-[#d8c7ab]">Cleaner Access</p>
+                    <p className="mt-1 text-sm text-[#e6d8be]">
+                      {cleanerWaitingCount > 0
+                        ? `You also have ${cleanerWaitingCount} cleaner job${cleanerWaitingCount === 1 ? "" : "s"} waiting.`
+                        : "You are also linked to the Cleaner portal."}
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={handleSwitchToCleaner}
+                    className="rounded-full border border-[#b08b47]/60 px-4 py-2 text-sm font-medium text-[#f5efe4] transition hover:bg-[#241c15]"
+                  >
+                    {cleanerWaitingCount > 0 ? "View cleaner jobs" : "Open Cleaner"}
+                  </button>
+                </div>
+              </section>
+            ) : null}
 
             {unacceptedCount > 0 && (
               <section className="sticky top-0 z-40 rounded-2xl border border-red-400/60 bg-red-600 p-4 text-white shadow-[0_0_28px_rgba(239,68,68,0.28)]">

@@ -182,6 +182,9 @@ export type CleanerViewProps = {
     selectedRing: string;
   };
   getTeamMessage: (item: CleanerJob) => string;
+  canSwitchToGrounds: boolean;
+  groundsWaitingCount: number;
+  handleSwitchToGrounds: () => void;
 };
 
 type CleanerShellProps = {
@@ -501,6 +504,8 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [cleanerAccount, setCleanerAccount] = useState<CleanerAccount | null>(null);
+  const [canSwitchToGrounds, setCanSwitchToGrounds] = useState(false);
+  const [groundsWaitingCount, setGroundsWaitingCount] = useState(0);
 
   const [properties, setProperties] = useState<Property[]>([]);
   const [cleanerJobs, setCleanerJobs] = useState<CleanerJob[]>([]);
@@ -982,6 +987,64 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     }
   }
 
+  useEffect(() => {
+    let active = true;
+
+    async function loadGroundsSummary() {
+      if (!profile?.id) {
+        if (active) {
+          setCanSwitchToGrounds(false);
+          setGroundsWaitingCount(0);
+        }
+        return;
+      }
+
+      const { data: memberships, error: membershipsError } = await supabase
+        .from("grounds_account_members")
+        .select("grounds_account_id")
+        .eq("profile_id", profile.id);
+
+      if (membershipsError || !memberships?.length) {
+        if (active) {
+          setCanSwitchToGrounds(false);
+          setGroundsWaitingCount(0);
+        }
+        return;
+      }
+
+      const accountIds = [...new Set(memberships.map((row: any) => row.grounds_account_id).filter(Boolean))];
+
+      if (!accountIds.length) {
+        if (active) {
+          setCanSwitchToGrounds(false);
+          setGroundsWaitingCount(0);
+        }
+        return;
+      }
+
+      const { count, error: countError } = await supabase
+        .from("grounds_job_slots")
+        .select("id", { count: "exact", head: true })
+        .in("grounds_account_id", accountIds)
+        .eq("status", "offered");
+
+      if (!active) return;
+
+      setCanSwitchToGrounds(true);
+      setGroundsWaitingCount(countError ? 0 : count ?? 0);
+    }
+
+    void loadGroundsSummary();
+
+    return () => {
+      active = false;
+    };
+  }, [profile?.id]);
+
+  function handleSwitchToGrounds() {
+    router.push("/grounds");
+  }
+
   async function handleSignOut() {
     try {
       setSigningOut(true);
@@ -1272,6 +1335,9 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     getSlotDisplayStatus,
     getStatusTone,
     getTeamMessage,
+    canSwitchToGrounds,
+    groundsWaitingCount,
+    handleSwitchToGrounds,
   };
 
   if (mode === "mobile") {

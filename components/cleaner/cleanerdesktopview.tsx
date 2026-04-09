@@ -861,13 +861,26 @@ export default function CleanerDesktopView({
                 </div>
               </div>
 
-              <button
-                onClick={handleSignOut}
-                disabled={signingOut}
-                className="rounded-full border border-[#b08b47]/70 px-5 py-2 text-sm font-medium text-[#f5efe4] transition hover:bg-[#b08b47] hover:text-[#120f0b] disabled:opacity-50"
-              >
-                {signingOut ? "Signing out..." : "Sign out"}
-              </button>
+              <div className="flex flex-wrap items-center justify-end gap-3">
+                {canSwitchToGrounds ? (
+                  <button
+                    onClick={handleSwitchToGrounds}
+                    className="rounded-full border border-[#356046]/70 px-5 py-2 text-sm font-medium text-[#d8f0dc] transition hover:bg-[#173022]"
+                  >
+                    {groundsWaitingCount > 0
+                      ? `Switch to Grounds (${groundsWaitingCount})`
+                      : "Switch to Grounds"}
+                  </button>
+                ) : null}
+
+                <button
+                  onClick={handleSignOut}
+                  disabled={signingOut}
+                  className="rounded-full border border-[#b08b47]/70 px-5 py-2 text-sm font-medium text-[#f5efe4] transition hover:bg-[#b08b47] hover:text-[#120f0b] disabled:opacity-50"
+                >
+                  {signingOut ? "Signing out..." : "Sign out"}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -887,6 +900,28 @@ export default function CleanerDesktopView({
                 {accountWarning}
               </section>
             )}
+
+            {canSwitchToGrounds ? (
+              <section className="rounded-2xl border border-[#356046]/35 bg-[#112018] p-4 text-[#e8f6eb]">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.22em] text-[#7fb685]">Grounds Access</p>
+                    <p className="mt-1 text-sm text-[#d8eadc]">
+                      {groundsWaitingCount > 0
+                        ? `You also have ${groundsWaitingCount} grounds job${groundsWaitingCount === 1 ? "" : "s"} waiting.`
+                        : "You are also linked to the Grounds portal."}
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={handleSwitchToGrounds}
+                    className="rounded-full border border-[#7fb685]/60 px-4 py-2 text-sm font-medium text-[#eef7ef] transition hover:bg-[#173022]"
+                  >
+                    {groundsWaitingCount > 0 ? "View grounds jobs" : "Open Grounds"}
+                  </button>
+                </div>
+              </section>
+            ) : null}
 
             {unacceptedCount > 0 && (
               <section className="sticky top-0 z-40 rounded-2xl border border-red-400/60 bg-red-600 p-4 text-white shadow-[0_0_28px_rgba(239,68,68,0.28)]">
