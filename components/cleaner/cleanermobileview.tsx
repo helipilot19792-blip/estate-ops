@@ -446,9 +446,13 @@ export default function CleanerMobileView({
       const tone = getStatusTone(item.slot.status, item.job.staffing_status);
       const isSelected = selectedSlotId === item.slot.id;
       const propertyName =
-        isSelected && selectedCleanerJob?.slot.id === item.slot.id
-          ? selectedJobProperty?.name || "Property job"
-          : "Property job";
+        selectedJobProperty?.name ||
+        properties.find((p) => p.id === item.job.property_id)?.name ||
+        "Property job";
+      const propertyAddress =
+        selectedJobProperty?.address ||
+        properties.find((p) => p.id === item.job.property_id)?.address ||
+        "No property address";
       const parsedNotes = getParsedNotes(item.job.notes);
 
       return (
@@ -458,32 +462,30 @@ export default function CleanerMobileView({
             isSelected ? tone.selectedRing : ""
           }`}
         >
-          <div className="p-4">
-            <div className="flex items-start justify-between gap-3">
-              <button
-                type="button"
-                onClick={() => handleCardTap(item.slot.id)}
-                className="min-w-0 flex-1 text-left"
-              >
-                <div className="text-base font-semibold text-[#f8f2e8]">{propertyName}</div>
+          <button
+            type="button"
+            onClick={() => handleCardTap(item.slot.id)}
+            className="block w-full p-4 text-left"
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0 flex-1">
+                <div className="text-base font-semibold leading-tight text-[#f8f2e8]">
+                  {propertyName}
+                </div>
                 <div className="mt-1 text-sm text-[#d4c4a8]">
                   {formatDateLabel(normalizeJobDate(item.jobDate))}
                 </div>
-                <div className="mt-2 text-sm text-[#d4c4a8]">{getTeamMessage(item)}</div>
-              </button>
+                <div className="mt-2 text-sm leading-snug text-[#d4c4a8]">{getTeamMessage(item)}</div>
+              </div>
 
-              <div className="flex shrink-0 flex-col items-end gap-2">
+              <div className="flex items-center justify-between gap-2 sm:w-auto sm:flex-col sm:items-end">
                 <span className={`rounded-full px-3 py-1 text-[11px] font-semibold ${tone.badge}`}>
                   {getSlotDisplayStatus(item.slot.status, item.job.staffing_status)}
                 </span>
 
-                <button
-                  type="button"
-                  onClick={() => handleCardTap(item.slot.id)}
-                  className="rounded-full border border-[#7a5c2e]/30 bg-[#100d0a] px-3 py-1 text-[11px] font-semibold text-[#f5efe4] transition hover:bg-[#1b1510]"
-                >
+                <span className="rounded-full border border-[#7a5c2e]/30 bg-[#100d0a] px-3 py-1 text-[11px] font-semibold text-[#f5efe4]">
                   {isSelected ? "Close" : "Open"}
-                </button>
+                </span>
               </div>
             </div>
 
@@ -494,25 +496,20 @@ export default function CleanerMobileView({
                 <p>No job notes.</p>
               )}
             </div>
-          </div>
+          </button>
 
           {isSelected && selectedCleanerJob && selectedCleanerJob.slot.id === item.slot.id ? (
-            <section className="border-t border-[#7a5c2e]/20 px-4 pb-4 pt-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-semibold">
-                    {selectedJobProperty?.name || "Selected Job"}
-                  </h2>
-                  <p className="mt-1 text-sm text-[#d4c4a8]">
-                    {selectedJobProperty?.address || "No property address"}
-                  </p>
-                  <p className="mt-2 text-sm text-[#f0d59f]">
+            <section className="border-t border-[#7a5c2e]/20 px-3 pb-4 pt-4 sm:px-4">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-sm text-[#d4c4a8]">{propertyAddress}</p>
+                  <p className="mt-1 text-sm text-[#f0d59f]">
                     Cleaning date: {formatDateLabel(normalizeJobDate(selectedCleanerJob.jobDate))}
                   </p>
                 </div>
 
                 <span
-                  className={`rounded-full px-3 py-1 text-[11px] font-semibold ${
+                  className={`w-fit rounded-full px-3 py-1 text-[11px] font-semibold ${
                     getStatusTone(
                       selectedCleanerJob.slot.status,
                       selectedCleanerJob.job.staffing_status
@@ -624,14 +621,14 @@ export default function CleanerMobileView({
                 ) : null}
               </div>
 
-              <div className="mt-4 flex flex-wrap gap-2">
+              <div className="mt-4 flex flex-wrap gap-2.5">
                 {isOffered(selectedCleanerJob.slot.status) ? (
                   <>
                     <button
                       type="button"
                       onClick={() => void onAcceptClick()}
                       disabled={actionLoading !== null}
-                      className="rounded-full border border-emerald-500/40 bg-emerald-500/20 px-4 py-3 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-500/30 disabled:opacity-50"
+                      className="min-h-[46px] rounded-full border border-emerald-500/40 bg-emerald-500/20 px-4 py-3 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-500/30 disabled:opacity-50"
                     >
                       {actionLoading === "accept" ? "Accepting..." : "Accept Job"}
                     </button>
@@ -640,7 +637,7 @@ export default function CleanerMobileView({
                       type="button"
                       onClick={() => void onDeclineAndReturn()}
                       disabled={actionLoading !== null}
-                      className="rounded-full border border-red-500/40 bg-red-500/20 px-4 py-3 text-sm font-semibold text-red-200 transition hover:bg-red-500/30 disabled:opacity-50"
+                      className="min-h-[46px] rounded-full border border-red-500/40 bg-red-500/20 px-4 py-3 text-sm font-semibold text-red-200 transition hover:bg-red-500/30 disabled:opacity-50"
                     >
                       {actionLoading === "decline" ? "Declining..." : "Decline Job"}
                     </button>
@@ -650,7 +647,7 @@ export default function CleanerMobileView({
                 {isAccepted(selectedCleanerJob.slot.status) ? (
                   <a
                     href={getCalendarUrl(selectedCleanerJob.job.id)}
-                    className="rounded-full border border-[#b08b47]/40 bg-[#b08b47]/15 px-4 py-3 text-sm font-semibold text-[#f5efe4] transition hover:bg-[#b08b47]/25"
+                    className="min-h-[46px] rounded-full border border-[#b08b47]/40 bg-[#b08b47]/15 px-4 py-3 text-sm font-semibold text-[#f5efe4] transition hover:bg-[#b08b47]/25"
                   >
                     Add to Calendar
                   </a>
@@ -659,7 +656,7 @@ export default function CleanerMobileView({
                 <button
                   type="button"
                   onClick={() => setReportOpen(true)}
-                  className="rounded-full border border-[#b08b47]/45 bg-[#b08b47]/10 px-4 py-3 text-sm font-semibold text-[#f5efe4] transition hover:bg-[#b08b47]/20"
+                  className="min-h-[46px] rounded-full border border-[#b08b47]/45 bg-[#b08b47]/10 px-4 py-3 text-sm font-semibold text-[#f5efe4] transition hover:bg-[#b08b47]/20"
                 >
                   Report Issue
                 </button>
@@ -667,7 +664,7 @@ export default function CleanerMobileView({
                 <button
                   type="button"
                   onClick={handleCloseDetails}
-                  className="rounded-full border border-[#7a5c2e]/40 bg-[#100d0a] px-4 py-3 text-sm font-semibold text-[#f5efe4] transition hover:bg-[#1b1510]"
+                  className="min-h-[46px] rounded-full border border-[#7a5c2e]/40 bg-[#100d0a] px-4 py-3 text-sm font-semibold text-[#f5efe4] transition hover:bg-[#1b1510]"
                 >
                   Close Details
                 </button>
