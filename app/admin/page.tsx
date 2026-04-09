@@ -246,6 +246,7 @@ type AdminSection =
   | "users"
   | "properties"
   | "cleanerAccounts"
+  | "groundsAccounts"
   | "assignments"
   | "jobs"
   | "maintenance";
@@ -464,9 +465,18 @@ const [propertyPostal, setPropertyPostal] = useState("");
   const [cleanerAccountPhone, setCleanerAccountPhone] = useState("");
   const [selectedCleanerMemberProfileIds, setSelectedCleanerMemberProfileIds] = useState<string[]>([]);
 
+  const [groundsAccountName, setGroundsAccountName] = useState("");
+  const [groundsAccountEmail, setGroundsAccountEmail] = useState("");
+  const [groundsAccountPhone, setGroundsAccountPhone] = useState("");
+  const [selectedGroundsMemberProfileIds, setSelectedGroundsMemberProfileIds] = useState<string[]>([]);
+
   const [assignmentPropertyId, setAssignmentPropertyId] = useState("");
   const [assignmentCleanerProfileId, setAssignmentCleanerProfileId] = useState("");
   const [assignmentPriority, setAssignmentPriority] = useState("1");
+
+  const [groundsAssignmentPropertyId, setGroundsAssignmentPropertyId] = useState("");
+  const [groundsAssignmentProfileId, setGroundsAssignmentProfileId] = useState("");
+  const [groundsAssignmentPriority, setGroundsAssignmentPriority] = useState("1");
 
   const [jobPropertyId, setJobPropertyId] = useState("");
   const [jobNotes, setJobNotes] = useState("");
@@ -496,6 +506,7 @@ const [propertyPostal, setPropertyPostal] = useState("");
   const [sopFiles, setSopFiles] = useState<File[]>([]);
 
   const [linkSelections, setLinkSelections] = useState<Record<string, string>>({});
+  const [groundsLinkSelections, setGroundsLinkSelections] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(new Date()), 1000);
@@ -1375,6 +1386,195 @@ setPropertyPostal("");
     }
   }
 
+  async function addGroundsAccount() {
+    if (!groundsAccountName.trim()) {
+      setError("Grounds account name is required.");
+      return;
+    }
+
+    setError("");
+    const { data: inserted, error } = await supabase
+      .from("grounds_accounts")
+      .insert({
+        display_name: groundsAccountName.trim(),
+        email: groundsAccountEmail.trim() || null,
+        phone: groundsAccountPhone.trim() || null,
+        active: true,
+      })
+      .select()
+      .single();
+
+    if (error || !inserted) {
+      setError(error?.message || "Could not create grounds account.");
+      return;
+    }
+
+    if (selectedGroundsMemberProfileIds.length > 0) {
+      const memberRows = selectedGroundsMemberProfileIds.map((profileId) => ({
+        grounds_account_id: inserted.id,
+        profile_id: profileId,
+      }));
+      const { error: memberError } = await supabase.from("grounds_account_members").insert(memberRows);
+      if (memberError) {
+        setError(memberError.message);
+        return;
+      }
+    }
+
+    setGroundsAccountName("");
+    setGroundsAccountEmail("");
+    setGroundsAccountPhone("");
+    setSelectedGroundsMemberProfileIds([]);
+    setActionMessage("Grounds account linked.");
+    await loadData();
+  }
+
+  async function linkGroundsToAccount(groundsAccountId: string, profileId: string) {
+    if (!groundsAccountId || !profileId) {
+      setError("Missing grounds user or account.");
+      return;
+    }
+
+    setError("");
+    setActionMessage("");
+
+    const { error } = await supabase.from("grounds_account_members").insert({
+      grounds_account_id: groundsAccountId,
+      profile_id: profileId,
+    });
+
+    if (error) {
+      setError(error.message);
+      return;
+    }
+
+    setGroundsLinkSelections((prev) => ({ ...prev, [groundsAccountId]: "" }));
+    setActionMessage("Grounds user linked to account.");
+    await loadData();
+  }
+
+  async function unlinkGroundsFromAccount(groundsAccountId: string, profileId: string) {
+    const confirmed = window.confirm("Remove this grounds user from the account?");
+    if (!confirmed) return;
+
+    setError("");
+    setActionMessage("");
+
+    const { error } = await supabase
+      .from("grounds_account_members")
+      .delete()
+      .eq("grounds_account_id", groundsAccountId)
+      .eq("profile_id", profileId);
+
+    if (error) {
+      setError(error.message);
+      return;
+    }
+
+    setActionMessage("Grounds user removed.");
+    await loadData();
+  }
+
+  async function addGroundsAssignment() {
+    if (!groundsAssignmentPropertyId || !groundsAssignmentProfileId) {
+      setError("Select property and grounds user.");
+      return;
+    }
+
+    setError("");
+    setActionMessage("");
+
+    let groundsAccountId: string | null = null;
+
+    const existingMembership = groundsAccountMembers.find(
+      (member) => member.profile_id === groundsAssignmentProfileId
+    );
+
+    if (existingMembership) {
+      groundsAccountId = existingMembership.grounds_account_id;
+    } else {
+      const groundsProfile = profiles.find((p) => p.id === groundsAssignmentProfileId);
+
+      const { data: insertedAccount, error: insertedAccountError } = await supabase
+        .from("grounds_accounts")
+        .insert({
+          display_name:
+            groundsProfile?.full_name || groundsProfile?.email || "Grounds account",
+          email: groundsProfile?.email || null,
+          phone: groundsProfile?.phone || null,
+          active: true,
+        })
+        .select()
+        .single();
+
+      if (insertedAccountError || !insertedAccount) {
+        setError(insertedAccountError?.message || "Could not create grounds account.");
+        return;
+      }
+
+      groundsAccountId = insertedAccount.id;
+
+      const { error: memberInsertError } = await supabase
+        .from("grounds_account_members")
+        .insert({
+          grounds_account_id: groundsAccountId,
+          profile_id: groundsAssignmentProfileId,
+        });
+
+      if (memberInsertError) {
+        setError(memberInsertError.message);
+        return;
+      }
+    }
+
+    const { error } = await supabase.from("property_grounds_account_assignments").insert({
+      property_id: groundsAssignmentPropertyId,
+      grounds_account_id: groundsAccountId,
+      priority: Number(groundsAssignmentPriority),
+    });
+
+    if (error) {
+      setError(error.message);
+      return;
+    }
+
+    setGroundsAssignmentPropertyId("");
+    setGroundsAssignmentProfileId("");
+    setGroundsAssignmentPriority("1");
+    setActionMessage("Grounds assigned to property.");
+    await loadData();
+  }
+
+  async function deleteGroundsAccount(account: GroundsAccount) {
+    const displayName = account.display_name || account.email || "this grounds account";
+    const confirmed = window.confirm(
+      `Delete ${displayName}?
+
+This removes its linked members and deletes the grounds account.`
+    );
+    if (!confirmed) return;
+
+    setError("");
+    setActionMessage("");
+    setReassigningJobId(account.id);
+
+    try {
+      const { error } = await supabase
+        .from("grounds_accounts")
+        .delete()
+        .eq("id", account.id);
+
+      if (error) throw error;
+
+      setActionMessage("Grounds account deleted.");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Could not delete grounds account.");
+    } finally {
+      setReassigningJobId(null);
+    }
+  }
+
   async function saveAccess() {
     if (!selectedPropertyId) return;
     const existing = accessRows.find((x) => x.property_id === selectedPropertyId);
@@ -1889,8 +2089,24 @@ setPropertyPostal("");
     return map;
   }, [cleanerAccountMembers, profiles]);
 
+  const groundsMembersByAccountId = useMemo(() => {
+    const map: Record<string, ProfileRow[]> = {};
+    for (const member of groundsAccountMembers) {
+      const profile = profiles.find((p) => p.id === member.profile_id);
+      if (!profile) continue;
+      if (!map[member.grounds_account_id]) map[member.grounds_account_id] = [];
+      map[member.grounds_account_id].push(profile);
+    }
+    return map;
+  }, [groundsAccountMembers, profiles]);
+
   const eligibleCleanerProfiles = useMemo(
     () => profiles.filter((profile) => profile.role === "cleaner"),
+    [profiles]
+  );
+
+  const eligibleGroundsProfiles = useMemo(
+    () => profiles.filter((profile) => profile.role === "grounds" || profile.role === "cleaner"),
     [profiles]
   );
 
@@ -2150,6 +2366,7 @@ setPropertyPostal("");
     { key: "users", label: "Users" },
     { key: "properties", label: "Properties" },
     { key: "cleanerAccounts", label: "Cleaner Accounts" },
+    { key: "groundsAccounts", label: "Grounds Accounts" },
     { key: "assignments", label: "Assignments" },
     { key: "jobs", label: "Jobs" },
     { key: "maintenance", label: "Maintenance Flags" },
@@ -2527,6 +2744,117 @@ function renderPropertiesSection() {
     );
   }
 
+  function renderGroundsAccountsSection() {
+    return (
+      <div className="space-y-6">
+        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <h2 className="text-xl font-semibold tracking-tight">Link Existing Grounds Users</h2>
+          <p className="mt-1 text-sm text-[#7f7263]">
+            Create a shared grounds account when one or more existing users need to receive the same grounds jobs. Cleaner users can also be linked here when they handle both cleaning and grounds work.
+          </p>
+
+          <div className="mt-5 space-y-3">
+            <input className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" placeholder="Grounds group name (example: Louis Grounds Team)" value={groundsAccountName} onChange={(e) => setGroundsAccountName(e.target.value)} />
+            <input className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" placeholder="Shared email (optional)" value={groundsAccountEmail} onChange={(e) => setGroundsAccountEmail(e.target.value)} />
+            <input className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" placeholder="Shared phone (optional)" value={groundsAccountPhone} onChange={(e) => setGroundsAccountPhone(e.target.value)} />
+
+            <div className="rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+              <div className="mb-2 text-sm font-medium text-[#5f5245]">Select existing users for grounds work</div>
+              <div className="space-y-2">
+                {eligibleGroundsProfiles.length === 0 ? (
+                  <div className="text-sm text-[#8a7b68]">No grounds-capable users available yet.</div>
+                ) : (
+                  eligibleGroundsProfiles.map((profile) => (
+                    <label key={profile.id} className="flex items-center gap-2 text-sm text-[#6f6255]">
+                      <input
+                        type="checkbox"
+                        checked={selectedGroundsMemberProfileIds.includes(profile.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedGroundsMemberProfileIds((prev) => [...prev, profile.id]);
+                          } else {
+                            setSelectedGroundsMemberProfileIds((prev) => prev.filter((id) => id !== profile.id));
+                          }
+                        }}
+                      />
+                      {profile.full_name || profile.email || profile.id}
+                      <span className="text-xs text-[#8a7b68]">({profile.role})</span>
+                    </label>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <button className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]" onClick={() => void addGroundsAccount()}>
+              Link Selected Grounds Users
+            </button>
+          </div>
+        </section>
+
+        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-xl font-semibold tracking-tight">Grounds Accounts</h2>
+            <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">{groundsAccounts.length}</span>
+          </div>
+          <div className="space-y-3">
+            {groundsAccounts.map((account) => (
+              <div key={account.id} className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-base font-semibold">{account.display_name || "No name"}</div>
+                    <div className="mt-1 text-sm text-[#6f6255]">{account.email || "No email"}</div>
+                    <div className="mt-1 text-sm text-[#8a7b68]">{account.phone || "No phone"}</div>
+
+                    <div className="mt-2 text-xs text-[#8a7b68]">Members:</div>
+
+                    <div className="mt-2 space-y-2">
+                      {(groundsMembersByAccountId[account.id] ?? []).length === 0 ? (
+                        <div className="text-sm text-[#8a7b68]">No linked members</div>
+                      ) : (
+                        (groundsMembersByAccountId[account.id] ?? []).map((member) => (
+                          <div key={member.id} className="flex items-center justify-between gap-3 rounded-[14px] border border-[#eadfce] bg-white px-3 py-2">
+                            <div className="min-w-0 text-sm text-[#5f5245]">
+                              {member.full_name || member.email || member.id}
+                            </div>
+
+                            <button className="rounded-full border border-[#efc6c6] bg-[#fff5f5] px-3 py-1 text-xs text-[#8a2e22] transition hover:bg-[#fff0f0]" onClick={() => void unlinkGroundsFromAccount(account.id, member.id)}>
+                              Remove
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    <div className="mt-3 grid gap-2 md:grid-cols-[1fr_auto]">
+                      <select className="w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none transition focus:border-[#b48d4e]" value={groundsLinkSelections[account.id] || ""} onChange={(e) => setGroundsLinkSelections((prev) => ({ ...prev, [account.id]: e.target.value }))}>
+                        <option value="">Select grounds user to link</option>
+                        {eligibleGroundsProfiles.map((profile) => (
+                          <option key={profile.id} value={profile.id}>
+                            {profile.full_name || profile.email || profile.id}
+                          </option>
+                        ))}
+                      </select>
+
+                      <button className="rounded-full bg-[#241c15] px-4 py-2 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]" onClick={() => void linkGroundsToAccount(account.id, groundsLinkSelections[account.id])}>
+                        Link user
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="w-full md:w-[220px]">
+                    <button className="w-full rounded-[14px] border border-[#efc6c6] bg-[#fff5f5] px-3 py-2 text-sm text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-50" onClick={() => void deleteGroundsAccount(account)} disabled={reassigningJobId === account.id}>
+                      {reassigningJobId === account.id ? "Deleting..." : "Delete grounds account"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   function renderAssignmentsSection() {
     return (
       <div className="space-y-6">
@@ -2580,6 +2908,63 @@ function renderPropertiesSection() {
                   <div className="text-base font-semibold">{getPropertyName(a.property_id)}</div>
                   <div className="mt-1 text-sm text-[#6f6255]">{memberLabel}</div>
                   <div className="mt-1 text-xs text-[#8a7b68]">Cleaner account: {getCleanerAccountName(a.cleaner_account_id)}</div>
+                  <div className="mt-2 inline-flex rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-medium text-[#7f7263]">
+                    {getPriorityLabel(a.priority)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <h2 className="text-xl font-semibold tracking-tight">Assign Grounds to Property</h2>
+          <p className="mt-1 text-sm text-[#7f7263]">
+            Choose a grounds-capable user and assign them as primary or backup for grounds work. If they are not linked to a grounds account yet, the system will create that link automatically.
+          </p>
+
+          <div className="mt-5 space-y-3">
+            <select className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" value={groundsAssignmentPropertyId} onChange={(e) => setGroundsAssignmentPropertyId(e.target.value)}>
+              <option value="">Select property</option>
+              {properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+
+            <select className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" value={groundsAssignmentProfileId} onChange={(e) => setGroundsAssignmentProfileId(e.target.value)}>
+              <option value="">Select grounds user</option>
+              {eligibleGroundsProfiles.map((profile) => (
+                <option key={profile.id} value={profile.id}>
+                  {profile.full_name || profile.email || profile.id}
+                </option>
+              ))}
+            </select>
+
+            <select className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" value={groundsAssignmentPriority} onChange={(e) => setGroundsAssignmentPriority(e.target.value)}>
+              <option value="1">Primary</option>
+              <option value="2">Backup</option>
+              <option value="3">Second Backup</option>
+            </select>
+
+            <button className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]" onClick={() => void addGroundsAssignment()}>
+              Save Grounds Assignment
+            </button>
+          </div>
+        </section>
+
+        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-xl font-semibold tracking-tight">Grounds Assignments</h2>
+            <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">{groundsAssignments.length}</span>
+          </div>
+          <div className="space-y-3">
+            {groundsAssignments.map((a) => {
+              const members = groundsMembersByAccountId[a.grounds_account_id] ?? [];
+              const memberLabel = members.length ? members.map((m) => m.full_name || m.email || m.id).join(", ") : getGroundsAccountName(a.grounds_account_id);
+
+              return (
+                <div key={a.id} className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+                  <div className="text-base font-semibold">{getPropertyName(a.property_id)}</div>
+                  <div className="mt-1 text-sm text-[#6f6255]">{memberLabel}</div>
+                  <div className="mt-1 text-xs text-[#8a7b68]">Grounds account: {getGroundsAccountName(a.grounds_account_id)}</div>
                   <div className="mt-2 inline-flex rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-medium text-[#7f7263]">
                     {getPriorityLabel(a.priority)}
                   </div>
@@ -3946,6 +4331,8 @@ case "properties":
   );
       case "cleanerAccounts":
         return renderCleanerAccountsSection();
+      case "groundsAccounts":
+        return renderGroundsAccountsSection();
       case "assignments":
         return renderAssignmentsSection();
       case "jobs":
@@ -4022,12 +4409,13 @@ case "properties":
             </div>
           </div>
 
-          <div className="grid gap-3 border-t border-[#efe6dc] bg-[#fbf8f4] px-6 py-4 md:grid-cols-6 md:px-8">
+          <div className="grid gap-3 border-t border-[#efe6dc] bg-[#fbf8f4] px-6 py-4 md:grid-cols-7 md:px-8">
             {[
               { label: "Properties", value: properties.length },
               { label: "Cleaner Accounts", value: cleanerAccounts.length },
-              { label: "Assignments", value: assignments.length },
-              { label: "Jobs", value: jobs.length },
+              { label: "Grounds Accounts", value: groundsAccounts.length },
+              { label: "Assignments", value: assignments.length + groundsAssignments.length },
+              { label: "Jobs", value: jobs.length + groundsJobs.length },
               { label: "Users", value: profiles.length },
               { label: "Flags", value: maintenanceFlags.length },
             ].map((item) => (
