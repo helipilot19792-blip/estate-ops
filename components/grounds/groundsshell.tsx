@@ -791,11 +791,11 @@ export default function GroundsShell({ mode }: GroundsShellProps) {
       const jobIds = [...new Set(accountSlots.map((slot) => slot.job_id))];
 
       const { data: jobData, error: jobError } = await supabase
-        .from("grounds_jobs")
-        .select(
-          "id, property_id, status, notes, created_at, offered_at, accepted_at, declined_at, scheduled_for, staffing_status, grounds_units_needed, grounds_units_required_strict, show_team_status_to_grounds, needs_secure_access, needs_garage_access, job_type"
-        )
-        .in("id", jobIds);
+  .from("grounds_jobs")
+  .select(
+    "id, property_id, status, notes, created_at, offered_at, accepted_at, scheduled_for, staffing_status, grounds_units_needed, grounds_units_required_strict, show_team_status_to_grounds, needs_secure_access, needs_garage_access, job_type"
+  )
+  .in("id", jobIds);
 
       if (jobError) throw jobError;
 
