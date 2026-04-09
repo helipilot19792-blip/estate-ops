@@ -727,9 +727,16 @@ export default function CleanerDesktopView({
   getSlotDisplayStatus,
   getStatusTone,
   getTeamMessage,
+  otherPortalHref,
+  groundsWaitingCount,
 }: CleanerViewProps) {
   const [jobView, setJobView] = useState<"active" | "history">("active");
+  const canSwitchToGrounds = !!otherPortalHref && otherPortalHref === "/grounds";
 
+  function handleSwitchToGrounds() {
+    if (!otherPortalHref) return;
+    window.location.href = otherPortalHref;
+  }
   const visibleJobs = jobView === "history" ? historyJobs : activeJobs;
 
   function renderJobList(items: CleanerJob[], emptyText: string) {
