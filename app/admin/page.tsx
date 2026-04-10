@@ -3237,7 +3237,7 @@ function renderPropertiesSection() {
     return (
       <div className="space-y-6" id="jobs-section">
         <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-          <h2 className="text-xl font-semibold tracking-tight">Create Job</h2>
+          <h2 className="text-xl font-semibold tracking-tight">Create Cleaning Job</h2>
           <p className="mt-1 text-sm text-[#7f7263]">
             Create a turnover job. Slots are created automatically from cleaner account assignments.
           </p>
@@ -3286,6 +3286,55 @@ function renderPropertiesSection() {
               Create Job
             </button>
           </div>
+<div className="mt-6 border-t border-[#cfe2cf] pt-5">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-semibold tracking-tight text-[#23422c]">Recurring Grounds Rules</h2>
+              <p className="mt-1 text-sm text-[#5b7460]">
+                New recurring grounds scheduling rules. This is the new system that will eventually generate future grounds jobs automatically.
+              </p>
+            </div>
+            <span className="rounded-full border border-[#cfe2cf] bg-white px-3 py-1 text-xs font-medium text-[#46604b]">{groundsRecurringRules.length}</span>
+          </div>
+
+          <div className="space-y-3">
+            {groundsRecurringRules.length === 0 ? (
+              <div className="rounded-[22px] border border-dashed border-[#b7cfb7] bg-white px-4 py-4 text-sm text-[#5b7460]">
+                No recurring grounds rules yet.
+              </div>
+            ) : (
+              groundsRecurringRules.map((rule) => (
+                <div key={rule.id} className="rounded-[22px] border border-[#cfe2cf] bg-white p-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <div className="text-base font-semibold text-[#23422c]">{getPropertyName(rule.property_id)}</div>
+                      <div className="mt-1 text-sm text-[#46604b]">{getGroundsRuleLabel(rule)}</div>
+                      <div className="mt-1 text-sm text-[#5b7460]">Frequency: {getGroundsRuleFrequencyLabel(rule)}</div>
+                      <div className="mt-1 text-sm text-[#5b7460]">Next run: {rule.next_run_date ? formatScheduledFor(rule.next_run_date) : "Not set"}</div>
+                      <div className="mt-1 text-sm text-[#5b7460]">Staffing: {rule.grounds_units_needed} unit{rule.grounds_units_needed === 1 ? "" : "s"}{rule.grounds_units_required_strict ? ", strict" : ", flexible"}</div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <span className={`rounded-full border px-3 py-1 text-xs font-medium ${rule.active ? "border-[#cfe2cf] bg-[#f7fbf7] text-[#46604b]" : "border-[#efc6c6] bg-[#fff5f5] text-[#8a2e22]"}`}>
+                        {rule.active ? "Active" : "Paused"}
+                      </span>
+                      <span className="rounded-full border border-[#cfe2cf] bg-[#f7fbf7] px-3 py-1 text-xs font-medium text-[#46604b]">
+                        Secure access: {rule.needs_secure_access ? "Yes" : "No"}
+                      </span>
+                      <span className="rounded-full border border-[#cfe2cf] bg-[#f7fbf7] px-3 py-1 text-xs font-medium text-[#46604b]">
+                        Garage: {rule.needs_garage_access ? "Yes" : "No"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {rule.notes ? (
+                    <div className="mt-3 text-sm leading-6 text-[#46604b]">{rule.notes}</div>
+                  ) : null}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
         </section>
 
         <section className="rounded-[30px] border border-[#d8e8d8] bg-[linear-gradient(180deg,#f8fcf8_0%,#f2f8f2_100%)] p-5 shadow-[0_18px_45px_rgba(28,86,39,0.08)]">
@@ -3430,55 +3479,7 @@ function renderPropertiesSection() {
           </div>
         </section>
 
-        <section className="rounded-[30px] border border-[#d8e8d8] bg-[linear-gradient(180deg,#f8fcf8_0%,#f2f8f2_100%)] p-5 shadow-[0_18px_45px_rgba(28,86,39,0.08)]">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-semibold tracking-tight text-[#23422c]">Recurring Grounds Rules</h2>
-              <p className="mt-1 text-sm text-[#5b7460]">
-                New recurring grounds scheduling rules. This is the new system that will eventually generate future grounds jobs automatically.
-              </p>
-            </div>
-            <span className="rounded-full border border-[#cfe2cf] bg-white px-3 py-1 text-xs font-medium text-[#46604b]">{groundsRecurringRules.length}</span>
-          </div>
-
-          <div className="space-y-3">
-            {groundsRecurringRules.length === 0 ? (
-              <div className="rounded-[22px] border border-dashed border-[#b7cfb7] bg-white px-4 py-4 text-sm text-[#5b7460]">
-                No recurring grounds rules yet.
-              </div>
-            ) : (
-              groundsRecurringRules.map((rule) => (
-                <div key={rule.id} className="rounded-[22px] border border-[#cfe2cf] bg-white p-4">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div>
-                      <div className="text-base font-semibold text-[#23422c]">{getPropertyName(rule.property_id)}</div>
-                      <div className="mt-1 text-sm text-[#46604b]">{getGroundsRuleLabel(rule)}</div>
-                      <div className="mt-1 text-sm text-[#5b7460]">Frequency: {getGroundsRuleFrequencyLabel(rule)}</div>
-                      <div className="mt-1 text-sm text-[#5b7460]">Next run: {rule.next_run_date ? formatScheduledFor(rule.next_run_date) : "Not set"}</div>
-                      <div className="mt-1 text-sm text-[#5b7460]">Staffing: {rule.grounds_units_needed} unit{rule.grounds_units_needed === 1 ? "" : "s"}{rule.grounds_units_required_strict ? ", strict" : ", flexible"}</div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      <span className={`rounded-full border px-3 py-1 text-xs font-medium ${rule.active ? "border-[#cfe2cf] bg-[#f7fbf7] text-[#46604b]" : "border-[#efc6c6] bg-[#fff5f5] text-[#8a2e22]"}`}>
-                        {rule.active ? "Active" : "Paused"}
-                      </span>
-                      <span className="rounded-full border border-[#cfe2cf] bg-[#f7fbf7] px-3 py-1 text-xs font-medium text-[#46604b]">
-                        Secure access: {rule.needs_secure_access ? "Yes" : "No"}
-                      </span>
-                      <span className="rounded-full border border-[#cfe2cf] bg-[#f7fbf7] px-3 py-1 text-xs font-medium text-[#46604b]">
-                        Garage: {rule.needs_garage_access ? "Yes" : "No"}
-                      </span>
-                    </div>
-                  </div>
-
-                  {rule.notes ? (
-                    <div className="mt-3 text-sm leading-6 text-[#46604b]">{rule.notes}</div>
-                  ) : null}
-                </div>
-              ))
-            )}
-          </div>
-        </section>
+        
 
         <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
