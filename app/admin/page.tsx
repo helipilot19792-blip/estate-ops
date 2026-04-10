@@ -240,6 +240,25 @@ type ProfileRow = {
   created_at?: string | null;
 };
 
+type OwnerAccountRow = {
+  id: string;
+  email: string;
+  full_name: string | null;
+  profile_id?: string | null;
+  invite_sent_at?: string | null;
+  invite_accepted_at?: string | null;
+  is_active: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+type OwnerPropertyAccessRow = {
+  id: string;
+  owner_account_id: string;
+  property_id: string;
+  created_at?: string | null;
+};
+
 type PropertyCalendarRow = {
   id: string;
   property_id: string;
@@ -474,6 +493,8 @@ export default function AdminPage() {
   const [sops, setSops] = useState<SopRow[]>([]);
   const [sopImages, setSopImages] = useState<SopImageRow[]>([]);
   const [profiles, setProfiles] = useState<ProfileRow[]>([]);
+  const [ownerAccounts, setOwnerAccounts] = useState<OwnerAccountRow[]>([]);
+  const [ownerPropertyAccess, setOwnerPropertyAccess] = useState<OwnerPropertyAccessRow[]>([]);
   const [propertyCalendars, setPropertyCalendars] = useState<PropertyCalendarRow[]>([]);
   const [maintenanceFlags, setMaintenanceFlags] = useState<MaintenanceFlagRow[]>([]);
   const [maintenanceFlagImages, setMaintenanceFlagImages] = useState<MaintenanceFlagImageRow[]>([]);
@@ -491,6 +512,7 @@ export default function AdminPage() {
   const [syncingCalendarsNow, setSyncingCalendarsNow] = useState(false);
   const [deletingPropertyId, setDeletingPropertyId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState("");
+  const [sendingOwnerInviteId, setSendingOwnerInviteId] = useState<string | null>(null);
   const [selectedJobsPropertyFilter, setSelectedJobsPropertyFilter] = useState("all");
   const [maintenanceModalOpen, setMaintenanceModalOpen] = useState(false);
   const [maintenanceFormPropertyId, setMaintenanceFormPropertyId] = useState("");
@@ -510,6 +532,8 @@ export default function AdminPage() {
   const [propertyProvince, setPropertyProvince] = useState("");
   const [propertyPostal, setPropertyPostal] = useState("");
   const [propertyNotes, setPropertyNotes] = useState("");
+  const [propertyOwnerName, setPropertyOwnerName] = useState("");
+  const [propertyOwnerEmail, setPropertyOwnerEmail] = useState("");
   const [propertyUnitsNeeded, setPropertyUnitsNeeded] = useState("1");
   const [propertyUnitsStrict, setPropertyUnitsStrict] = useState(false);
   const [propertyShowTeamStatus, setPropertyShowTeamStatus] = useState(true);
@@ -698,6 +722,8 @@ export default function AdminPage() {
       sopsRes,
       sopImagesRes,
       profilesRes,
+      ownerAccountsRes,
+      ownerPropertyAccessRes,
       propertyCalendarsRes,
       maintenanceFlagsRes,
       maintenanceFlagImagesRes,
@@ -735,6 +761,8 @@ export default function AdminPage() {
         .from("profiles")
         .select("id,email,full_name,phone,role,created_at")
         .order("created_at", { ascending: false }),
+      supabase.from("owner_accounts").select("*").order("created_at", { ascending: false }),
+      supabase.from("owner_property_access").select("*").order("created_at", { ascending: false }),
       supabase.from("property_calendars").select("*").order("created_at", { ascending: false }),
       supabase.from("property_maintenance_flags").select("*").order("created_at", { ascending: false }),
       supabase.from("property_maintenance_flag_images").select("*").order("sort_order", { ascending: true }),
@@ -759,6 +787,8 @@ export default function AdminPage() {
       sopsRes,
       sopImagesRes,
       profilesRes,
+      ownerAccountsRes,
+      ownerPropertyAccessRes,
       propertyCalendarsRes,
       maintenanceFlagsRes,
       maintenanceFlagImagesRes,
@@ -789,6 +819,8 @@ export default function AdminPage() {
     setSops((sopsRes.data ?? []) as SopRow[]);
     setSopImages((sopImagesRes.data ?? []) as SopImageRow[]);
     setProfiles((profilesRes.data ?? []) as ProfileRow[]);
+    setOwnerAccounts((ownerAccountsRes.data ?? []) as OwnerAccountRow[]);
+    setOwnerPropertyAccess((ownerPropertyAccessRes.data ?? []) as OwnerPropertyAccessRow[]);
     setPropertyCalendars((propertyCalendarsRes.data ?? []) as PropertyCalendarRow[]);
     setMaintenanceFlags((maintenanceFlagsRes.data ?? []) as MaintenanceFlagRow[]);
     setMaintenanceFlagImages((maintenanceFlagImagesRes.data ?? []) as MaintenanceFlagImageRow[]);
@@ -1031,20 +1063,97 @@ export default function AdminPage() {
   }
 
   async function addProperty() {
-    if (!propertyName.trim()) return;
-
-    const { error } = await supabase.from("properties").insert({
-      name: propertyName.trim(),
-      address: `${propertyStreet}, ${propertyCity}, ${propertyProvince}, ${propertyPostal}`,
-      notes: propertyNotes.trim() || null,
-      default_cleaner_units_needed: Number(propertyUnitsNeeded),
-      cleaner_units_required_strict: propertyUnitsStrict,
-      show_team_status_to_cleaners: propertyShowTeamStatus,
-    });
-
-    if (error) {
-      setError(error.message);
+    if (!propertyName.trim()) {
+      setError("Property name is required.");
       return;
+    }
+
+    setError("");
+    setActionMessage("");
+
+    const ownerEmail = propertyOwnerEmail.trim().toLowerCase();
+    const ownerName = propertyOwnerName.trim();
+
+    const { data: insertedProperty, error: propertyError } = await supabase
+      .from("properties")
+      .insert({
+        name: propertyName.trim(),
+        address: `${propertyStreet}, ${propertyCity}, ${propertyProvince}, ${propertyPostal}`,
+        notes: propertyNotes.trim() || null,
+        default_cleaner_units_needed: Number(propertyUnitsNeeded),
+        cleaner_units_required_strict: propertyUnitsStrict,
+        show_team_status_to_cleaners: propertyShowTeamStatus,
+      })
+      .select()
+      .single();
+
+    if (propertyError || !insertedProperty) {
+      setError(propertyError?.message || "Could not create property.");
+      return;
+    }
+
+    if (ownerEmail) {
+      let ownerAccountId: string | null = null;
+
+      const existingOwner = ownerAccounts.find(
+        (owner) => owner.email.trim().toLowerCase() === ownerEmail
+      );
+
+      if (existingOwner) {
+        ownerAccountId = existingOwner.id;
+
+        const updates: Record<string, any> = {};
+        if (ownerName && !existingOwner.full_name) {
+          updates.full_name = ownerName;
+        }
+
+        if (Object.keys(updates).length > 0) {
+          const { error: ownerUpdateError } = await supabase
+            .from("owner_accounts")
+            .update(updates)
+            .eq("id", existingOwner.id);
+
+          if (ownerUpdateError) {
+            setError(ownerUpdateError.message);
+            return;
+          }
+        }
+      } else {
+        const { data: insertedOwner, error: ownerInsertError } = await supabase
+          .from("owner_accounts")
+          .insert({
+            email: ownerEmail,
+            full_name: ownerName || null,
+            is_active: true,
+          })
+          .select()
+          .single();
+
+        if (ownerInsertError || !insertedOwner) {
+          setError(ownerInsertError?.message || "Could not create owner account.");
+          return;
+        }
+
+        ownerAccountId = insertedOwner.id;
+      }
+
+      if (ownerAccountId) {
+        const existingAccess = ownerPropertyAccess.find(
+          (row) => row.owner_account_id === ownerAccountId && row.property_id === insertedProperty.id
+        );
+
+        if (!existingAccess) {
+          const { error: accessError } = await supabase.from("owner_property_access").insert({
+            owner_account_id: ownerAccountId,
+            property_id: insertedProperty.id,
+          });
+
+          if (accessError) {
+            setError(accessError.message);
+            return;
+          }
+        }
+      }
     }
 
     setPropertyName("");
@@ -1053,10 +1162,12 @@ export default function AdminPage() {
     setPropertyProvince("");
     setPropertyPostal("");
     setPropertyNotes("");
+    setPropertyOwnerName("");
+    setPropertyOwnerEmail("");
     setPropertyUnitsNeeded("1");
     setPropertyUnitsStrict(false);
     setPropertyShowTeamStatus(true);
-    setActionMessage("Property added.");
+    setActionMessage(ownerEmail ? "Property added and owner linked." : "Property added.");
     await loadData();
   }
 
@@ -2869,6 +2980,74 @@ This removes its linked members and deletes the grounds account.`
       </div>
     );
   }
+  function getOwnerForProperty(propertyId: string) {
+    const accessRow = ownerPropertyAccess.find((row) => row.property_id === propertyId);
+    if (!accessRow) return null;
+    return ownerAccounts.find((owner) => owner.id === accessRow.owner_account_id) || null;
+  }
+
+  function getOwnerInviteStatus(owner: OwnerAccountRow | null) {
+    if (!owner) return "No owner linked";
+    if (owner.invite_accepted_at) return "Active";
+    if (owner.invite_sent_at) return "Invite sent";
+    return "Not invited";
+  }
+
+  async function inviteOwnerForProperty(propertyId: string, ownerEmail: string, ownerName: string) {
+    const trimmedEmail = ownerEmail.trim().toLowerCase();
+    const trimmedName = ownerName.trim();
+
+    if (!propertyId) {
+      setError("Property is required.");
+      return;
+    }
+
+    if (!trimmedEmail) {
+      setError("Owner email is required before sending an invite.");
+      return;
+    }
+
+    setError("");
+    setActionMessage("");
+    setSendingOwnerInviteId(propertyId);
+
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (sessionError || !session?.access_token) {
+      setError("Could not verify your admin session.");
+      setSendingOwnerInviteId(null);
+      return;
+    }
+
+    const response = await fetch("/api/admin/invite-owner", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        propertyId,
+        ownerEmail: trimmedEmail,
+        ownerName: trimmedName,
+      }),
+    });
+
+    const result = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      setError(result?.error || "Failed to send owner invite.");
+      setSendingOwnerInviteId(null);
+      return;
+    }
+
+    setActionMessage(`Invite sent to ${trimmedEmail}.`);
+    setSendingOwnerInviteId(null);
+    await loadData();
+  }
+
   function renderAddPropertySection() {
     return (
       <section id="maintenance-flags-section" className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
@@ -2924,6 +3103,28 @@ This removes its linked members and deletes the grounds account.`
             onChange={(e) => setPropertyNotes(e.target.value)}
           />
 
+          <div className="rounded-[24px] border border-[#eadfce] bg-[#fffaf4] p-4">
+            <div className="text-sm font-medium text-[#5f5245]">Owner portal access</div>
+            <p className="mt-1 text-xs text-[#8a7b68]">
+              Add the owner now so the property is linked to the correct owner account from the start.
+            </p>
+
+            <div className="mt-3 grid gap-2 md:grid-cols-2">
+              <input
+                className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                placeholder="Owner name"
+                value={propertyOwnerName}
+                onChange={(e) => setPropertyOwnerName(e.target.value)}
+              />
+              <input
+                className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                placeholder="Owner email"
+                value={propertyOwnerEmail}
+                onChange={(e) => setPropertyOwnerEmail(e.target.value)}
+              />
+            </div>
+          </div>
+
           <select
             className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
             value={propertyUnitsNeeded}
@@ -2972,6 +3173,8 @@ This removes its linked members and deletes the grounds account.`
         <div className="space-y-3">
           {properties.map((p) => {
             const propertyCalendarCount = propertyCalendars.filter((calendar) => calendar.property_id === p.id).length;
+            const owner = getOwnerForProperty(p.id);
+            const ownerStatus = getOwnerInviteStatus(owner);
             return (
               <div key={p.id} className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -2986,9 +3189,28 @@ This removes its linked members and deletes the grounds account.`
                     <div className="mt-2 text-xs text-[#8a7b68]">
                       Calendars configured: {propertyCalendarCount}
                     </div>
+
+                    <div className="mt-3 rounded-[18px] border border-[#eadfce] bg-white/70 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8a7b68]">Owner portal</div>
+                        <span className="rounded-full border border-[#eadfce] bg-[#fffaf4] px-3 py-1 text-[11px] font-medium text-[#7f7263]">{ownerStatus}</span>
+                      </div>
+                      <div className="mt-2 text-sm text-[#5f5245]">{owner?.full_name || "No owner name added"}</div>
+                      <div className="mt-1 text-sm text-[#8a7b68]">{owner?.email || "No owner email linked yet"}</div>
+                    </div>
                   </div>
 
-                  <div className="w-full md:w-[220px]">
+                  <div className="w-full space-y-2 md:w-[220px]">
+                    {owner ? (
+                      <button
+                        className="w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm text-[#5f5245] transition hover:bg-[#fffaf4] disabled:opacity-50"
+                        onClick={() => void inviteOwnerForProperty(p.id, owner.email || "", owner.full_name || "")}
+                        disabled={sendingOwnerInviteId === p.id || !owner.email}
+                      >
+                        {sendingOwnerInviteId === p.id ? "Sending..." : owner.invite_sent_at ? "Resend invite" : "Send invite"}
+                      </button>
+                    ) : null}
+
                     <button
                       className="w-full rounded-[14px] border border-[#efc6c6] bg-[#fff5f5] px-3 py-2 text-sm text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-50"
                       onClick={() => void deleteProperty(p)}
