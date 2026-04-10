@@ -1757,73 +1757,6 @@ export default function AdminPage() {
     await loadData();
   }
 
-
-  async function deleteCleaningJob(jobId: string) {
-    const confirmed = window.confirm(
-      "Delete this cleaning job?\n\nThis will delete all slots. This cannot be undone."
-    );
-    if (!confirmed) return;
-
-    setError("");
-    setActionMessage("");
-
-    try {
-      const { error: slotError } = await supabase
-        .from("turnover_job_slots")
-        .delete()
-        .eq("job_id", jobId);
-
-      if (slotError) throw slotError;
-
-      const { error: jobError } = await supabase
-        .from("turnover_jobs")
-        .delete()
-        .eq("id", jobId);
-
-      if (jobError) throw jobError;
-
-      if (highlightedJobId === jobId) {
-        setHighlightedJobId(null);
-      }
-
-      setActionMessage("Cleaning job deleted.");
-      await loadData();
-    } catch (err: any) {
-      setError(err?.message || "Failed to delete cleaning job.");
-    }
-  }
-
-  async function deleteGroundsJob(jobId: string) {
-    const confirmed = window.confirm(
-      "Delete this grounds job?\n\nThis will delete all slots. This cannot be undone."
-    );
-    if (!confirmed) return;
-
-    setError("");
-    setActionMessage("");
-
-    try {
-      const { error: slotError } = await supabase
-        .from("grounds_job_slots")
-        .delete()
-        .eq("job_id", jobId);
-
-      if (slotError) throw slotError;
-
-      const { error: jobError } = await supabase
-        .from("grounds_jobs")
-        .delete()
-        .eq("id", jobId);
-
-      if (jobError) throw jobError;
-
-      setActionMessage("Grounds job deleted.");
-      await loadData();
-    } catch (err: any) {
-      setError(err?.message || "Failed to delete grounds job.");
-    }
-  }
-
   async function deleteGroundsAccount(account: GroundsAccount) {
     const displayName = account.display_name || account.email || "this grounds account";
     const confirmed = window.confirm(
@@ -2620,6 +2553,67 @@ This removes its linked members and deletes the grounds account.`
       }),
     [filteredMaintenanceFlags]
   );
+  const todayYmd = toYmd(now);
+
+  const todayAtGlanceItems = useMemo(() => {
+    const propertyById = new Map(properties.map((property) => [property.id, property]));
+
+    const cleaningItems = jobs
+      .filter((job) => {
+        const jobDate = job.scheduled_for || extractCheckoutDate(job.notes);
+        return jobDate === todayYmd;
+      })
+      .map((job) => {
+        const property = propertyById.get(job.property_id) || null;
+        const slots = jobSlotsByJobId[job.id] ?? [];
+        const waiting = slots.some((slot) => slot.status === "offered" || slot.status === "stranded");
+        return {
+          id: `cleaning-${job.id}`,
+          date: todayYmd,
+          sortDate: `${todayYmd}T09:00:00`,
+          kind: "Cleaning",
+          title: "Cleaning",
+          propertyName: property?.name || getPropertyName(job.property_id),
+          city: getCityFromAddress(property?.address),
+          status: waiting ? "Waiting" : job.status || "Scheduled",
+        };
+      });
+
+    const groundsItems = groundsJobs
+      .filter((job) => job.scheduled_for === todayYmd)
+      .map((job) => {
+        const property = propertyById.get(job.property_id) || null;
+        const slots = groundsJobSlots.filter((slot) => slot.job_id === job.id);
+        return {
+          id: `grounds-${job.id}`,
+          date: todayYmd,
+          sortDate: `${todayYmd}T12:00:00`,
+          kind: "Grounds",
+          title:
+            GROUNDS_JOB_TYPE_OPTIONS.find((option) => option.value === job.job_type)?.label ||
+            job.job_type ||
+            "Grounds job",
+          propertyName: property?.name || getPropertyName(job.property_id),
+          city: getCityFromAddress(property?.address),
+          status: getGroundsJobDisplayStatus(job, slots),
+        };
+      });
+
+    return [...cleaningItems, ...groundsItems].sort((a, b) =>
+      a.sortDate.localeCompare(b.sortDate) || a.propertyName.localeCompare(b.propertyName)
+    );
+  }, [jobs, groundsJobs, properties, todayYmd, jobSlotsByJobId, groundsJobSlots]);
+
+  const todayAtGlanceCounts = useMemo(() => {
+    return {
+      cleaning: todayAtGlanceItems.filter((item) => item.kind === "Cleaning").length,
+      grounds: todayAtGlanceItems.filter((item) => item.kind === "Grounds").length,
+      waiting: waitingJobs.length,
+      overdue: overdueWaitingJobs.length,
+      flags: openMaintenanceFlags.length,
+    };
+  }, [todayAtGlanceItems, waitingJobs.length, overdueWaitingJobs.length, openMaintenanceFlags.length]);
+
 
   const resolvedMaintenanceFlags = useMemo(
     () =>
@@ -3644,14 +3638,7 @@ This removes its linked members and deletes the grounds account.`
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => void deleteGroundsJob(job.id)}
-                className="rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-medium text-red-700 transition hover:bg-red-100"
-              >
-                Delete
-              </button>
+            <div className="flex flex-wrap gap-2">
               <span className="rounded-full border border-[#cfe2cf] bg-[#f7fbf7] px-3 py-1 text-xs font-medium text-[#46604b]">
                 Offered: {offeredCount}
               </span>
@@ -3962,19 +3949,7 @@ This removes its linked members and deletes the grounds account.`
                   onClick={() => setHighlightedJobId(job.id)}
                   className={`rounded-[22px] p-4 transition cursor-pointer ${highlightedJobId === job.id ? "border-2 border-[#b48d4e] bg-[#fffaf3] shadow-lg" : "border border-[#eadfce] bg-[#fcfaf7] hover:shadow-sm"}`}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="text-base font-semibold">{getPropertyName(job.property_id)}</div>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void deleteCleaningJob(job.id);
-                      }}
-                      className="rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-medium text-red-700 transition hover:bg-red-100"
-                    >
-                      Delete
-                    </button>
-                  </div>
+                  <div className="text-base font-semibold">{getPropertyName(job.property_id)}</div>
                   <div className="mt-2 text-sm text-[#6f6255]">
                     Status: <span className="font-medium text-[#241c15]">{getJobDisplayStatus(job, slots)}</span>
                   </div>
@@ -5139,6 +5114,86 @@ This removes its linked members and deletes the grounds account.`
             </div>
           </div>
         ) : null}
+
+        <div className="mb-6 rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="text-xs uppercase tracking-[0.24em] text-[#8a7b68]">Today at a Glance</div>
+                <div className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#6f6255]">
+                  {now.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+                </div>
+              </div>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                {[
+                  { label: "Cleaning Today", value: todayAtGlanceCounts.cleaning },
+                  { label: "Grounds Today", value: todayAtGlanceCounts.grounds },
+                  { label: "Waiting", value: todayAtGlanceCounts.waiting },
+                  { label: "Overdue", value: todayAtGlanceCounts.overdue },
+                  { label: "Open Flags", value: todayAtGlanceCounts.flags },
+                ].map((item) => (
+                  <div key={item.label} className="rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-4 shadow-sm">
+                    <div className="text-[11px] uppercase tracking-[0.22em] text-[#8a7b68]">{item.label}</div>
+                    <div className="mt-2 text-3xl font-semibold text-[#241c15]">{item.value}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="w-full lg:max-w-xl">
+              <div className="rounded-[26px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-[#241c15]">Today’s Schedule</div>
+                    <div className="mt-1 text-sm text-[#7f7263]">
+                      Quick view of today’s jobs by property and town.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveSection("jobs");
+                      setAdminSelectedDate(todayYmd);
+                      setTimeout(() => {
+                        document.getElementById("admin-calendar-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                      }, 50);
+                    }}
+                    className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-xs font-medium text-[#6f6255] transition hover:bg-[#fffdf9]"
+                  >
+                    Open day view
+                  </button>
+                </div>
+
+                <div className="mt-4 space-y-2">
+                  {todayAtGlanceItems.length === 0 ? (
+                    <div className="rounded-[20px] border border-dashed border-[#d8c7ab] bg-white px-4 py-4 text-sm text-[#7f7263]">
+                      Nothing scheduled today.
+                    </div>
+                  ) : (
+                    todayAtGlanceItems.slice(0, 8).map((item) => (
+                      <div key={item.id} className="rounded-[18px] border border-[#eadfce] bg-white px-4 py-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${item.kind === "Cleaning" ? "bg-[#fff4dd] text-[#8a6112]" : "bg-[#edf7ef] text-[#2f6b2f]"}`}>
+                                {item.kind}
+                              </span>
+                              <span className="text-sm font-semibold text-[#241c15]">{item.title}</span>
+                            </div>
+                            <div className="mt-1 text-sm text-[#6f6255]">
+                              {item.propertyName}{item.city ? ` · ${item.city}` : ""}
+                            </div>
+                          </div>
+                          <div className="text-xs font-medium text-[#8a7b68]">{item.status}</div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
 
         <div className="mb-6 rounded-[30px] border border-[#e7ddd0] bg-white p-3 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
           <div className="flex flex-wrap gap-2">
