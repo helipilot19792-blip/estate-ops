@@ -570,6 +570,7 @@ export default function AdminPage() {
   const [recurringType, setRecurringType] = useState("weekly");
 
   const [jobPropertyId, setJobPropertyId] = useState("");
+  const [jobScheduledFor, setJobScheduledFor] = useState("");
 
   const [jobNotes, setJobNotes] = useState("");
   const [jobOverrideUnitsEnabled, setJobOverrideUnitsEnabled] = useState(false);
@@ -1336,11 +1337,17 @@ export default function AdminPage() {
 
     const property = properties.find((p) => p.id === jobPropertyId);
     const extractedDate = extractCheckoutDate(jobNotes.trim() || null);
+    const scheduledDate = jobScheduledFor || extractedDate;
+
+    if (!scheduledDate) {
+      setError("Please select a cleaning date or include a checkout date in the notes.");
+      return;
+    }
 
     const payload: Partial<Job> & { property_id: string; notes: string | null; scheduled_for: string | null } = {
       property_id: jobPropertyId,
       notes: jobNotes.trim() || null,
-      scheduled_for: extractedDate,
+      scheduled_for: scheduledDate,
     };
 
     if (jobOverrideUnitsEnabled) {
@@ -1385,6 +1392,7 @@ export default function AdminPage() {
     }
 
     setJobPropertyId("");
+    setJobScheduledFor("");
     setJobNotes("");
     setJobOverrideUnitsEnabled(false);
     setJobUnitsNeeded("1");
@@ -3620,6 +3628,13 @@ This removes its linked members and deletes the grounds account.`
               Override default staffing for this job
             </label>
 
+            <input
+              type="date"
+              className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+              value={jobScheduledFor}
+              onChange={(e) => setJobScheduledFor(e.target.value)}
+            />
+
             {jobOverrideUnitsEnabled ? (
               <div className="space-y-3 rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] p-4">
                 <select className="w-full rounded-[16px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" value={jobUnitsNeeded} onChange={(e) => setJobUnitsNeeded(e.target.value)}>
@@ -3640,7 +3655,7 @@ This removes its linked members and deletes the grounds account.`
               </div>
             ) : null}
 
-            <textarea className="min-h-[120px] w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" placeholder="Job notes. Example: Checkout date: 2026-04-08" value={jobNotes} onChange={(e) => setJobNotes(e.target.value)} />
+            <textarea className="min-h-[120px] w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" placeholder="Job notes. Optional. You can still include a checkout date here if needed." value={jobNotes} onChange={(e) => setJobNotes(e.target.value)} />
 
             <button className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]" onClick={() => void createJob()}>
               Create Cleaning Job

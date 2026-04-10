@@ -29,6 +29,33 @@ type GroundsJob = {
   job_type?: string | null;
 };
 
+type GroundsRecurringRule = {
+  id: string;
+  property_id: string;
+  task_type: string;
+  label: string | null;
+  notes: string | null;
+  frequency_type: string;
+  interval_days: number | null;
+  day_of_week: number | null;
+  day_of_month: number | null;
+  semi_monthly_day_1: number | null;
+  semi_monthly_day_2: number | null;
+  anchor_date: string | null;
+  start_date: string;
+  end_date: string | null;
+  next_run_date: string | null;
+  active: boolean;
+};
+
+type MaintenanceFlagImage = {
+  id: string;
+  flag_id: string;
+  image_url: string;
+  caption?: string | null;
+  sort_order: number;
+};
+
 type MaintenanceFlag = {
   id: string;
   property_id?: string | null;
@@ -163,6 +190,80 @@ function getGroundsLabel(jobType?: string | null) {
   }
 }
 
+function formatRecurringGroundsLabel(rule: GroundsRecurringRule) {
+  if (rule.label?.trim()) return rule.label.trim();
+  return getGroundsLabel(rule.task_type || "grounds");
+}
+
+function getNextRecurringDate(rule: GroundsRecurringRule) {
+  if (!rule.active) return null;
+
+  const today = new Date();
+  const todayYmd = normalizeYmd(today.toISOString()) || "";
+  const nextRun = normalizeYmd(rule.next_run_date);
+  if (nextRun && isFutureOrToday(nextRun)) return nextRun;
+
+  const startDate = normalizeYmd(rule.start_date);
+  if (startDate && isFutureOrToday(startDate)) return startDate;
+
+  if (rule.end_date) {
+    const endDate = normalizeYmd(rule.end_date);
+    if (endDate && endDate < todayYmd) return null;
+  }
+
+  if (rule.frequency_type === "weekly" || rule.frequency_type === "biweekly") {
+    const intervalDays =
+      rule.frequency_type === "biweekly"
+        ? 14
+        : Math.max(rule.interval_days || 7, 7);
+
+    const anchor = rule.anchor_date || rule.start_date;
+    if (!anchor) return null;
+
+    const cursor = new Date(`${anchor}T12:00:00`);
+    if (Number.isNaN(cursor.getTime())) return null;
+
+    while ((normalizeYmd(cursor.toISOString()) || "") < todayYmd) {
+      cursor.setDate(cursor.getDate() + intervalDays);
+    }
+
+    return normalizeYmd(cursor.toISOString());
+  }
+
+  if (rule.frequency_type === "monthly") {
+    const base = new Date();
+    const targetDay = Math.max(
+      1,
+      Math.min(rule.day_of_month || new Date(`${rule.start_date}T12:00:00`).getDate() || 1, 28)
+    );
+
+    let candidate = new Date(base.getFullYear(), base.getMonth(), targetDay);
+    if ((normalizeYmd(candidate.toISOString()) || "") < todayYmd) {
+      candidate = new Date(base.getFullYear(), base.getMonth() + 1, targetDay);
+    }
+    return normalizeYmd(candidate.toISOString());
+  }
+
+  if (rule.frequency_type === "semi_monthly") {
+    const d1 = Math.max(1, Math.min(rule.semi_monthly_day_1 || 1, 28));
+    const d2 = Math.max(1, Math.min(rule.semi_monthly_day_2 || 15, 28));
+    const base = new Date();
+    const candidates = [
+      new Date(base.getFullYear(), base.getMonth(), d1),
+      new Date(base.getFullYear(), base.getMonth(), d2),
+      new Date(base.getFullYear(), base.getMonth() + 1, d1),
+      new Date(base.getFullYear(), base.getMonth() + 1, d2),
+    ];
+
+    for (const candidate of candidates) {
+      const ymd = normalizeYmd(candidate.toISOString());
+      if (ymd && ymd >= todayYmd) return ymd;
+    }
+  }
+
+  return null;
+}
+
 function StatCard({
   label,
   value,
@@ -228,6 +329,7 @@ function ReportIssueModal({
   const [category, setCategory] = useState<string>("General concern");
   const [urgency, setUrgency] = useState<string>("normal");
   const [notes, setNotes] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -236,6 +338,7 @@ function ReportIssueModal({
     setCategory("General concern");
     setUrgency("normal");
     setNotes("");
+    setFiles([]);
     setSaving(false);
     setError("");
   }, [open]);
@@ -256,20 +359,63 @@ function ReportIssueModal({
     setSaving(true);
     setError("");
 
-    const { error: insertError } = await supabase.from("property_maintenance_flags").insert({
-      property_id: propertyId,
-      source: "owner",
-      category,
-      urgency,
-      status: "open",
-      notes: notes.trim(),
-      flagged_at: new Date().toISOString(),
-    });
+    const { data: flag, error: insertError } = await supabase
+      .from("property_maintenance_flags")
+      .insert({
+        property_id: propertyId,
+        source: "owner",
+        category,
+        urgency,
+        status: "open",
+        notes: notes.trim(),
+        flagged_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
 
-    if (insertError) {
-      setError(insertError.message || "Could not submit issue.");
+    if (insertError || !flag) {
+      setError(insertError?.message || "Could not submit issue.");
       setSaving(false);
       return;
+    }
+
+    if (files.length > 0) {
+      const uploads: Array<{ flag_id: string; image_url: string; sort_order: number }> = [];
+
+      for (let i = 0; i < files.length; i += 1) {
+        const file = files[i];
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const filePath = `${flag.id}/${Date.now()}-${i}-${safeName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from("maintenance-flag-images")
+          .upload(filePath, file);
+
+        if (uploadError) {
+          console.error(uploadError);
+          continue;
+        }
+
+        const { data } = supabase.storage
+          .from("maintenance-flag-images")
+          .getPublicUrl(filePath);
+
+        uploads.push({
+          flag_id: flag.id,
+          image_url: data.publicUrl,
+          sort_order: i,
+        });
+      }
+
+      if (uploads.length > 0) {
+        const { error: imageInsertError } = await supabase
+          .from("property_maintenance_flag_images")
+          .insert(uploads);
+
+        if (imageInsertError) {
+          console.error(imageInsertError);
+        }
+      }
     }
 
     setSaving(false);
@@ -348,6 +494,26 @@ function ReportIssueModal({
             />
           </div>
 
+          <div>
+            <label className="text-xs uppercase tracking-[0.18em] text-[#bfa67b]">Photos</label>
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              multiple
+              onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
+              className="mt-2 block w-full rounded-2xl border border-white/8 bg-[#100c08] px-4 py-3 text-sm text-[#cdbda0] file:mr-4 file:rounded-full file:border-0 file:bg-[#b08b47] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-[#17120d]"
+            />
+            <div className="mt-2 text-xs text-[#9f9079]">
+              Add photos from your camera or library to help explain the issue.
+            </div>
+            {files.length > 0 ? (
+              <div className="mt-2 text-sm text-[#cdbda0]">
+                {files.length} photo{files.length === 1 ? "" : "s"} selected
+              </div>
+            ) : null}
+          </div>
+
           {error ? (
             <div className="rounded-2xl border border-red-500/25 bg-red-950/20 px-4 py-3 text-sm text-red-200">
               {error}
@@ -385,7 +551,9 @@ export default function OwnerPage() {
   const [properties, setProperties] = useState<Property[]>([]);
   const [turnoverJobs, setTurnoverJobs] = useState<TurnoverJob[]>([]);
   const [groundsJobs, setGroundsJobs] = useState<GroundsJob[]>([]);
+  const [groundsRecurringRules, setGroundsRecurringRules] = useState<GroundsRecurringRule[]>([]);
   const [flags, setFlags] = useState<MaintenanceFlag[]>([]);
+  const [flagImages, setFlagImages] = useState<MaintenanceFlagImage[]>([]);
   const [reportOpen, setReportOpen] = useState(false);
   const [reportSuccess, setReportSuccess] = useState("");
 
@@ -399,14 +567,16 @@ export default function OwnerPage() {
     setLoading(true);
     setError("");
 
-    const [propertiesRes, turnoverRes, groundsRes, flagsRes] = await Promise.all([
+    const [propertiesRes, turnoverRes, groundsRes, groundsRecurringRulesRes, flagsRes, flagImagesRes] = await Promise.all([
       supabase.from("properties").select("id,name,address,notes").order("created_at", { ascending: false }),
       supabase.from("turnover_jobs").select("id,property_id,status,notes,created_at,scheduled_for").order("created_at", { ascending: false }),
       supabase.from("grounds_jobs").select("id,property_id,status,notes,created_at,scheduled_for,job_type").order("created_at", { ascending: false }),
+      supabase.from("property_grounds_recurring_rules").select("id,property_id,task_type,label,notes,frequency_type,interval_days,day_of_week,day_of_month,semi_monthly_day_1,semi_monthly_day_2,anchor_date,start_date,end_date,next_run_date,active").order("created_at", { ascending: false }),
       supabase.from("property_maintenance_flags").select("id,property_id,source,category,urgency,status,notes,created_at,flagged_at,resolved_at").order("created_at", { ascending: false }),
+      supabase.from("property_maintenance_flag_images").select("id,flag_id,image_url,caption,sort_order").order("sort_order", { ascending: true }),
     ]);
 
-    for (const res of [propertiesRes, turnoverRes, groundsRes, flagsRes]) {
+    for (const res of [propertiesRes, turnoverRes, groundsRes, groundsRecurringRulesRes, flagsRes, flagImagesRes]) {
       if (res.error) {
         setError(res.error.message);
         setLoading(false);
@@ -417,7 +587,9 @@ export default function OwnerPage() {
     setProperties((propertiesRes.data ?? []) as Property[]);
     setTurnoverJobs((turnoverRes.data ?? []) as TurnoverJob[]);
     setGroundsJobs((groundsRes.data ?? []) as GroundsJob[]);
+    setGroundsRecurringRules((groundsRecurringRulesRes.data ?? []) as GroundsRecurringRule[]);
     setFlags((flagsRes.data ?? []) as MaintenanceFlag[]);
+    setFlagImages((flagImagesRes.data ?? []) as MaintenanceFlagImage[]);
     setLoading(false);
   }
 
@@ -438,6 +610,11 @@ export default function OwnerPage() {
     return groundsJobs.filter((job) => job.property_id === selectedProperty.id);
   }, [selectedProperty, groundsJobs]);
 
+  const propertyGroundsRecurringRules = useMemo(() => {
+    if (!selectedProperty) return [];
+    return groundsRecurringRules.filter((rule) => rule.property_id === selectedProperty.id && rule.active);
+  }, [selectedProperty, groundsRecurringRules]);
+
   const propertyFlags = useMemo(() => {
     if (!selectedProperty) return [];
     return flags.filter((flag) => flag.property_id === selectedProperty.id);
@@ -454,11 +631,32 @@ export default function OwnerPage() {
       .sort((a, b) => (normalizeYmd(a.scheduled_for) || "").localeCompare(normalizeYmd(b.scheduled_for) || ""))[0] || null;
   }, [propertyTurnoverJobs]);
 
-  const nextGrounds = useMemo(() => {
+  const nextGroundsJob = useMemo(() => {
     return propertyGroundsJobs
       .filter((job) => isFutureOrToday(normalizeYmd(job.scheduled_for)))
       .sort((a, b) => (normalizeYmd(a.scheduled_for) || "").localeCompare(normalizeYmd(b.scheduled_for) || ""))[0] || null;
   }, [propertyGroundsJobs]);
+
+  const nextRecurringGroundsRule = useMemo(() => {
+    return propertyGroundsRecurringRules
+      .map((rule) => ({ rule, nextDate: getNextRecurringDate(rule) }))
+      .filter((item) => !!item.nextDate)
+      .sort((a, b) => (a.nextDate || "").localeCompare(b.nextDate || ""))[0] || null;
+  }, [propertyGroundsRecurringRules]);
+
+  const nextGrounds = nextGroundsJob
+    ? {
+        date: nextGroundsJob.scheduled_for,
+        label: getGroundsLabel(nextGroundsJob.job_type),
+        subtext: "Upcoming exterior service",
+      }
+    : nextRecurringGroundsRule
+      ? {
+          date: nextRecurringGroundsRule.nextDate,
+          label: formatRecurringGroundsLabel(nextRecurringGroundsRule.rule),
+          subtext: "Recurring grounds schedule",
+        }
+      : null;
 
   const upcomingBooking = useMemo(() => {
     return propertyTurnoverJobs
@@ -520,6 +718,20 @@ export default function OwnerPage() {
       });
     }
 
+    for (const rule of propertyGroundsRecurringRules) {
+      const nextDate = getNextRecurringDate(rule);
+      if (!nextDate) continue;
+
+      items.push({
+        id: `grounds-rule-${rule.id}`,
+        type: "grounds",
+        title: `${formatRecurringGroundsLabel(rule)} • Recurring`,
+        date: nextDate,
+        subtitle: rule.notes?.trim() || "Recurring grounds schedule",
+        tone: "emerald",
+      });
+    }
+
     for (const flag of openFlags) {
       items.push({
         id: `issue-${flag.id}`,
@@ -538,7 +750,7 @@ export default function OwnerPage() {
         return aDate.localeCompare(bDate);
       })
       .slice(0, 8);
-  }, [propertyTurnoverJobs, propertyGroundsJobs, openFlags]);
+  }, [propertyTurnoverJobs, propertyGroundsJobs, propertyGroundsRecurringRules, openFlags]);
 
   if (loading) {
     return (
@@ -571,6 +783,15 @@ export default function OwnerPage() {
   }
 
   const bookingInfo = upcomingBooking?.booking || null;
+  const flagImagesByFlagId = useMemo(() => {
+    const map = new Map<string, MaintenanceFlagImage[]>();
+    for (const image of flagImages) {
+      const list = map.get(image.flag_id) || [];
+      list.push(image);
+      map.set(image.flag_id, list);
+    }
+    return map;
+  }, [flagImages]);
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(176,139,71,0.14),transparent_28%),#0f0d0a] px-4 py-6 text-[#f7f1e8] sm:px-6 sm:py-8">
@@ -615,8 +836,8 @@ export default function OwnerPage() {
           />
           <StatCard
             label="Next Grounds Service"
-            value={nextGrounds ? formatDateLabel(nextGrounds.scheduled_for) : "Not scheduled"}
-            subtext={nextGrounds ? getGroundsLabel(nextGrounds.job_type) : "No exterior service scheduled"}
+            value={nextGrounds ? formatDateLabel(nextGrounds.date) : "Not scheduled"}
+            subtext={nextGrounds ? `${nextGrounds.label}${nextGrounds.subtext ? ` • ${nextGrounds.subtext}` : ""}` : "No exterior service scheduled"}
           />
           <StatCard
             label="Upcoming Booking"
@@ -679,6 +900,19 @@ export default function OwnerPage() {
                     <div className="mt-2 text-sm leading-relaxed text-[#d8c7ab]">
                       {flag.notes || "Issue reported"}
                     </div>
+
+                    {(flagImagesByFlagId.get(flag.id) || []).length > 0 ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {(flagImagesByFlagId.get(flag.id) || []).slice(0, 4).map((image) => (
+                          <img
+                            key={image.id}
+                            src={image.image_url}
+                            alt="Issue attachment"
+                            className="h-16 w-16 rounded-xl object-cover"
+                          />
+                        ))}
+                      </div>
+                    ) : null}
 
                     <div className="mt-3 text-xs uppercase tracking-[0.18em] text-[#bfa67b]">
                       Reported {formatDateLabel(flag.flagged_at || flag.created_at)}
