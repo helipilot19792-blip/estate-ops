@@ -1757,6 +1757,73 @@ export default function AdminPage() {
     await loadData();
   }
 
+
+  async function deleteCleaningJob(jobId: string) {
+    const confirmed = window.confirm(
+      "Delete this cleaning job?\n\nThis will delete all slots. This cannot be undone."
+    );
+    if (!confirmed) return;
+
+    setError("");
+    setActionMessage("");
+
+    try {
+      const { error: slotError } = await supabase
+        .from("turnover_job_slots")
+        .delete()
+        .eq("job_id", jobId);
+
+      if (slotError) throw slotError;
+
+      const { error: jobError } = await supabase
+        .from("turnover_jobs")
+        .delete()
+        .eq("id", jobId);
+
+      if (jobError) throw jobError;
+
+      if (highlightedJobId === jobId) {
+        setHighlightedJobId(null);
+      }
+
+      setActionMessage("Cleaning job deleted.");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Failed to delete cleaning job.");
+    }
+  }
+
+  async function deleteGroundsJob(jobId: string) {
+    const confirmed = window.confirm(
+      "Delete this grounds job?\n\nThis will delete all slots. This cannot be undone."
+    );
+    if (!confirmed) return;
+
+    setError("");
+    setActionMessage("");
+
+    try {
+      const { error: slotError } = await supabase
+        .from("grounds_job_slots")
+        .delete()
+        .eq("job_id", jobId);
+
+      if (slotError) throw slotError;
+
+      const { error: jobError } = await supabase
+        .from("grounds_jobs")
+        .delete()
+        .eq("id", jobId);
+
+      if (jobError) throw jobError;
+
+      setActionMessage("Grounds job deleted.");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Failed to delete grounds job.");
+    }
+  }
+
   async function deleteGroundsAccount(account: GroundsAccount) {
     const displayName = account.display_name || account.email || "this grounds account";
     const confirmed = window.confirm(
@@ -3577,7 +3644,14 @@ This removes its linked members and deletes the grounds account.`
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void deleteGroundsJob(job.id)}
+                className="rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-medium text-red-700 transition hover:bg-red-100"
+              >
+                Delete
+              </button>
               <span className="rounded-full border border-[#cfe2cf] bg-[#f7fbf7] px-3 py-1 text-xs font-medium text-[#46604b]">
                 Offered: {offeredCount}
               </span>
@@ -3888,7 +3962,19 @@ This removes its linked members and deletes the grounds account.`
                   onClick={() => setHighlightedJobId(job.id)}
                   className={`rounded-[22px] p-4 transition cursor-pointer ${highlightedJobId === job.id ? "border-2 border-[#b48d4e] bg-[#fffaf3] shadow-lg" : "border border-[#eadfce] bg-[#fcfaf7] hover:shadow-sm"}`}
                 >
-                  <div className="text-base font-semibold">{getPropertyName(job.property_id)}</div>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="text-base font-semibold">{getPropertyName(job.property_id)}</div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void deleteCleaningJob(job.id);
+                      }}
+                      className="rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-medium text-red-700 transition hover:bg-red-100"
+                    >
+                      Delete
+                    </button>
+                  </div>
                   <div className="mt-2 text-sm text-[#6f6255]">
                     Status: <span className="font-medium text-[#241c15]">{getJobDisplayStatus(job, slots)}</span>
                   </div>
