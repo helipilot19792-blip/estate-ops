@@ -5,6 +5,18 @@ import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
+function getCityFromAddress(address?: string | null) {
+  if (!address) return "";
+
+  const parts = address.split(",");
+
+  if (parts.length >= 2) {
+    return parts[1].trim();
+  }
+
+  return address;
+}
+
 type Property = {
   id: string;
   name: string | null;
