@@ -530,7 +530,7 @@ export default function AdminPage() {
   const [groundsJobShowTeamStatus, setGroundsJobShowTeamStatus] = useState(true);
   const [groundsJobNeedsSecureAccess, setGroundsJobNeedsSecureAccess] = useState(false);
   const [groundsJobNeedsGarageAccess, setGroundsJobNeedsGarageAccess] = useState(false);
-  const [isRecurring, setIsRecurring] = useState(false);
+ const [jobMode, setJobMode] = useState<"single" | "recurring">("single");
   const [recurringType, setRecurringType] = useState("weekly");
 
   const [jobPropertyId, setJobPropertyId] = useState("");
@@ -1620,14 +1620,74 @@ export default function AdminPage() {
       return;
     }
 
+    if (!groundsJobScheduledFor) {
+      setError(jobMode === "recurring" ? "Select a start date for the recurring grounds job." : "Select a date for the grounds job.");
+      return;
+    }
+
     setError("");
     setActionMessage("");
+
+    const unitsNeeded = Number(groundsJobUnitsNeeded || "1");
+
+    if (jobMode === "recurring") {
+      const startDate = new Date(`${groundsJobScheduledFor}T12:00:00`);
+      const dayOfWeek = Number.isNaN(startDate.getTime()) ? null : startDate.getDay();
+      const dayOfMonth = Number.isNaN(startDate.getTime()) ? null : startDate.getDate();
+
+      const recurringPayload = {
+        property_id: groundsJobPropertyId,
+        task_type: groundsJobType,
+        label: null,
+        notes: groundsJobNotes.trim() || null,
+        frequency_type: recurringType,
+        interval_days: null,
+        day_of_week: recurringType === "weekly" || recurringType === "biweekly" ? dayOfWeek : null,
+        day_of_month: recurringType === "monthly" ? dayOfMonth : null,
+        semi_monthly_day_1: recurringType === "semi_monthly" ? dayOfMonth : null,
+        semi_monthly_day_2: recurringType === "semi_monthly" ? Math.min((dayOfMonth || 1) + 14, 28) : null,
+        anchor_date: recurringType === "weekly" || recurringType === "biweekly" ? groundsJobScheduledFor : null,
+        start_date: groundsJobScheduledFor,
+        end_date: null,
+        next_run_date: groundsJobScheduledFor,
+        grounds_units_needed: unitsNeeded,
+        grounds_units_required_strict: groundsJobUnitsStrict,
+        show_team_status_to_grounds: groundsJobShowTeamStatus,
+        needs_secure_access: groundsJobNeedsSecureAccess,
+        needs_garage_access: groundsJobNeedsGarageAccess,
+        active: true,
+      };
+
+      const { error: recurringError } = await supabase
+        .from("property_grounds_recurring_rules")
+        .insert(recurringPayload);
+
+      if (recurringError) {
+        setError(recurringError.message || "Could not create recurring grounds rule.");
+        return;
+      }
+
+      setGroundsJobPropertyId("");
+      setGroundsJobType("lawn_cut");
+      setGroundsJobScheduledFor("");
+      setGroundsJobNotes("");
+      setGroundsJobOverrideUnitsEnabled(false);
+      setGroundsJobUnitsNeeded("1");
+      setGroundsJobUnitsStrict(false);
+      setGroundsJobShowTeamStatus(true);
+      setGroundsJobNeedsSecureAccess(false);
+      setGroundsJobNeedsGarageAccess(false);
+      setJobMode("single");
+      setRecurringType("weekly");
+      setActionMessage("Recurring grounds rule created.");
+      await loadData();
+      return;
+    }
 
     const propertyAssignments = groundsAssignments
       .filter((assignment) => assignment.property_id === groundsJobPropertyId)
       .sort((a, b) => a.priority - b.priority);
 
-    const unitsNeeded = Number(groundsJobUnitsNeeded || "1");
     const assignedAccounts = propertyAssignments.slice(0, unitsNeeded);
     const staffingStatus = getGroundsJobStaffingStatus(unitsNeeded, assignedAccounts.length);
     const initialStatus = assignedAccounts.length > 0 ? "offered" : "open";
@@ -1691,6 +1751,8 @@ export default function AdminPage() {
     setGroundsJobShowTeamStatus(true);
     setGroundsJobNeedsSecureAccess(false);
     setGroundsJobNeedsGarageAccess(false);
+    setJobMode("single");
+    setRecurringType("weekly");
     setActionMessage("Grounds job created.");
     await loadData();
   }
@@ -3294,10 +3356,36 @@ This removes its linked members and deletes the grounds account.`
         <section className="rounded-[30px] border border-[#d8e8d8] bg-[linear-gradient(180deg,#f8fcf8_0%,#f2f8f2_100%)] p-5 shadow-[0_18px_45px_rgba(28,86,39,0.08)]">
           <h2 className="text-xl font-semibold tracking-tight text-[#23422c]">Create Grounds Job</h2>
           <p className="mt-1 text-sm text-[#5b7460]">
-            Create a grounds job. Grounds slots are offered automatically from the property's grounds assignments.
-          </p>
+  Create a grounds job. Grounds slots are offered automatically from the property's grounds assignments.
+</p>
 
-          <div className="mt-5 space-y-3">
+<div className="mt-4 flex gap-3">
+  <button
+    type="button"
+    onClick={() => setJobMode("single")}
+    className={`rounded-full px-4 py-2 text-sm ${
+      jobMode === "single"
+        ? "bg-[#23422c] text-white"
+        : "border border-[#b7cfb7] bg-white text-[#23422c]"
+    }`}
+  >
+    One-time
+  </button>
+
+  <button
+    type="button"
+    onClick={() => setJobMode("recurring")}
+    className={`rounded-full px-4 py-2 text-sm ${
+      jobMode === "recurring"
+        ? "bg-[#23422c] text-white"
+        : "border border-[#b7cfb7] bg-white text-[#23422c]"
+    }`}
+  >
+    Recurring
+  </button>
+</div>
+
+<div className="mt-5 space-y-3">
             <select className="w-full rounded-[20px] border border-[#b7cfb7] bg-white px-4 py-3 text-sm outline-none focus:border-[#4f8a5b]" value={groundsJobPropertyId} onChange={(e) => setGroundsJobPropertyId(e.target.value)}>
               <option value="">Select property</option>
               {properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -3309,50 +3397,39 @@ This removes its linked members and deletes the grounds account.`
               ))}
             </select>
 
-            <input
-              type="date"
-              className="w-full rounded-[20px] border border-[#b7cfb7] bg-white px-4 py-3 text-sm outline-none focus:border-[#4f8a5b]"
-              value={groundsJobScheduledFor}
-              onChange={(e) => setGroundsJobScheduledFor(e.target.value)}
-            />
-            {/* RECURRING TOGGLE */}
-            <div className="mt-4 rounded-xl border border-[#2d4f3a] bg-[#0f2419] p-4">
-              <div className="flex items-center justify-between">
+            {jobMode === "single" ? (
+              <input
+                type="date"
+                className="w-full rounded-[20px] border border-[#b7cfb7] bg-white px-4 py-3 text-sm outline-none focus:border-[#4f8a5b]"
+                value={groundsJobScheduledFor}
+                onChange={(e) => setGroundsJobScheduledFor(e.target.value)}
+              />
+            ) : (
+              <div className="space-y-3 rounded-[20px] border border-[#cfe2cf] bg-white p-4">
                 <div>
-                  <p className="text-sm font-semibold text-[#e8f5ec]">
-                    Recurring Job
-                  </p>
-                  <p className="text-xs text-[#9fc7ad]">
-                    Automatically create future grounds jobs
-                  </p>
+                  <p className="text-sm font-semibold text-[#23422c]">Recurring schedule</p>
+                  <p className="mt-1 text-xs text-[#5b7460]">Choose how often this grounds job should repeat and when it should start.</p>
                 </div>
+
+                <select
+                  className="w-full rounded-[16px] border border-[#b7cfb7] bg-white px-4 py-3 text-sm outline-none focus:border-[#4f8a5b]"
+                  value={recurringType}
+                  onChange={(e) => setRecurringType(e.target.value)}
+                >
+                  <option value="weekly">Weekly</option>
+                  <option value="biweekly">Biweekly</option>
+                  <option value="semi_monthly">Semi-monthly</option>
+                  <option value="monthly">Monthly</option>
+                </select>
 
                 <input
-                  type="checkbox"
-                  checked={isRecurring}
-                  onChange={(e) => setIsRecurring(e.target.checked)}
+                  type="date"
+                  className="w-full rounded-[16px] border border-[#b7cfb7] bg-white px-4 py-3 text-sm outline-none focus:border-[#4f8a5b]"
+                  value={groundsJobScheduledFor}
+                  onChange={(e) => setGroundsJobScheduledFor(e.target.value)}
                 />
               </div>
-
-              {isRecurring && (
-                <div className="mt-4 space-y-3">
-                  <select
-                    value={recurringType}
-                    onChange={(e) => setRecurringType(e.target.value)}
-                    className="w-full rounded-lg bg-[#183828] p-2 text-sm text-[#e8f5ec]"
-                  >
-                    <option value="weekly">Weekly</option>
-                    <option value="biweekly">Biweekly</option>
-                    <option value="semi-monthly">Semi Monthly</option>
-                    <option value="monthly">Monthly</option>
-                  </select>
-
-                  <p className="text-xs text-[#9fc7ad]">
-                    Next run will be calculated automatically
-                  </p>
-                </div>
-              )}
-            </div>
+            )}
             {selectedGroundsProperty ? (
               <div className="rounded-[20px] border border-[#cfe2cf] bg-white p-4 text-sm text-[#46604b]">
                 Property assignments found: {selectedGroundsPropertyAssignmentCount}. Default staffing is currently set from the grounds job form below.
@@ -3398,59 +3475,9 @@ This removes its linked members and deletes the grounds account.`
 
             <textarea className="min-h-[120px] w-full rounded-[20px] border border-[#b7cfb7] bg-white px-4 py-3 text-sm outline-none focus:border-[#4f8a5b]" placeholder="Grounds job notes. Example: Put bins out tonight and return them tomorrow afternoon." value={groundsJobNotes} onChange={(e) => setGroundsJobNotes(e.target.value)} />
 
-            <button
-  onClick={async () => {
-    if (!groundsJobPropertyId || !groundsJobScheduledFor) {
-      alert("Please select property and date");
-      return;
-    }
-
-    // 🔁 RECURRING LOGIC
-    if (isRecurring) {
-      const { error } = await supabase.from("grounds_recurring_rules").insert({
-        property_id: groundsJobPropertyId,
-        job_type: groundsJobType,
-        frequency_type: recurringType,
-        next_run_date: groundsJobScheduledFor,
-        active: true,
-      });
-
-      if (error) {
-        console.error(error);
-        alert("Failed to create recurring rule");
-        return;
-      }
-
-      alert("Recurring rule created");
-      return;
-    }
-
-    // 🧹 NORMAL JOB CREATION
-    const { error } = await supabase.from("grounds_jobs").insert({
-      property_id: groundsJobPropertyId,
-      job_type: groundsJobType,
-      scheduled_for: groundsJobScheduledFor,
-      notes: groundsJobNotes,
-      needs_secure_access: groundsJobNeedsSecureAccess,
-      needs_garage_access: groundsJobNeedsGarageAccess,
-      grounds_units_needed: parseInt(groundsJobUnitsNeeded || "1"),
-      grounds_units_strict: groundsJobUnitsStrict,
-      grounds_show_team_status: groundsJobShowTeamStatus,
-      status: "pending",
-    });
-
-    if (error) {
-      console.error(error);
-      alert("Failed to create job");
-      return;
-    }
-
-    alert("Grounds job created");
-  }}
-  className="inline-flex items-center justify-center rounded-full bg-[#23422c] px-5 py-2 text-sm font-medium text-white"
->
-  Create Grounds Job
-</button>
+            <button className="inline-flex items-center justify-center rounded-full bg-[#23422c] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#1b3423]" onClick={() => void createGroundsJob()}>
+              {jobMode === "recurring" ? "Create Recurring Grounds Rule" : "Create Grounds Job"}
+            </button>
           </div>
           <div className="mt-8 border-t border-[#cfe2cf] pt-6">
             <div className="mb-4 flex items-center justify-between gap-3">
