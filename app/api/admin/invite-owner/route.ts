@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-// ENV SETUP
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const publicSupabaseKey =
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
@@ -9,7 +8,6 @@ const publicSupabaseKey =
   "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-// SAFETY CHECKS
 if (!supabaseUrl) {
   throw new Error("NEXT_PUBLIC_SUPABASE_URL is missing.");
 }
@@ -24,9 +22,10 @@ if (!serviceRoleKey) {
   throw new Error("SUPABASE_SERVICE_ROLE_KEY is missing.");
 }
 
+const ownerWelcomeUrl = "https://portal.estateofmindpm.com/owner/welcome";
+
 export async function POST(request: NextRequest) {
   try {
-    // AUTH CHECK
     const authHeader = request.headers.get("authorization");
     const token = authHeader?.replace("Bearer ", "");
 
@@ -61,7 +60,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Admin access required." }, { status: 403 });
     }
 
-    // BODY
     const body = await request.json();
     const propertyId = String(body.propertyId || "").trim();
     const ownerEmail = String(body.ownerEmail || "").trim().toLowerCase();
@@ -75,12 +73,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Owner email is required." }, { status: 400 });
     }
 
-    // SERVICE CLIENT (ADMIN PRIVILEGES)
     const serviceClient = createClient(supabaseUrl, serviceRoleKey);
 
     let ownerAccountId: string | null = null;
 
-    // CHECK / CREATE OWNER ACCOUNT
     const { data: existingOwner, error: existingOwnerError } = await serviceClient
       .from("owner_accounts")
       .select("*")
@@ -132,7 +128,6 @@ export async function POST(request: NextRequest) {
       ownerAccountId = insertedOwner.id;
     }
 
-    // LINK OWNER TO PROPERTY
     const { data: existingAccess, error: existingAccessError } = await serviceClient
       .from("owner_property_access")
       .select("id")
@@ -157,7 +152,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // SEND INVITE (OR LOGIN LINK IF USER EXISTS)
     const { data: usersList, error: listUsersError } = await serviceClient.auth.admin.listUsers();
 
     if (listUsersError) {
@@ -174,14 +168,18 @@ export async function POST(request: NextRequest) {
       const { error } = await serviceClient.auth.signInWithOtp({
         email: ownerEmail,
         options: {
-          emailRedirectTo: "https://portal.estateofmindpm.com/owner",
+          emailRedirectTo: ownerWelcomeUrl,
         },
       });
 
       authError = error;
     } else {
       const { error } = await serviceClient.auth.admin.inviteUserByEmail(ownerEmail, {
-        redirectTo: "https://portal.estateofmindpm.com/owner",
+        redirectTo: ownerWelcomeUrl,
+        data: {
+          role: "owner",
+          owner_name: ownerName || null,
+        },
       });
 
       authError = error;
