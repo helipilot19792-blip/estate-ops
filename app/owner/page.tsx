@@ -3,6 +3,22 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
+type OwnerAccountRow = {
+  id: string;
+  email: string;
+  full_name: string | null;
+  profile_id?: string | null;
+  invite_sent_at?: string | null;
+  invite_accepted_at?: string | null;
+  is_active: boolean;
+};
+
+type OwnerPropertyAccessRow = {
+  id: string;
+  owner_account_id: string;
+  property_id: string;
+};
+
 type Property = {
   id: string;
   name: string | null;
@@ -232,10 +248,9 @@ function getNextRecurringDate(rule: GroundsRecurringRule) {
 
   if (rule.frequency_type === "monthly") {
     const base = new Date();
-    const targetDay = Math.max(
-      1,
-      Math.min(rule.day_of_month || new Date(`${rule.start_date}T12:00:00`).getDate() || 1, 28)
-    );
+    const startDateValue = new Date(`${rule.start_date}T12:00:00`);
+    const fallbackDay = Number.isNaN(startDateValue.getTime()) ? 1 : startDateValue.getDate();
+    const targetDay = Math.max(1, Math.min(rule.day_of_month || fallbackDay || 1, 28));
 
     let candidate = new Date(base.getFullYear(), base.getMonth(), targetDay);
     if ((normalizeYmd(candidate.toISOString()) || "") < todayYmd) {
@@ -548,6 +563,7 @@ function ReportIssueModal({
 export default function OwnerPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [ownerAccount, setOwnerAccount] = useState<OwnerAccountRow | null>(null);
   const [properties, setProperties] = useState<Property[]>([]);
   const [turnoverJobs, setTurnoverJobs] = useState<TurnoverJob[]>([]);
   const [groundsJobs, setGroundsJobs] = useState<GroundsJob[]>([]);
@@ -563,20 +579,121 @@ export default function OwnerPage() {
     return params.get("property") || "";
   }, []);
 
+  const flagImagesByFlagId = useMemo(() => {
+    const map = new Map<string, MaintenanceFlagImage[]>();
+    for (const image of flagImages) {
+      const list = map.get(image.flag_id) || [];
+      list.push(image);
+      map.set(image.flag_id, list);
+    }
+    return map;
+  }, [flagImages]);
+
   async function loadData() {
     setLoading(true);
     setError("");
 
-    const [propertiesRes, turnoverRes, groundsRes, groundsRecurringRulesRes, flagsRes, flagImagesRes] = await Promise.all([
-      supabase.from("properties").select("id,name,address,notes").order("created_at", { ascending: false }),
-      supabase.from("turnover_jobs").select("id,property_id,status,notes,created_at,scheduled_for").order("created_at", { ascending: false }),
-      supabase.from("grounds_jobs").select("id,property_id,status,notes,created_at,scheduled_for,job_type").order("created_at", { ascending: false }),
-      supabase.from("property_grounds_recurring_rules").select("id,property_id,task_type,label,notes,frequency_type,interval_days,day_of_week,day_of_month,semi_monthly_day_1,semi_monthly_day_2,anchor_date,start_date,end_date,next_run_date,active").order("created_at", { ascending: false }),
-      supabase.from("property_maintenance_flags").select("id,property_id,source,category,urgency,status,notes,created_at,flagged_at,resolved_at").order("created_at", { ascending: false }),
-      supabase.from("property_maintenance_flag_images").select("id,flag_id,image_url,caption,sort_order").order("sort_order", { ascending: true }),
-    ]);
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
 
-    for (const res of [propertiesRes, turnoverRes, groundsRes, groundsRecurringRulesRes, flagsRes, flagImagesRes]) {
+    if (userError || !user?.email) {
+      setError("Please sign in to view your owner dashboard.");
+      setLoading(false);
+      return;
+    }
+
+    const email = user.email.trim().toLowerCase();
+
+    const { data: ownerRes, error: ownerError } = await supabase
+      .from("owner_accounts")
+      .select("*")
+      .eq("email", email)
+      .maybeSingle<OwnerAccountRow>();
+
+    if (ownerError) {
+      setError(ownerError.message);
+      setLoading(false);
+      return;
+    }
+
+    if (!ownerRes) {
+      setError("No owner account is linked to this sign-in.");
+      setLoading(false);
+      return;
+    }
+
+    setOwnerAccount(ownerRes);
+
+    const { data: accessRows, error: accessError } = (await supabase
+      .from("owner_property_access")
+      .select("*")
+      .eq("owner_account_id", ownerRes.id)) as {
+      data: OwnerPropertyAccessRow[] | null;
+      error: { message: string } | null;
+    };
+
+    if (accessError) {
+      setError(accessError.message);
+      setLoading(false);
+      return;
+    }
+
+    const propertyIds = (accessRows ?? []).map((row) => row.property_id);
+
+    if (propertyIds.length === 0) {
+      setProperties([]);
+      setTurnoverJobs([]);
+      setGroundsJobs([]);
+      setGroundsRecurringRules([]);
+      setFlags([]);
+      setFlagImages([]);
+      setLoading(false);
+      return;
+    }
+
+    const [propertiesRes, turnoverRes, groundsRes, groundsRecurringRulesRes, flagsRes, flagImagesRes] =
+      await Promise.all([
+        supabase
+          .from("properties")
+          .select("id,name,address,notes")
+          .in("id", propertyIds)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("turnover_jobs")
+          .select("id,property_id,status,notes,created_at,scheduled_for")
+          .in("property_id", propertyIds)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("grounds_jobs")
+          .select("id,property_id,status,notes,created_at,scheduled_for,job_type")
+          .in("property_id", propertyIds)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("property_grounds_recurring_rules")
+          .select("id,property_id,task_type,label,notes,frequency_type,interval_days,day_of_week,day_of_month,semi_monthly_day_1,semi_monthly_day_2,anchor_date,start_date,end_date,next_run_date,active")
+          .in("property_id", propertyIds)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("property_maintenance_flags")
+          .select("id,property_id,source,category,urgency,status,notes,created_at,flagged_at,resolved_at")
+          .in("property_id", propertyIds)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("property_maintenance_flag_images")
+          .select("id,flag_id,image_url,caption,sort_order")
+          .order("sort_order", { ascending: true }),
+      ]);
+
+    for (const res of [
+      propertiesRes,
+      turnoverRes,
+      groundsRes,
+      groundsRecurringRulesRes,
+      flagsRes,
+      flagImagesRes,
+    ]) {
       if (res.error) {
         setError(res.error.message);
         setLoading(false);
@@ -620,10 +737,7 @@ export default function OwnerPage() {
     return flags.filter((flag) => flag.property_id === selectedProperty.id);
   }, [selectedProperty, flags]);
 
-  const openFlags = useMemo(
-    () => propertyFlags.filter((flag) => !isResolved(flag)),
-    [propertyFlags]
-  );
+  const openFlags = useMemo(() => propertyFlags.filter((flag) => !isResolved(flag)), [propertyFlags]);
 
   const nextCleaning = useMemo(() => {
     return propertyTurnoverJobs
@@ -662,10 +776,7 @@ export default function OwnerPage() {
     return propertyTurnoverJobs
       .map((job) => {
         const booking = parseBookingFromNotes(job.notes);
-        return {
-          job,
-          booking,
-        };
+        return { job, booking };
       })
       .filter((item) => !!item.booking.checkoutDate && isFutureOrToday(item.booking.checkoutDate))
       .sort((a, b) => (a.booking.checkoutDate || "").localeCompare(b.booking.checkoutDate || ""))[0] || null;
@@ -783,15 +894,6 @@ export default function OwnerPage() {
   }
 
   const bookingInfo = upcomingBooking?.booking || null;
-  const flagImagesByFlagId = useMemo(() => {
-    const map = new Map<string, MaintenanceFlagImage[]>();
-    for (const image of flagImages) {
-      const list = map.get(image.flag_id) || [];
-      list.push(image);
-      map.set(image.flag_id, list);
-    }
-    return map;
-  }, [flagImages]);
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(176,139,71,0.14),transparent_28%),#0f0d0a] px-4 py-6 text-[#f7f1e8] sm:px-6 sm:py-8">
@@ -808,6 +910,9 @@ export default function OwnerPage() {
               <p className="mt-2 text-base text-[#cdbda0]">
                 {getCityFromAddress(selectedProperty.address) || selectedProperty.address || "Location unavailable"}
               </p>
+              {ownerAccount?.email ? (
+                <div className="mt-3 text-sm text-[#9f9079]">{ownerAccount.email}</div>
+              ) : null}
             </div>
 
             <div className="flex flex-wrap gap-3">
@@ -837,7 +942,11 @@ export default function OwnerPage() {
           <StatCard
             label="Next Grounds Service"
             value={nextGrounds ? formatDateLabel(nextGrounds.date) : "Not scheduled"}
-            subtext={nextGrounds ? `${nextGrounds.label}${nextGrounds.subtext ? ` • ${nextGrounds.subtext}` : ""}` : "No exterior service scheduled"}
+            subtext={
+              nextGrounds
+                ? `${nextGrounds.label}${nextGrounds.subtext ? ` • ${nextGrounds.subtext}` : ""}`
+                : "No exterior service scheduled"
+            }
           />
           <StatCard
             label="Upcoming Booking"
