@@ -493,10 +493,10 @@ export default function AdminPage() {
   const [deletingResolvedMaintenanceFlags, setDeletingResolvedMaintenanceFlags] = useState(false);
 
   const [propertyName, setPropertyName] = useState("");
- const [propertyStreet, setPropertyStreet] = useState("");
-const [propertyCity, setPropertyCity] = useState("");
-const [propertyProvince, setPropertyProvince] = useState("");
-const [propertyPostal, setPropertyPostal] = useState("");
+  const [propertyStreet, setPropertyStreet] = useState("");
+  const [propertyCity, setPropertyCity] = useState("");
+  const [propertyProvince, setPropertyProvince] = useState("");
+  const [propertyPostal, setPropertyPostal] = useState("");
   const [propertyNotes, setPropertyNotes] = useState("");
   const [propertyUnitsNeeded, setPropertyUnitsNeeded] = useState("1");
   const [propertyUnitsStrict, setPropertyUnitsStrict] = useState(false);
@@ -530,8 +530,11 @@ const [propertyPostal, setPropertyPostal] = useState("");
   const [groundsJobShowTeamStatus, setGroundsJobShowTeamStatus] = useState(true);
   const [groundsJobNeedsSecureAccess, setGroundsJobNeedsSecureAccess] = useState(false);
   const [groundsJobNeedsGarageAccess, setGroundsJobNeedsGarageAccess] = useState(false);
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurringType, setRecurringType] = useState("weekly");
 
   const [jobPropertyId, setJobPropertyId] = useState("");
+
   const [jobNotes, setJobNotes] = useState("");
   const [jobOverrideUnitsEnabled, setJobOverrideUnitsEnabled] = useState(false);
   const [jobUnitsNeeded, setJobUnitsNeeded] = useState("1");
@@ -549,7 +552,7 @@ const [propertyPostal, setPropertyPostal] = useState("");
   const [accessDirty, setAccessDirty] = useState(false);
   const [propertyDefaultsDirty, setPropertyDefaultsDirty] = useState(false);
 
-   const [calendarRowsDraft, setCalendarRowsDraft] = useState<
+  const [calendarRowsDraft, setCalendarRowsDraft] = useState<
     Array<{ id?: string; source: string; ical_url: string; is_active: boolean }>
   >([]);
   const [calendarDraftDirty, setCalendarDraftDirty] = useState(false);
@@ -1020,7 +1023,7 @@ const [propertyPostal, setPropertyPostal] = useState("");
 
     const { error } = await supabase.from("properties").insert({
       name: propertyName.trim(),
-     address: `${propertyStreet}, ${propertyCity}, ${propertyProvince}, ${propertyPostal}`,
+      address: `${propertyStreet}, ${propertyCity}, ${propertyProvince}, ${propertyPostal}`,
       notes: propertyNotes.trim() || null,
       default_cleaner_units_needed: Number(propertyUnitsNeeded),
       cleaner_units_required_strict: propertyUnitsStrict,
@@ -1033,10 +1036,10 @@ const [propertyPostal, setPropertyPostal] = useState("");
     }
 
     setPropertyName("");
-   setPropertyStreet("");
-setPropertyCity("");
-setPropertyProvince("");
-setPropertyPostal("");
+    setPropertyStreet("");
+    setPropertyCity("");
+    setPropertyProvince("");
+    setPropertyPostal("");
     setPropertyNotes("");
     setPropertyUnitsNeeded("1");
     setPropertyUnitsStrict(false);
@@ -2731,142 +2734,142 @@ This removes its linked members and deletes the grounds account.`
       </div>
     );
   }
- function renderAddPropertySection() {
-  return (
-    <section id="maintenance-flags-section" className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-      <h2 className="text-xl font-semibold tracking-tight">Add Property</h2>
-      <p className="mt-1 text-sm text-[#7f7263]">
-        Add a managed property and set default staffing rules.
-      </p>
+  function renderAddPropertySection() {
+    return (
+      <section id="maintenance-flags-section" className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+        <h2 className="text-xl font-semibold tracking-tight">Add Property</h2>
+        <p className="mt-1 text-sm text-[#7f7263]">
+          Add a managed property and set default staffing rules.
+        </p>
 
-      <div className="mt-5 space-y-3">
-        <input
-          className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-          placeholder="Property name"
-          value={propertyName}
-          onChange={(e) => setPropertyName(e.target.value)}
-        />
-
-        <div className="grid gap-2">
+        <div className="mt-5 space-y-3">
           <input
             className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-            placeholder="Street Address"
-            value={propertyStreet}
-            onChange={(e) => setPropertyStreet(e.target.value)}
+            placeholder="Property name"
+            value={propertyName}
+            onChange={(e) => setPropertyName(e.target.value)}
           />
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid gap-2">
             <input
               className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-              placeholder="City"
-              value={propertyCity}
-              onChange={(e) => setPropertyCity(e.target.value)}
+              placeholder="Street Address"
+              value={propertyStreet}
+              onChange={(e) => setPropertyStreet(e.target.value)}
             />
+
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                placeholder="City"
+                value={propertyCity}
+                onChange={(e) => setPropertyCity(e.target.value)}
+              />
+
+              <input
+                className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                placeholder="Province"
+                value={propertyProvince}
+                onChange={(e) => setPropertyProvince(e.target.value)}
+              />
+            </div>
 
             <input
               className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-              placeholder="Province"
-              value={propertyProvince}
-              onChange={(e) => setPropertyProvince(e.target.value)}
+              placeholder="Postal Code"
+              value={propertyPostal}
+              onChange={(e) => setPropertyPostal(e.target.value)}
             />
           </div>
 
-          <input
-            className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-            placeholder="Postal Code"
-            value={propertyPostal}
-            onChange={(e) => setPropertyPostal(e.target.value)}
+          <textarea
+            className="min-h-[110px] w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+            placeholder="Internal notes"
+            value={propertyNotes}
+            onChange={(e) => setPropertyNotes(e.target.value)}
           />
+
+          <select
+            className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+            value={propertyUnitsNeeded}
+            onChange={(e) => setPropertyUnitsNeeded(e.target.value)}
+          >
+            <option value="1">Default cleaner units: 1</option>
+            <option value="2">Default cleaner units: 2</option>
+            <option value="3">Default cleaner units: 3</option>
+          </select>
+
+          <label className="flex items-center gap-2 text-sm text-[#6f6255]">
+            <input
+              type="checkbox"
+              checked={propertyUnitsStrict}
+              onChange={(e) => setPropertyUnitsStrict(e.target.checked)}
+            />
+            Full team required before the job is fully staffed
+          </label>
+
+          <label className="flex items-center gap-2 text-sm text-[#6f6255]">
+            <input
+              type="checkbox"
+              checked={propertyShowTeamStatus}
+              onChange={(e) => setPropertyShowTeamStatus(e.target.checked)}
+            />
+            Show team status on cleaner page
+          </label>
+
+          <button
+            className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]"
+            onClick={() => void addProperty()}
+          >
+            Add Property
+          </button>
         </div>
-
-        <textarea
-          className="min-h-[110px] w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-          placeholder="Internal notes"
-          value={propertyNotes}
-          onChange={(e) => setPropertyNotes(e.target.value)}
-        />
-
-        <select
-          className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-          value={propertyUnitsNeeded}
-          onChange={(e) => setPropertyUnitsNeeded(e.target.value)}
-        >
-          <option value="1">Default cleaner units: 1</option>
-          <option value="2">Default cleaner units: 2</option>
-          <option value="3">Default cleaner units: 3</option>
-        </select>
-
-        <label className="flex items-center gap-2 text-sm text-[#6f6255]">
-          <input
-            type="checkbox"
-            checked={propertyUnitsStrict}
-            onChange={(e) => setPropertyUnitsStrict(e.target.checked)}
-          />
-          Full team required before the job is fully staffed
-        </label>
-
-        <label className="flex items-center gap-2 text-sm text-[#6f6255]">
-          <input
-            type="checkbox"
-            checked={propertyShowTeamStatus}
-            onChange={(e) => setPropertyShowTeamStatus(e.target.checked)}
-          />
-          Show team status on cleaner page
-        </label>
-
-        <button
-          className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]"
-          onClick={() => void addProperty()}
-        >
-          Add Property
-        </button>
-      </div>
-    </section>
-  );
-}
-function renderPropertiesSection() {
-  return (
-    <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-xl font-semibold tracking-tight">Properties</h2>
-            <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">{properties.length}</span>
-          </div>
-          <div className="space-y-3">
-            {properties.map((p) => {
-              const propertyCalendarCount = propertyCalendars.filter((calendar) => calendar.property_id === p.id).length;
-              return (
-                <div key={p.id} className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div className="min-w-0 flex-1">
-                      <div className="text-base font-semibold">{p.name}</div>
-                      <div className="mt-1 text-sm text-[#6f6255]">{p.address || "No address"}</div>
-                      <div className="mt-2 text-sm text-[#8a7b68]">{p.notes || "No notes"}</div>
-                      <div className="mt-2 text-xs text-[#8a7b68]">
-                        Default staffing: {p.default_cleaner_units_needed} unit{p.default_cleaner_units_needed === 1 ? "" : "s"}
-                        {p.cleaner_units_required_strict ? ", strict" : ", flexible"}
-                      </div>
-                      <div className="mt-2 text-xs text-[#8a7b68]">
-                        Calendars configured: {propertyCalendarCount}
-                      </div>
+      </section>
+    );
+  }
+  function renderPropertiesSection() {
+    return (
+      <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-xl font-semibold tracking-tight">Properties</h2>
+          <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">{properties.length}</span>
+        </div>
+        <div className="space-y-3">
+          {properties.map((p) => {
+            const propertyCalendarCount = propertyCalendars.filter((calendar) => calendar.property_id === p.id).length;
+            return (
+              <div key={p.id} className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-base font-semibold">{p.name}</div>
+                    <div className="mt-1 text-sm text-[#6f6255]">{p.address || "No address"}</div>
+                    <div className="mt-2 text-sm text-[#8a7b68]">{p.notes || "No notes"}</div>
+                    <div className="mt-2 text-xs text-[#8a7b68]">
+                      Default staffing: {p.default_cleaner_units_needed} unit{p.default_cleaner_units_needed === 1 ? "" : "s"}
+                      {p.cleaner_units_required_strict ? ", strict" : ", flexible"}
                     </div>
-
-                    <div className="w-full md:w-[220px]">
-                      <button
-                        className="w-full rounded-[14px] border border-[#efc6c6] bg-[#fff5f5] px-3 py-2 text-sm text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-50"
-                        onClick={() => void deleteProperty(p)}
-                        disabled={deletingPropertyId === p.id}
-                      >
-                        {deletingPropertyId === p.id ? "Deleting..." : "Delete property"}
-                      </button>
+                    <div className="mt-2 text-xs text-[#8a7b68]">
+                      Calendars configured: {propertyCalendarCount}
                     </div>
                   </div>
+
+                  <div className="w-full md:w-[220px]">
+                    <button
+                      className="w-full rounded-[14px] border border-[#efc6c6] bg-[#fff5f5] px-3 py-2 text-sm text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-50"
+                      onClick={() => void deleteProperty(p)}
+                      disabled={deletingPropertyId === p.id}
+                    >
+                      {deletingPropertyId === p.id ? "Deleting..." : "Delete property"}
+                    </button>
+                  </div>
                 </div>
-              );
-            })}
-          </div>
-     </section>
-  );
-}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+    );
+  }
 
   function renderCleanerAccountsSection() {
     return (
@@ -3312,7 +3315,44 @@ function renderPropertiesSection() {
               value={groundsJobScheduledFor}
               onChange={(e) => setGroundsJobScheduledFor(e.target.value)}
             />
+            {/* RECURRING TOGGLE */}
+            <div className="mt-4 rounded-xl border border-[#2d4f3a] bg-[#0f2419] p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-[#e8f5ec]">
+                    Recurring Job
+                  </p>
+                  <p className="text-xs text-[#9fc7ad]">
+                    Automatically create future grounds jobs
+                  </p>
+                </div>
 
+                <input
+                  type="checkbox"
+                  checked={isRecurring}
+                  onChange={(e) => setIsRecurring(e.target.checked)}
+                />
+              </div>
+
+              {isRecurring && (
+                <div className="mt-4 space-y-3">
+                  <select
+                    value={recurringType}
+                    onChange={(e) => setRecurringType(e.target.value)}
+                    className="w-full rounded-lg bg-[#183828] p-2 text-sm text-[#e8f5ec]"
+                  >
+                    <option value="weekly">Weekly</option>
+                    <option value="biweekly">Biweekly</option>
+                    <option value="semi-monthly">Semi Monthly</option>
+                    <option value="monthly">Monthly</option>
+                  </select>
+
+                  <p className="text-xs text-[#9fc7ad]">
+                    Next run will be calculated automatically
+                  </p>
+                </div>
+              )}
+            </div>
             {selectedGroundsProperty ? (
               <div className="rounded-[20px] border border-[#cfe2cf] bg-white p-4 text-sm text-[#46604b]">
                 Property assignments found: {selectedGroundsPropertyAssignmentCount}. Default staffing is currently set from the grounds job form below.
@@ -3358,58 +3398,108 @@ function renderPropertiesSection() {
 
             <textarea className="min-h-[120px] w-full rounded-[20px] border border-[#b7cfb7] bg-white px-4 py-3 text-sm outline-none focus:border-[#4f8a5b]" placeholder="Grounds job notes. Example: Put bins out tonight and return them tomorrow afternoon." value={groundsJobNotes} onChange={(e) => setGroundsJobNotes(e.target.value)} />
 
-            <button className="inline-flex items-center justify-center rounded-full bg-[#23422c] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#1b3423]" onClick={() => void createGroundsJob()}>
-              Create Grounds Job
-            </button>
+            <button
+  onClick={async () => {
+    if (!groundsJobPropertyId || !groundsJobScheduledFor) {
+      alert("Please select property and date");
+      return;
+    }
+
+    // 🔁 RECURRING LOGIC
+    if (isRecurring) {
+      const { error } = await supabase.from("grounds_recurring_rules").insert({
+        property_id: groundsJobPropertyId,
+        job_type: groundsJobType,
+        frequency_type: recurringType,
+        next_run_date: groundsJobScheduledFor,
+        active: true,
+      });
+
+      if (error) {
+        console.error(error);
+        alert("Failed to create recurring rule");
+        return;
+      }
+
+      alert("Recurring rule created");
+      return;
+    }
+
+    // 🧹 NORMAL JOB CREATION
+    const { error } = await supabase.from("grounds_jobs").insert({
+      property_id: groundsJobPropertyId,
+      job_type: groundsJobType,
+      scheduled_for: groundsJobScheduledFor,
+      notes: groundsJobNotes,
+      needs_secure_access: groundsJobNeedsSecureAccess,
+      needs_garage_access: groundsJobNeedsGarageAccess,
+      grounds_units_needed: parseInt(groundsJobUnitsNeeded || "1"),
+      grounds_units_strict: groundsJobUnitsStrict,
+      grounds_show_team_status: groundsJobShowTeamStatus,
+      status: "pending",
+    });
+
+    if (error) {
+      console.error(error);
+      alert("Failed to create job");
+      return;
+    }
+
+    alert("Grounds job created");
+  }}
+  className="inline-flex items-center justify-center rounded-full bg-[#23422c] px-5 py-2 text-sm font-medium text-white"
+>
+  Create Grounds Job
+</button>
           </div>
           <div className="mt-8 border-t border-[#cfe2cf] pt-6">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div>
-              <h3 className="text-xl font-semibold tracking-tight text-[#23422c]">Recurring Grounds Rules</h3>
-              <p className="mt-1 text-sm text-[#5b7460]">
-                New recurring grounds scheduling rules. This is the new system that will eventually generate future grounds jobs automatically.
-              </p>
-            </div>
-            <span className="rounded-full border border-[#cfe2cf] bg-white px-3 py-1 text-xs font-medium text-[#46604b]">{groundsRecurringRules.length}</span>
-          </div>
-
-          <div className="space-y-3">
-            {groundsRecurringRules.length === 0 ? (
-              <div className="rounded-[22px] border border-dashed border-[#b7cfb7] bg-white px-4 py-4 text-sm text-[#5b7460]">
-                No recurring grounds rules yet.
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-xl font-semibold tracking-tight text-[#23422c]">Recurring Grounds Rules</h3>
+                <p className="mt-1 text-sm text-[#5b7460]">
+                  New recurring grounds scheduling rules. This is the new system that will eventually generate future grounds jobs automatically.
+                </p>
               </div>
-            ) : (
-              groundsRecurringRules.map((rule) => (
-                <div key={rule.id} className="rounded-[22px] border border-[#cfe2cf] bg-white p-4">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div>
-                      <div className="text-base font-semibold text-[#23422c]">{getPropertyName(rule.property_id)}</div>
-                      <div className="mt-1 text-sm text-[#46604b]">{getGroundsRuleLabel(rule)}</div>
-                      <div className="mt-1 text-sm text-[#5b7460]">Frequency: {getGroundsRuleFrequencyLabel(rule)}</div>
-                      <div className="mt-1 text-sm text-[#5b7460]">Next run: {rule.next_run_date ? formatScheduledFor(rule.next_run_date) : "Not set"}</div>
-                      <div className="mt-1 text-sm text-[#5b7460]">Staffing: {rule.grounds_units_needed} unit{rule.grounds_units_needed === 1 ? "" : "s"}{rule.grounds_units_required_strict ? ", strict" : ", flexible"}</div>
-                    </div>
+              <span className="rounded-full border border-[#cfe2cf] bg-white px-3 py-1 text-xs font-medium text-[#46604b]">{groundsRecurringRules.length}</span>
+            </div>
 
-                    <div className="flex flex-wrap gap-2">
-                      <span className={`rounded-full border px-3 py-1 text-xs font-medium ${rule.active ? "border-[#cfe2cf] bg-[#f7fbf7] text-[#46604b]" : "border-[#efc6c6] bg-[#fff5f5] text-[#8a2e22]"}`}>
-                        {rule.active ? "Active" : "Paused"}
-                      </span>
-                      <span className="rounded-full border border-[#cfe2cf] bg-[#f7fbf7] px-3 py-1 text-xs font-medium text-[#46604b]">
-                        Secure access: {rule.needs_secure_access ? "Yes" : "No"}
-                      </span>
-                      <span className="rounded-full border border-[#cfe2cf] bg-[#f7fbf7] px-3 py-1 text-xs font-medium text-[#46604b]">
-                        Garage: {rule.needs_garage_access ? "Yes" : "No"}
-                      </span>
-                    </div>
-                  </div>
-
-                  {rule.notes ? (
-                    <div className="mt-3 text-sm leading-6 text-[#46604b]">{rule.notes}</div>
-                  ) : null}
+            <div className="space-y-3">
+              {groundsRecurringRules.length === 0 ? (
+                <div className="rounded-[22px] border border-dashed border-[#b7cfb7] bg-white px-4 py-4 text-sm text-[#5b7460]">
+                  No recurring grounds rules yet.
                 </div>
-              ))
-            )}
-          </div>
+              ) : (
+                groundsRecurringRules.map((rule) => (
+                  <div key={rule.id} className="rounded-[22px] border border-[#cfe2cf] bg-white p-4">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                      <div>
+                        <div className="text-base font-semibold text-[#23422c]">{getPropertyName(rule.property_id)}</div>
+                        <div className="mt-1 text-sm text-[#46604b]">{getGroundsRuleLabel(rule)}</div>
+                        <div className="mt-1 text-sm text-[#5b7460]">Frequency: {getGroundsRuleFrequencyLabel(rule)}</div>
+                        <div className="mt-1 text-sm text-[#5b7460]">Next run: {rule.next_run_date ? formatScheduledFor(rule.next_run_date) : "Not set"}</div>
+                        <div className="mt-1 text-sm text-[#5b7460]">Staffing: {rule.grounds_units_needed} unit{rule.grounds_units_needed === 1 ? "" : "s"}{rule.grounds_units_required_strict ? ", strict" : ", flexible"}</div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <span className={`rounded-full border px-3 py-1 text-xs font-medium ${rule.active ? "border-[#cfe2cf] bg-[#f7fbf7] text-[#46604b]" : "border-[#efc6c6] bg-[#fff5f5] text-[#8a2e22]"}`}>
+                          {rule.active ? "Active" : "Paused"}
+                        </span>
+                        <span className="rounded-full border border-[#cfe2cf] bg-[#f7fbf7] px-3 py-1 text-xs font-medium text-[#46604b]">
+                          Secure access: {rule.needs_secure_access ? "Yes" : "No"}
+                        </span>
+                        <span className="rounded-full border border-[#cfe2cf] bg-[#f7fbf7] px-3 py-1 text-xs font-medium text-[#46604b]">
+                          Garage: {rule.needs_garage_access ? "Yes" : "No"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {rule.notes ? (
+                      <div className="mt-3 text-sm leading-6 text-[#46604b]">{rule.notes}</div>
+                    ) : null}
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </section>
 
@@ -3422,61 +3512,87 @@ function renderPropertiesSection() {
             <span className="rounded-full border border-[#cfe2cf] bg-white px-3 py-1 text-xs font-medium text-[#46604b]">{groundsJobs.length}</span>
           </div>
 
-          <div className="space-y-3">
-            {groundsJobs.length === 0 ? (
-              <div className="rounded-[22px] border border-dashed border-[#b7cfb7] bg-white px-4 py-4 text-sm text-[#5b7460]">No grounds jobs yet.</div>
+  <div className="space-y-3">
+  {groundsJobs.length === 0 ? (
+    <div className="rounded-[22px] border border-dashed border-[#b7cfb7] bg-white px-4 py-4 text-sm text-[#5b7460]">
+      No grounds jobs yet.
+    </div>
+  ) : (
+    groundsJobs.map((job) => {
+      const slots = groundsJobSlotsByJobId[job.id] ?? [];
+      const acceptedCount = slots.filter((slot) => slot.status === "accepted").length;
+      const offeredCount = slots.filter((slot) => slot.status === "offered").length;
+      const declinedCount = slots.filter((slot) => slot.status === "declined").length;
+
+      return (
+        <div key={job.id} className="rounded-[22px] border border-[#cfe2cf] bg-white p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <div className="text-base font-semibold text-[#23422c]">
+                {getPropertyName(job.property_id)}
+              </div>
+              <div className="mt-1 text-sm text-[#46604b]">
+                {GROUNDS_JOB_TYPE_OPTIONS.find((option) => option.value === job.job_type)?.label ||
+                  job.job_type ||
+                  "Grounds job"}
+              </div>
+              <div className="mt-1 text-sm text-[#5b7460]">
+                Scheduled: {formatScheduledFor(job.scheduled_for)}
+              </div>
+              <div className="mt-1 text-sm text-[#5b7460]">
+                Status:{" "}
+                <span className="font-medium text-[#23422c]">
+                  {getGroundsJobDisplayStatus(job, slots)}
+                </span>
+              </div>
+              <div className="mt-1 text-sm text-[#5b7460]">
+                Team progress: {acceptedCount}/{job.grounds_units_needed} accepted
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <span className="rounded-full border border-[#cfe2cf] bg-[#f7fbf7] px-3 py-1 text-xs font-medium text-[#46604b]">
+                Offered: {offeredCount}
+              </span>
+              <span className="rounded-full border border-[#cfe2cf] bg-[#f7fbf7] px-3 py-1 text-xs font-medium text-[#46604b]">
+                Declined: {declinedCount}
+              </span>
+              <span className="rounded-full border border-[#cfe2cf] bg-[#f7fbf7] px-3 py-1 text-xs font-medium text-[#46604b]">
+                Secure access: {job.needs_secure_access ? "Yes" : "No"}
+              </span>
+            </div>
+          </div>
+
+          {job.notes ? (
+            <div className="mt-3 text-sm leading-6 text-[#46604b]">{job.notes}</div>
+          ) : null}
+
+          <div className="mt-3 space-y-2">
+            {slots.length === 0 ? (
+              <div className="rounded-[18px] border border-dashed border-[#cfe2cf] bg-[#f7fbf7] px-3 py-3 text-xs text-[#5b7460]">
+                No grounds slots created yet.
+              </div>
             ) : (
-              groundsJobs.map((job) => {
-                const slots = groundsJobSlotsByJobId[job.id] ?? [];
-                const acceptedCount = slots.filter((slot) => slot.status === "accepted").length;
-                const offeredCount = slots.filter((slot) => slot.status === "offered").length;
-                const declinedCount = slots.filter((slot) => slot.status === "declined").length;
-
-                return (
-                  <div key={job.id} className="rounded-[22px] border border-[#cfe2cf] bg-white p-4">
-                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                      <div>
-                        <div className="text-base font-semibold text-[#23422c]">{getPropertyName(job.property_id)}</div>
-                        <div className="mt-1 text-sm text-[#46604b]">{GROUNDS_JOB_TYPE_OPTIONS.find((option) => option.value === job.job_type)?.label || job.job_type || "Grounds job"}</div>
-                        <div className="mt-1 text-sm text-[#5b7460]">Scheduled: {formatScheduledFor(job.scheduled_for)}</div>
-                        <div className="mt-1 text-sm text-[#5b7460]">Status: <span className="font-medium text-[#23422c]">{getGroundsJobDisplayStatus(job, slots)}</span></div>
-                        <div className="mt-1 text-sm text-[#5b7460]">Team progress: {acceptedCount}/{job.grounds_units_needed} accepted</div>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2">
-                        <span className="rounded-full border border-[#cfe2cf] bg-[#f7fbf7] px-3 py-1 text-xs font-medium text-[#46604b]">Offered: {offeredCount}</span>
-                        <span className="rounded-full border border-[#cfe2cf] bg-[#f7fbf7] px-3 py-1 text-xs font-medium text-[#46604b]">Declined: {declinedCount}</span>
-                        <span className="rounded-full border border-[#cfe2cf] bg-[#f7fbf7] px-3 py-1 text-xs font-medium text-[#46604b]">Secure access: {job.needs_secure_access ? "Yes" : "No"}</span>
-                      </div>
-                    </div>
-
-                    {job.notes ? (
-                      <div className="mt-3 text-sm leading-6 text-[#46604b]">{job.notes}</div>
-                    ) : null}
-
-                    <div className="mt-3 space-y-2">
-                      {slots.length === 0 ? (
-                        <div className="rounded-[18px] border border-dashed border-[#b7cfb7] bg-[#f7fbf7] px-3 py-3 text-sm text-[#5b7460]">
-                          No grounds slots were created. Add a grounds assignment for this property and create another grounds job.
-                        </div>
-                      ) : (
-                        slots.map((slot) => (
-                          <div key={slot.id} className="rounded-[18px] border border-[#cfe2cf] bg-[#f7fbf7] px-3 py-2 text-xs text-[#46604b]">
-                            <div>Slot {slot.slot_number}: {getGroundsAccountName(slot.grounds_account_id)}</div>
-                            <div>Status: {slot.status}</div>
-                            <div>Offered: {formatDateTime(slot.offered_at)}</div>
-                            <div>Expires: {formatDateTime(slot.expires_at)}</div>
-                            <div>Accepted: {formatDateTime(slot.accepted_at)}</div>
-                            <div>Declined: {formatDateTime(slot.declined_at)}</div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                );
-              })
+              slots.map((slot) => (
+                <div
+                  key={slot.id}
+                  className="rounded-[18px] border border-[#cfe2cf] bg-[#f7fbf7] px-3 py-3 text-xs text-[#46604b]"
+                >
+                  <div>Slot {slot.slot_number}</div>
+                  <div>Account: {getGroundsAccountName(slot.grounds_account_id)}</div>
+                  <div>Status: {slot.status}</div>
+                  <div>Offered: {formatDateTime(slot.offered_at)}</div>
+                  <div>Accepted: {formatDateTime(slot.accepted_at)}</div>
+                  <div>Declined: {formatDateTime(slot.declined_at)}</div>
+                </div>
+              ))
             )}
           </div>
+        </div>
+      );
+    })
+  )}
+</div>
         </section>
 
 
@@ -3544,17 +3660,15 @@ function renderPropertiesSection() {
                     key={dateYmd}
                     type="button"
                     onClick={() => selectAdminCalendarDate(dateYmd)}
-                    className={`min-h-[118px] border-r border-b border-[#eadfce] p-2 text-left align-top transition ${
-                      isSelected
-                        ? "bg-[#fffaf3] shadow-[inset_0_0_0_2px_rgba(180,141,78,0.65)]"
-                        : "hover:bg-[#fcfaf7]"
-                    } ${!isCurrentMonth ? "bg-[#fbf9f5] text-[#b1a392]" : "text-[#241c15]"}`}
+                    className={`min-h-[118px] border-r border-b border-[#eadfce] p-2 text-left align-top transition ${isSelected
+                      ? "bg-[#fffaf3] shadow-[inset_0_0_0_2px_rgba(180,141,78,0.65)]"
+                      : "hover:bg-[#fcfaf7]"
+                      } ${!isCurrentMonth ? "bg-[#fbf9f5] text-[#b1a392]" : "text-[#241c15]"}`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div
-                        className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold ${
-                          isToday ? "bg-[#241c15] text-[#f8f2e8]" : "bg-transparent"
-                        }`}
+                        className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold ${isToday ? "bg-[#241c15] text-[#f8f2e8]" : "bg-transparent"
+                          }`}
                       >
                         {day.getDate()}
                       </div>
@@ -3678,11 +3792,10 @@ function renderPropertiesSection() {
                           <span className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">
                             Declined: {declinedCount}
                           </span>
-                          <span className={`rounded-full px-3 py-1 text-xs font-medium ${
-                            strandedCount > 0
-                              ? "border border-[#efc6c6] bg-[#fff5f5] text-[#8a2e22]"
-                              : "border border-[#d8c7ab] bg-[#fcfaf7] text-[#7f7263]"
-                          }`}>
+                          <span className={`rounded-full px-3 py-1 text-xs font-medium ${strandedCount > 0
+                            ? "border border-[#efc6c6] bg-[#fff5f5] text-[#8a2e22]"
+                            : "border border-[#d8c7ab] bg-[#fcfaf7] text-[#7f7263]"
+                            }`}>
                             Stranded: {strandedCount}
                           </span>
                         </div>
@@ -3968,7 +4081,7 @@ function renderPropertiesSection() {
               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div>
                   <h3 className="text-lg font-semibold">Property Staffing Defaults</h3>
-                    </div>
+                </div>
                 <button
                   className="inline-flex items-center justify-center rounded-full border border-[#efc6c6] bg-[#fff5f5] px-5 py-2.5 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-50"
                   onClick={() => {
@@ -3985,9 +4098,9 @@ function renderPropertiesSection() {
                 <div>
                   <label className="mb-2 block text-sm font-medium text-[#5f5245]">Cleaner units needed</label>
                   <select className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" value={selectedPropertyUnitsNeeded} onChange={(e) => {
-                      setSelectedPropertyUnitsNeeded(e.target.value);
-                      setPropertyDefaultsDirty(true);
-                    }}>
+                    setSelectedPropertyUnitsNeeded(e.target.value);
+                    setPropertyDefaultsDirty(true);
+                  }}>
                     <option value="1">1 cleaner unit</option>
                     <option value="2">2 cleaner units</option>
                     <option value="3">3 cleaner units</option>
@@ -4335,180 +4448,177 @@ function renderPropertiesSection() {
                 ) : (
                   <div className="space-y-4">
                     {openMaintenanceFlags.map((flag) => {
-                const state = String(getMaintenanceFlagState(flag) || "open");
-                const stateLower = state.toLowerCase();
-                const urgency = String(flag.urgency || flag.priority || flag.severity || "normal");
-                const urgencyLower = urgency.toLowerCase();
-                const isResolved =
-                  stateLower.includes("resolved") ||
-                  stateLower.includes("closed") ||
-                  stateLower.includes("done");
-                const isUrgent =
-                  urgencyLower.includes("high") ||
-                  urgencyLower.includes("urgent") ||
-                  urgencyLower.includes("critical");
+                      const state = String(getMaintenanceFlagState(flag) || "open");
+                      const stateLower = state.toLowerCase();
+                      const urgency = String(flag.urgency || flag.priority || flag.severity || "normal");
+                      const urgencyLower = urgency.toLowerCase();
+                      const isResolved =
+                        stateLower.includes("resolved") ||
+                        stateLower.includes("closed") ||
+                        stateLower.includes("done");
+                      const isUrgent =
+                        urgencyLower.includes("high") ||
+                        urgencyLower.includes("urgent") ||
+                        urgencyLower.includes("critical");
 
-                const flaggedByName = profiles.find((profile) => profile.id === flag.flagged_by_profile_id)?.full_name;
-                const resolvedByName = profiles.find((profile) => profile.id === flag.resolved_by_profile_id)?.full_name;
-                const labelKeys = Object.keys(flag).filter(
-                  (key) =>
-                    ![
-                      "id",
-                      "property_id",
-                      "source",
-                      "category",
-                      "urgency",
-                      "status",
-                      "notes",
-                      "flagged_by_profile_id",
-                      "flagged_at",
-                      "resolved_at",
-                      "resolved_by_profile_id",
-                      "created_at",
-                      "updated_at",
-                    ].includes(key) && flag[key] !== null && flag[key] !== ""
-                );
+                      const flaggedByName = profiles.find((profile) => profile.id === flag.flagged_by_profile_id)?.full_name;
+                      const resolvedByName = profiles.find((profile) => profile.id === flag.resolved_by_profile_id)?.full_name;
+                      const labelKeys = Object.keys(flag).filter(
+                        (key) =>
+                          ![
+                            "id",
+                            "property_id",
+                            "source",
+                            "category",
+                            "urgency",
+                            "status",
+                            "notes",
+                            "flagged_by_profile_id",
+                            "flagged_at",
+                            "resolved_at",
+                            "resolved_by_profile_id",
+                            "created_at",
+                            "updated_at",
+                          ].includes(key) && flag[key] !== null && flag[key] !== ""
+                      );
 
-                return (
-                  <div
-                    key={flag.id}
-                    className={`rounded-[24px] border p-4 shadow-sm ${
-                      isResolved
-                        ? "border-[#d7e7d7] bg-[#f5fbf5]"
-                        : isUrgent
-                        ? "animate-pulse border-[#b91c1c] bg-[#fff1f2] shadow-[0_16px_34px_rgba(185,28,28,0.16)]"
-                        : "border-[#dc2626] bg-[#fff5f5]"
-                    }`}
-                  >
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <div className="text-base font-semibold text-[#241c15]">
-                            {flag.category || getMaintenanceFlagLabel(flag, labelKeys)}
-                          </div>
-                          <span
-                            className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${
-                              isResolved
-                                ? "border-[#cfe4cf] bg-white text-[#2f6b2f]"
-                                : isUrgent
-                                ? "border-[#fecaca] bg-white text-[#991b1b]"
-                                : "border-[#fecaca] bg-white text-[#991b1b]"
+                      return (
+                        <div
+                          key={flag.id}
+                          className={`rounded-[24px] border p-4 shadow-sm ${isResolved
+                            ? "border-[#d7e7d7] bg-[#f5fbf5]"
+                            : isUrgent
+                              ? "animate-pulse border-[#b91c1c] bg-[#fff1f2] shadow-[0_16px_34px_rgba(185,28,28,0.16)]"
+                              : "border-[#dc2626] bg-[#fff5f5]"
                             }`}
-                          >
-                            {state}
-                          </span>
-                          <span
-                            className={`inline-flex rounded-full border bg-white px-2.5 py-0.5 text-[11px] font-medium ${
-                              isUrgent ? "border-[#fecaca] text-[#991b1b]" : "border-[#d8c7ab] text-[#7f7263]"
-                            }`}
-                          >
-                            {urgency}
-                          </span>
-                          {flag.source ? (
-                            <span className="inline-flex rounded-full border border-[#d8c7ab] bg-white px-2.5 py-0.5 text-[11px] font-medium text-[#7f7263]">
-                              Source: {flag.source}
-                            </span>
-                          ) : null}
-                        </div>
-
-                        <div className="mt-2 text-sm text-[#6f6255]">
-                          {getPropertyName(flag.property_id ?? null)}
-                        </div>
-
-                        {flag.notes ? (
-                          <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[#5f5245]">
-                            {flag.notes}
-                          </div>
-                        ) : null}
-
-                        {(maintenanceImagesByFlagId[flag.id] ?? []).length > 0 ? (
-                          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                            {(maintenanceImagesByFlagId[flag.id] ?? []).map((image) => (
-                              <button
-                                key={image.id}
-                                type="button"
-                                onClick={() => setExpandedImage(image.image_url)}
-                                className="block overflow-hidden rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] text-left transition hover:shadow-md"
-                              >
-                                <img
-                                  src={image.image_url}
-                                  alt={image.caption || "Maintenance image"}
-                                  className="h-40 w-full object-cover"
-                                />
-                                {image.caption ? (
-                                  <div className="px-3 py-2 text-sm text-[#6f6255]">{image.caption}</div>
+                        >
+                          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <div className="text-base font-semibold text-[#241c15]">
+                                  {flag.category || getMaintenanceFlagLabel(flag, labelKeys)}
+                                </div>
+                                <span
+                                  className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${isResolved
+                                    ? "border-[#cfe4cf] bg-white text-[#2f6b2f]"
+                                    : isUrgent
+                                      ? "border-[#fecaca] bg-white text-[#991b1b]"
+                                      : "border-[#fecaca] bg-white text-[#991b1b]"
+                                    }`}
+                                >
+                                  {state}
+                                </span>
+                                <span
+                                  className={`inline-flex rounded-full border bg-white px-2.5 py-0.5 text-[11px] font-medium ${isUrgent ? "border-[#fecaca] text-[#991b1b]" : "border-[#d8c7ab] text-[#7f7263]"
+                                    }`}
+                                >
+                                  {urgency}
+                                </span>
+                                {flag.source ? (
+                                  <span className="inline-flex rounded-full border border-[#d8c7ab] bg-white px-2.5 py-0.5 text-[11px] font-medium text-[#7f7263]">
+                                    Source: {flag.source}
+                                  </span>
                                 ) : null}
-                              </button>
-                            ))}
-                          </div>
-                        ) : null}
+                              </div>
 
-                        {labelKeys.length > 0 ? (
-                          <div className="mt-4 flex flex-wrap gap-2">
-                            {labelKeys.slice(0, 6).map((key) => (
-                              <span
-                                key={key}
-                                className="inline-flex rounded-full border border-[#e2d6c6] bg-white px-3 py-1 text-xs text-[#6f6255]"
-                              >
-                                {key.replace(/_/g, " ")}: {String(flag[key])}
-                              </span>
-                            ))}
-                          </div>
-                        ) : null}
-                      </div>
+                              <div className="mt-2 text-sm text-[#6f6255]">
+                                {getPropertyName(flag.property_id ?? null)}
+                              </div>
 
-                      <div className="flex w-full flex-col gap-3 lg:w-[260px]">
-                        <div className="grid gap-2 text-sm text-[#7f7263]">
-                          <div>
-                            <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Flagged</div>
-                            <div>{formatDateTime(flag.flagged_at || flag.created_at)}</div>
-                          </div>
+                              {flag.notes ? (
+                                <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[#5f5245]">
+                                  {flag.notes}
+                                </div>
+                              ) : null}
 
-                          {flaggedByName || flag.flagged_by_profile_id ? (
-                            <div>
-                              <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Flagged by</div>
-                              <div>{flaggedByName || flag.flagged_by_profile_id}</div>
+                              {(maintenanceImagesByFlagId[flag.id] ?? []).length > 0 ? (
+                                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                                  {(maintenanceImagesByFlagId[flag.id] ?? []).map((image) => (
+                                    <button
+                                      key={image.id}
+                                      type="button"
+                                      onClick={() => setExpandedImage(image.image_url)}
+                                      className="block overflow-hidden rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] text-left transition hover:shadow-md"
+                                    >
+                                      <img
+                                        src={image.image_url}
+                                        alt={image.caption || "Maintenance image"}
+                                        className="h-40 w-full object-cover"
+                                      />
+                                      {image.caption ? (
+                                        <div className="px-3 py-2 text-sm text-[#6f6255]">{image.caption}</div>
+                                      ) : null}
+                                    </button>
+                                  ))}
+                                </div>
+                              ) : null}
+
+                              {labelKeys.length > 0 ? (
+                                <div className="mt-4 flex flex-wrap gap-2">
+                                  {labelKeys.slice(0, 6).map((key) => (
+                                    <span
+                                      key={key}
+                                      className="inline-flex rounded-full border border-[#e2d6c6] bg-white px-3 py-1 text-xs text-[#6f6255]"
+                                    >
+                                      {key.replace(/_/g, " ")}: {String(flag[key])}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : null}
                             </div>
-                          ) : null}
 
-                          {flag.resolved_at ? (
-                            <div>
-                              <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Resolved</div>
-                              <div>{formatDateTime(flag.resolved_at)}</div>
-                            </div>
-                          ) : null}
+                            <div className="flex w-full flex-col gap-3 lg:w-[260px]">
+                              <div className="grid gap-2 text-sm text-[#7f7263]">
+                                <div>
+                                  <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Flagged</div>
+                                  <div>{formatDateTime(flag.flagged_at || flag.created_at)}</div>
+                                </div>
 
-                          {resolvedByName || flag.resolved_by_profile_id ? (
-                            <div>
-                              <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Resolved by</div>
-                              <div>{resolvedByName || flag.resolved_by_profile_id}</div>
+                                {flaggedByName || flag.flagged_by_profile_id ? (
+                                  <div>
+                                    <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Flagged by</div>
+                                    <div>{flaggedByName || flag.flagged_by_profile_id}</div>
+                                  </div>
+                                ) : null}
+
+                                {flag.resolved_at ? (
+                                  <div>
+                                    <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Resolved</div>
+                                    <div>{formatDateTime(flag.resolved_at)}</div>
+                                  </div>
+                                ) : null}
+
+                                {resolvedByName || flag.resolved_by_profile_id ? (
+                                  <div>
+                                    <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Resolved by</div>
+                                    <div>{resolvedByName || flag.resolved_by_profile_id}</div>
+                                  </div>
+                                ) : null}
+                              </div>
+
+                              <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
+                                {!isResolved ? (
+                                  <button
+                                    className="rounded-[16px] bg-[#241c15] px-4 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60"
+                                    onClick={() => void resolveMaintenanceFlag(flag.id)}
+                                    disabled={resolvingMaintenanceFlagId === flag.id || deletingMaintenanceFlagId === flag.id}
+                                  >
+                                    {resolvingMaintenanceFlagId === flag.id ? "Resolving..." : "Mark Resolved"}
+                                  </button>
+                                ) : null}
+
+                                <button
+                                  className="rounded-[16px] border border-[#efc6c6] bg-[#fff5f5] px-4 py-2.5 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-60"
+                                  onClick={() => void deleteMaintenanceFlag(flag.id)}
+                                  disabled={deletingMaintenanceFlagId === flag.id || resolvingMaintenanceFlagId === flag.id}
+                                >
+                                  {deletingMaintenanceFlagId === flag.id ? "Deleting..." : "Delete"}
+                                </button>
+                              </div>
                             </div>
-                          ) : null}
+                          </div>
                         </div>
-
-                        <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
-                          {!isResolved ? (
-                            <button
-                              className="rounded-[16px] bg-[#241c15] px-4 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60"
-                              onClick={() => void resolveMaintenanceFlag(flag.id)}
-                              disabled={resolvingMaintenanceFlagId === flag.id || deletingMaintenanceFlagId === flag.id}
-                            >
-                              {resolvingMaintenanceFlagId === flag.id ? "Resolving..." : "Mark Resolved"}
-                            </button>
-                          ) : null}
-
-                          <button
-                            className="rounded-[16px] border border-[#efc6c6] bg-[#fff5f5] px-4 py-2.5 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-60"
-                            onClick={() => void deleteMaintenanceFlag(flag.id)}
-                            disabled={deletingMaintenanceFlagId === flag.id || resolvingMaintenanceFlagId === flag.id}
-                          >
-                            {deletingMaintenanceFlagId === flag.id ? "Deleting..." : "Delete"}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
+                      );
                     })}
                   </div>
                 )}
@@ -4683,9 +4793,8 @@ function renderPropertiesSection() {
                 <div className="md:col-span-2">
                   <label className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Property</label>
                   <select
-                    className={`w-full rounded-[20px] border bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e] ${
-                    maintenanceFormError && !maintenanceFormPropertyId ? "border-[#dc2626] bg-[#fff5f5]" : "border-[#d9ccbb]"
-                  }`}
+                    className={`w-full rounded-[20px] border bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e] ${maintenanceFormError && !maintenanceFormPropertyId ? "border-[#dc2626] bg-[#fff5f5]" : "border-[#d9ccbb]"
+                      }`}
                     value={maintenanceFormPropertyId}
                     onChange={(e) => setMaintenanceFormPropertyId(e.target.value)}
                   >
@@ -4701,9 +4810,8 @@ function renderPropertiesSection() {
                 <div>
                   <label className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Category</label>
                   <select
-                    className={`w-full rounded-[20px] border bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e] ${
-                    maintenanceFormError && !maintenanceFormCategory ? "border-[#dc2626] bg-[#fff5f5]" : "border-[#d9ccbb]"
-                  }`}
+                    className={`w-full rounded-[20px] border bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e] ${maintenanceFormError && !maintenanceFormCategory ? "border-[#dc2626] bg-[#fff5f5]" : "border-[#d9ccbb]"
+                      }`}
                     value={maintenanceFormCategory}
                     onChange={(e) => setMaintenanceFormCategory(e.target.value)}
                   >
@@ -4732,9 +4840,8 @@ function renderPropertiesSection() {
                 <div className="md:col-span-2">
                   <label className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Notes</label>
                   <textarea
-                    className={`min-h-[160px] w-full rounded-[20px] border bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e] ${
-                      maintenanceFormError && !maintenanceFormNotes.trim() ? "border-[#dc2626] bg-[#fff5f5]" : "border-[#d9ccbb]"
-                    }`}
+                    className={`min-h-[160px] w-full rounded-[20px] border bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e] ${maintenanceFormError && !maintenanceFormNotes.trim() ? "border-[#dc2626] bg-[#fff5f5]" : "border-[#d9ccbb]"
+                      }`}
                     placeholder="Describe the issue clearly so it can be acted on later."
                     value={maintenanceFormNotes}
                     onChange={(e) => setMaintenanceFormNotes(e.target.value)}
@@ -4769,14 +4876,14 @@ function renderPropertiesSection() {
     switch (activeSection) {
       case "users":
         return renderUsersSection();
-case "properties":
-  return (
-    <div className="space-y-6">
-      {renderAddPropertySection()}
-      {renderPropertySetupSection()}
-      {renderPropertiesSection()}
-    </div>
-  );
+      case "properties":
+        return (
+          <div className="space-y-6">
+            {renderAddPropertySection()}
+            {renderPropertySetupSection()}
+            {renderPropertiesSection()}
+          </div>
+        );
       case "cleanerAccounts":
         return renderCleanerAccountsSection();
       case "groundsAccounts":
@@ -4902,13 +5009,12 @@ case "properties":
                   <button
                     key={alert.key}
                     onClick={alert.onClick}
-                    className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${
-                      alert.key === "maintenance-urgent"
-                        ? "animate-pulse border-[#b91c1c] bg-[#dc2626] text-white shadow-[0_8px_22px_rgba(185,28,28,0.28)] hover:bg-[#b91c1c]"
-                        : alert.tone === "red"
+                    className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${alert.key === "maintenance-urgent"
+                      ? "animate-pulse border-[#b91c1c] bg-[#dc2626] text-white shadow-[0_8px_22px_rgba(185,28,28,0.28)] hover:bg-[#b91c1c]"
+                      : alert.tone === "red"
                         ? "border-[#fecaca] bg-[#fff1f2] text-[#991b1b] hover:bg-[#ffe4e6]"
                         : "border-[#ecd7a8] bg-[#fff8e8] text-[#8a6112] hover:bg-[#fff2cf]"
-                    }`}
+                      }`}
                   >
                     <span>{alert.label}</span>
                     <span className="rounded-full border border-current/20 px-2 py-0.5 text-[11px]">
@@ -4921,39 +5027,38 @@ case "properties":
           </div>
         ) : null}
 
-            <div className="mb-6 rounded-[30px] border border-[#e7ddd0] bg-white p-3 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-              <div className="flex flex-wrap gap-2">
-                {menuItems.map((item) => (
-                  <button
-                    key={item.key}
-                    onClick={() => setActiveSection(item.key)}
-                    className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                      activeSection === item.key
-                        ? "bg-[#241c15] text-[#f8f2e8]"
-                        : "border border-[#d8c7ab] bg-[#fcfaf7] text-[#6f6255] hover:bg-white"
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+        <div className="mb-6 rounded-[30px] border border-[#e7ddd0] bg-white p-3 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <div className="flex flex-wrap gap-2">
+            {menuItems.map((item) => (
+              <button
+                key={item.key}
+                onClick={() => setActiveSection(item.key)}
+                className={`rounded-full px-4 py-2 text-sm font-medium transition ${activeSection === item.key
+                  ? "bg-[#241c15] text-[#f8f2e8]"
+                  : "border border-[#d8c7ab] bg-[#fcfaf7] text-[#6f6255] hover:bg-white"
+                  }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
-                   {renderActiveSection()}
-          </div>
-        
-        {expandedImage ? (
-          <div
-            className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 p-4"
-            onClick={() => setExpandedImage(null)}
-          >
-            <img
-              src={expandedImage}
-              alt="Expanded maintenance image"
-              className="max-h-[92vh] max-w-[96vw] rounded-[20px] shadow-2xl"
-            />
-          </div>
-        ) : null}
-</main>
-      );
-    }
+        {renderActiveSection()}
+      </div>
+
+      {expandedImage ? (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setExpandedImage(null)}
+        >
+          <img
+            src={expandedImage}
+            alt="Expanded maintenance image"
+            className="max-h-[92vh] max-w-[96vw] rounded-[20px] shadow-2xl"
+          />
+        </div>
+      ) : null}
+    </main>
+  );
+}
