@@ -153,6 +153,33 @@ type GroundsRecurringTask = {
   updated_at?: string | null;
 };
 
+
+type GroundsRecurringRule = {
+  id: string;
+  property_id: string;
+  task_type: string;
+  label: string | null;
+  notes: string | null;
+  frequency_type: string;
+  interval_days: number | null;
+  day_of_week: number | null;
+  day_of_month: number | null;
+  semi_monthly_day_1: number | null;
+  semi_monthly_day_2: number | null;
+  anchor_date: string | null;
+  start_date: string;
+  end_date: string | null;
+  next_run_date: string | null;
+  grounds_units_needed: number;
+  grounds_units_required_strict: boolean;
+  show_team_status_to_grounds: boolean;
+  needs_secure_access: boolean;
+  needs_garage_access: boolean;
+  active: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
 type StrandedJob = {
   id: string;
   property_id: string | null;
@@ -429,6 +456,7 @@ export default function AdminPage() {
   const [groundsJobs, setGroundsJobs] = useState<GroundsJob[]>([]);
   const [groundsJobSlots, setGroundsJobSlots] = useState<GroundsJobSlot[]>([]);
   const [groundsRecurringTasks, setGroundsRecurringTasks] = useState<GroundsRecurringTask[]>([]);
+  const [groundsRecurringRules, setGroundsRecurringRules] = useState<GroundsRecurringRule[]>([]);
   const [strandedJobs, setStrandedJobs] = useState<StrandedJob[]>([]);
   const [accessRows, setAccessRows] = useState<AccessRow[]>([]);
   const [sops, setSops] = useState<SopRow[]>([]);
@@ -649,6 +677,7 @@ const [propertyPostal, setPropertyPostal] = useState("");
       groundsJobsRes,
       groundsJobSlotsRes,
       groundsRecurringTasksRes,
+      groundsRecurringRulesRes,
       strandedJobsRes,
       accessRowsRes,
       sopsRes,
@@ -679,6 +708,10 @@ const [propertyPostal, setPropertyPostal] = useState("");
         .from("property_grounds_recurring_tasks")
         .select("*")
         .order("created_at", { ascending: false }),
+      supabase
+        .from("property_grounds_recurring_rules")
+        .select("*")
+        .order("created_at", { ascending: false }),
       supabase.from("admin_stranded_jobs").select("*").order("created_at", { ascending: true }),
       supabase.from("property_access").select("*"),
       supabase.from("property_sops").select("*").order("created_at", { ascending: false }),
@@ -705,6 +738,7 @@ const [propertyPostal, setPropertyPostal] = useState("");
       groundsJobsRes,
       groundsJobSlotsRes,
       groundsRecurringTasksRes,
+      groundsRecurringRulesRes,
       strandedJobsRes,
       accessRowsRes,
       sopsRes,
@@ -734,6 +768,7 @@ const [propertyPostal, setPropertyPostal] = useState("");
     setGroundsJobs((groundsJobsRes.data ?? []) as GroundsJob[]);
     setGroundsJobSlots((groundsJobSlotsRes.data ?? []) as GroundsJobSlot[]);
     setGroundsRecurringTasks((groundsRecurringTasksRes.data ?? []) as GroundsRecurringTask[]);
+    setGroundsRecurringRules((groundsRecurringRulesRes.data ?? []) as GroundsRecurringRule[]);
     setStrandedJobs((strandedJobsRes.data ?? []) as StrandedJob[]);
     setAccessRows((accessRowsRes.data ?? []) as AccessRow[]);
     setSops((sopsRes.data ?? []) as SopRow[]);
@@ -1957,6 +1992,31 @@ This removes its linked members and deletes the grounds account.`
 
   function getGroundsTaskLabel(task: GroundsRecurringTask) {
     return task.label || task.task_type || "Recurring grounds task";
+  }
+
+
+  function getGroundsRuleLabel(rule: GroundsRecurringRule) {
+    return rule.label || rule.task_type || "Recurring grounds rule";
+  }
+
+  function getGroundsRuleFrequencyLabel(rule: GroundsRecurringRule) {
+    if (rule.frequency_type === "weekly") {
+      return `Weekly${rule.day_of_week !== null ? ` • day ${rule.day_of_week}` : ""}`;
+    }
+    if (rule.frequency_type === "biweekly") {
+      return `Biweekly${rule.day_of_week !== null ? ` • day ${rule.day_of_week}` : ""}`;
+    }
+    if (rule.frequency_type === "monthly") {
+      return `Monthly${rule.day_of_month !== null ? ` • day ${rule.day_of_month}` : ""}`;
+    }
+    if (rule.frequency_type === "semi_monthly") {
+      const parts = [rule.semi_monthly_day_1, rule.semi_monthly_day_2].filter((v) => v !== null);
+      return parts.length ? `Semi-monthly • days ${parts.join(" & ")}` : "Semi-monthly";
+    }
+    if (rule.frequency_type === "every_x_days") {
+      return rule.interval_days ? `Every ${rule.interval_days} days` : "Every X days";
+    }
+    return rule.frequency_type || "Custom";
   }
 
   function getPriorityLabel(priority: number) {
@@ -3366,6 +3426,56 @@ function renderPropertiesSection() {
                   </div>
                 );
               })
+            )}
+          </div>
+        </section>
+
+        <section className="rounded-[30px] border border-[#d8e8d8] bg-[linear-gradient(180deg,#f8fcf8_0%,#f2f8f2_100%)] p-5 shadow-[0_18px_45px_rgba(28,86,39,0.08)]">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-semibold tracking-tight text-[#23422c]">Recurring Grounds Rules</h2>
+              <p className="mt-1 text-sm text-[#5b7460]">
+                New recurring grounds scheduling rules. This is the new system that will eventually generate future grounds jobs automatically.
+              </p>
+            </div>
+            <span className="rounded-full border border-[#cfe2cf] bg-white px-3 py-1 text-xs font-medium text-[#46604b]">{groundsRecurringRules.length}</span>
+          </div>
+
+          <div className="space-y-3">
+            {groundsRecurringRules.length === 0 ? (
+              <div className="rounded-[22px] border border-dashed border-[#b7cfb7] bg-white px-4 py-4 text-sm text-[#5b7460]">
+                No recurring grounds rules yet.
+              </div>
+            ) : (
+              groundsRecurringRules.map((rule) => (
+                <div key={rule.id} className="rounded-[22px] border border-[#cfe2cf] bg-white p-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <div className="text-base font-semibold text-[#23422c]">{getPropertyName(rule.property_id)}</div>
+                      <div className="mt-1 text-sm text-[#46604b]">{getGroundsRuleLabel(rule)}</div>
+                      <div className="mt-1 text-sm text-[#5b7460]">Frequency: {getGroundsRuleFrequencyLabel(rule)}</div>
+                      <div className="mt-1 text-sm text-[#5b7460]">Next run: {rule.next_run_date ? formatScheduledFor(rule.next_run_date) : "Not set"}</div>
+                      <div className="mt-1 text-sm text-[#5b7460]">Staffing: {rule.grounds_units_needed} unit{rule.grounds_units_needed === 1 ? "" : "s"}{rule.grounds_units_required_strict ? ", strict" : ", flexible"}</div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <span className={`rounded-full border px-3 py-1 text-xs font-medium ${rule.active ? "border-[#cfe2cf] bg-[#f7fbf7] text-[#46604b]" : "border-[#efc6c6] bg-[#fff5f5] text-[#8a2e22]"}`}>
+                        {rule.active ? "Active" : "Paused"}
+                      </span>
+                      <span className="rounded-full border border-[#cfe2cf] bg-[#f7fbf7] px-3 py-1 text-xs font-medium text-[#46604b]">
+                        Secure access: {rule.needs_secure_access ? "Yes" : "No"}
+                      </span>
+                      <span className="rounded-full border border-[#cfe2cf] bg-[#f7fbf7] px-3 py-1 text-xs font-medium text-[#46604b]">
+                        Garage: {rule.needs_garage_access ? "Yes" : "No"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {rule.notes ? (
+                    <div className="mt-3 text-sm leading-6 text-[#46604b]">{rule.notes}</div>
+                  ) : null}
+                </div>
+              ))
             )}
           </div>
         </section>
