@@ -2,7 +2,7 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 type OwnerAccountRow = {
@@ -36,7 +36,6 @@ function getCityFromAddress(address?: string | null) {
 
 export default function OwnerWelcomePage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   const [loading, setLoading] = useState(true);
   const [savingPassword, setSavingPassword] = useState(false);
@@ -61,7 +60,10 @@ export default function OwnerWelcomePage() {
       setError("");
       setStatusMessage("");
 
-      const expectedFromQuery = searchParams.get("owner_email")?.trim().toLowerCase() || "";
+      const expectedFromQuery =
+  typeof window !== "undefined"
+    ? new URLSearchParams(window.location.search).get("owner_email")?.trim().toLowerCase() || ""
+    : "";
       setExpectedOwnerEmail(expectedFromQuery);
 
       const {
@@ -225,7 +227,7 @@ export default function OwnerWelcomePage() {
     return () => {
       cancelled = true;
     };
-  }, [searchParams]);
+ }, []);
 
   const passwordReady = useMemo(() => {
     return password.trim().length >= 8 && password === confirmPassword;
