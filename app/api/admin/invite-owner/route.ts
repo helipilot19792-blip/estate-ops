@@ -157,29 +157,31 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 🔥 SEND INVITE (OR MAGIC LINK IF USER EXISTS)
-    const { data: usersList } = await serviceClient.auth.admin.listUsers();
+    // SEND INVITE (OR LOGIN LINK IF USER EXISTS)
+    const { data: usersList, error: listUsersError } = await serviceClient.auth.admin.listUsers();
 
-    const userExists = usersList.users.some(
+    if (listUsersError) {
+      return NextResponse.json({ error: listUsersError.message }, { status: 500 });
+    }
+
+    const userExists = (usersList?.users ?? []).some(
       (u) => u.email?.toLowerCase() === ownerEmail
     );
 
-    let authError = null;
+    let authError: { message: string } | null = null;
 
     if (userExists) {
-      // existing user → send login link
       const { error } = await serviceClient.auth.signInWithOtp({
         email: ownerEmail,
         options: {
-          emailRedirectTo: "https://portal.estateofmindpm.com/owner/welcome",
+          emailRedirectTo: "https://portal.estateofmindpm.com/owner",
         },
       });
 
       authError = error;
     } else {
-      // new user → send invite
       const { error } = await serviceClient.auth.admin.inviteUserByEmail(ownerEmail, {
-        redirectTo: "https://portal.estateofmindpm.com/owner/welcome",
+        redirectTo: "https://portal.estateofmindpm.com/owner",
       });
 
       authError = error;
