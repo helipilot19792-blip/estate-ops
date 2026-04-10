@@ -1,12 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+// ENV SETUP
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
+const publicSupabaseKey =
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+  "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+
+// SAFETY CHECKS
+if (!supabaseUrl) {
+  throw new Error("NEXT_PUBLIC_SUPABASE_URL is missing.");
+}
+
+if (!publicSupabaseKey) {
+  throw new Error(
+    "Missing public Supabase key. Add NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY or NEXT_PUBLIC_SUPABASE_ANON_KEY."
+  );
+}
+
+if (!serviceRoleKey) {
+  throw new Error("SUPABASE_SERVICE_ROLE_KEY is missing.");
+}
 
 export async function POST(request: NextRequest) {
   try {
+    // AUTH CHECK
     const authHeader = request.headers.get("authorization");
     const token = authHeader?.replace("Bearer ", "");
 
@@ -14,7 +34,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing auth token." }, { status: 401 });
     }
 
-    const adminClient = createClient(supabaseUrl, supabaseAnonKey, {
+    const adminClient = createClient(supabaseUrl, publicSupabaseKey, {
       global: {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -41,6 +61,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Admin access required." }, { status: 403 });
     }
 
+    // BODY
     const body = await request.json();
     const propertyId = String(body.propertyId || "").trim();
     const ownerEmail = String(body.ownerEmail || "").trim().toLowerCase();
@@ -54,10 +75,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Owner email is required." }, { status: 400 });
     }
 
+    // SERVICE CLIENT (ADMIN PRIVILEGES)
     const serviceClient = createClient(supabaseUrl, serviceRoleKey);
 
     let ownerAccountId: string | null = null;
 
+    // CHECK / CREATE OWNER ACCOUNT
     const { data: existingOwner, error: existingOwnerError } = await serviceClient
       .from("owner_accounts")
       .select("*")
@@ -109,6 +132,7 @@ export async function POST(request: NextRequest) {
       ownerAccountId = insertedOwner.id;
     }
 
+    // LINK OWNER TO PROPERTY
     const { data: existingAccess, error: existingAccessError } = await serviceClient
       .from("owner_property_access")
       .select("id")
@@ -133,16 +157,36 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const { error: inviteError } = await serviceClient.auth.admin.inviteUserByEmail(ownerEmail, {
-      redirectTo: "https://portal.estateofmindpm.com/owner/welcome",
-      data: {
-        role: "owner",
-        owner_name: ownerName || null,
-      },
-    });
+    // 🔥 SEND INVITE (OR MAGIC LINK IF USER EXISTS)
+    const { data: usersList } = await serviceClient.auth.admin.listUsers();
 
-    if (inviteError) {
-      return NextResponse.json({ error: inviteError.message }, { status: 500 });
+    const userExists = usersList.users.some(
+      (u) => u.email?.toLowerCase() === ownerEmail
+    );
+
+    let authError = null;
+
+    if (userExists) {
+      // existing user → send login link
+      const { error } = await serviceClient.auth.signInWithOtp({
+        email: ownerEmail,
+        options: {
+          emailRedirectTo: "https://portal.estateofmindpm.com/owner/welcome",
+        },
+      });
+
+      authError = error;
+    } else {
+      // new user → send invite
+      const { error } = await serviceClient.auth.admin.inviteUserByEmail(ownerEmail, {
+        redirectTo: "https://portal.estateofmindpm.com/owner/welcome",
+      });
+
+      authError = error;
+    }
+
+    if (authError) {
+      return NextResponse.json({ error: authError.message }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });
