@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 type OwnerAccountRow = {
@@ -347,6 +347,8 @@ function ReportIssueModal({
   const [files, setFiles] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const libraryInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -359,6 +361,11 @@ function ReportIssueModal({
   }, [open]);
 
   if (!open) return null;
+
+  function appendFiles(newFiles: FileList | null) {
+    if (!newFiles?.length) return;
+    setFiles((prev) => [...prev, ...Array.from(newFiles)]);
+  }
 
   async function handleSubmit() {
     if (!propertyId) {
@@ -439,120 +446,165 @@ function ReportIssueModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4 py-6">
-      <div className="w-full max-w-xl rounded-[28px] border border-white/10 bg-[#17120d] shadow-[0_30px_90px_rgba(0,0,0,0.45)]">
-        <div className="border-b border-white/8 px-5 py-4 sm:px-6">
-          <div className="text-[11px] uppercase tracking-[0.22em] text-[#bfa67b]">Owner Portal</div>
-          <h3 className="mt-2 text-xl font-semibold text-[#f7f1e8]">Report an Issue</h3>
-          <p className="mt-1 text-sm text-[#cdbda0]">
-            Send us a concern and it will be added to the maintenance queue.
-          </p>
-        </div>
+    <div className="fixed inset-0 z-[100] overflow-y-auto bg-black/70 px-4 py-4 sm:py-6">
+      <div className="flex min-h-full items-start justify-center">
+        <div className="my-auto w-full max-w-xl rounded-[28px] border border-white/10 bg-[#17120d] shadow-[0_30px_90px_rgba(0,0,0,0.45)] max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-h-[calc(100vh-3rem)]">
+          <div className="border-b border-white/8 px-5 py-4 sm:px-6">
+            <div className="text-[11px] uppercase tracking-[0.22em] text-[#bfa67b]">Owner Portal</div>
+            <h3 className="mt-2 text-xl font-semibold text-[#f7f1e8]">Report an Issue</h3>
+            <p className="mt-1 text-sm text-[#cdbda0]">
+              Send us a concern and it will be added to the maintenance queue.
+            </p>
+          </div>
 
-        <div className="space-y-5 px-5 py-5 sm:px-6">
-          <div>
-            <label className="text-xs uppercase tracking-[0.18em] text-[#bfa67b]">Category</label>
-            <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              {ISSUE_CATEGORIES.map((item) => {
-                const selected = item === category;
-                return (
+          <div className="space-y-5 px-5 py-5 sm:px-6">
+            <div>
+              <label className="text-xs uppercase tracking-[0.18em] text-[#bfa67b]">Category</label>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                {ISSUE_CATEGORIES.map((item) => {
+                  const selected = item === category;
+                  return (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => setCategory(item)}
+                      className={`rounded-2xl border px-4 py-3 text-sm font-medium transition ${
+                        selected
+                          ? "border-[#e7c98a] bg-[#b08b47]/20 text-[#f7f1e8]"
+                          : "border-white/8 bg-white/[0.03] text-[#e8ddca] hover:bg-white/[0.05]"
+                      }`}
+                    >
+                      {item}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs uppercase tracking-[0.18em] text-[#bfa67b]">Priority</label>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {[
+                  { value: "low", label: "Low" },
+                  { value: "normal", label: "Normal" },
+                  { value: "urgent", label: "Urgent" },
+                ].map((item) => (
                   <button
-                    key={item}
+                    key={item.value}
                     type="button"
-                    onClick={() => setCategory(item)}
-                    className={`rounded-2xl border px-4 py-3 text-sm font-medium transition ${
-                      selected
-                        ? "border-[#e7c98a] bg-[#b08b47]/20 text-[#f7f1e8]"
+                    onClick={() => setUrgency(item.value)}
+                    className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                      urgency === item.value
+                        ? item.value === "urgent"
+                          ? "border-red-400/70 bg-red-500 text-white"
+                          : "border-[#e7c98a] bg-[#b08b47]/20 text-[#f7f1e8]"
                         : "border-white/8 bg-white/[0.03] text-[#e8ddca] hover:bg-white/[0.05]"
                     }`}
                   >
-                    {item}
+                    {item.label}
                   </button>
-                );
-              })}
+                ))}
+              </div>
             </div>
-          </div>
 
-          <div>
-            <label className="text-xs uppercase tracking-[0.18em] text-[#bfa67b]">Priority</label>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {[
-                { value: "low", label: "Low" },
-                { value: "normal", label: "Normal" },
-                { value: "urgent", label: "Urgent" },
-              ].map((item) => (
+            <div>
+              <label className="text-xs uppercase tracking-[0.18em] text-[#bfa67b]">Details</label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Example: The kitchen sink is leaking under the cabinet."
+                className="mt-2 min-h-[130px] w-full rounded-2xl border border-white/8 bg-[#100c08] px-4 py-3 text-sm text-[#f7f1e8] outline-none transition focus:border-[#b08b47]"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs uppercase tracking-[0.18em] text-[#bfa67b]">Photos</label>
+
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={(e) => appendFiles(e.target.files)}
+                className="hidden"
+              />
+
+              <input
+                ref={libraryInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={(e) => appendFiles(e.target.files)}
+                className="hidden"
+              />
+
+              <div className="mt-2 flex flex-wrap gap-3">
                 <button
-                  key={item.value}
                   type="button"
-                  onClick={() => setUrgency(item.value)}
-                  className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                    urgency === item.value
-                      ? item.value === "urgent"
-                        ? "border-red-400/70 bg-red-500 text-white"
-                        : "border-[#e7c98a] bg-[#b08b47]/20 text-[#f7f1e8]"
-                      : "border-white/8 bg-white/[0.03] text-[#e8ddca] hover:bg-white/[0.05]"
-                  }`}
+                  onClick={() => cameraInputRef.current?.click()}
+                  className="rounded-full bg-[#b08b47] px-4 py-2.5 text-sm font-semibold text-[#17120d]"
                 >
-                  {item.label}
+                  Take Photo
                 </button>
-              ))}
-            </div>
-          </div>
 
-          <div>
-            <label className="text-xs uppercase tracking-[0.18em] text-[#bfa67b]">Details</label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Example: The kitchen sink is leaking under the cabinet."
-              className="mt-2 min-h-[130px] w-full rounded-2xl border border-white/8 bg-[#100c08] px-4 py-3 text-sm text-[#f7f1e8] outline-none transition focus:border-[#b08b47]"
-            />
-          </div>
+                <button
+                  type="button"
+                  onClick={() => libraryInputRef.current?.click()}
+                  className="rounded-full border border-white/12 px-4 py-2.5 text-sm font-semibold text-[#f7f1e8] transition hover:bg-white/[0.05]"
+                >
+                  Add Photos
+                </button>
+              </div>
 
-          <div>
-            <label className="text-xs uppercase tracking-[0.18em] text-[#bfa67b]">Photos</label>
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              multiple
-              onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
-              className="mt-2 block w-full rounded-2xl border border-white/8 bg-[#100c08] px-4 py-3 text-sm text-[#cdbda0] file:mr-4 file:rounded-full file:border-0 file:bg-[#b08b47] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-[#17120d]"
-            />
-            <div className="mt-2 text-xs text-[#9f9079]">
-              Add photos from your camera or library to help explain the issue.
+              <div className="mt-2 text-xs text-[#9f9079]">
+                Use your camera or photo library to help explain the issue.
+              </div>
+
+              {files.length > 0 ? (
+                <div className="mt-3 space-y-2">
+                  <div className="text-sm text-[#cdbda0]">
+                    {files.length} photo{files.length === 1 ? "" : "s"} selected
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {files.map((file, index) => (
+                      <div
+                        key={`${file.name}-${index}`}
+                        className="rounded-full border border-white/8 bg-white/[0.03] px-3 py-1 text-xs text-[#cdbda0]"
+                      >
+                        {file.name}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
-            {files.length > 0 ? (
-              <div className="mt-2 text-sm text-[#cdbda0]">
-                {files.length} photo{files.length === 1 ? "" : "s"} selected
+
+            {error ? (
+              <div className="rounded-2xl border border-red-500/25 bg-red-950/20 px-4 py-3 text-sm text-red-200">
+                {error}
               </div>
             ) : null}
-          </div>
 
-          {error ? (
-            <div className="rounded-2xl border border-red-500/25 bg-red-950/20 px-4 py-3 text-sm text-red-200">
-              {error}
+            <div className="sticky bottom-0 flex flex-wrap gap-3 border-t border-white/8 bg-[#17120d] pt-4">
+              <button
+                type="button"
+                onClick={() => void handleSubmit()}
+                disabled={saving}
+                className="rounded-full bg-[#b08b47] px-5 py-2.5 text-sm font-semibold text-[#17120d] transition hover:brightness-110 disabled:opacity-60"
+              >
+                {saving ? "Submitting..." : "Submit Issue"}
+              </button>
+
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={saving}
+                className="rounded-full border border-white/12 px-5 py-2.5 text-sm font-semibold text-[#f7f1e8] transition hover:bg-white/[0.05]"
+              >
+                Cancel
+              </button>
             </div>
-          ) : null}
-
-          <div className="flex flex-wrap gap-3 pt-1">
-            <button
-              type="button"
-              onClick={() => void handleSubmit()}
-              disabled={saving}
-              className="rounded-full bg-[#b08b47] px-5 py-2.5 text-sm font-semibold text-[#17120d] transition hover:brightness-110 disabled:opacity-60"
-            >
-              {saving ? "Submitting..." : "Submit Issue"}
-            </button>
-
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={saving}
-              className="rounded-full border border-white/12 px-5 py-2.5 text-sm font-semibold text-[#f7f1e8] transition hover:bg-white/[0.05]"
-            >
-              Cancel
-            </button>
           </div>
         </div>
       </div>
@@ -653,38 +705,44 @@ export default function OwnerPage() {
       return;
     }
 
-    const [propertiesRes, turnoverRes, groundsRes, groundsRecurringRulesRes, flagsRes, flagImagesRes] =
-      await Promise.all([
-        supabase
-          .from("properties")
-          .select("id,name,address,notes")
-          .in("id", propertyIds)
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("turnover_jobs")
-          .select("id,property_id,status,notes,created_at,scheduled_for")
-          .in("property_id", propertyIds)
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("grounds_jobs")
-          .select("id,property_id,status,notes,created_at,scheduled_for,job_type")
-          .in("property_id", propertyIds)
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("property_grounds_recurring_rules")
-          .select("id,property_id,task_type,label,notes,frequency_type,interval_days,day_of_week,day_of_month,semi_monthly_day_1,semi_monthly_day_2,anchor_date,start_date,end_date,next_run_date,active")
-          .in("property_id", propertyIds)
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("property_maintenance_flags")
-          .select("id,property_id,source,category,urgency,status,notes,created_at,flagged_at,resolved_at")
-          .in("property_id", propertyIds)
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("property_maintenance_flag_images")
-          .select("id,flag_id,image_url,caption,sort_order")
-          .order("sort_order", { ascending: true }),
-      ]);
+    const [
+      propertiesRes,
+      turnoverRes,
+      groundsRes,
+      groundsRecurringRulesRes,
+      flagsRes,
+      flagImagesRes,
+    ] = await Promise.all([
+      supabase
+        .from("properties")
+        .select("id,name,address,notes")
+        .in("id", propertyIds)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("turnover_jobs")
+        .select("id,property_id,status,notes,created_at,scheduled_for")
+        .in("property_id", propertyIds)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("grounds_jobs")
+        .select("id,property_id,status,notes,created_at,scheduled_for,job_type")
+        .in("property_id", propertyIds)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("property_grounds_recurring_rules")
+        .select("id,property_id,task_type,label,notes,frequency_type,interval_days,day_of_week,day_of_month,semi_monthly_day_1,semi_monthly_day_2,anchor_date,start_date,end_date,next_run_date,active")
+        .in("property_id", propertyIds)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("property_maintenance_flags")
+        .select("id,property_id,source,category,urgency,status,notes,created_at,flagged_at,resolved_at")
+        .in("property_id", propertyIds)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("property_maintenance_flag_images")
+        .select("id,flag_id,image_url,caption,sort_order")
+        .order("sort_order", { ascending: true }),
+    ]);
 
     for (const res of [
       propertiesRes,
