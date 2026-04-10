@@ -61,9 +61,10 @@ export default function OwnerWelcomePage() {
       setStatusMessage("");
 
       const expectedFromQuery =
-  typeof window !== "undefined"
-    ? new URLSearchParams(window.location.search).get("owner_email")?.trim().toLowerCase() || ""
-    : "";
+        typeof window !== "undefined"
+          ? new URLSearchParams(window.location.search).get("owner_email")?.trim().toLowerCase() || ""
+          : "";
+
       setExpectedOwnerEmail(expectedFromQuery);
 
       const {
@@ -227,7 +228,7 @@ export default function OwnerWelcomePage() {
     return () => {
       cancelled = true;
     };
- }, []);
+  }, []);
 
   const passwordReady = useMemo(() => {
     return password.trim().length >= 8 && password === confirmPassword;
@@ -262,10 +263,12 @@ export default function OwnerWelcomePage() {
       return;
     }
 
-    setSavingPassword(false);
-    setPassword("");
-    setConfirmPassword("");
-    setStatusMessage("Password saved. You can now use email and password sign-in as well.");
+    await supabase.auth.signOut();
+
+    const loginEmail = ownerAccount?.email || expectedOwnerEmail || signedInEmail || "";
+    router.replace(
+      `/owner/login?message=password_set${loginEmail ? `&email=${encodeURIComponent(loginEmail)}` : ""}`
+    );
   }
 
   async function handleContinue() {
@@ -389,8 +392,8 @@ export default function OwnerWelcomePage() {
           <div className="text-[11px] uppercase tracking-[0.22em] text-[#bfa67b]">Set Password</div>
           <h2 className="mt-2 text-xl font-semibold text-[#f7f1e8]">Finish your setup</h2>
           <p className="mt-2 text-sm leading-relaxed text-[#cdbda0]">
-            Setting a password is recommended. It lets you sign in later without relying on an email
-            link every time.
+            Setting a password is recommended. After you save it, you will be taken to the owner
+            login page to sign in normally.
           </p>
 
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
