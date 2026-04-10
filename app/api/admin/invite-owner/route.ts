@@ -22,7 +22,13 @@ if (!serviceRoleKey) {
   throw new Error("SUPABASE_SERVICE_ROLE_KEY is missing.");
 }
 
-const ownerWelcomeUrl = "https://portal.estateofmindpm.com/owner/welcome";
+const ownerWelcomeBaseUrl = "https://portal.estateofmindpm.com/owner/welcome";
+
+function getOwnerWelcomeUrl(ownerEmail: string) {
+  const url = new URL(ownerWelcomeBaseUrl);
+  url.searchParams.set("owner_email", ownerEmail);
+  return url.toString();
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -74,6 +80,7 @@ export async function POST(request: NextRequest) {
     }
 
     const serviceClient = createClient(supabaseUrl, serviceRoleKey);
+    const ownerWelcomeUrl = getOwnerWelcomeUrl(ownerEmail);
 
     let ownerAccountId: string | null = null;
 
@@ -169,6 +176,12 @@ export async function POST(request: NextRequest) {
         email: ownerEmail,
         options: {
           emailRedirectTo: ownerWelcomeUrl,
+          shouldCreateUser: false,
+          data: {
+            role: "owner",
+            owner_email: ownerEmail,
+            owner_name: ownerName || null,
+          },
         },
       });
 
@@ -178,6 +191,7 @@ export async function POST(request: NextRequest) {
         redirectTo: ownerWelcomeUrl,
         data: {
           role: "owner",
+          owner_email: ownerEmail,
           owner_name: ownerName || null,
         },
       });

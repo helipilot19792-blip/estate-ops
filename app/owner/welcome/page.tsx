@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 type OwnerAccountRow = {
@@ -35,12 +35,18 @@ function getCityFromAddress(address?: string | null) {
 
 export default function OwnerWelcomePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [loading, setLoading] = useState(true);
   const [savingPassword, setSavingPassword] = useState(false);
   const [continuing, setContinuing] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
+  const [signedInEmail, setSignedInEmail] = useState("");
+  const [expectedOwnerEmail, setExpectedOwnerEmail] = useState("");
   const [ownerAccount, setOwnerAccount] = useState<OwnerAccountRow | null>(null);
   const [properties, setProperties] = useState<PropertyRow[]>([]);
   const [password, setPassword] = useState("");
@@ -53,6 +59,9 @@ export default function OwnerWelcomePage() {
       setLoading(true);
       setError("");
       setStatusMessage("");
+
+      const expectedFromQuery = searchParams.get("owner_email")?.trim().toLowerCase() || "";
+      setExpectedOwnerEmail(expectedFromQuery);
 
       const {
         data: { session },
@@ -74,7 +83,7 @@ export default function OwnerWelcomePage() {
         error: userError,
       } = await supabase.auth.getUser();
 
-      if (userError || !user?.email) {
+      if (userError || !user) {
         if (!cancelled) {
           setError("We could not confirm your invite session. Please open the link from your email again.");
           setLoading(false);
@@ -82,12 +91,28 @@ export default function OwnerWelcomePage() {
         return;
       }
 
-      const email = user.email.trim().toLowerCase();
+      const authEmail = user.email?.trim().toLowerCase() || "";
+      setSignedInEmail(authEmail);
+
+      const resolvedOwnerEmail =
+        expectedFromQuery ||
+        (typeof user.user_metadata?.owner_email === "string"
+          ? user.user_metadata.owner_email.trim().toLowerCase()
+          : "") ||
+        authEmail;
+
+      if (!resolvedOwnerEmail) {
+        if (!cancelled) {
+          setError("We could not determine which owner account this invite belongs to.");
+          setLoading(false);
+        }
+        return;
+      }
 
       const { data: owner, error: ownerError } = await supabase
         .from("owner_accounts")
         .select("*")
-        .eq("email", email)
+        .eq("email", resolvedOwnerEmail)
         .maybeSingle<OwnerAccountRow>();
 
       if (ownerError) {
@@ -100,16 +125,20 @@ export default function OwnerWelcomePage() {
 
       if (!owner) {
         if (!cancelled) {
-          setError("No owner account was found for this email address.");
+          setOwnerAccount(null);
+          setProperties([]);
+          setError("No owner account was found for this invite email.");
           setLoading(false);
         }
         return;
       }
 
       const updates: Record<string, string | null> = {};
+
       if (!owner.profile_id) {
         updates.profile_id = user.id;
       }
+
       if (!owner.invite_accepted_at) {
         updates.invite_accepted_at = new Date().toISOString();
       }
@@ -135,10 +164,10 @@ export default function OwnerWelcomePage() {
         finalOwner = updatedOwner;
       }
 
-      const { data: accessRows, error: accessError } = await supabase
+      const { data: accessRows, error: accessError } = (await supabase
         .from("owner_property_access")
         .select("*")
-        .eq("owner_account_id", finalOwner.id) as {
+        .eq("owner_account_id", finalOwner.id)) as {
         data: OwnerPropertyAccessRow[] | null;
         error: { message: string } | null;
       };
@@ -152,7 +181,6 @@ export default function OwnerWelcomePage() {
       }
 
       const propertyIds = (accessRows ?? []).map((row) => row.property_id);
-
       let linkedProperties: PropertyRow[] = [];
 
       if (propertyIds.length > 0) {
@@ -175,7 +203,18 @@ export default function OwnerWelcomePage() {
       if (!cancelled) {
         setOwnerAccount(finalOwner);
         setProperties(linkedProperties);
-        setStatusMessage(accessToken ? "Your access has been confirmed." : "");
+        setError("");
+
+        if (authEmail && resolvedOwnerEmail && authEmail !== resolvedOwnerEmail) {
+          setStatusMessage(
+            `This invite is for ${resolvedOwnerEmail}, but this browser is currently signed in as ${authEmail}. Please sign out and use the invited email.`
+          );
+        } else if (accessToken) {
+          setStatusMessage("Your access has been confirmed.");
+        } else {
+          setStatusMessage("");
+        }
+
         setLoading(false);
       }
     }
@@ -185,13 +224,22 @@ export default function OwnerWelcomePage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [searchParams]);
 
   const passwordReady = useMemo(() => {
     return password.trim().length >= 8 && password === confirmPassword;
   }, [password, confirmPassword]);
 
+  const ownerMatched = !!ownerAccount;
+  const wrongSignedInUser =
+    !!expectedOwnerEmail && !!signedInEmail && expectedOwnerEmail !== signedInEmail;
+
   async function handleSetPassword() {
+    if (!ownerMatched) {
+      setError("Please use the correct invited email before setting a password.");
+      return;
+    }
+
     if (!passwordReady) {
       setError("Use a password with at least 8 characters, and make sure both fields match.");
       return;
@@ -218,8 +266,20 @@ export default function OwnerWelcomePage() {
   }
 
   async function handleContinue() {
+    if (!ownerMatched) {
+      setError("We could not match this session to an owner account yet.");
+      return;
+    }
+
     setContinuing(true);
     router.push("/owner");
+  }
+
+  async function handleSignOut() {
+    setSigningOut(true);
+    await supabase.auth.signOut();
+    setSigningOut(false);
+    window.location.reload();
   }
 
   if (loading) {
@@ -243,14 +303,31 @@ export default function OwnerWelcomePage() {
             Welcome{ownerAccount?.full_name ? `, ${ownerAccount.full_name}` : ""}
           </h1>
           <p className="mt-3 max-w-2xl text-base leading-relaxed text-[#cdbda0]">
-            Your access has been activated. This is your private owner setup page where you can confirm
-            your properties and optionally set a password for future sign-ins.
+            This is your private owner setup page where you can confirm your properties, set a
+            password, and continue into your dashboard.
           </p>
         </section>
 
-        {error ? (
+        {(error || wrongSignedInUser) ? (
           <div className="rounded-2xl border border-red-500/25 bg-red-950/20 px-4 py-3 text-sm text-red-200">
-            {error}
+            <div>{error || "This invite appears to be open under the wrong signed-in account."}</div>
+            {(signedInEmail || expectedOwnerEmail) ? (
+              <div className="mt-2 space-y-1 text-xs text-red-100/90">
+                {expectedOwnerEmail ? <div>Invited email: {expectedOwnerEmail}</div> : null}
+                {signedInEmail ? <div>Signed in as: {signedInEmail}</div> : null}
+              </div>
+            ) : null}
+
+            <div className="mt-3">
+              <button
+                type="button"
+                onClick={() => void handleSignOut()}
+                disabled={signingOut}
+                className="rounded-full border border-white/12 px-4 py-2 text-xs font-semibold text-[#f7f1e8] transition hover:bg-white/[0.05] disabled:opacity-60"
+              >
+                {signingOut ? "Signing out..." : "Sign out and try again"}
+              </button>
+            </div>
           </div>
         ) : null}
 
@@ -262,9 +339,21 @@ export default function OwnerWelcomePage() {
 
         <section className="rounded-[28px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
           <div className="text-[11px] uppercase tracking-[0.22em] text-[#bfa67b]">Confirmed Account</div>
-          <div className="mt-4 space-y-2">
-            <div className="text-sm text-[#cdbda0]">Email</div>
-            <div className="text-lg font-semibold text-[#f7f1e8]">{ownerAccount?.email || "Unknown"}</div>
+
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <div>
+              <div className="text-sm text-[#cdbda0]">Signed-in email</div>
+              <div className="mt-1 text-lg font-semibold text-[#f7f1e8]">
+                {signedInEmail || "Unknown"}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-sm text-[#cdbda0]">Invite email</div>
+              <div className="mt-1 text-lg font-semibold text-[#f7f1e8]">
+                {expectedOwnerEmail || ownerAccount?.email || "Unknown"}
+              </div>
+            </div>
           </div>
 
           <div className="mt-6">
@@ -297,31 +386,49 @@ export default function OwnerWelcomePage() {
           <div className="text-[11px] uppercase tracking-[0.22em] text-[#bfa67b]">Set Password</div>
           <h2 className="mt-2 text-xl font-semibold text-[#f7f1e8]">Finish your setup</h2>
           <p className="mt-2 text-sm leading-relaxed text-[#cdbda0]">
-            This step is optional today, but recommended. Setting a password lets you sign in later
-            without relying on an email link every time.
+            Setting a password is recommended. It lets you sign in later without relying on an email
+            link every time.
           </p>
 
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             <div>
               <label className="text-xs uppercase tracking-[0.18em] text-[#bfa67b]">New password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="mt-2 w-full rounded-2xl border border-white/8 bg-[#100c08] px-4 py-3 text-sm text-[#f7f1e8] outline-none transition focus:border-[#b08b47]"
-                placeholder="Minimum 8 characters"
-              />
+              <div className="mt-2 flex rounded-2xl border border-white/8 bg-[#100c08] focus-within:border-[#b08b47]">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full rounded-l-2xl bg-transparent px-4 py-3 text-sm text-[#f7f1e8] outline-none"
+                  placeholder="Minimum 8 characters"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((value) => !value)}
+                  className="rounded-r-2xl px-4 text-sm font-medium text-[#cdbda0]"
+                >
+                  {showPassword ? "Hide" : "Show"}
+                </button>
+              </div>
             </div>
 
             <div>
               <label className="text-xs uppercase tracking-[0.18em] text-[#bfa67b]">Confirm password</label>
-              <input
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="mt-2 w-full rounded-2xl border border-white/8 bg-[#100c08] px-4 py-3 text-sm text-[#f7f1e8] outline-none transition focus:border-[#b08b47]"
-                placeholder="Repeat password"
-              />
+              <div className="mt-2 flex rounded-2xl border border-white/8 bg-[#100c08] focus-within:border-[#b08b47]">
+                <input
+                  type={showConfirmPassword ? "text" : "password"}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full rounded-l-2xl bg-transparent px-4 py-3 text-sm text-[#f7f1e8] outline-none"
+                  placeholder="Repeat password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword((value) => !value)}
+                  className="rounded-r-2xl px-4 text-sm font-medium text-[#cdbda0]"
+                >
+                  {showConfirmPassword ? "Hide" : "Show"}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -329,7 +436,7 @@ export default function OwnerWelcomePage() {
             <button
               type="button"
               onClick={() => void handleSetPassword()}
-              disabled={savingPassword}
+              disabled={savingPassword || !ownerMatched}
               className="rounded-full bg-[#b08b47] px-5 py-2.5 text-sm font-semibold text-[#17120d] transition hover:brightness-110 disabled:opacity-60"
             >
               {savingPassword ? "Saving..." : "Set Password"}
@@ -338,7 +445,7 @@ export default function OwnerWelcomePage() {
             <button
               type="button"
               onClick={() => void handleContinue()}
-              disabled={continuing}
+              disabled={continuing || !ownerMatched}
               className="rounded-full border border-white/12 px-5 py-2.5 text-sm font-semibold text-[#f7f1e8] transition hover:bg-white/[0.05] disabled:opacity-60"
             >
               {continuing ? "Opening..." : "Continue to Dashboard"}
