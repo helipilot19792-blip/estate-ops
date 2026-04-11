@@ -3628,13 +3628,6 @@ This removes its linked members and deletes the grounds account.`
               Override default staffing for this job
             </label>
 
-            <input
-              type="date"
-              className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-              value={jobScheduledFor}
-              onChange={(e) => setJobScheduledFor(e.target.value)}
-            />
-
             {jobOverrideUnitsEnabled ? (
               <div className="space-y-3 rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] p-4">
                 <select className="w-full rounded-[16px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" value={jobUnitsNeeded} onChange={(e) => setJobUnitsNeeded(e.target.value)}>
@@ -3654,15 +3647,17 @@ This removes its linked members and deletes the grounds account.`
                 </label>
               </div>
             ) : null}
-<input
-  type="date"
-  className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none transition focus:border-[#b48d4e] focus:bg-white"
-  value={jobScheduledFor}
-  onChange={(e) => setJobScheduledFor(e.target.value)}
-/>
+
+            <input
+              type="date"
+              className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e] focus:bg-white"
+              value={jobScheduledFor}
+              onChange={(e) => setJobScheduledFor(e.target.value)}
+            />
+
             <textarea className="min-h-[120px] w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" placeholder="Job notes. Optional. You can still include a checkout date here if needed." value={jobNotes} onChange={(e) => setJobNotes(e.target.value)} />
 
-            <button className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]" onClick={() => void createJob()}>
+            <button type="button" className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]" onClick={() => void createJob()}>
               Create Cleaning Job
             </button>
           </div>

@@ -650,10 +650,10 @@ export default function OwnerPage() {
       error: userError,
     } = await supabase.auth.getUser();
 
-   if (userError || !user?.email) {
-  window.location.href = "/owner/login";
-  return;
-}
+    if (userError || !user?.email) {
+      window.location.href = "/owner/login";
+      return;
+    }
 
     const email = user.email.trim().toLowerCase();
 
@@ -972,26 +972,26 @@ export default function OwnerPage() {
               ) : null}
             </div>
 
-         <div className="flex flex-wrap gap-3">
-  <button
-    type="button"
-    onClick={() => setReportOpen(true)}
-    className="rounded-full bg-[#b08b47] px-5 py-3 text-sm font-semibold text-[#17120d] transition hover:brightness-110"
-  >
-    Report an Issue
-  </button>
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => setReportOpen(true)}
+                className="rounded-full bg-[#b08b47] px-5 py-3 text-sm font-semibold text-[#17120d] transition hover:brightness-110"
+              >
+                Report an Issue
+              </button>
 
-  <button
-    type="button"
-    onClick={async () => {
-      await supabase.auth.signOut();
-      window.location.href = "/owner/login";
-    }}
-    className="rounded-full border border-white/12 px-5 py-3 text-sm font-semibold text-[#f7f1e8] transition hover:bg-white/[0.05]"
-  >
-    Logout
-  </button>
-</div>
+              <button
+                type="button"
+                onClick={async () => {
+                  await supabase.auth.signOut();
+                  window.location.href = "/owner/login";
+                }}
+                className="rounded-full border border-white/12 px-5 py-3 text-sm font-semibold text-[#f7f1e8] transition hover:bg-white/[0.05]"
+              >
+                Logout
+              </button>
+            </div>
           </div>
         </section>
 
@@ -1032,22 +1032,53 @@ export default function OwnerPage() {
           />
         </section>
 
-        <section className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
+        <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
           <div className="rounded-[28px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-[11px] uppercase tracking-[0.22em] text-[#bfa67b]">
-                  At a Glance
+                  Today at a Glance
                 </div>
                 <h2 className="mt-2 text-xl font-semibold text-[#f7f1e8]">Upcoming Activity</h2>
               </div>
+              <div className="rounded-full border border-white/8 bg-white/[0.03] px-3 py-1 text-xs uppercase tracking-[0.18em] text-[#bfa67b]">
+                {Math.min(timelineItems.length, 4)} shown
+              </div>
             </div>
 
-            <div className="mt-5 space-y-3">
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
               {timelineItems.length > 0 ? (
-                timelineItems.map((item) => <TimelineRow key={item.id} item={item} />)
+                timelineItems.slice(0, 4).map((item) => (
+                  <div
+                    key={item.id}
+                    className="rounded-2xl border border-white/7 bg-white/[0.02] px-4 py-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-[#f7f1e8]">{item.title}</div>
+                        {item.subtitle ? (
+                          <div className="mt-1 line-clamp-2 text-sm text-[#cdbda0]">{item.subtitle}</div>
+                        ) : null}
+                      </div>
+                      <div
+                        className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${
+                          item.tone === "emerald"
+                            ? "bg-emerald-400"
+                            : item.tone === "sky"
+                              ? "bg-sky-400"
+                              : item.tone === "rose"
+                                ? "bg-rose-400"
+                                : "bg-[#b08b47]"
+                        }`}
+                      />
+                    </div>
+                    <div className="mt-3 text-xs uppercase tracking-[0.18em] text-[#bfa67b]">
+                      {formatDateLabel(item.date)}
+                    </div>
+                  </div>
+                ))
               ) : (
-                <div className="rounded-2xl border border-white/7 bg-white/[0.02] px-4 py-5 text-sm text-[#cdbda0]">
+                <div className="rounded-2xl border border-white/7 bg-white/[0.02] px-4 py-5 text-sm text-[#cdbda0] sm:col-span-2">
                   Nothing upcoming has been scheduled yet.
                 </div>
               )}
