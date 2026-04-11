@@ -2863,16 +2863,18 @@ const menuItems: Array<{ key: AdminSection; label: string }> = [
   function renderUsersSection() {
     return (
       <div className="rounded-[30px] border border-[#e7ddd0] bg-white p-4 md:p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-        <div className="mb-4">
+               <div className="mb-4">
           <h2 className="text-xl font-semibold tracking-tight">User Management</h2>
           <p className="mt-1 text-sm text-[#7f7263]">
             Approve pending users, change access roles, remove users from the portal, or permanently delete them.
           </p>
+          <div className="mt-2 text-sm font-medium text-[#8a6112]">
+            Debug: profiles loaded = {profiles.length}
+          </div>
           <div className="mt-3 rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3 text-sm text-[#6f6255]">
             <span className="font-semibold text-[#241c15]">How access works:</span> Users are linked to Cleaner and/or Grounds teams. Properties are assigned to those teams.
           </div>
         </div>
-
         <div className="space-y-3">
           {profiles.map((profile) => {
             const isBusy =
