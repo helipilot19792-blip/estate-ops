@@ -972,15 +972,26 @@ export default function OwnerPage() {
               ) : null}
             </div>
 
-            <div className="flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={() => setReportOpen(true)}
-                className="rounded-full bg-[#b08b47] px-5 py-3 text-sm font-semibold text-[#17120d] transition hover:brightness-110"
-              >
-                Report an Issue
-              </button>
-            </div>
+         <div className="flex flex-wrap gap-3">
+  <button
+    type="button"
+    onClick={() => setReportOpen(true)}
+    className="rounded-full bg-[#b08b47] px-5 py-3 text-sm font-semibold text-[#17120d] transition hover:brightness-110"
+  >
+    Report an Issue
+  </button>
+
+  <button
+    type="button"
+    onClick={async () => {
+      await supabase.auth.signOut();
+      window.location.href = "/owner/login";
+    }}
+    className="rounded-full border border-white/12 px-5 py-3 text-sm font-semibold text-[#f7f1e8] transition hover:bg-white/[0.05]"
+  >
+    Logout
+  </button>
+</div>
           </div>
         </section>
 
