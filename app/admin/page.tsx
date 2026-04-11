@@ -3654,7 +3654,12 @@ This removes its linked members and deletes the grounds account.`
                 </label>
               </div>
             ) : null}
-
+<input
+  type="date"
+  className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none transition focus:border-[#b48d4e] focus:bg-white"
+  value={jobScheduledFor}
+  onChange={(e) => setJobScheduledFor(e.target.value)}
+/>
             <textarea className="min-h-[120px] w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" placeholder="Job notes. Optional. You can still include a checkout date here if needed." value={jobNotes} onChange={(e) => setJobNotes(e.target.value)} />
 
             <button className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]" onClick={() => void createJob()}>
