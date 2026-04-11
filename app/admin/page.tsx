@@ -301,6 +301,7 @@ type MaintenanceFlagImageRow = {
 };
 
 type AdminSection =
+  | "home"
   | "users"
   | "properties"
   | "cleanerAccounts"
@@ -473,7 +474,7 @@ export default function AdminPage() {
     return new Date(today.getFullYear(), today.getMonth(), 1);
   });
   const [adminSelectedDate, setAdminSelectedDate] = useState<string | null>(() => toYmd(new Date()));
-  const [activeSection, setActiveSection] = useState<AdminSection>("users");
+  const [activeSection, setActiveSection] = useState<AdminSection>("home");
 
   const [properties, setProperties] = useState<Property[]>([]);
   const [cleanerAccounts, setCleanerAccounts] = useState<CleanerAccount[]>([]);
@@ -566,7 +567,7 @@ export default function AdminPage() {
   const [groundsJobShowTeamStatus, setGroundsJobShowTeamStatus] = useState(true);
   const [groundsJobNeedsSecureAccess, setGroundsJobNeedsSecureAccess] = useState(false);
   const [groundsJobNeedsGarageAccess, setGroundsJobNeedsGarageAccess] = useState(false);
- const [jobMode, setJobMode] = useState<"single" | "recurring">("single");
+  const [jobMode, setJobMode] = useState<"single" | "recurring">("single");
   const [recurringType, setRecurringType] = useState("weekly");
 
   const [jobPropertyId, setJobPropertyId] = useState("");
@@ -2848,15 +2849,16 @@ This removes its linked members and deletes the grounds account.`
     return job.status || "Open";
   }
 
-  const menuItems: Array<{ key: AdminSection; label: string }> = [
-    { key: "users", label: "Users" },
-    { key: "properties", label: "Properties" },
-    { key: "cleanerAccounts", label: "Cleaner Accounts" },
-    { key: "groundsAccounts", label: "Grounds Accounts" },
-    { key: "assignments", label: "Assignments" },
-    { key: "jobs", label: "Jobs" },
-    { key: "maintenance", label: "Maintenance Flags" },
-  ];
+const menuItems: Array<{ key: AdminSection; label: string }> = [
+  { key: "home", label: "Home" },
+  { key: "users", label: "Users" },
+  { key: "properties", label: "Properties" },
+  { key: "cleanerAccounts", label: "Cleaner Accounts" },
+  { key: "groundsAccounts", label: "Grounds Accounts" },
+  { key: "assignments", label: "Assignments" },
+  { key: "jobs", label: "Jobs" },
+  { key: "maintenance", label: "Maintenance Flags" },
+];
 
   function renderUsersSection() {
     return (
@@ -3666,36 +3668,34 @@ This removes its linked members and deletes the grounds account.`
         <section className="rounded-[30px] border border-[#d8e8d8] bg-[linear-gradient(180deg,#f8fcf8_0%,#f2f8f2_100%)] p-5 shadow-[0_18px_45px_rgba(28,86,39,0.08)]">
           <h2 className="text-xl font-semibold tracking-tight text-[#23422c]">Create Grounds Job</h2>
           <p className="mt-1 text-sm text-[#5b7460]">
-  Create a grounds job. Grounds slots are offered automatically from the property's grounds assignments.
-</p>
+            Create a grounds job. Grounds slots are offered automatically from the property's grounds assignments.
+          </p>
 
-<div className="mt-4 flex gap-3">
-  <button
-    type="button"
-    onClick={() => setJobMode("single")}
-    className={`rounded-full px-4 py-2 text-sm ${
-      jobMode === "single"
-        ? "bg-[#23422c] text-white"
-        : "border border-[#b7cfb7] bg-white text-[#23422c]"
-    }`}
-  >
-    One-time
-  </button>
+          <div className="mt-4 flex gap-3">
+            <button
+              type="button"
+              onClick={() => setJobMode("single")}
+              className={`rounded-full px-4 py-2 text-sm ${jobMode === "single"
+                  ? "bg-[#23422c] text-white"
+                  : "border border-[#b7cfb7] bg-white text-[#23422c]"
+                }`}
+            >
+              One-time
+            </button>
 
-  <button
-    type="button"
-    onClick={() => setJobMode("recurring")}
-    className={`rounded-full px-4 py-2 text-sm ${
-      jobMode === "recurring"
-        ? "bg-[#23422c] text-white"
-        : "border border-[#b7cfb7] bg-white text-[#23422c]"
-    }`}
-  >
-    Recurring
-  </button>
-</div>
+            <button
+              type="button"
+              onClick={() => setJobMode("recurring")}
+              className={`rounded-full px-4 py-2 text-sm ${jobMode === "recurring"
+                  ? "bg-[#23422c] text-white"
+                  : "border border-[#b7cfb7] bg-white text-[#23422c]"
+                }`}
+            >
+              Recurring
+            </button>
+          </div>
 
-<div className="mt-5 space-y-3">
+          <div className="mt-5 space-y-3">
             <select className="w-full rounded-[20px] border border-[#b7cfb7] bg-white px-4 py-3 text-sm outline-none focus:border-[#4f8a5b]" value={groundsJobPropertyId} onChange={(e) => setGroundsJobPropertyId(e.target.value)}>
               <option value="">Select property</option>
               {properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -3849,87 +3849,87 @@ This removes its linked members and deletes the grounds account.`
             <span className="rounded-full border border-[#cfe2cf] bg-white px-3 py-1 text-xs font-medium text-[#46604b]">{groundsJobs.length}</span>
           </div>
 
-  <div className="space-y-3">
-  {groundsJobs.length === 0 ? (
-    <div className="rounded-[22px] border border-dashed border-[#b7cfb7] bg-white px-4 py-4 text-sm text-[#5b7460]">
-      No grounds jobs yet.
-    </div>
-  ) : (
-    groundsJobs.map((job) => {
-      const slots = groundsJobSlotsByJobId[job.id] ?? [];
-      const acceptedCount = slots.filter((slot) => slot.status === "accepted").length;
-      const offeredCount = slots.filter((slot) => slot.status === "offered").length;
-      const declinedCount = slots.filter((slot) => slot.status === "declined").length;
-
-      return (
-        <div key={job.id} className="rounded-[22px] border border-[#cfe2cf] bg-white p-4">
-          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-            <div>
-              <div className="text-base font-semibold text-[#23422c]">
-                {getPropertyName(job.property_id)}
-              </div>
-              <div className="mt-1 text-sm text-[#46604b]">
-                {GROUNDS_JOB_TYPE_OPTIONS.find((option) => option.value === job.job_type)?.label ||
-                  job.job_type ||
-                  "Grounds job"}
-              </div>
-              <div className="mt-1 text-sm text-[#5b7460]">
-                Scheduled: {formatScheduledFor(job.scheduled_for)}
-              </div>
-              <div className="mt-1 text-sm text-[#5b7460]">
-                Status:{" "}
-                <span className="font-medium text-[#23422c]">
-                  {getGroundsJobDisplayStatus(job, slots)}
-                </span>
-              </div>
-              <div className="mt-1 text-sm text-[#5b7460]">
-                Team progress: {acceptedCount}/{job.grounds_units_needed} accepted
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <span className="rounded-full border border-[#cfe2cf] bg-[#f7fbf7] px-3 py-1 text-xs font-medium text-[#46604b]">
-                Offered: {offeredCount}
-              </span>
-              <span className="rounded-full border border-[#cfe2cf] bg-[#f7fbf7] px-3 py-1 text-xs font-medium text-[#46604b]">
-                Declined: {declinedCount}
-              </span>
-              <span className="rounded-full border border-[#cfe2cf] bg-[#f7fbf7] px-3 py-1 text-xs font-medium text-[#46604b]">
-                Secure access: {job.needs_secure_access ? "Yes" : "No"}
-              </span>
-            </div>
-          </div>
-
-          {job.notes ? (
-            <div className="mt-3 text-sm leading-6 text-[#46604b]">{job.notes}</div>
-          ) : null}
-
-          <div className="mt-3 space-y-2">
-            {slots.length === 0 ? (
-              <div className="rounded-[18px] border border-dashed border-[#cfe2cf] bg-[#f7fbf7] px-3 py-3 text-xs text-[#5b7460]">
-                No grounds slots created yet.
+          <div className="space-y-3">
+            {groundsJobs.length === 0 ? (
+              <div className="rounded-[22px] border border-dashed border-[#b7cfb7] bg-white px-4 py-4 text-sm text-[#5b7460]">
+                No grounds jobs yet.
               </div>
             ) : (
-              slots.map((slot) => (
-                <div
-                  key={slot.id}
-                  className="rounded-[18px] border border-[#cfe2cf] bg-[#f7fbf7] px-3 py-3 text-xs text-[#46604b]"
-                >
-                  <div>Slot {slot.slot_number}</div>
-                  <div>Account: {getGroundsAccountName(slot.grounds_account_id)}</div>
-                  <div>Status: {slot.status}</div>
-                  <div>Offered: {formatDateTime(slot.offered_at)}</div>
-                  <div>Accepted: {formatDateTime(slot.accepted_at)}</div>
-                  <div>Declined: {formatDateTime(slot.declined_at)}</div>
-                </div>
-              ))
+              groundsJobs.map((job) => {
+                const slots = groundsJobSlotsByJobId[job.id] ?? [];
+                const acceptedCount = slots.filter((slot) => slot.status === "accepted").length;
+                const offeredCount = slots.filter((slot) => slot.status === "offered").length;
+                const declinedCount = slots.filter((slot) => slot.status === "declined").length;
+
+                return (
+                  <div key={job.id} className="rounded-[22px] border border-[#cfe2cf] bg-white p-4">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                      <div>
+                        <div className="text-base font-semibold text-[#23422c]">
+                          {getPropertyName(job.property_id)}
+                        </div>
+                        <div className="mt-1 text-sm text-[#46604b]">
+                          {GROUNDS_JOB_TYPE_OPTIONS.find((option) => option.value === job.job_type)?.label ||
+                            job.job_type ||
+                            "Grounds job"}
+                        </div>
+                        <div className="mt-1 text-sm text-[#5b7460]">
+                          Scheduled: {formatScheduledFor(job.scheduled_for)}
+                        </div>
+                        <div className="mt-1 text-sm text-[#5b7460]">
+                          Status:{" "}
+                          <span className="font-medium text-[#23422c]">
+                            {getGroundsJobDisplayStatus(job, slots)}
+                          </span>
+                        </div>
+                        <div className="mt-1 text-sm text-[#5b7460]">
+                          Team progress: {acceptedCount}/{job.grounds_units_needed} accepted
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <span className="rounded-full border border-[#cfe2cf] bg-[#f7fbf7] px-3 py-1 text-xs font-medium text-[#46604b]">
+                          Offered: {offeredCount}
+                        </span>
+                        <span className="rounded-full border border-[#cfe2cf] bg-[#f7fbf7] px-3 py-1 text-xs font-medium text-[#46604b]">
+                          Declined: {declinedCount}
+                        </span>
+                        <span className="rounded-full border border-[#cfe2cf] bg-[#f7fbf7] px-3 py-1 text-xs font-medium text-[#46604b]">
+                          Secure access: {job.needs_secure_access ? "Yes" : "No"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {job.notes ? (
+                      <div className="mt-3 text-sm leading-6 text-[#46604b]">{job.notes}</div>
+                    ) : null}
+
+                    <div className="mt-3 space-y-2">
+                      {slots.length === 0 ? (
+                        <div className="rounded-[18px] border border-dashed border-[#cfe2cf] bg-[#f7fbf7] px-3 py-3 text-xs text-[#5b7460]">
+                          No grounds slots created yet.
+                        </div>
+                      ) : (
+                        slots.map((slot) => (
+                          <div
+                            key={slot.id}
+                            className="rounded-[18px] border border-[#cfe2cf] bg-[#f7fbf7] px-3 py-3 text-xs text-[#46604b]"
+                          >
+                            <div>Slot {slot.slot_number}</div>
+                            <div>Account: {getGroundsAccountName(slot.grounds_account_id)}</div>
+                            <div>Status: {slot.status}</div>
+                            <div>Offered: {formatDateTime(slot.offered_at)}</div>
+                            <div>Accepted: {formatDateTime(slot.accepted_at)}</div>
+                            <div>Declined: {formatDateTime(slot.declined_at)}</div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                );
+              })
             )}
           </div>
-        </div>
-      );
-    })
-  )}
-</div>
         </section>
 
 
@@ -5209,32 +5209,38 @@ This removes its linked members and deletes the grounds account.`
     );
   }
 
-  function renderActiveSection() {
-    switch (activeSection) {
-      case "users":
-        return renderUsersSection();
-      case "properties":
-        return (
-          <div className="space-y-6">
-            {renderAddPropertySection()}
-            {renderPropertySetupSection()}
-            {renderPropertiesSection()}
-          </div>
-        );
-      case "cleanerAccounts":
-        return renderCleanerAccountsSection();
-      case "groundsAccounts":
-        return renderGroundsAccountsSection();
-      case "assignments":
-        return renderAssignmentsSection();
-      case "jobs":
-        return renderJobsSection();
-      case "maintenance":
-        return renderMaintenanceSection();
-      default:
-        return renderUsersSection();
-    }
+ function renderActiveSection() {
+  switch (activeSection) {
+    case "home":
+      return (
+        <div className="rounded-[30px] border border-dashed border-[#d8c7ab] bg-white p-6 text-sm text-[#6f6255] shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          Home dashboard coming next.
+        </div>
+      );
+    case "users":
+      return renderUsersSection();
+    case "properties":
+      return (
+        <div className="space-y-6">
+          {renderAddPropertySection()}
+          {renderPropertySetupSection()}
+          {renderPropertiesSection()}
+        </div>
+      );
+    case "cleanerAccounts":
+      return renderCleanerAccountsSection();
+    case "groundsAccounts":
+      return renderGroundsAccountsSection();
+    case "assignments":
+      return renderAssignmentsSection();
+    case "jobs":
+      return renderJobsSection();
+    case "maintenance":
+      return renderMaintenanceSection();
+    default:
+      return renderUsersSection();
   }
+}
 
   if (checkingAuth) {
     return (
