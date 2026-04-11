@@ -281,12 +281,12 @@ export default function OwnerWelcomePage() {
     router.push("/owner");
   }
 
-  async function handleSignOut() {
-    setSigningOut(true);
-    await supabase.auth.signOut();
-    setSigningOut(false);
-    window.location.reload();
-  }
+async function handleSignOut() {
+  setSigningOut(true);
+  await supabase.auth.signOut();
+  setSigningOut(false);
+  router.replace("/owner/login");
+}
 
   if (loading) {
     return (
