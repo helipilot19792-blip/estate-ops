@@ -650,11 +650,10 @@ export default function OwnerPage() {
       error: userError,
     } = await supabase.auth.getUser();
 
-    if (userError || !user?.email) {
-      setError("Please sign in to view your owner dashboard.");
-      setLoading(false);
-      return;
-    }
+   if (userError || !user?.email) {
+  window.location.href = "/owner/login";
+  return;
+}
 
     const email = user.email.trim().toLowerCase();
 
