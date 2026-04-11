@@ -157,62 +157,67 @@ export default function OwnerLoginPage() {
           </div>
         ) : null}
 
-        <section className="rounded-[28px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
-          <div className="space-y-4">
-            <div>
-              <label className="text-xs uppercase tracking-[0.18em] text-[#bfa67b]">Email</label>
-              <input
-                type="email"
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="mt-2 w-full rounded-2xl border border-white/8 bg-[#100c08] px-4 py-3 text-sm text-[#f7f1e8] outline-none transition focus:border-[#b08b47]"
-                placeholder="you@example.com"
-              />
-            </div>
+       <section className="rounded-[28px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
+  <form
+    className="space-y-4"
+    onSubmit={(e) => {
+      e.preventDefault();
+      void handlePasswordLogin();
+    }}
+  >
+    <div>
+      <label className="text-xs uppercase tracking-[0.18em] text-[#bfa67b]">Email</label>
+      <input
+        type="email"
+        autoComplete="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        className="mt-2 w-full rounded-2xl border border-white/8 bg-[#100c08] px-4 py-3 text-sm text-[#f7f1e8] outline-none transition focus:border-[#b08b47]"
+        placeholder="you@example.com"
+      />
+    </div>
 
-            <div>
-              <label className="text-xs uppercase tracking-[0.18em] text-[#bfa67b]">Password</label>
-              <div className="mt-2 flex rounded-2xl border border-white/8 bg-[#100c08] focus-within:border-[#b08b47]">
-                <input
-                  type={showPassword ? "text" : "password"}
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full rounded-l-2xl bg-transparent px-4 py-3 text-sm text-[#f7f1e8] outline-none"
-                  placeholder="Enter your password"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((value) => !value)}
-                  className="rounded-r-2xl px-4 text-sm font-medium text-[#cdbda0]"
-                >
-                  {showPassword ? "Hide" : "Show"}
-                </button>
-              </div>
-            </div>
+    <div>
+      <label className="text-xs uppercase tracking-[0.18em] text-[#bfa67b]">Password</label>
+      <div className="mt-2 flex rounded-2xl border border-white/8 bg-[#100c08] focus-within:border-[#b08b47]">
+        <input
+          type={showPassword ? "text" : "password"}
+          autoComplete="current-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className="w-full rounded-l-2xl bg-transparent px-4 py-3 text-sm text-[#f7f1e8] outline-none"
+          placeholder="Enter your password"
+        />
+        <button
+          type="button"
+          onClick={() => setShowPassword((value) => !value)}
+          className="rounded-r-2xl px-4 text-sm font-medium text-[#cdbda0]"
+        >
+          {showPassword ? "Hide" : "Show"}
+        </button>
+      </div>
+    </div>
 
-            <div className="flex flex-wrap gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => void handlePasswordLogin()}
-                disabled={signingIn || !canSubmitPassword}
-                className="rounded-full bg-[#b08b47] px-5 py-2.5 text-sm font-semibold text-[#17120d] transition hover:brightness-110 disabled:opacity-60"
-              >
-                {signingIn ? "Signing in..." : "Log In"}
-              </button>
+    <div className="flex flex-wrap gap-3 pt-2">
+      <button
+        type="submit"
+        disabled={signingIn || !canSubmitPassword}
+        className="rounded-full bg-[#b08b47] px-5 py-2.5 text-sm font-semibold text-[#17120d] transition hover:brightness-110 disabled:opacity-60"
+      >
+        {signingIn ? "Signing in..." : "Log In"}
+      </button>
 
-              <button
-                type="button"
-                onClick={() => void handleMagicLink()}
-                disabled={sendingLink || !email.trim()}
-                className="rounded-full border border-white/12 px-5 py-2.5 text-sm font-semibold text-[#f7f1e8] transition hover:bg-white/[0.05] disabled:opacity-60"
-              >
-                {sendingLink ? "Sending..." : "Email Me a Login Link"}
-              </button>
-            </div>
-          </div>
-        </section>
+      <button
+        type="button"
+        onClick={() => void handleMagicLink()}
+        disabled={sendingLink || !email.trim()}
+        className="rounded-full border border-white/12 px-5 py-2.5 text-sm font-semibold text-[#f7f1e8] transition hover:bg-white/[0.05] disabled:opacity-60"
+      >
+        {sendingLink ? "Sending..." : "Email Me a Login Link"}
+      </button>
+    </div>
+  </form>
+</section>
       </div>
     </main>
   );
