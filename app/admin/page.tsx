@@ -2849,27 +2849,27 @@ This removes its linked members and deletes the grounds account.`
     return job.status || "Open";
   }
 
-const menuItems: Array<{ key: AdminSection; label: string }> = [
-  { key: "home", label: "Home" },
-  { key: "users", label: "Users" },
-  { key: "properties", label: "Properties" },
-  { key: "cleanerAccounts", label: "Cleaner Accounts" },
-  { key: "groundsAccounts", label: "Grounds Accounts" },
-  { key: "assignments", label: "Assignments" },
-  { key: "jobs", label: "Jobs" },
-  { key: "maintenance", label: "Maintenance Flags" },
-];
+  const menuItems: Array<{ key: AdminSection; label: string }> = [
+    { key: "home", label: "Home" },
+    { key: "users", label: "Users" },
+    { key: "properties", label: "Properties" },
+    { key: "cleanerAccounts", label: "Cleaner Accounts" },
+    { key: "groundsAccounts", label: "Grounds Accounts" },
+    { key: "assignments", label: "Assignments" },
+    { key: "jobs", label: "Jobs" },
+    { key: "maintenance", label: "Maintenance Flags" },
+  ];
 
   function renderUsersSection() {
     return (
       <div className="rounded-[30px] border border-[#e7ddd0] bg-white p-4 md:p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-               <div className="mb-4">
+        <div className="mb-4">
           <h2 className="text-xl font-semibold tracking-tight">User Management</h2>
           <p className="mt-1 text-sm text-[#7f7263]">
             Approve pending users, change access roles, remove users from the portal, or permanently delete them.
           </p>
           <div className="mt-2 text-sm font-medium text-[#8a6112]">
-            Debug: profiles loaded = {profiles.length}
+
           </div>
           <div className="mt-3 rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3 text-sm text-[#6f6255]">
             <span className="font-semibold text-[#241c15]">How access works:</span> Users are linked to Cleaner and/or Grounds teams. Properties are assigned to those teams.
@@ -3678,8 +3678,8 @@ const menuItems: Array<{ key: AdminSection; label: string }> = [
               type="button"
               onClick={() => setJobMode("single")}
               className={`rounded-full px-4 py-2 text-sm ${jobMode === "single"
-                  ? "bg-[#23422c] text-white"
-                  : "border border-[#b7cfb7] bg-white text-[#23422c]"
+                ? "bg-[#23422c] text-white"
+                : "border border-[#b7cfb7] bg-white text-[#23422c]"
                 }`}
             >
               One-time
@@ -3689,8 +3689,8 @@ const menuItems: Array<{ key: AdminSection; label: string }> = [
               type="button"
               onClick={() => setJobMode("recurring")}
               className={`rounded-full px-4 py-2 text-sm ${jobMode === "recurring"
-                  ? "bg-[#23422c] text-white"
-                  : "border border-[#b7cfb7] bg-white text-[#23422c]"
+                ? "bg-[#23422c] text-white"
+                : "border border-[#b7cfb7] bg-white text-[#23422c]"
                 }`}
             >
               Recurring
@@ -5211,38 +5211,38 @@ const menuItems: Array<{ key: AdminSection; label: string }> = [
     );
   }
 
- function renderActiveSection() {
-  switch (activeSection) {
-    case "home":
-      return (
-        <div className="rounded-[30px] border border-dashed border-[#d8c7ab] bg-white p-6 text-sm text-[#6f6255] shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-          Home dashboard coming next.
-        </div>
-      );
-    case "users":
-      return renderUsersSection();
-    case "properties":
-      return (
-        <div className="space-y-6">
-          {renderAddPropertySection()}
-          {renderPropertySetupSection()}
-          {renderPropertiesSection()}
-        </div>
-      );
-    case "cleanerAccounts":
-      return renderCleanerAccountsSection();
-    case "groundsAccounts":
-      return renderGroundsAccountsSection();
-    case "assignments":
-      return renderAssignmentsSection();
-    case "jobs":
-      return renderJobsSection();
-    case "maintenance":
-      return renderMaintenanceSection();
-    default:
-      return renderUsersSection();
+  function renderActiveSection() {
+    switch (activeSection) {
+      case "home":
+        return (
+          <div className="rounded-[30px] border border-dashed border-[#d8c7ab] bg-white p-6 text-sm text-[#6f6255] shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+            Home dashboard coming next.
+          </div>
+        );
+      case "users":
+        return renderUsersSection();
+      case "properties":
+        return (
+          <div className="space-y-6">
+            {renderAddPropertySection()}
+            {renderPropertySetupSection()}
+            {renderPropertiesSection()}
+          </div>
+        );
+      case "cleanerAccounts":
+        return renderCleanerAccountsSection();
+      case "groundsAccounts":
+        return renderGroundsAccountsSection();
+      case "assignments":
+        return renderAssignmentsSection();
+      case "jobs":
+        return renderJobsSection();
+      case "maintenance":
+        return renderMaintenanceSection();
+      default:
+        return renderUsersSection();
+    }
   }
-}
 
   if (checkingAuth) {
     return (
