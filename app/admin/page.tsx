@@ -699,15 +699,15 @@ export default function AdminPage() {
 
     void checkAuthAndRole();
   }, [router]);
-useEffect(() => {
-  if (typeof window === "undefined") return;
+  useEffect(() => {
+    if (typeof window === "undefined") return;
 
-  const open = new URLSearchParams(window.location.search).get("open");
+    const open = new URLSearchParams(window.location.search).get("open");
 
-  if (open === "add-property") {
-    setActiveSection("properties");
-  }
-}, []);
+    if (open === "add-property") {
+      setActiveSection("properties");
+    }
+  }, []);
   useEffect(() => {
     if (!checkingAuth && currentOrganizationId) {
       void loadData();
@@ -3095,7 +3095,12 @@ This removes its linked members and deletes the grounds account.`
                 })}
               </p>
             </div>
-
+            <button
+              onClick={() => router.push("/help")}
+              className="rounded-full bg-[#b48d4e] px-4 py-2 text-black"
+            >
+              Help
+            </button>
             <button
               type="button"
               onClick={() => setActiveSection("jobs")}
