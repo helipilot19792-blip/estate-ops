@@ -926,10 +926,23 @@ async function handleSubmitSupportTicket() {
       supabase.from("property_access").select("*"),
       supabase.from("property_sops").select("*").order("created_at", { ascending: false }),
       supabase.from("property_sop_images").select("*").order("sort_order", { ascending: true }),
-      supabase
-        .from("profiles")
-        .select("id,email,full_name,phone,role,created_at")
-        .order("created_at", { ascending: false }),
+  supabase
+  .from("organization_members")
+  .select(`
+    profile_id,
+    role,
+    created_at,
+    profiles!organization_members_profile_id_fkey (
+      id,
+      email,
+      full_name,
+      phone,
+      role,
+      created_at
+    )
+  `)
+  .eq("organization_id", currentOrganizationId)
+  .order("created_at", { ascending: false }),
       supabase.from("owner_accounts").select("*").order("created_at", { ascending: false }),
       supabase.from("owner_property_access").select("*").order("created_at", { ascending: false }),
       supabase.from("property_calendars").select("*").order("created_at", { ascending: false }),
@@ -991,7 +1004,23 @@ async function handleSubmitSupportTicket() {
     setAccessRows((accessRowsRes.data ?? []) as AccessRow[]);
     setSops((sopsRes.data ?? []) as SopRow[]);
     setSopImages((sopImagesRes.data ?? []) as SopImageRow[]);
-    setProfiles((profilesRes.data ?? []) as ProfileRow[]);
+   setProfiles(
+  ((profilesRes.data ?? []) as any[])
+    .map((member) => {
+      const profile = Array.isArray(member.profiles) ? member.profiles[0] : member.profiles;
+      if (!profile) return null;
+
+      return {
+        id: profile.id,
+        email: profile.email,
+        full_name: profile.full_name,
+        phone: profile.phone,
+        role: member.role || profile.role,
+        created_at: profile.created_at,
+      } as ProfileRow;
+    })
+    .filter(Boolean) as ProfileRow[]
+);
     setOwnerAccounts((ownerAccountsRes.data ?? []) as OwnerAccountRow[]);
     setOwnerPropertyAccess((ownerPropertyAccessRes.data ?? []) as OwnerPropertyAccessRow[]);
     setPropertyCalendars((propertyCalendarsRes.data ?? []) as PropertyCalendarRow[]);
