@@ -13,7 +13,7 @@ type ProfileRow = {
   role: string;
 };
 
-type AuthMode = "login" | "company" | "staff";
+type AuthMode = "login" | "company";
 
 function slugifyCompanyName(value: string) {
   return value
@@ -214,8 +214,6 @@ export default function LoginPage() {
         return;
       }
 
-   
-
       const userId = data.user?.id;
 
       if (userId) {
@@ -276,83 +274,6 @@ export default function LoginPage() {
     }
   }
 
-  async function handleStaffSignup(e?: FormEvent) {
-    e?.preventDefault();
-
-    setError("");
-    setMessage("");
-
-    if (!signupName.trim()) {
-      setError("Please enter your full name.");
-      return;
-    }
-
-    if (!signupPhone.trim()) {
-      setError("Please enter your phone number.");
-      return;
-    }
-
-    if (!signupEmail.trim()) {
-      setError("Please enter your email.");
-      return;
-    }
-
-    if (!signupPassword) {
-      setError("Please enter a password.");
-      return;
-    }
-
-    if (signupPassword !== signupConfirmPassword) {
-      setError("Passwords do not match.");
-      return;
-    }
-
-    setLoadingSignup(true);
-
-    try {
-      const { data, error } = await supabase.auth.signUp({
-        email: signupEmail.trim(),
-        password: signupPassword,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/confirm?next=/login`,
-        },
-      });
-
-      if (error) {
-        setError(error.message);
-        return;
-      }
-
-      const userId = data.user?.id;
-
-      if (userId) {
-        const { error: profileError } = await supabase
-          .from("profiles")
-          .update({
-            full_name: signupName.trim(),
-            phone: signupPhone.trim(),
-            role: "pending",
-          })
-          .eq("id", userId);
-
-        if (profileError) {
-          setError(profileError.message);
-          return;
-        }
-      }
-
-      setMessage("Staff access request submitted. Check your email to confirm your account.");
-
-      setSignupName("");
-      setSignupPhone("");
-      setSignupEmail("");
-      setSignupPassword("");
-      setSignupConfirmPassword("");
-    } finally {
-      setLoadingSignup(false);
-    }
-  }
-
   async function handleResendConfirmation() {
     setError("");
     setMessage("");
@@ -406,12 +327,12 @@ export default function LoginPage() {
               </div>
 
               <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">
-                Company Admin & Staff Access
+                Company Admin Access
               </h1>
 
               <p className="mt-4 text-sm leading-7 text-[#e7dccb] md:text-base">
-                Sign in to your existing workspace, create a new company account, or request
-                staff access to join an existing team.
+                Sign in to your existing workspace or create a new company account. Staff and
+                owner access is managed by invitation from inside each company workspace.
               </p>
 
               <div className="mt-8 grid gap-3">
@@ -423,9 +344,9 @@ export default function LoginPage() {
                 </div>
 
                 <div className="rounded-[20px] border border-white/10 bg-white/5 px-4 py-4">
-                  <div className="text-sm font-semibold text-white">For staff</div>
+                  <div className="text-sm font-semibold text-white">For invited team members</div>
                   <div className="mt-1 text-sm text-[#e7dccb]">
-                    Join an existing company as cleaner or grounds staff.
+                    Cleaner, grounds, and owner access should come from an admin invite.
                   </div>
                 </div>
 
@@ -454,7 +375,7 @@ export default function LoginPage() {
               ) : null}
 
               <div className="rounded-[28px] border border-[#e7ddd0] bg-[#fcfaf7] p-3 shadow-sm">
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <button
                     type="button"
                     onClick={() => setAuthMode("login")}
@@ -477,18 +398,6 @@ export default function LoginPage() {
                     }`}
                   >
                     Create Company
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setAuthMode("staff")}
-                    className={`rounded-[18px] px-4 py-3 text-sm font-medium transition ${
-                      authMode === "staff"
-                        ? "bg-[#3a2c1d] text-white"
-                        : "bg-white text-[#5f5245] hover:bg-[#fffaf4]"
-                    }`}
-                  >
-                    Staff Access
                   </button>
                 </div>
               </div>
@@ -664,101 +573,6 @@ export default function LoginPage() {
 
                     <p className="mt-4 text-xs leading-6 text-[#8a7b68]">
                       This creates the first admin account for a new company workspace.
-                    </p>
-                  </section>
-                ) : null}
-
-                {authMode === "staff" ? (
-                  <section className="rounded-[28px] border border-[#e7ddd0] bg-[#fcfaf7] p-5 shadow-sm">
-                    <h2 className="text-2xl font-semibold tracking-tight">Request Staff Access</h2>
-                    <p className="mt-1 text-sm text-[#7f7263]">
-                      Join an existing company as cleaner or grounds staff
-                    </p>
-
-                    <form onSubmit={handleStaffSignup} className="mt-5 grid gap-3 md:grid-cols-2">
-                      <input
-                        className="md:col-span-2 w-full rounded-[20px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
-                        type="text"
-                        placeholder="Full name"
-                        autoComplete="name"
-                        value={signupName}
-                        onChange={(e) => setSignupName(e.target.value)}
-                        onFocus={(e) => scrollInputIntoView(e.currentTarget)}
-                      />
-
-                      <input
-                        className="md:col-span-2 w-full rounded-[20px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
-                        type="text"
-                        placeholder="Phone number"
-                        autoComplete="tel"
-                        inputMode="tel"
-                        value={signupPhone}
-                        onChange={(e) => setSignupPhone(e.target.value)}
-                        onFocus={(e) => scrollInputIntoView(e.currentTarget)}
-                      />
-
-                      <input
-                        className="md:col-span-2 w-full rounded-[20px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
-                        type="email"
-                        placeholder="Email"
-                        autoComplete="email"
-                        inputMode="email"
-                        value={signupEmail}
-                        onChange={(e) => setSignupEmail(e.target.value)}
-                        onFocus={(e) => scrollInputIntoView(e.currentTarget)}
-                      />
-
-                      <div className="relative">
-                        <input
-                          className="w-full rounded-[20px] border border-[#d9ccbb] bg-white px-4 py-3 pr-12 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
-                          type={showSignupPassword ? "text" : "password"}
-                          placeholder="Password"
-                          autoComplete="new-password"
-                          value={signupPassword}
-                          onChange={(e) => setSignupPassword(e.target.value)}
-                          onFocus={(e) => scrollInputIntoView(e.currentTarget)}
-                        />
-                        <button
-                          type="button"
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8a7b68] hover:text-[#241c15]"
-                          onClick={() => setShowSignupPassword(!showSignupPassword)}
-                        >
-                          👁
-                        </button>
-                      </div>
-
-                      <div className="relative">
-                        <input
-                          className="w-full rounded-[20px] border border-[#d9ccbb] bg-white px-4 py-3 pr-12 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
-                          type={showSignupConfirmPassword ? "text" : "password"}
-                          placeholder="Confirm password"
-                          autoComplete="new-password"
-                          value={signupConfirmPassword}
-                          onChange={(e) => setSignupConfirmPassword(e.target.value)}
-                          onFocus={(e) => scrollInputIntoView(e.currentTarget)}
-                        />
-                        <button
-                          type="button"
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8a7b68] hover:text-[#241c15]"
-                          onClick={() => setShowSignupConfirmPassword(!showSignupConfirmPassword)}
-                        >
-                          👁
-                        </button>
-                      </div>
-
-                      <div className="md:col-span-2 mt-1">
-                        <button
-                          type="submit"
-                          className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-3 text-sm font-medium text-[#f8f2e8] shadow-[0_10px_24px_rgba(36,28,21,0.18)] transition hover:bg-[#352a21] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
-                          disabled={loadingSignup}
-                        >
-                          {loadingSignup ? "Submitting..." : "Request Access"}
-                        </button>
-                      </div>
-                    </form>
-
-                    <p className="mt-4 text-xs leading-6 text-[#8a7b68]">
-                      Your request will be reviewed and linked to the appropriate team by an admin.
                     </p>
                   </section>
                 ) : null}
