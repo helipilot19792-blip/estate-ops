@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 function getCityFromAddress(address?: string | null) {
@@ -308,8 +308,14 @@ type AdminSection =
   | "groundsAccounts"
   | "assignments"
   | "jobs"
+  | "calendar"
   | "maintenance";
-
+type MyOrganizationRow = {
+  organization_id: string;
+  organization_name: string;
+  organization_slug: string;
+  role: string;
+};
 function getMonthGrid(baseDate: Date) {
   const year = baseDate.getFullYear();
   const month = baseDate.getMonth();
@@ -465,9 +471,12 @@ function getPropertyColor(propertyId: string | null) {
 
 export default function AdminPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [currentAdminUserId, setCurrentAdminUserId] = useState<string | null>(null);
+  const [currentOrganizationId, setCurrentOrganizationId] = useState<string | null>(null);
+  const [myOrganizations, setMyOrganizations] = useState<MyOrganizationRow[]>([]);
   const [now, setNow] = useState(() => new Date());
   const [adminCalendarMonth, setAdminCalendarMonth] = useState(() => {
     const today = new Date();
@@ -572,6 +581,11 @@ export default function AdminPage() {
 
   const [jobPropertyId, setJobPropertyId] = useState("");
   const [jobScheduledFor, setJobScheduledFor] = useState("");
+  const [showSupport, setShowSupport] = useState(false);
+  const [supportSubject, setSupportSubject] = useState("");
+  const [supportMessage, setSupportMessage] = useState("");
+  const [sendingSupport, setSendingSupport] = useState(false);
+
 
   const [jobNotes, setJobNotes] = useState("");
   const [jobOverrideUnitsEnabled, setJobOverrideUnitsEnabled] = useState(false);
@@ -594,13 +608,54 @@ export default function AdminPage() {
     Array<{ id?: string; source: string; ical_url: string; is_active: boolean }>
   >([]);
   const [calendarDraftDirty, setCalendarDraftDirty] = useState(false);
-
   const [sopTitle, setSopTitle] = useState("");
   const [sopContent, setSopContent] = useState("");
   const [sopFiles, setSopFiles] = useState<File[]>([]);
 
+
   const [linkSelections, setLinkSelections] = useState<Record<string, string>>({});
   const [groundsLinkSelections, setGroundsLinkSelections] = useState<Record<string, string>>({});
+
+  const todayYmd = toYmd(now);
+  const todaysCleaningJobs = useMemo(() => {
+    return jobs
+      .filter((job) => (job.scheduled_for || extractCheckoutDate(job.notes)) === todayYmd)
+      .sort((a, b) => {
+        const aDate = a.scheduled_for || extractCheckoutDate(a.notes) || "";
+        const bDate = b.scheduled_for || extractCheckoutDate(b.notes) || "";
+        return aDate.localeCompare(bDate);
+      });
+  }, [jobs, todayYmd]);
+
+  const todaysGroundsJobs = useMemo(() => {
+    return groundsJobs
+      .filter((job) => job.scheduled_for === todayYmd)
+      .sort((a, b) => {
+        const aDate = a.scheduled_for || "";
+        const bDate = b.scheduled_for || "";
+        return aDate.localeCompare(bDate);
+      });
+  }, [groundsJobs, todayYmd]);
+  const tomorrowYmd = toYmd(new Date(new Date().setDate(new Date().getDate() + 1)));
+
+  const tomorrowsCleaningJobs = useMemo(() => {
+    return jobs.filter(
+      (job) => (job.scheduled_for || extractCheckoutDate(job.notes)) === tomorrowYmd
+    );
+  }, [jobs, tomorrowYmd]);
+
+  const tomorrowsGroundsJobs = useMemo(() => {
+    return groundsJobs.filter(
+      (job) => job.scheduled_for === tomorrowYmd
+    );
+  }, [groundsJobs, tomorrowYmd]);
+
+  const openMaintenanceFlagsCount = useMemo(() => {
+    return maintenanceFlags.filter((flag) => {
+      const status = (flag.status || "").toLowerCase();
+      return status !== "resolved" && status !== "closed";
+    }).length;
+  }, [maintenanceFlags]);
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(new Date()), 1000);
@@ -628,25 +683,40 @@ export default function AdminPage() {
         router.push("/login");
         return;
       }
+      const { data: orgRows, error: orgError } = await supabase
+        .rpc("get_my_organizations");
 
+      if (orgError || !orgRows || orgRows.length === 0) {
+        router.push("/login");
+        return;
+      }
+
+      setMyOrganizations(orgRows as MyOrganizationRow[]);
+      setCurrentOrganizationId(orgRows[0].organization_id);
       setCurrentAdminUserId(user.id);
       setCheckingAuth(false);
     }
 
     void checkAuthAndRole();
   }, [router]);
+useEffect(() => {
+  const open = searchParams.get("open");
 
+  if (open === "add-property") {
+    setActiveSection("properties");
+  }
+}, [searchParams]);
   useEffect(() => {
-    if (!checkingAuth) {
+    if (!checkingAuth && currentOrganizationId) {
       void loadData();
     }
-  }, [checkingAuth]);
+  }, [checkingAuth, currentOrganizationId]);
 
   useEffect(() => {
-    if (checkingAuth) return;
+    if (checkingAuth || !currentOrganizationId) return;
     const interval = window.setInterval(() => void loadData(), 15000);
     return () => window.clearInterval(interval);
-  }, [checkingAuth]);
+  }, [checkingAuth, currentOrganizationId]);
 
   useEffect(() => {
     setCalendarDraftDirty(false);
@@ -705,6 +775,57 @@ export default function AdminPage() {
   async function loadData() {
     setError("");
 
+    if (!currentOrganizationId) {
+      setError("No organization selected.");
+      return;
+    }
+    async function handleSubmitSupportTicket() {
+      if (!supportMessage.trim()) return;
+
+      try {
+        setSendingSupport(true);
+
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (!user) {
+          alert("You must be signed in to contact support.");
+          return;
+        }
+
+        const { data: membership } = await supabase
+          .from("organization_members")
+          .select("organization_id")
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        const { error } = await supabase.from("support_tickets").insert({
+          user_id: user.id,
+          organization_id: membership?.organization_id ?? null,
+          subject: supportSubject.trim() || "Support request",
+          message: supportMessage.trim(),
+          status: "open",
+        });
+
+        if (error) {
+          console.error(error);
+          alert("Could not send support request.");
+          return;
+        }
+
+        setShowSupport(false);
+        setSupportSubject("");
+        setSupportMessage("");
+        alert("Support request sent.");
+      } catch (error) {
+        console.error(error);
+        alert("Something went wrong sending your support request.");
+      } finally {
+        setSendingSupport(false);
+      }
+    }
+
     const [
       propertiesRes,
       cleanerAccountsRes,
@@ -730,22 +851,42 @@ export default function AdminPage() {
       maintenanceFlagsRes,
       maintenanceFlagImagesRes,
     ] = await Promise.all([
-      supabase.from("properties").select("*").order("created_at", { ascending: false }),
-      supabase.from("cleaner_accounts").select("*").order("created_at", { ascending: false }),
+      supabase
+        .from("properties")
+        .select("*")
+        .eq("organization_id", currentOrganizationId)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("cleaner_accounts")
+        .select("*")
+        .eq("organization_id", currentOrganizationId)
+        .order("created_at", { ascending: false }),
       supabase.from("cleaner_account_members").select("*").order("created_at", { ascending: false }),
       supabase
         .from("property_cleaner_account_assignments")
         .select("*")
         .order("priority", { ascending: true }),
-      supabase.from("turnover_jobs").select("*").order("created_at", { ascending: false }),
+      supabase
+        .from("turnover_jobs")
+        .select("*")
+        .eq("organization_id", currentOrganizationId)
+        .order("created_at", { ascending: false }),
       supabase.from("turnover_job_slots").select("*").order("job_id", { ascending: true }),
-      supabase.from("grounds_accounts").select("*").order("created_at", { ascending: false }),
+      supabase
+        .from("grounds_accounts")
+        .select("*")
+        .eq("organization_id", currentOrganizationId)
+        .order("created_at", { ascending: false }),
       supabase.from("grounds_account_members").select("*").order("created_at", { ascending: false }),
       supabase
         .from("property_grounds_account_assignments")
         .select("*")
         .order("priority", { ascending: true }),
-      supabase.from("grounds_jobs").select("*").order("created_at", { ascending: false }),
+      supabase
+        .from("grounds_jobs")
+        .select("*")
+        .eq("organization_id", currentOrganizationId)
+        .order("created_at", { ascending: false }),
       supabase.from("grounds_job_slots").select("*").order("job_id", { ascending: true }),
       supabase
         .from("property_grounds_recurring_tasks")
@@ -766,7 +907,11 @@ export default function AdminPage() {
       supabase.from("owner_accounts").select("*").order("created_at", { ascending: false }),
       supabase.from("owner_property_access").select("*").order("created_at", { ascending: false }),
       supabase.from("property_calendars").select("*").order("created_at", { ascending: false }),
-      supabase.from("property_maintenance_flags").select("*").order("created_at", { ascending: false }),
+      supabase
+        .from("property_maintenance_flags")
+        .select("*")
+        .eq("organization_id", currentOrganizationId)
+        .order("created_at", { ascending: false }),
       supabase.from("property_maintenance_flag_images").select("*").order("sort_order", { ascending: true }),
     ]);
 
@@ -1079,6 +1224,7 @@ export default function AdminPage() {
     const { data: insertedProperty, error: propertyError } = await supabase
       .from("properties")
       .insert({
+        organization_id: currentOrganizationId,
         name: propertyName.trim(),
         address: `${propertyStreet}, ${propertyCity}, ${propertyProvince}, ${propertyPostal}`,
         notes: propertyNotes.trim() || null,
@@ -1124,6 +1270,7 @@ export default function AdminPage() {
         const { data: insertedOwner, error: ownerInsertError } = await supabase
           .from("owner_accounts")
           .insert({
+            organization_id: currentOrganizationId,
             email: ownerEmail,
             full_name: ownerName || null,
             is_active: true,
@@ -1183,6 +1330,7 @@ export default function AdminPage() {
     const { data: inserted, error } = await supabase
       .from("cleaner_accounts")
       .insert({
+        organization_id: currentOrganizationId,
         display_name: cleanerAccountName.trim(),
         email: cleanerAccountEmail.trim() || null,
         phone: cleanerAccountPhone.trim() || null,
@@ -1345,8 +1493,18 @@ export default function AdminPage() {
       return;
     }
 
-    const payload: Partial<Job> & { property_id: string; notes: string | null; scheduled_for: string | null } = {
+    const payload: Partial<Job> & {
+      organization_id: string | null;
+      property_id: string;
+      cleaners_needed: number;
+      cleaners_required_strict: boolean;
+      notes: string | null;
+      scheduled_for: string | null;
+    } = {
+      organization_id: currentOrganizationId,
       property_id: jobPropertyId,
+      cleaners_needed: Number(jobUnitsNeeded),
+      cleaners_required_strict: jobUnitsStrict,
       notes: jobNotes.trim() || null,
       scheduled_for: scheduledDate,
     };
@@ -1371,7 +1529,9 @@ export default function AdminPage() {
       .single();
 
     if (error || !insertedJob) {
-      setError(error?.message || "Could not create job.");
+      const message = error?.message || "Could not create job.";
+      setError(message);
+      alert(message);
       return;
     }
 
@@ -1400,7 +1560,16 @@ export default function AdminPage() {
     setJobUnitsStrict(false);
     setJobShowTeamStatus(true);
     setActionMessage("Job created successfully.");
+    alert("Cleaning job created.");
     await loadData();
+    setActiveSection("jobs");
+    setHighlightedJobId(insertedJob.id);
+    setTimeout(() => {
+      document.getElementById(`job-${insertedJob.id}`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 150);
   }
 
   async function syncCalendarsNow() {
@@ -1490,14 +1659,53 @@ export default function AdminPage() {
       .sort((a, b) => a.slot_number - b.slot_number)
       .find((x) => x.status !== "accepted");
   }
+  async function deleteJob(jobId: string) {
+    const confirmed = window.confirm("Delete this job? This cannot be undone.");
+    if (!confirmed) return;
 
+    setError("");
+    setActionMessage("");
+
+    const { error } = await supabase
+      .from("turnover_jobs")
+      .delete()
+      .eq("id", jobId);
+
+    if (error) {
+      setError(error.message);
+      alert(error.message);
+      return;
+    }
+
+    setActionMessage("Job deleted.");
+    await loadData();
+  }
   async function reassignOpenJob(jobId: string) {
     const cleanerAccountId = reassignSelections[jobId];
     if (!cleanerAccountId) {
       setError("Please select a cleaner account before reassigning.");
       return;
     }
+    async function deleteJob(jobId: string) {
+      const confirmDelete = confirm("Delete this job? This cannot be undone.");
+      if (!confirmDelete) return;
 
+      setError("");
+      setActionMessage("");
+
+      const { error } = await supabase
+        .from("turnover_jobs")
+        .delete()
+        .eq("id", jobId);
+
+      if (error) {
+        setError(error.message);
+        return;
+      }
+
+      setActionMessage("Job deleted.");
+      await loadData();
+    }
     const slot = getNextOpenSlot(jobId);
 
     if (!slot) {
@@ -1591,6 +1799,7 @@ export default function AdminPage() {
     const { data: inserted, error } = await supabase
       .from("grounds_accounts")
       .insert({
+        organization_id: currentOrganizationId,
         display_name: groundsAccountName.trim(),
         email: groundsAccountEmail.trim() || null,
         phone: groundsAccountPhone.trim() || null,
@@ -1768,6 +1977,7 @@ export default function AdminPage() {
       const dayOfMonth = Number.isNaN(startDate.getTime()) ? null : startDate.getDate();
 
       const recurringPayload = {
+        organization_id: currentOrganizationId,
         property_id: groundsJobPropertyId,
         task_type: groundsJobType,
         label: null,
@@ -1825,6 +2035,7 @@ export default function AdminPage() {
     const initialStatus = assignedAccounts.length > 0 ? "offered" : "open";
 
     const payload = {
+      organization_id: currentOrganizationId,
       property_id: groundsJobPropertyId,
       status: initialStatus,
       staffing_status: staffingStatus,
@@ -2299,6 +2510,7 @@ This removes its linked members and deletes the grounds account.`
     try {
       const nowIso = new Date().toISOString();
       const { error } = await supabase.from("property_maintenance_flags").insert({
+        organization_id: currentOrganizationId,
         property_id: maintenanceFormPropertyId,
         source: "admin",
         category: maintenanceFormCategory.trim(),
@@ -2685,7 +2897,7 @@ This removes its linked members and deletes the grounds account.`
       }),
     [filteredMaintenanceFlags]
   );
-  const todayYmd = toYmd(now);
+
 
   const todayAtGlanceItems = useMemo(() => {
     const propertyById = new Map(properties.map((property) => [property.id, property]));
@@ -2851,15 +3063,236 @@ This removes its linked members and deletes the grounds account.`
 
   const menuItems: Array<{ key: AdminSection; label: string }> = [
     { key: "home", label: "Home" },
-    { key: "users", label: "Users" },
+    { key: "calendar", label: "Calendar" },
+    { key: "assignments", label: "Assignments" },
+    { key: "jobs", label: "Jobs" },
     { key: "properties", label: "Properties" },
     { key: "cleanerAccounts", label: "Cleaner Accounts" },
     { key: "groundsAccounts", label: "Grounds Accounts" },
-    { key: "assignments", label: "Assignments" },
-    { key: "jobs", label: "Jobs" },
+    { key: "users", label: "Users" },
     { key: "maintenance", label: "Maintenance Flags" },
   ];
+  function renderHomeSection() {
+    return (
+      <div className="space-y-6">
+        <div className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#8a7b68]">
+                Home
+              </p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#241c15]">
+                Today at a glance
+              </h2>
+              <p className="mt-1 text-sm text-[#7f7263]">
+                {new Date().toLocaleDateString(undefined, {
+                  weekday: "long",
+                  month: "long",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+              </p>
+            </div>
 
+            <button
+              type="button"
+              onClick={() => setActiveSection("jobs")}
+              className="inline-flex items-center justify-center rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#f7f1e8]"
+            >
+              View jobs
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowSupport(true)}
+              className="ml-2 inline-flex items-center justify-center rounded-full border border-[#d8c7ab] bg-[#fff7ed] px-4 py-2 text-sm font-medium text-[#7a4b1f] hover:bg-[#ffedd5]"
+            >
+              Support
+            </button>
+          </div>
+
+          <div className="mt-5 grid gap-5 lg:grid-cols-[1.4fr_0.9fr]">
+            <div className="space-y-5">
+              <div className="rounded-[26px] border border-[#cfe1ff] bg-[#eef5ff] p-4 shadow-[0_10px_30px_rgba(59,130,246,0.10)]">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#4f6ea8]">
+                      Today
+                    </p>
+                    <h3 className="mt-1 text-lg font-semibold text-[#1f3b63]">
+                      Today&apos;s schedule
+                    </h3>
+                  </div>
+                  <div className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-[#2957a4]">
+                    {todaysCleaningJobs.length + todaysGroundsJobs.length} jobs
+                  </div>
+                </div>
+
+                <div className="mt-4 space-y-3">
+                  {todaysCleaningJobs.map((job) => {
+                    const property = properties.find((p) => p.id === job.property_id);
+                    return (
+                      <div
+                        key={`today-cleaning-${job.id}`}
+                        className="rounded-[18px] border border-[#b9d1fb] bg-white px-4 py-2.5"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="inline-flex items-center rounded-full bg-[#2563eb] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
+                              Cleaning
+                            </div>
+                            <p className="mt-1 text-[15px] font-semibold text-[#1c2b45]">
+                              {property?.name || property?.address || "Unknown property"}
+                            </p>
+                            <p className="mt-0.5 text-sm text-[#5f6f86]">
+                              {getCityFromAddress(property?.address)}
+                            </p>
+                          </div>
+                          <div className="rounded-full bg-[#e8f1ff] px-3 py-1 text-xs font-semibold text-[#2f62b6]">
+                            Cleaning
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {todaysGroundsJobs.map((job) => {
+                    const property = properties.find((p) => p.id === job.property_id);
+                    return (
+                      <div
+                        key={`today-grounds-${job.id}`}
+                        className="rounded-[18px] border border-[#bde7cf] bg-white px-4 py-2.5"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="inline-flex items-center rounded-full bg-[#16a34a] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
+                              Grounds
+                            </div>
+                            <p className="mt-1 text-[15px] font-semibold text-[#20432f]">
+                              {property?.name || property?.address || "Unknown property"}
+                            </p>
+                            <p className="mt-0.5 text-sm text-[#5d7767]">
+                              {getCityFromAddress(property?.address)}
+                            </p>
+                          </div>
+                          <div className="rounded-full bg-[#e9f9ef] px-3 py-1 text-xs font-semibold text-[#218552]">
+                            Grounds
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {todaysCleaningJobs.length === 0 && todaysGroundsJobs.length === 0 && (
+                    <div className="rounded-[20px] border border-dashed border-[#b9d1fb] bg-white/80 px-4 py-5 text-sm text-[#5f6f86]">
+                      No jobs scheduled for today.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-[26px] border border-[#f6d7a8] bg-[#fff4dd] p-4 shadow-[0_10px_30px_rgba(245,158,11,0.10)]">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#a56a06]">
+                      Tomorrow
+                    </p>
+                    <h3 className="mt-1 text-lg font-semibold text-[#7a4b00]">
+                      Coming up next
+                    </h3>
+                  </div>
+                  <div className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-[#9a6206]">
+                    {tomorrowsCleaningJobs.length + tomorrowsGroundsJobs.length} jobs
+                  </div>
+                </div>
+
+                <div className="mt-4 space-y-3">
+                  {tomorrowsCleaningJobs.map((job) => {
+                    const property = properties.find((p) => p.id === job.property_id);
+                    return (
+                      <div
+                        key={`tomorrow-cleaning-${job.id}`}
+                        className="rounded-[18px] border border-[#f1cf8f] bg-white px-4 py-2.5"
+                      >
+                        <div className="inline-flex items-center rounded-full bg-[#2563eb] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
+                          Cleaning
+                        </div>
+                        <p className="mt-1 text-[15px] font-semibold text-[#5f3a00]">
+                          {property?.name || property?.address || "Unknown property"}
+                        </p>
+                        <p className="mt-0.5 text-sm text-[#8b6a32]">
+                          {getCityFromAddress(property?.address)}
+                        </p>
+                      </div>
+                    );
+                  })}
+
+                  {tomorrowsGroundsJobs.map((job) => {
+                    const property = properties.find((p) => p.id === job.property_id);
+                    return (
+                      <div
+                        key={`tomorrow-grounds-${job.id}`}
+                        className="rounded-[18px] border border-[#f1cf8f] bg-white px-4 py-2.5"
+                      >
+                        <div className="inline-flex items-center rounded-full bg-[#16a34a] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
+                          Grounds
+                        </div>
+                        <p className="mt-1 text-[15px] font-semibold text-[#5f3a00]">
+                          {property?.name || property?.address || "Unknown property"}
+                        </p>
+                        <p className="mt-0.5 text-sm text-[#8b6a32]">
+                          {getCityFromAddress(property?.address)}
+                        </p>
+                      </div>
+                    );
+                  })}
+
+                  {tomorrowsCleaningJobs.length === 0 && tomorrowsGroundsJobs.length === 0 && (
+                    <div className="rounded-[20px] border border-dashed border-[#f1cf8f] bg-white/80 px-4 py-5 text-sm text-[#8b6a32]">
+                      Nothing lined up for tomorrow yet.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[26px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8a7b68]">
+                Snapshot
+              </p>
+              <div className="mt-4 space-y-3">
+                <div className="rounded-[18px] border border-[#eadfce] bg-white px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
+                    Cleaning today
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold text-[#241c15]">
+                    {todaysCleaningJobs.length}
+                  </p>
+                </div>
+
+                <div className="rounded-[18px] border border-[#eadfce] bg-white px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
+                    Grounds today
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold text-[#241c15]">
+                    {todaysGroundsJobs.length}
+                  </p>
+                </div>
+
+                <div className="rounded-[18px] border border-[#eadfce] bg-white px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
+                    Open flags
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold text-[#241c15]">
+                    {openMaintenanceFlagsCount}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
   function renderUsersSection() {
     return (
       <div className="rounded-[30px] border border-[#e7ddd0] bg-white p-4 md:p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
@@ -3180,13 +3613,37 @@ This removes its linked members and deletes the grounds account.`
       <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-xl font-semibold tracking-tight">Properties</h2>
-          <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">{properties.length}</span>
+          <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">
+            {properties.length}
+          </span>
         </div>
+
         <div className="space-y-3">
           {properties.map((p) => {
-            const propertyCalendarCount = propertyCalendars.filter((calendar) => calendar.property_id === p.id).length;
+            const propertyCalendarCount = propertyCalendars.filter(
+              (calendar) => calendar.property_id === p.id
+            ).length;
             const owner = getOwnerForProperty(p.id);
             const ownerStatus = getOwnerInviteStatus(owner);
+
+            const assignedCleanerNames = assignments
+              .filter((assignment) => assignment.property_id === p.id)
+              .map((assignment) => {
+                const account = cleanerAccounts.find(
+                  (cleaner) => cleaner.id === assignment.cleaner_account_id
+                );
+                return account?.display_name || "Unknown cleaner team";
+              });
+
+            const assignedGroundsNames = groundsAssignments
+              .filter((assignment) => assignment.property_id === p.id)
+              .map((assignment) => {
+                const account = groundsAccounts.find(
+                  (grounds) => grounds.id === assignment.grounds_account_id
+                );
+                return account?.display_name || "Unknown grounds team";
+              });
+
             return (
               <div key={p.id} className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -3194,21 +3651,62 @@ This removes its linked members and deletes the grounds account.`
                     <div className="text-base font-semibold">{p.name}</div>
                     <div className="mt-1 text-sm text-[#6f6255]">{p.address || "No address"}</div>
                     <div className="mt-2 text-sm text-[#8a7b68]">{p.notes || "No notes"}</div>
+
                     <div className="mt-2 text-xs text-[#8a7b68]">
-                      Default staffing: {p.default_cleaner_units_needed} unit{p.default_cleaner_units_needed === 1 ? "" : "s"}
+                      Default staffing: {p.default_cleaner_units_needed} unit
+                      {p.default_cleaner_units_needed === 1 ? "" : "s"}
                       {p.cleaner_units_required_strict ? ", strict" : ", flexible"}
                     </div>
+
                     <div className="mt-2 text-xs text-[#8a7b68]">
                       Calendars configured: {propertyCalendarCount}
                     </div>
 
                     <div className="mt-3 rounded-[18px] border border-[#eadfce] bg-white/70 p-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8a7b68]">Owner portal</div>
-                        <span className="rounded-full border border-[#eadfce] bg-[#fffaf4] px-3 py-1 text-[11px] font-medium text-[#7f7263]">{ownerStatus}</span>
+                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8a7b68]">
+                        Assigned staff
                       </div>
-                      <div className="mt-2 text-sm text-[#5f5245]">{owner?.full_name || "No owner name added"}</div>
-                      <div className="mt-1 text-sm text-[#8a7b68]">{owner?.email || "No owner email linked yet"}</div>
+
+                      <div className="mt-2 space-y-2">
+                        <div className="rounded-[12px] border border-[#dbe7ff] bg-[#f5f9ff] px-3 py-2">
+                          <div className="text-xs font-semibold text-[#214a8a]">Cleaner team</div>
+                          <div className="mt-1 text-sm text-[#5f5245]">
+                            {assignedCleanerNames.length > 0 ? (
+                              assignedCleanerNames.join(", ")
+                            ) : (
+                              <span className="text-[#b42318] font-medium">
+                                ⚠ No cleaner team assigned
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="rounded-[12px] border border-[#d9efdf] bg-[#f3fbf5] px-3 py-2">
+                          <div className="text-xs font-semibold text-[#21643a]">Grounds team</div>
+                          <div className="mt-1 text-sm text-[#5f5245]">
+                            {assignedGroundsNames.length > 0
+                              ? assignedGroundsNames.join(", ")
+                              : "No grounds team assigned"}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 rounded-[18px] border border-[#eadfce] bg-white/70 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8a7b68]">
+                          Owner portal
+                        </div>
+                        <span className="rounded-full border border-[#eadfce] bg-[#fffaf4] px-3 py-1 text-[11px] font-medium text-[#7f7263]">
+                          {ownerStatus}
+                        </span>
+                      </div>
+                      <div className="mt-2 text-sm text-[#5f5245]">
+                        {owner?.full_name || "No owner name added"}
+                      </div>
+                      <div className="mt-1 text-sm text-[#8a7b68]">
+                        {owner?.email || "No owner email linked yet"}
+                      </div>
                     </div>
                   </div>
 
@@ -3219,7 +3717,11 @@ This removes its linked members and deletes the grounds account.`
                         onClick={() => void inviteOwnerForProperty(p.id, owner.email || "", owner.full_name || "")}
                         disabled={sendingOwnerInviteId === p.id || !owner.email}
                       >
-                        {sendingOwnerInviteId === p.id ? "Sending..." : owner.invite_sent_at ? "Resend invite" : "Send invite"}
+                        {sendingOwnerInviteId === p.id
+                          ? "Sending..."
+                          : owner.invite_sent_at
+                            ? "Resend invite"
+                            : "Send invite"}
                       </button>
                     ) : null}
 
@@ -3935,223 +4437,6 @@ This removes its linked members and deletes the grounds account.`
         </section>
 
 
-        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <h2 className="text-xl font-semibold tracking-tight">Admin Calendar</h2>
-              <p className="mt-1 text-sm text-[#7f7263]">
-                Month view of all scheduled cleanings. Click a day to see everything happening on that date.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-medium text-[#6f6255] transition hover:bg-white"
-                onClick={() =>
-                  setAdminCalendarMonth(
-                    (prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1)
-                  )
-                }
-              >
-                Prev
-              </button>
-              <div className="min-w-[170px] text-center text-sm font-semibold text-[#241c15]">
-                {formatMonthLabel(adminCalendarMonth)}
-              </div>
-              <button
-                type="button"
-                className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-medium text-[#6f6255] transition hover:bg-white"
-                onClick={() =>
-                  setAdminCalendarMonth(
-                    (prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1)
-                  )
-                }
-              >
-                Next
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-5 overflow-hidden rounded-[26px] border border-[#eadfce]">
-            <div className="grid grid-cols-7 border-b border-[#eadfce] bg-[#f8f4ee]">
-              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-                <div key={day} className="px-2 py-3 text-center text-xs font-semibold uppercase tracking-[0.18em] text-[#8a7b68]">
-                  {day}
-                </div>
-              ))}
-            </div>
-
-            <div className="grid grid-cols-7 bg-white">
-              {adminCalendarDays.map((day) => {
-                const dateYmd = toYmd(day);
-                const dayJobs = adminJobsByDate.get(dateYmd) ?? [];
-                const urgentCount = dayJobs.filter((job) => {
-                  const slots = jobSlotsByJobId[job.id] ?? [];
-                  return slots.some((slot) => slot.status === "offered" || slot.status === "stranded");
-                }).length;
-                const isCurrentMonth = day.getMonth() === adminCalendarMonth.getMonth();
-                const isSelected = adminSelectedDate === dateYmd;
-                const isToday = dateYmd === toYmd(now);
-
-                return (
-                  <button
-                    key={dateYmd}
-                    type="button"
-                    onClick={() => selectAdminCalendarDate(dateYmd)}
-                    className={`min-h-[118px] border-r border-b border-[#eadfce] p-2 text-left align-top transition ${isSelected
-                      ? "bg-[#fffaf3] shadow-[inset_0_0_0_2px_rgba(180,141,78,0.65)]"
-                      : "hover:bg-[#fcfaf7]"
-                      } ${!isCurrentMonth ? "bg-[#fbf9f5] text-[#b1a392]" : "text-[#241c15]"}`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div
-                        className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold ${isToday ? "bg-[#241c15] text-[#f8f2e8]" : "bg-transparent"
-                          }`}
-                      >
-                        {day.getDate()}
-                      </div>
-
-                      {dayJobs.length > 0 ? (
-                        <span className="rounded-full border border-[#d8c7ab] bg-white px-2 py-0.5 text-[11px] font-medium text-[#7f7263]">
-                          {dayJobs.length}
-                        </span>
-                      ) : null}
-                    </div>
-
-                    <div className="mt-2 space-y-1">
-                      {dayJobs.slice(0, 2).map((job) => {
-                        const propertyColor = getPropertyColor(job.property_id);
-                        const isStranded = (jobSlotsByJobId[job.id] ?? []).some((slot) => slot.status === "stranded");
-                        const isOffered = (jobSlotsByJobId[job.id] ?? []).some((slot) => slot.status === "offered");
-
-                        return (
-                          <div
-                            key={job.id}
-                            className="truncate rounded-full border px-2 py-1 text-[11px] font-medium"
-                            style={{
-                              backgroundColor: propertyColor.bg,
-                              color: isStranded ? "#8a2e22" : isOffered ? "#8a5a0a" : propertyColor.text,
-                              borderColor: isStranded ? "#efc6c6" : isOffered ? "#f2d49b" : propertyColor.border,
-                            }}
-                          >
-                            {getPropertyName(job.property_id)}
-                          </div>
-                        );
-                      })}
-
-                      {dayJobs.length > 2 ? (
-                        <div className="text-[11px] text-[#8a7b68]">+{dayJobs.length - 2} more</div>
-                      ) : null}
-
-                      {urgentCount > 0 ? (
-                        <div className="pt-1 text-[11px] font-semibold text-[#8a2e22]">
-                          {urgentCount} urgent
-                        </div>
-                      ) : null}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="mt-5 rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] p-4">
-            <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-              <div>
-                <h3 className="text-lg font-semibold">Happenings for {formatDateLabel(adminSelectedDate)}</h3>
-                <div className="mt-1 text-sm text-[#7f7263]">
-                  {adminSelectedDayJobs.length} job{adminSelectedDayJobs.length === 1 ? "" : "s"} on this day
-                </div>
-              </div>
-
-              <button
-                type="button"
-                className="mt-2 rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-medium text-[#6f6255] transition hover:bg-[#f7f3ee] md:mt-0"
-                onClick={() => {
-                  const today = new Date();
-                  setAdminCalendarMonth(new Date(today.getFullYear(), today.getMonth(), 1));
-                  setAdminSelectedDate(toYmd(today));
-                }}
-              >
-                Jump to Today
-              </button>
-            </div>
-
-            <div className="mt-4 space-y-3">
-              {adminSelectedDayJobs.length === 0 ? (
-                <div className="rounded-[18px] border border-dashed border-[#d8c7ab] bg-white px-4 py-4 text-sm text-[#7f7263]">
-                  Nothing scheduled for this day yet.
-                </div>
-              ) : (
-                adminSelectedDayJobs.map((job) => {
-                  const slots = jobSlotsByJobId[job.id] ?? [];
-                  const acceptedCount = slots.filter((slot) => slot.status === "accepted").length;
-                  const offeredCount = slots.filter((slot) => slot.status === "offered").length;
-                  const strandedCount = slots.filter((slot) => slot.status === "stranded").length;
-                  const declinedCount = slots.filter((slot) => slot.status === "declined").length;
-                  const propertyColor = getPropertyColor(job.property_id);
-
-                  return (
-                    <button
-                      key={job.id}
-                      type="button"
-                      onClick={() => {
-                        setHighlightedJobId(job.id);
-                        setTimeout(() => {
-                          document.getElementById(`job-${job.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
-                        }, 50);
-                      }}
-                      className="block w-full rounded-[20px] border bg-white p-4 text-left transition hover:shadow-sm"
-                      style={{ borderColor: propertyColor.border, boxShadow: `inset 4px 0 0 ${propertyColor.text}` }}
-                    >
-                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                        <div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span
-                              className="inline-block h-3 w-3 rounded-full border"
-                              style={{ backgroundColor: propertyColor.text, borderColor: propertyColor.border }}
-                            />
-                            <div className="text-base font-semibold text-[#241c15]">
-                              {getPropertyName(job.property_id)}
-                            </div>
-                          </div>
-                          <div className="mt-1 text-sm text-[#6f6255]">
-                            {getJobDisplayStatus(job, slots)}
-                          </div>
-                          <div className="mt-1 text-sm text-[#8a7b68]">
-                            Team progress: {acceptedCount}/{job.cleaner_units_needed} accepted
-                          </div>
-                        </div>
-
-                        <div className="flex flex-wrap gap-2">
-                          <span className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">
-                            Offered: {offeredCount}
-                          </span>
-                          <span className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">
-                            Declined: {declinedCount}
-                          </span>
-                          <span className={`rounded-full px-3 py-1 text-xs font-medium ${strandedCount > 0
-                            ? "border border-[#efc6c6] bg-[#fff5f5] text-[#8a2e22]"
-                            : "border border-[#d8c7ab] bg-[#fcfaf7] text-[#7f7263]"
-                            }`}>
-                            Stranded: {strandedCount}
-                          </span>
-                        </div>
-                      </div>
-
-                      {job.notes ? (
-                        <div className="mt-3 line-clamp-2 text-sm leading-6 text-[#6f6255]">
-                          {job.notes}
-                        </div>
-                      ) : null}
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        </section>
 
         <section
           id="waiting-jobs-section"
@@ -4273,7 +4558,19 @@ This removes its linked members and deletes the grounds account.`
                   ) : null}
 
                   <div className="mt-3 text-sm leading-6 text-[#6f6255]">{job.notes || "No notes"}</div>
+                  <div className="mt-3 flex justify-end">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void deleteJob(job.id);
+                      }}
+                      className="rounded-full border border-[#efc6c6] bg-[#fff5f5] px-4 py-1.5 text-xs font-medium text-[#8a2e22] hover:bg-[#ffecec]"
+                    >
+                      Delete Job
+                    </button>
+                  </div>
                 </div>
+
               );
             })}
           </div>
@@ -4318,6 +4615,7 @@ This removes its linked members and deletes the grounds account.`
                           </div>
                         ) : null}
                         <div className="mt-3 text-sm leading-6 text-[#6f6255]">{job.notes || "No notes"}</div>
+
                       </div>
 
                       <div className="w-full max-w-sm">
@@ -4400,7 +4698,228 @@ This removes its linked members and deletes the grounds account.`
       </div>
     );
   }
+  function renderCalendarSection() {
+    return (
+      <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold tracking-tight">Admin Calendar</h2>
+            <p className="mt-1 text-sm text-[#7f7263]">
+              Month view of all scheduled cleanings. Click a day to see everything happening on that date.
+            </p>
+          </div>
 
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-medium text-[#6f6255] transition hover:bg-white"
+              onClick={() =>
+                setAdminCalendarMonth(
+                  (prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1)
+                )
+              }
+            >
+              Prev
+            </button>
+            <div className="min-w-[170px] text-center text-sm font-semibold text-[#241c15]">
+              {formatMonthLabel(adminCalendarMonth)}
+            </div>
+            <button
+              type="button"
+              className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-medium text-[#6f6255] transition hover:bg-white"
+              onClick={() =>
+                setAdminCalendarMonth(
+                  (prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1)
+                )
+              }
+            >
+              Next
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-5 overflow-hidden rounded-[26px] border border-[#eadfce]">
+          <div className="grid grid-cols-7 border-b border-[#eadfce] bg-[#f8f4ee]">
+            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+              <div key={day} className="px-2 py-3 text-center text-xs font-semibold uppercase tracking-[0.18em] text-[#8a7b68]">
+                {day}
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-7 bg-white">
+            {adminCalendarDays.map((day) => {
+              const dateYmd = toYmd(day);
+              const dayJobs = adminJobsByDate.get(dateYmd) ?? [];
+              const urgentCount = dayJobs.filter((job) => {
+                const slots = jobSlotsByJobId[job.id] ?? [];
+                return slots.some((slot) => slot.status === "offered" || slot.status === "stranded");
+              }).length;
+              const isCurrentMonth = day.getMonth() === adminCalendarMonth.getMonth();
+              const isSelected = adminSelectedDate === dateYmd;
+              const isToday = dateYmd === toYmd(now);
+
+              return (
+                <button
+                  key={dateYmd}
+                  type="button"
+                  onClick={() => selectAdminCalendarDate(dateYmd)}
+                  className={`min-h-[118px] border-r border-b border-[#eadfce] p-2 text-left align-top transition ${isSelected
+                    ? "bg-[#fffaf3] shadow-[inset_0_0_0_2px_rgba(180,141,78,0.65)]"
+                    : "hover:bg-[#fcfaf7]"
+                    } ${!isCurrentMonth ? "bg-[#fbf9f5] text-[#b1a392]" : "text-[#241c15]"}`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div
+                      className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold ${isToday ? "bg-[#241c15] text-[#f8f2e8]" : "bg-transparent"
+                        }`}
+                    >
+                      {day.getDate()}
+                    </div>
+
+                    {dayJobs.length > 0 ? (
+                      <span className="rounded-full border border-[#d8c7ab] bg-white px-2 py-0.5 text-[11px] font-medium text-[#7f7263]">
+                        {dayJobs.length}
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-2 space-y-1">
+                    {dayJobs.slice(0, 2).map((job) => {
+                      const propertyColor = getPropertyColor(job.property_id);
+                      const isStranded = (jobSlotsByJobId[job.id] ?? []).some((slot) => slot.status === "stranded");
+                      const isOffered = (jobSlotsByJobId[job.id] ?? []).some((slot) => slot.status === "offered");
+
+                      return (
+                        <div
+                          key={job.id}
+                          className="truncate rounded-full border px-2 py-1 text-[11px] font-medium"
+                          style={{
+                            backgroundColor: propertyColor.bg,
+                            color: isStranded ? "#8a2e22" : isOffered ? "#8a5a0a" : propertyColor.text,
+                            borderColor: isStranded ? "#efc6c6" : isOffered ? "#f2d49b" : propertyColor.border,
+                          }}
+                        >
+                          {getPropertyName(job.property_id)}
+                        </div>
+                      );
+                    })}
+
+                    {dayJobs.length > 2 ? (
+                      <div className="text-[11px] text-[#8a7b68]">+{dayJobs.length - 2} more</div>
+                    ) : null}
+
+                    {urgentCount > 0 ? (
+                      <div className="pt-1 text-[11px] font-semibold text-[#8a2e22]">
+                        {urgentCount} urgent
+                      </div>
+                    ) : null}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="mt-5 rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+          <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h3 className="text-lg font-semibold">Happenings for {formatDateLabel(adminSelectedDate)}</h3>
+              <div className="mt-1 text-sm text-[#7f7263]">
+                {adminSelectedDayJobs.length} job{adminSelectedDayJobs.length === 1 ? "" : "s"} on this day
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="mt-2 rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-medium text-[#6f6255] transition hover:bg-[#f7f3ee] md:mt-0"
+              onClick={() => {
+                const today = new Date();
+                setAdminCalendarMonth(new Date(today.getFullYear(), today.getMonth(), 1));
+                setAdminSelectedDate(toYmd(today));
+              }}
+            >
+              Jump to Today
+            </button>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            {adminSelectedDayJobs.length === 0 ? (
+              <div className="rounded-[18px] border border-dashed border-[#d8c7ab] bg-white px-4 py-4 text-sm text-[#7f7263]">
+                Nothing scheduled for this day yet.
+              </div>
+            ) : (
+              adminSelectedDayJobs.map((job) => {
+                const slots = jobSlotsByJobId[job.id] ?? [];
+                const acceptedCount = slots.filter((slot) => slot.status === "accepted").length;
+                const offeredCount = slots.filter((slot) => slot.status === "offered").length;
+                const strandedCount = slots.filter((slot) => slot.status === "stranded").length;
+                const declinedCount = slots.filter((slot) => slot.status === "declined").length;
+                const propertyColor = getPropertyColor(job.property_id);
+
+                return (
+                  <button
+                    key={job.id}
+                    type="button"
+                    onClick={() => {
+                      setHighlightedJobId(job.id);
+                      setActiveSection("jobs");
+                      setTimeout(() => {
+                        document.getElementById(`job-${job.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+                      }, 50);
+                    }}
+                    className="block w-full rounded-[20px] border bg-white p-4 text-left transition hover:shadow-sm"
+                    style={{ borderColor: propertyColor.border, boxShadow: `inset 4px 0 0 ${propertyColor.text}` }}
+                  >
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className="inline-block h-3 w-3 rounded-full border"
+                            style={{ backgroundColor: propertyColor.text, borderColor: propertyColor.border }}
+                          />
+                          <div className="text-base font-semibold text-[#241c15]">
+                            {getPropertyName(job.property_id)}
+                          </div>
+                        </div>
+                        <div className="mt-1 text-sm text-[#6f6255]">
+                          {getJobDisplayStatus(job, slots)}
+                        </div>
+                        <div className="mt-1 text-sm text-[#8a7b68]">
+                          Team progress: {acceptedCount}/{job.cleaner_units_needed} accepted
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <span className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">
+                          Offered: {offeredCount}
+                        </span>
+                        <span className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">
+                          Declined: {declinedCount}
+                        </span>
+                        <span className={`rounded-full px-3 py-1 text-xs font-medium ${strandedCount > 0
+                          ? "border border-[#efc6c6] bg-[#fff5f5] text-[#8a2e22]"
+                          : "border border-[#d8c7ab] bg-[#fcfaf7] text-[#7f7263]"
+                          }`}>
+                          Stranded: {strandedCount}
+                        </span>
+                      </div>
+                    </div>
+
+                    {job.notes ? (
+                      <div className="mt-3 line-clamp-2 text-sm leading-6 text-[#6f6255]">
+                        {job.notes}
+                      </div>
+                    ) : null}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </section>
+    );
+  }
   function renderPropertySetupSection() {
     return (
       <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
@@ -5214,11 +5733,7 @@ This removes its linked members and deletes the grounds account.`
   function renderActiveSection() {
     switch (activeSection) {
       case "home":
-        return (
-          <div className="rounded-[30px] border border-dashed border-[#d8c7ab] bg-white p-6 text-sm text-[#6f6255] shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-            Home dashboard coming next.
-          </div>
-        );
+        return renderHomeSection();
       case "users":
         return renderUsersSection();
       case "properties":
@@ -5237,6 +5752,8 @@ This removes its linked members and deletes the grounds account.`
         return renderAssignmentsSection();
       case "jobs":
         return renderJobsSection();
+      case "calendar":
+        return renderCalendarSection();
       case "maintenance":
         return renderMaintenanceSection();
       default:
@@ -5250,13 +5767,13 @@ This removes its linked members and deletes the grounds account.`
         <div className="mx-auto max-w-7xl p-6">
           <div className="rounded-[32px] border border-[#e7ddd0] bg-white p-8 shadow-[0_20px_50px_rgba(0,0,0,0.06)]">
             <div className="flex items-center gap-4">
-              <div className="w-[180px]">
+              <div className="flex h-[90px] w-[90px] items-center justify-center rounded-[18px] border border-white/20 bg-white/10 backdrop-blur">
                 <Image
                   src="/guleraoslogo.png"
                   alt="GuleraOS"
-                  width={400}
+                  width={120}
                   height={120}
-                  className="h-auto w-full"
+                  className="h-[70px] w-auto"
                   priority
                 />
               </div>
@@ -5278,13 +5795,14 @@ This removes its linked members and deletes the grounds account.`
           <div className="bg-[linear-gradient(135deg,#1f1812_0%,#2a2119_55%,#3a2c1d_100%)] px-6 py-8 text-white md:px-8 md:py-10">
             <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
               <div className="flex items-start gap-4">
-                <div className="w-[220px] shrink-0 rounded-[20px] border border-white/10 bg-white/5 p-3 backdrop-blur">
+
+                <div className="w-[220px] shrink-0 rounded-[18px] bg-white px-4 py-5 shadow-[0_10px_24px_rgba(0,0,0,0.18)]">
                   <Image
                     src="/guleraoslogo.png"
                     alt="GuleraOS"
-                    width={500}
-                    height={160}
-                    className="h-auto w-full"
+                    width={360}
+                    height={120}
+                    className="mx-auto h-auto w-full max-w-[180px]"
                     priority
                   />
                 </div>
@@ -5296,7 +5814,12 @@ This removes its linked members and deletes the grounds account.`
                   </p>
                 </div>
               </div>
-
+              <button
+                onClick={() => setShowSupport(true)}
+                className="mr-3 inline-flex items-center justify-center rounded-full border border-[#d6b36a]/40 bg-[#fef3c7] px-5 py-2.5 text-sm font-medium text-[#7c5a10] hover:bg-[#fde68a]"
+              >
+                Support
+              </button>
               <button
                 className="inline-flex items-center justify-center rounded-full border border-[#d6b36a]/40 bg-white/10 px-5 py-2.5 text-sm font-medium text-[#f6efe4] shadow-sm transition hover:bg-white/20"
                 onClick={async () => {
@@ -5372,16 +5895,16 @@ This removes its linked members and deletes the grounds account.`
           </div>
         ) : null}
 
-        <div className="mb-6 rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+        <div className="mb-6 hidden rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-3">
-                <div className="text-xs uppercase tracking-[0.24em] text-[#8a7b68]">Today at a Glance</div>
-                <div className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#6f6255]">
+                <div className="hidden text-xs uppercase tracking-[0.24em] text-[#8a7b68]">Today at a Glance</div>
+                <div className="hidden rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#6f6255]">
                   {now.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
                 </div>
               </div>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+              <div className="mt-3 hidden grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                 {[
                   { label: "Cleaning Today", value: todayAtGlanceCounts.cleaning },
                   { label: "Grounds Today", value: todayAtGlanceCounts.grounds },
@@ -5397,7 +5920,7 @@ This removes its linked members and deletes the grounds account.`
               </div>
             </div>
 
-            <div className="w-full lg:max-w-xl">
+            <div className="w-full lg:max-w-xl hidden">
               <div className="rounded-[26px] border border-[#eadfce] bg-[#fcfaf7] p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -5484,6 +6007,117 @@ This removes its linked members and deletes the grounds account.`
           />
         </div>
       ) : null}
+      {showSupport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-lg rounded-[24px] bg-white p-6 shadow-xl">
+            <h2 className="text-lg font-semibold text-[#241c15]">Report an issue</h2>
+
+            <input
+              type="text"
+              placeholder="Subject"
+              value={supportSubject}
+              onChange={(e) => setSupportSubject(e.target.value)}
+              className="mt-4 w-full rounded-[16px] border border-[#eadfce] px-4 py-3"
+            />
+
+            <textarea
+              placeholder="Describe the issue..."
+              value={supportMessage}
+              onChange={(e) => setSupportMessage(e.target.value)}
+              className="mt-3 w-full rounded-[16px] border border-[#eadfce] px-4 py-3 min-h-[120px]"
+            />
+
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                onClick={() => setShowSupport(false)}
+                className="rounded-full border px-4 py-2"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={async () => {
+                  if (!supportMessage.trim()) {
+                    alert("Please describe the issue.");
+                    return;
+                  }
+
+                  try {
+                    setSendingSupport(true);
+
+                    const {
+                      data: { user },
+                    } = await supabase.auth.getUser();
+
+                    if (!user) {
+                      alert("You must be signed in to submit a support request.");
+                      return;
+                    }
+
+                    let organizationId: string | null = null;
+
+                    const { data: membership } = await supabase
+                      .from("organization_members")
+                      .select("organization_id")
+                      .eq("user_id", user.id)
+                      .maybeSingle();
+
+                    organizationId = membership?.organization_id ?? null;
+
+                    const { error } = await supabase.from("support_tickets").insert({
+                      user_id: user.id,
+                      organization_id: organizationId,
+                      subject: supportSubject.trim() || "Support request",
+                      message: supportMessage.trim(),
+                      status: "open",
+                    });
+
+                    if (error) {
+                      console.error("Support ticket insert failed:", error);
+                      alert(`Error submitting: ${error.message}`);
+                      return;
+                    }
+
+const { data: emailData, error: emailError } = await supabase.functions.invoke(
+  "send-support-email",
+  {
+    body: {
+      subject: supportSubject,
+      message: supportMessage,
+      userEmail: user.email,
+    },
+  }
+);
+
+console.log("Support email response:", emailData, emailError);
+
+setShowSupport(false);
+setSupportMessage("");
+setSupportSubject("");
+
+if (emailError) {
+  console.error("Support email failed:", emailError);
+  alert("Ticket saved, but email failed.");
+  return;
+}
+
+alert("Submitted 👍");
+                  } catch (error) {
+                    console.error("Unexpected support submit error:", error);
+                    alert("Something went wrong submitting your request.");
+                  } finally {
+                    setSendingSupport(false);
+                  }
+                }}
+                disabled={sendingSupport}
+                className="rounded-full bg-[#1f2937] px-5 py-2 text-white disabled:opacity-60"
+              >
+                {sendingSupport ? "Submitting..." : "Submit"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

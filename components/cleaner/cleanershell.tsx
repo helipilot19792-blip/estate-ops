@@ -530,7 +530,29 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
 
   const hasAutoSelectedInitialJob = useRef(false);
   const realtimeRefreshTimeoutRef = useRef<number | null>(null);
+useEffect(() => {
+  if (!cleanerAccount?.id) return;
 
+  const channel = supabase
+    .channel("cleaner-jobs-realtime")
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "turnover_job_slots", // 🔥 this is key
+      },
+      async () => {
+        console.log("🔔 Job change detected, refreshing...");
+        await refreshCleanerJobs();
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, [cleanerAccount?.id]);
   useEffect(() => {
     const interval = window.setInterval(() => {
       setNow(new Date());
