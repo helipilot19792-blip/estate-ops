@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 function getCityFromAddress(address?: string | null) {
@@ -471,7 +471,7 @@ function getPropertyColor(propertyId: string | null) {
 
 export default function AdminPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
+
 
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [currentAdminUserId, setCurrentAdminUserId] = useState<string | null>(null);
@@ -700,12 +700,14 @@ export default function AdminPage() {
     void checkAuthAndRole();
   }, [router]);
 useEffect(() => {
-  const open = searchParams.get("open");
+  if (typeof window === "undefined") return;
+
+  const open = new URLSearchParams(window.location.search).get("open");
 
   if (open === "add-property") {
     setActiveSection("properties");
   }
-}, [searchParams]);
+}, []);
   useEffect(() => {
     if (!checkingAuth && currentOrganizationId) {
       void loadData();
@@ -6078,30 +6080,30 @@ This removes its linked members and deletes the grounds account.`
                       return;
                     }
 
-const { data: emailData, error: emailError } = await supabase.functions.invoke(
-  "send-support-email",
-  {
-    body: {
-      subject: supportSubject,
-      message: supportMessage,
-      userEmail: user.email,
-    },
-  }
-);
+                    const { data: emailData, error: emailError } = await supabase.functions.invoke(
+                      "send-support-email",
+                      {
+                        body: {
+                          subject: supportSubject,
+                          message: supportMessage,
+                          userEmail: user.email,
+                        },
+                      }
+                    );
 
-console.log("Support email response:", emailData, emailError);
+                    console.log("Support email response:", emailData, emailError);
 
-setShowSupport(false);
-setSupportMessage("");
-setSupportSubject("");
+                    setShowSupport(false);
+                    setSupportMessage("");
+                    setSupportSubject("");
 
-if (emailError) {
-  console.error("Support email failed:", emailError);
-  alert("Ticket saved, but email failed.");
-  return;
-}
+                    if (emailError) {
+                      console.error("Support email failed:", emailError);
+                      alert("Ticket saved, but email failed.");
+                      return;
+                    }
 
-alert("Submitted 👍");
+                    alert("Submitted 👍");
                   } catch (error) {
                     console.error("Unexpected support submit error:", error);
                     alert("Something went wrong submitting your request.");
