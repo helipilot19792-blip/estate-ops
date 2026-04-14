@@ -118,8 +118,8 @@ export default function ResetPasswordPage() {
             <div className="max-w-md">
               <div className="mb-6">
                 <Image
-                  src="/eomlogo.png"
-                  alt="Estate of Mind Property Management"
+                  src="/guleraslogo.png"
+                  alt="Gulera OS"
                   width={420}
                   height={180}
                   className="h-auto w-full max-w-[320px]"
