@@ -662,43 +662,64 @@ export default function AdminPage() {
     return () => window.clearInterval(interval);
   }, []);
 
-  useEffect(() => {
-    async function checkAuthAndRole() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+ useEffect(() => {
+  async function checkAuthAndRole() {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-      if (!user) {
-        router.push("/login");
-        return;
-      }
-
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("id,email,full_name,phone,role")
-        .eq("id", user.id)
-        .single<ProfileRow>();
-
-      if (profileError || !profile || profile.role !== "admin") {
-        router.push("/login");
-        return;
-      }
-      const { data: orgRows, error: orgError } = await supabase
-        .rpc("get_my_organizations");
-
-      if (orgError || !orgRows || orgRows.length === 0) {
-        router.push("/login");
-        return;
-      }
-
-      setMyOrganizations(orgRows as MyOrganizationRow[]);
-      setCurrentOrganizationId(orgRows[0].organization_id);
-      setCurrentAdminUserId(user.id);
+    if (!user) {
+      setError("No signed-in user was found on the admin page.");
       setCheckingAuth(false);
+      return;
     }
 
-    void checkAuthAndRole();
-  }, [router]);
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("id,email,full_name,phone,role")
+      .eq("id", user.id)
+      .single<ProfileRow>();
+
+    if (profileError) {
+      setError(`Profile lookup failed: ${profileError.message}`);
+      setCheckingAuth(false);
+      return;
+    }
+
+    if (!profile) {
+      setError("No profile row was found for this user.");
+      setCheckingAuth(false);
+      return;
+    }
+
+    if (profile.role !== "admin") {
+      setError(`This account is not admin. Current role: ${profile.role}`);
+      setCheckingAuth(false);
+      return;
+    }
+
+    const { data: orgRows, error: orgError } = await supabase.rpc("get_my_organizations");
+
+    if (orgError) {
+      setError(`Organization lookup failed: ${orgError.message}`);
+      setCheckingAuth(false);
+      return;
+    }
+
+    if (!orgRows || orgRows.length === 0) {
+      setError("No organizations were returned for this admin account.");
+      setCheckingAuth(false);
+      return;
+    }
+
+    setMyOrganizations(orgRows as MyOrganizationRow[]);
+    setCurrentOrganizationId(orgRows[0].organization_id);
+    setCurrentAdminUserId(user.id);
+    setCheckingAuth(false);
+  }
+
+  void checkAuthAndRole();
+}, []);
   useEffect(() => {
     if (typeof window === "undefined") return;
 
