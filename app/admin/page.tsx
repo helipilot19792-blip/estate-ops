@@ -773,7 +773,52 @@ export default function AdminPage() {
     accessDirty,
     propertyDefaultsDirty,
   ]);
+async function handleSubmitSupportTicket() {
+  if (!supportMessage.trim()) return;
 
+  try {
+    setSendingSupport(true);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      alert("You must be signed in to contact support.");
+      return;
+    }
+
+    const { data: membership } = await supabase
+      .from("organization_members")
+      .select("organization_id")
+      .eq("profile_id", user.id)
+      .maybeSingle();
+
+    const { error } = await supabase.from("support_tickets").insert({
+      user_id: user.id,
+      organization_id: membership?.organization_id ?? null,
+      subject: supportSubject.trim() || "Support request",
+      message: supportMessage.trim(),
+      status: "open",
+    });
+
+    if (error) {
+      console.error(error);
+      alert("Could not send support request.");
+      return;
+    }
+
+    setShowSupport(false);
+    setSupportSubject("");
+    setSupportMessage("");
+    alert("Support request sent.");
+  } catch (error) {
+    console.error(error);
+    alert("Something went wrong sending your support request.");
+  } finally {
+    setSendingSupport(false);
+  }
+}
   async function loadData() {
     setError("");
 
@@ -781,52 +826,10 @@ export default function AdminPage() {
       setError("No organization selected.");
       return;
     }
-    async function handleSubmitSupportTicket() {
-      if (!supportMessage.trim()) return;
 
-      try {
-        setSendingSupport(true);
 
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
 
-        if (!user) {
-          alert("You must be signed in to contact support.");
-          return;
-        }
-
-        const { data: membership } = await supabase
-          .from("organization_members")
-          .select("organization_id")
-          .eq("user_id", user.id)
-          .maybeSingle();
-
-        const { error } = await supabase.from("support_tickets").insert({
-          user_id: user.id,
-          organization_id: membership?.organization_id ?? null,
-          subject: supportSubject.trim() || "Support request",
-          message: supportMessage.trim(),
-          status: "open",
-        });
-
-        if (error) {
-          console.error(error);
-          alert("Could not send support request.");
-          return;
-        }
-
-        setShowSupport(false);
-        setSupportSubject("");
-        setSupportMessage("");
-        alert("Support request sent.");
-      } catch (error) {
-        console.error(error);
-        alert("Something went wrong sending your support request.");
-      } finally {
-        setSendingSupport(false);
-      }
-    }
+      
 
     const [
       propertiesRes,
