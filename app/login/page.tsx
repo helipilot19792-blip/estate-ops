@@ -214,7 +214,7 @@ export default function LoginPage() {
         return;
       }
 
-      router.push("/welcome");
+   
 
       const userId = data.user?.id;
 
