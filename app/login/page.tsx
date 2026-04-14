@@ -23,6 +23,19 @@ function slugifyCompanyName(value: string) {
     .replace(/^-+|-+$/g, "");
 }
 
+function scrollInputIntoView(target: EventTarget | null) {
+  if (typeof window === "undefined") return;
+  const element = target as HTMLElement | null;
+  if (!element) return;
+
+  window.setTimeout(() => {
+    element.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+  }, 250);
+}
+
 async function getPortalDestinationForUser(userId: string, role: string | null | undefined) {
   if (role === "admin") {
     return "/admin";
@@ -188,20 +201,20 @@ export default function LoginPage() {
     setLoadingSignup(true);
 
     try {
-const { data, error } = await supabase.auth.signUp({
-  email: signupEmail.trim(),
-  password: signupPassword,
-  options: {
-    emailRedirectTo: `${window.location.origin}/auth/confirm?next=/login`,
-  },
-});
+      const { data, error } = await supabase.auth.signUp({
+        email: signupEmail.trim(),
+        password: signupPassword,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/confirm?next=/login`,
+        },
+      });
 
-if (error) {
-  setError(error.message);
-  return;
-}
+      if (error) {
+        setError(error.message);
+        return;
+      }
 
-router.push("/welcome");
+      router.push("/welcome");
 
       const userId = data.user?.id;
 
@@ -238,13 +251,11 @@ router.push("/welcome");
           return;
         }
 
-        const { error: memberError } = await supabase
-          .from("organization_members")
-          .insert({
-            organization_id: org.id,
-            profile_id: userId,
-            role: "admin",
-          });
+        const { error: memberError } = await supabase.from("organization_members").insert({
+          organization_id: org.id,
+          profile_id: userId,
+          role: "admin",
+        });
 
         if (memberError) {
           setError(memberError.message);
@@ -374,8 +385,8 @@ router.push("/welcome");
   }
 
   return (
-    <main className="min-h-screen bg-[#f7f3ee] text-[#241c15]">
-      <div className="mx-auto flex min-h-screen max-w-6xl items-center p-4 md:p-6">
+    <main className="min-h-screen bg-[#f7f3ee] pb-32 text-[#241c15] md:pb-0">
+      <div className="mx-auto flex min-h-screen max-w-6xl items-start p-4 pt-6 md:items-center md:p-6 md:pt-0">
         <div className="grid w-full overflow-hidden rounded-[34px] border border-[#e7ddd0] bg-white shadow-[0_30px_70px_rgba(0,0,0,0.08)] lg:grid-cols-[0.95fr_1.05fr]">
           <section className="bg-[linear-gradient(135deg,#1f1812_0%,#2a2119_55%,#3a2c1d_100%)] px-6 py-8 text-white md:px-10 md:py-12">
             <div className="max-w-md">
@@ -399,8 +410,8 @@ router.push("/welcome");
               </h1>
 
               <p className="mt-4 text-sm leading-7 text-[#e7dccb] md:text-base">
-                Sign in to your existing workspace, create a new company account, or
-                request staff access to join an existing team.
+                Sign in to your existing workspace, create a new company account, or request
+                staff access to join an existing team.
               </p>
 
               <div className="mt-8 grid gap-3">
@@ -428,7 +439,7 @@ router.push("/welcome");
             </div>
           </section>
 
-          <section className="bg-white px-6 py-8 md:px-10 md:py-12">
+          <section className="bg-white px-5 py-6 md:px-10 md:py-12">
             <div className="mx-auto max-w-xl">
               {error ? (
                 <div className="mb-4 rounded-[20px] border border-[#e7c6c1] bg-[#fff4f2] px-4 py-3 text-sm text-[#8a2e22] shadow-sm">
@@ -486,17 +497,18 @@ router.push("/welcome");
                 {authMode === "login" ? (
                   <section className="rounded-[28px] border border-[#e7ddd0] bg-[#fcfaf7] p-5 shadow-sm">
                     <h2 className="text-2xl font-semibold tracking-tight">Login</h2>
-                    <p className="mt-1 text-sm text-[#7f7263]">
-                      Existing staff or admin account
-                    </p>
+                    <p className="mt-1 text-sm text-[#7f7263]">Existing staff or admin account</p>
 
                     <form onSubmit={handleLogin} className="mt-5 space-y-3">
                       <input
                         className="w-full rounded-[20px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
                         type="email"
                         placeholder="Email"
+                        autoComplete="email"
+                        inputMode="email"
                         value={loginEmail}
                         onChange={(e) => setLoginEmail(e.target.value)}
+                        onFocus={(e) => scrollInputIntoView(e.currentTarget)}
                       />
 
                       <div className="relative">
@@ -504,8 +516,10 @@ router.push("/welcome");
                           className="w-full rounded-[20px] border border-[#d9ccbb] bg-white px-4 py-3 pr-12 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
                           type={showLoginPassword ? "text" : "password"}
                           placeholder="Password"
+                          autoComplete="current-password"
                           value={loginPassword}
                           onChange={(e) => setLoginPassword(e.target.value)}
+                          onFocus={(e) => scrollInputIntoView(e.currentTarget)}
                         />
                         <button
                           type="button"
@@ -561,32 +575,42 @@ router.push("/welcome");
                         className="md:col-span-2 w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e] focus:bg-white"
                         type="text"
                         placeholder="Full name"
+                        autoComplete="name"
                         value={signupName}
                         onChange={(e) => setSignupName(e.target.value)}
+                        onFocus={(e) => scrollInputIntoView(e.currentTarget)}
                       />
 
                       <input
                         className="md:col-span-2 w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e] focus:bg-white"
                         type="text"
                         placeholder="Phone number"
+                        autoComplete="tel"
+                        inputMode="tel"
                         value={signupPhone}
                         onChange={(e) => setSignupPhone(e.target.value)}
+                        onFocus={(e) => scrollInputIntoView(e.currentTarget)}
                       />
 
                       <input
                         className="md:col-span-2 w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e] focus:bg-white"
                         type="email"
                         placeholder="Work email"
+                        autoComplete="email"
+                        inputMode="email"
                         value={signupEmail}
                         onChange={(e) => setSignupEmail(e.target.value)}
+                        onFocus={(e) => scrollInputIntoView(e.currentTarget)}
                       />
 
                       <input
                         className="md:col-span-2 w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e] focus:bg-white"
                         type="text"
                         placeholder="Company name"
+                        autoComplete="organization"
                         value={companyName}
                         onChange={(e) => setCompanyName(e.target.value)}
+                        onFocus={(e) => scrollInputIntoView(e.currentTarget)}
                       />
 
                       <div className="relative">
@@ -594,8 +618,10 @@ router.push("/welcome");
                           className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 pr-12 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e] focus:bg-white"
                           type={showSignupPassword ? "text" : "password"}
                           placeholder="Password"
+                          autoComplete="new-password"
                           value={signupPassword}
                           onChange={(e) => setSignupPassword(e.target.value)}
+                          onFocus={(e) => scrollInputIntoView(e.currentTarget)}
                         />
                         <button
                           type="button"
@@ -611,8 +637,10 @@ router.push("/welcome");
                           className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 pr-12 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e] focus:bg-white"
                           type={showSignupConfirmPassword ? "text" : "password"}
                           placeholder="Confirm password"
+                          autoComplete="new-password"
                           value={signupConfirmPassword}
                           onChange={(e) => setSignupConfirmPassword(e.target.value)}
+                          onFocus={(e) => scrollInputIntoView(e.currentTarget)}
                         />
                         <button
                           type="button"
@@ -652,24 +680,32 @@ router.push("/welcome");
                         className="md:col-span-2 w-full rounded-[20px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
                         type="text"
                         placeholder="Full name"
+                        autoComplete="name"
                         value={signupName}
                         onChange={(e) => setSignupName(e.target.value)}
+                        onFocus={(e) => scrollInputIntoView(e.currentTarget)}
                       />
 
                       <input
                         className="md:col-span-2 w-full rounded-[20px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
                         type="text"
                         placeholder="Phone number"
+                        autoComplete="tel"
+                        inputMode="tel"
                         value={signupPhone}
                         onChange={(e) => setSignupPhone(e.target.value)}
+                        onFocus={(e) => scrollInputIntoView(e.currentTarget)}
                       />
 
                       <input
                         className="md:col-span-2 w-full rounded-[20px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
                         type="email"
                         placeholder="Email"
+                        autoComplete="email"
+                        inputMode="email"
                         value={signupEmail}
                         onChange={(e) => setSignupEmail(e.target.value)}
+                        onFocus={(e) => scrollInputIntoView(e.currentTarget)}
                       />
 
                       <div className="relative">
@@ -677,8 +713,10 @@ router.push("/welcome");
                           className="w-full rounded-[20px] border border-[#d9ccbb] bg-white px-4 py-3 pr-12 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
                           type={showSignupPassword ? "text" : "password"}
                           placeholder="Password"
+                          autoComplete="new-password"
                           value={signupPassword}
                           onChange={(e) => setSignupPassword(e.target.value)}
+                          onFocus={(e) => scrollInputIntoView(e.currentTarget)}
                         />
                         <button
                           type="button"
@@ -694,8 +732,10 @@ router.push("/welcome");
                           className="w-full rounded-[20px] border border-[#d9ccbb] bg-white px-4 py-3 pr-12 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
                           type={showSignupConfirmPassword ? "text" : "password"}
                           placeholder="Confirm password"
+                          autoComplete="new-password"
                           value={signupConfirmPassword}
                           onChange={(e) => setSignupConfirmPassword(e.target.value)}
+                          onFocus={(e) => scrollInputIntoView(e.currentTarget)}
                         />
                         <button
                           type="button"
