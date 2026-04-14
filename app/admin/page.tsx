@@ -1128,15 +1128,25 @@ async function handleSubmitSupportTicket() {
     setActingOnProfileId(profile.id);
 
     try {
-      const response = await fetch("/api/admin/delete-user", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          profileId: profile.id,
-        }),
-      });
+   const {
+  data: { session },
+  error: sessionError,
+} = await supabase.auth.getSession();
+
+if (sessionError || !session?.access_token) {
+  throw new Error("Could not verify your admin session.");
+}
+
+const response = await fetch("/api/admin/delete-user", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${session.access_token}`,
+  },
+  body: JSON.stringify({
+    profileId: profile.id,
+  }),
+});
 
       const payload = await response.json().catch(() => null);
 
