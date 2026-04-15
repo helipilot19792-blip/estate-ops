@@ -1,6 +1,6 @@
 "use client";
 export const dynamic = "force-dynamic";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -59,7 +59,7 @@ function getDestinationForRole(role: InviteRow["role"]) {
   }
 }
 
-export default function InvitePage() {
+function InvitePageContent() {
   const searchParams = useSearchParams();
   const token = useMemo(() => searchParams.get("token")?.trim() || "", [searchParams]);
 
@@ -626,5 +626,12 @@ export default function InvitePage() {
         </div>
       </div>
     </main>
+  );
+}
+export default function InvitePage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#f7f3ee]" />}>
+      <InvitePageContent />
+    </Suspense>
   );
 }
