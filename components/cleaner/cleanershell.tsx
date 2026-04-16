@@ -530,29 +530,29 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
 
   const hasAutoSelectedInitialJob = useRef(false);
   const realtimeRefreshTimeoutRef = useRef<number | null>(null);
-useEffect(() => {
-  if (!cleanerAccount?.id) return;
+  useEffect(() => {
+    if (!cleanerAccount?.id) return;
 
-  const channel = supabase
-    .channel("cleaner-jobs-realtime")
-    .on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "turnover_job_slots", // 🔥 this is key
-      },
-      async () => {
-        console.log("🔔 Job change detected, refreshing...");
-        await refreshCleanerJobs();
-      }
-    )
-    .subscribe();
+    const channel = supabase
+      .channel("cleaner-jobs-realtime")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "turnover_job_slots", // 🔥 this is key
+        },
+        async () => {
+          console.log("🔔 Job change detected, refreshing...");
+          await refreshCleanerJobs();
+        }
+      )
+      .subscribe();
 
-  return () => {
-    supabase.removeChannel(channel);
-  };
-}, [cleanerAccount?.id]);
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [cleanerAccount?.id]);
   useEffect(() => {
     const interval = window.setInterval(() => {
       setNow(new Date());
@@ -577,7 +577,8 @@ useEffect(() => {
         if (userError) throw userError;
 
         if (!user) {
-          router.replace("/login");
+          setPageError("DEBUG: No signed-in user found in CleanerShell after login.");
+          setLoading(false);
           return;
         }
 
@@ -587,16 +588,26 @@ useEffect(() => {
           .eq("id", user.id)
           .single();
 
-        if (profileError) throw profileError;
+        if (profileError) {
+          setPageError(`DEBUG: Profile lookup failed: ${profileError.message}`);
+          setLoading(false);
+          return;
+        }
         if (!mounted) return;
+
+        if (!profileData) {
+          setPageError("DEBUG: No profile row found for signed-in user.");
+          setLoading(false);
+          return;
+        }
 
         setProfile(profileData);
 
         if (profileData.role === "admin") {
-          router.replace("/admin");
+          setPageError("DEBUG: User is being treated as admin and redirected away from cleaner.");
+          setLoading(false);
           return;
         }
-
         const accountData = await loadCleanerAccount(profileData.id);
         if (!mounted) return;
 
@@ -604,11 +615,15 @@ useEffect(() => {
         setAccountWarning(accountData.warning);
 
         if (!accountData.account) {
+          setPageError(
+            `DEBUG: No cleaner account loaded. ${accountData.warning || "No warning returned."}`
+          );
           setProperties([]);
           setCleanerJobs([]);
           setAccessRows([]);
           setSops([]);
           setSopImages([]);
+          setLoading(false);
           return;
         }
 
@@ -672,29 +687,29 @@ useEffect(() => {
 
     const membershipChannel = profile?.id
       ? supabase
-          .channel(`cleaner-membership-live-${profile.id}`)
-          .on(
-            "postgres_changes",
-            {
-              event: "*",
-              schema: "public",
-              table: "cleaner_account_members",
-              filter: `profile_id=eq.${profile.id}`,
-            },
-            async () => {
-              const accountData = await loadCleanerAccount(profile.id);
-              setCleanerAccount(accountData.account);
-              setAccountWarning(accountData.warning);
+        .channel(`cleaner-membership-live-${profile.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "cleaner_account_members",
+            filter: `profile_id=eq.${profile.id}`,
+          },
+          async () => {
+            const accountData = await loadCleanerAccount(profile.id);
+            setCleanerAccount(accountData.account);
+            setAccountWarning(accountData.warning);
 
-              if (accountData.account) {
-                const loadedJobs = await loadCleanerJobs(accountData.account.id);
-                setCleanerJobs(loadedJobs);
-              } else {
-                setCleanerJobs([]);
-              }
+            if (accountData.account) {
+              const loadedJobs = await loadCleanerJobs(accountData.account.id);
+              setCleanerJobs(loadedJobs);
+            } else {
+              setCleanerJobs([]);
             }
-          )
-          .subscribe()
+          }
+        )
+        .subscribe()
       : null;
 
     return () => {
