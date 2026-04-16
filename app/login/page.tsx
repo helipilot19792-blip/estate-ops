@@ -41,18 +41,31 @@ async function getPortalDestinationForUser(userId: string, role: string | null |
     return "/admin";
   }
 
-  const [{ data: cleanerMemberships }, { data: groundsMemberships }] = await Promise.all([
+  const [
+    { data: cleanerMemberships, error: cleanerError },
+    { data: groundsMemberships, error: groundsError },
+  ] = await Promise.all([
     supabase
       .from("cleaner_account_members")
-      .select("id")
+      .select("id, profile_id")
       .eq("profile_id", userId)
       .limit(1),
     supabase
       .from("grounds_account_members")
-      .select("id")
+      .select("id, profile_id")
       .eq("profile_id", userId)
       .limit(1),
   ]);
+
+  alert(
+    `DEBUG getPortalDestinationForUser\n` +
+    `userId: ${userId}\n` +
+    `role: ${role}\n` +
+    `cleanerError: ${cleanerError?.message || "none"}\n` +
+    `groundsError: ${groundsError?.message || "none"}\n` +
+    `cleanerMemberships: ${JSON.stringify(cleanerMemberships || [])}\n` +
+    `groundsMemberships: ${JSON.stringify(groundsMemberships || [])}`
+  );
 
   const hasCleaner = !!cleanerMemberships?.length;
   const hasGrounds = !!groundsMemberships?.length;
