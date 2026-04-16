@@ -117,19 +117,27 @@ export default function LoginPage() {
         return;
       }
 
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("id,email,full_name,phone,role")
-        .eq("id", user.id)
-        .single<ProfileRow>();
+    const { data: profile, error: profileError } = await supabase
+  .from("profiles")
+  .select("id,email,full_name,phone,role")
+  .eq("id", user.id)
+  .single<ProfileRow>();
 
-      if (profileError || !profile) {
-        setError("Could not load your profile.");
-        return;
-      }
+if (profileError || !profile) {
+  setError("Could not load your profile.");
+  return;
+}
 
-      const destination = await getPortalDestinationForUser(user.id, profile.role);
-      router.push(destination);
+const params = new URLSearchParams(window.location.search);
+const inviteToken = params.get("token");
+
+if (inviteToken) {
+  router.push(`/invite?token=${inviteToken}`);
+  return;
+}
+
+const destination = await getPortalDestinationForUser(user.id, profile.role);
+router.push(destination);
     } finally {
       setLoadingLogin(false);
     }
