@@ -117,27 +117,30 @@ export default function LoginPage() {
         return;
       }
 
-    const { data: profile, error: profileError } = await supabase
-  .from("profiles")
-  .select("id,email,full_name,phone,role")
-  .eq("id", user.id)
-  .single<ProfileRow>();
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("id,email,full_name,phone,role")
+        .eq("id", user.id)
+        .single<ProfileRow>();
 
-if (profileError || !profile) {
-  setError("Could not load your profile.");
+      if (profileError || !profile) {
+        setError("Could not load your profile.");
+        return;
+      }
+
+      const destination = await getPortalDestinationForUser(user.id, profile.role);
+
+const {
+  data: { session },
+} = await supabase.auth.getSession();
+
+if (!session) {
+  setError("Login succeeded, but no session was ready yet. Please try again.");
   return;
 }
 
-const params = new URLSearchParams(window.location.search);
-const inviteToken = params.get("token");
-
-if (inviteToken) {
-  router.push(`/invite?token=${inviteToken}`);
-  return;
-}
-
-const destination = await getPortalDestinationForUser(user.id, profile.role);
-router.push(destination);
+window.location.href = destination;
+return;
     } finally {
       setLoadingLogin(false);
     }
@@ -387,11 +390,10 @@ router.push(destination);
                   <button
                     type="button"
                     onClick={() => setAuthMode("login")}
-                    className={`rounded-[18px] px-4 py-3 text-sm font-medium transition ${
-                      authMode === "login"
+                    className={`rounded-[18px] px-4 py-3 text-sm font-medium transition ${authMode === "login"
                         ? "bg-[#241c15] text-[#f8f2e8]"
                         : "bg-white text-[#5f5245] hover:bg-[#fffaf4]"
-                    }`}
+                      }`}
                   >
                     Login
                   </button>
@@ -399,11 +401,10 @@ router.push(destination);
                   <button
                     type="button"
                     onClick={() => setAuthMode("company")}
-                    className={`rounded-[18px] px-4 py-3 text-sm font-medium transition ${
-                      authMode === "company"
+                    className={`rounded-[18px] px-4 py-3 text-sm font-medium transition ${authMode === "company"
                         ? "bg-[#b48d4e] text-white"
                         : "bg-white text-[#7a5a23] hover:bg-[#fffaf4]"
-                    }`}
+                      }`}
                   >
                     Create Company
                   </button>
