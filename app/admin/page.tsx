@@ -544,6 +544,9 @@ export default function AdminPage() {
   const [propertyNotes, setPropertyNotes] = useState("");
   const [propertyOwnerName, setPropertyOwnerName] = useState("");
   const [propertyOwnerEmail, setPropertyOwnerEmail] = useState("");
+  const [selectedPropertyOwnerName, setSelectedPropertyOwnerName] = useState("");
+  const [selectedPropertyOwnerEmail, setSelectedPropertyOwnerEmail] = useState("");
+  const [savingSelectedPropertyOwner, setSavingSelectedPropertyOwner] = useState(false);
   const [propertyUnitsNeeded, setPropertyUnitsNeeded] = useState("1");
   const [propertyUnitsStrict, setPropertyUnitsStrict] = useState(false);
   const [propertyShowTeamStatus, setPropertyShowTeamStatus] = useState(true);
@@ -758,6 +761,8 @@ export default function AdminPage() {
       setDoorCode("");
       setAlarmCode("");
       setAccessNotes("");
+      setSelectedPropertyOwnerName("");
+      setSelectedPropertyOwnerEmail("");
       setCalendarRowsDraft([]);
       setCalendarDraftDirty(false);
       setAccessDirty(false);
@@ -786,6 +791,11 @@ export default function AdminPage() {
     }
 
     const selectedProperty = properties.find((p) => p.id === selectedPropertyId);
+    const linkedOwner = getOwnerForProperty(selectedPropertyId);
+
+    setSelectedPropertyOwnerName(linkedOwner?.full_name || "");
+    setSelectedPropertyOwnerEmail(linkedOwner?.email || "");
+
     if (!propertyDefaultsDirty) {
       setSelectedPropertyUnitsNeeded(String(selectedProperty?.default_cleaner_units_needed || 1));
       setSelectedPropertyUnitsStrict(!!selectedProperty?.cleaner_units_required_strict);
@@ -1440,40 +1450,40 @@ export default function AdminPage() {
       return null;
     }
 
-if (existingInvite) {
-  const inviteUrl = `${window.location.origin}/invite?token=${existingInvite.token}`;
+    if (existingInvite) {
+      const inviteUrl = `${window.location.origin}/invite?token=${existingInvite.token}`;
 
-  try {
-    const response = await fetch("/api/send-invite-email", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        email,
-        inviteUrl,
-        role: params.role,
-        name: fullName,
-      }),
-    });
+      try {
+        const response = await fetch("/api/send-invite-email", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            email,
+            inviteUrl,
+            role: params.role,
+            name: fullName,
+          }),
+        });
 
-    const payload = await response.json().catch(() => null);
+        const payload = await response.json().catch(() => null);
 
-    if (!response.ok) {
-      throw new Error(payload?.error || "Invite email failed to send.");
+        if (!response.ok) {
+          throw new Error(payload?.error || "Invite email failed to send.");
+        }
+
+        const message = `${params.role} invite already exists and email was sent: ${inviteUrl}`;
+        setActionMessage(message);
+        window.alert(message);
+      } catch (err: any) {
+        const message = `${params.role} invite already exists, but email failed: ${err?.message || inviteUrl}`;
+        setActionMessage(message);
+        window.alert(message);
+      }
+
+      return existingInvite;
     }
-
-    const message = `${params.role} invite already exists and email was sent: ${inviteUrl}`;
-    setActionMessage(message);
-    window.alert(message);
-  } catch (err: any) {
-    const message = `${params.role} invite already exists, but email failed: ${err?.message || inviteUrl}`;
-    setActionMessage(message);
-    window.alert(message);
-  }
-
-  return existingInvite;
-}
     const { data, error } = await supabase
       .from("organization_invites")
       .insert({
@@ -1496,40 +1506,40 @@ if (existingInvite) {
       return null;
     }
 
-   const inviteUrl = `${window.location.origin}/invite?token=${data.token}`;
+    const inviteUrl = `${window.location.origin}/invite?token=${data.token}`;
 
-try {
-  const response = await fetch("/api/send-invite-email", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      email,
-      inviteUrl,
-      role: params.role,
-      name: fullName,
-    }),
-  });
+    try {
+      const response = await fetch("/api/send-invite-email", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          inviteUrl,
+          role: params.role,
+          name: fullName,
+        }),
+      });
 
-  const payload = await response.json().catch(() => null);
+      const payload = await response.json().catch(() => null);
 
-  if (!response.ok) {
-    const detailedError =
-      payload?.error ||
-      payload?.message ||
-      `Invite email failed with status ${response.status}`;
-    throw new Error(detailedError);
-  }
+      if (!response.ok) {
+        const detailedError =
+          payload?.error ||
+          payload?.message ||
+          `Invite email failed with status ${response.status}`;
+        throw new Error(detailedError);
+      }
 
-  setActionMessage(`${params.role} invite created and email sent: ${inviteUrl}`);
-} catch (err: any) {
-  const detailedMessage = err?.message || "Unknown email send error.";
-  setError(detailedMessage);
-  setActionMessage(`${params.role} invite created, but email failed to send: ${detailedMessage}`);
-}
+      setActionMessage(`${params.role} invite created and email sent: ${inviteUrl}`);
+    } catch (err: any) {
+      const detailedMessage = err?.message || "Unknown email send error.";
+      setError(detailedMessage);
+      setActionMessage(`${params.role} invite created, but email failed to send: ${detailedMessage}`);
+    }
 
-return data;
+    return data;
   }
   async function resendOrganizationInvite(params: {
     email: string;
@@ -2502,7 +2512,109 @@ This removes its linked members and deletes the grounds account.`
       setSavingSelectedPropertyDefaults(false);
     }
   }
+  async function saveSelectedPropertyOwner() {
+    if (!selectedPropertyId) return;
 
+    const trimmedEmail = selectedPropertyOwnerEmail.trim().toLowerCase();
+    const trimmedName = selectedPropertyOwnerName.trim();
+
+    setError("");
+    setActionMessage("");
+    setSavingSelectedPropertyOwner(true);
+
+    try {
+      const existingAccess = ownerPropertyAccess.find(
+        (row) => row.property_id === selectedPropertyId
+      );
+
+      if (!trimmedEmail) {
+        if (existingAccess) {
+          const { error } = await supabase
+            .from("owner_property_access")
+            .delete()
+            .eq("id", existingAccess.id);
+
+          if (error) throw error;
+        }
+
+        setActionMessage("Owner link removed from property.");
+        await loadData();
+        return;
+      }
+
+      let ownerAccountId: string | null = null;
+
+      const existingOwner = ownerAccounts.find(
+        (owner) => owner.email.trim().toLowerCase() === trimmedEmail
+      );
+
+      if (existingOwner) {
+        ownerAccountId = existingOwner.id;
+
+        const updates: Record<string, any> = {};
+        if (trimmedName && trimmedName !== (existingOwner.full_name || "")) {
+          updates.full_name = trimmedName;
+        }
+
+        if (Object.keys(updates).length > 0) {
+          const { error: updateOwnerError } = await supabase
+            .from("owner_accounts")
+            .update(updates)
+            .eq("id", existingOwner.id);
+
+          if (updateOwnerError) throw updateOwnerError;
+        }
+      } else {
+        const { data: insertedOwner, error: insertOwnerError } = await supabase
+          .from("owner_accounts")
+          .insert({
+            organization_id: currentOrganizationId,
+            email: trimmedEmail,
+            full_name: trimmedName || null,
+            is_active: true,
+          })
+          .select()
+          .single();
+
+        if (insertOwnerError || !insertedOwner) {
+          throw new Error(insertOwnerError?.message || "Could not create owner account.");
+        }
+
+        ownerAccountId = insertedOwner.id;
+      }
+
+      if (!ownerAccountId) {
+        throw new Error("Could not determine owner account.");
+      }
+
+      if (existingAccess) {
+        const { error: updateAccessError } = await supabase
+          .from("owner_property_access")
+          .update({
+            owner_account_id: ownerAccountId,
+          })
+          .eq("id", existingAccess.id);
+
+        if (updateAccessError) throw updateAccessError;
+      } else {
+        const { error: insertAccessError } = await supabase
+          .from("owner_property_access")
+          .insert({
+            owner_account_id: ownerAccountId,
+            property_id: selectedPropertyId,
+          });
+
+        if (insertAccessError) throw insertAccessError;
+      }
+
+      setActionMessage("Owner saved for property.");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Could not save owner for property.");
+    } finally {
+      setSavingSelectedPropertyOwner(false);
+    }
+  }
   function addCalendarDraftRow() {
     setCalendarDraftDirty(true);
     setCalendarRowsDraft((prev) => [
