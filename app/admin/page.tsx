@@ -5469,25 +5469,34 @@ This removes its linked members and deletes the grounds account.`
         <p className="mt-1 text-sm text-[#7f7263]">Manage access notes, booking calendars, and visual SOPs.</p>
 
         <div className="mt-5">
-          <select className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" value={selectedPropertyId} onChange={(e) => setSelectedPropertyId(e.target.value)}>
-            <div className="mt-5 rounded-[24px] border border-[#e7ddd0] bg-white p-5 shadow-sm">
-              <div className="flex items-start justify-between gap-4">
+          <select
+            className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+            value={selectedPropertyId}
+            onChange={(e) => setSelectedPropertyId(e.target.value)}
+          >
+            <option value="">Select property</option>
+            {properties.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {selectedPropertyId ? (
+          <>
+            <div className="mt-6 rounded-[26px] border border-[#eadfce] bg-[#fcfaf7] p-5">
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div>
-                  <h4 className="text-base font-semibold text-[#241c15]">Owner Portal</h4>
+                  <h3 className="text-lg font-semibold">Owner Portal</h3>
                   <p className="mt-1 text-sm text-[#7f7263]">
-                    Link or update the owner for the selected property.
+                    Link or update the owner for this property after the property has already been created.
                   </p>
                 </div>
 
-                {selectedPropertyOwnerEmail ? (
-                  <span className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#6f6255]">
-                    Owner linked
-                  </span>
-                ) : (
-                  <span className="rounded-full border border-[#e7ddd0] bg-white px-3 py-1 text-xs font-medium text-[#8a7b68]">
-                    No owner linked
-                  </span>
-                )}
+                <span className="inline-flex items-center rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-medium text-[#6f6255]">
+                  {selectedPropertyOwnerEmail ? "Owner linked" : "No owner linked"}
+                </span>
               </div>
 
               <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -5532,17 +5541,13 @@ This removes its linked members and deletes the grounds account.`
                 ) : null}
               </div>
             </div>
-            <option value="">Select property</option>
-            {properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-        </div>
 
-        {selectedPropertyId ? (
-          <div className="mt-6 grid gap-6 lg:grid-cols-3">
-            <div className="rounded-[26px] border border-[#eadfce] bg-[#fcfaf7] p-5 lg:col-span-3">
-              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold">Property Staffing Defaults</h3>
+            <div className="mt-6 grid gap-6 lg:grid-cols-3">
+              <div className="rounded-[26px] border border-[#eadfce] bg-[#fcfaf7] p-5 lg:col-span-3">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold">Property Staffing Defaults</h3>
+                  </div>
                 </div>
                 <button
                   className="inline-flex items-center justify-center rounded-full border border-[#efc6c6] bg-[#fff5f5] px-5 py-2.5 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-50"
@@ -5759,7 +5764,7 @@ This removes its linked members and deletes the grounds account.`
                 </button>
               </div>
             </div>
-          </div>
+          </>
         ) : (
           <div className="mt-6 rounded-[24px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-5 py-8 text-sm text-[#8a7b68]">
             Select a property to manage calendars, SOPs, and access details.
