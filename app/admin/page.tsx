@@ -5470,6 +5470,68 @@ This removes its linked members and deletes the grounds account.`
 
         <div className="mt-5">
           <select className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" value={selectedPropertyId} onChange={(e) => setSelectedPropertyId(e.target.value)}>
+            <div className="mt-5 rounded-[24px] border border-[#e7ddd0] bg-white p-5 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h4 className="text-base font-semibold text-[#241c15]">Owner Portal</h4>
+                  <p className="mt-1 text-sm text-[#7f7263]">
+                    Link or update the owner for the selected property.
+                  </p>
+                </div>
+
+                {selectedPropertyOwnerEmail ? (
+                  <span className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#6f6255]">
+                    Owner linked
+                  </span>
+                ) : (
+                  <span className="rounded-full border border-[#e7ddd0] bg-white px-3 py-1 text-xs font-medium text-[#8a7b68]">
+                    No owner linked
+                  </span>
+                )}
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <input
+                  value={selectedPropertyOwnerName}
+                  onChange={(e) => setSelectedPropertyOwnerName(e.target.value)}
+                  placeholder="Owner name"
+                  className="w-full rounded-[20px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
+                />
+
+                <input
+                  value={selectedPropertyOwnerEmail}
+                  onChange={(e) => setSelectedPropertyOwnerEmail(e.target.value)}
+                  placeholder="Owner email"
+                  className="w-full rounded-[20px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
+                />
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={saveSelectedPropertyOwner}
+                  disabled={!selectedPropertyId || savingSelectedPropertyOwner}
+                  className="rounded-full bg-[#241c15] px-5 py-3 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {savingSelectedPropertyOwner ? "Saving..." : "Save owner"}
+                </button>
+
+                {selectedPropertyOwnerEmail ? (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setSelectedPropertyOwnerName("");
+                      setSelectedPropertyOwnerEmail("");
+                      await saveSelectedPropertyOwner();
+                    }}
+                    disabled={!selectedPropertyId || savingSelectedPropertyOwner}
+                    className="rounded-full border border-[#e7c6c1] bg-white px-5 py-3 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff4f2] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Remove owner link
+                  </button>
+                ) : null}
+              </div>
+            </div>
             <option value="">Select property</option>
             {properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
