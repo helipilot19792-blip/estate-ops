@@ -21,6 +21,7 @@ type OwnerPropertyAccessRow = {
 
 type Property = {
   id: string;
+  organization_id: string;
   name: string | null;
   address: string | null;
   notes: string | null;
@@ -334,11 +335,13 @@ function ReportIssueModal({
   open,
   onClose,
   propertyId,
+  organizationId,
   onSubmitted,
 }: {
   open: boolean;
   onClose: () => void;
   propertyId: string;
+  organizationId: string;
   onSubmitted: () => void;
 }) {
   const [category, setCategory] = useState<string>("General concern");
@@ -373,6 +376,11 @@ function ReportIssueModal({
       return;
     }
 
+    if (!organizationId) {
+      setError("Organization not found.");
+      return;
+    }
+
     if (!notes.trim()) {
       setError("Please describe the issue.");
       return;
@@ -384,6 +392,7 @@ function ReportIssueModal({
     const { data: flag, error: insertError } = await supabase
       .from("property_maintenance_flags")
       .insert({
+        organization_id: organizationId,
         property_id: propertyId,
         source: "owner",
         category,
@@ -468,11 +477,10 @@ function ReportIssueModal({
                       key={item}
                       type="button"
                       onClick={() => setCategory(item)}
-                      className={`rounded-2xl border px-4 py-3 text-sm font-medium transition ${
-                        selected
+                      className={`rounded-2xl border px-4 py-3 text-sm font-medium transition ${selected
                           ? "border-[#e7c98a] bg-[#b08b47]/20 text-[#f7f1e8]"
                           : "border-white/8 bg-white/[0.03] text-[#e8ddca] hover:bg-white/[0.05]"
-                      }`}
+                        }`}
                     >
                       {item}
                     </button>
@@ -493,13 +501,12 @@ function ReportIssueModal({
                     key={item.value}
                     type="button"
                     onClick={() => setUrgency(item.value)}
-                    className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                      urgency === item.value
+                    className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${urgency === item.value
                         ? item.value === "urgent"
                           ? "border-red-400/70 bg-red-500 text-white"
                           : "border-[#e7c98a] bg-[#b08b47]/20 text-[#f7f1e8]"
                         : "border-white/8 bg-white/[0.03] text-[#e8ddca] hover:bg-white/[0.05]"
-                    }`}
+                      }`}
                   >
                     {item.label}
                   </button>
@@ -681,9 +688,9 @@ export default function OwnerPage() {
       .from("owner_property_access")
       .select("*")
       .eq("owner_account_id", ownerRes.id)) as {
-      data: OwnerPropertyAccessRow[] | null;
-      error: { message: string } | null;
-    };
+        data: OwnerPropertyAccessRow[] | null;
+        error: { message: string } | null;
+      };
 
     if (accessError) {
       setError(accessError.message);
@@ -714,7 +721,7 @@ export default function OwnerPage() {
     ] = await Promise.all([
       supabase
         .from("properties")
-        .select("id,name,address,notes")
+        .select("id,organization_id,name,address,notes")
         .in("id", propertyIds)
         .order("created_at", { ascending: false }),
       supabase
@@ -817,16 +824,16 @@ export default function OwnerPage() {
 
   const nextGrounds = nextGroundsJob
     ? {
-        date: nextGroundsJob.scheduled_for,
-        label: getGroundsLabel(nextGroundsJob.job_type),
-        subtext: "Upcoming exterior service",
-      }
+      date: nextGroundsJob.scheduled_for,
+      label: getGroundsLabel(nextGroundsJob.job_type),
+      subtext: "Upcoming exterior service",
+    }
     : nextRecurringGroundsRule
       ? {
-          date: nextRecurringGroundsRule.nextDate,
-          label: formatRecurringGroundsLabel(nextRecurringGroundsRule.rule),
-          subtext: "Recurring grounds schedule",
-        }
+        date: nextRecurringGroundsRule.nextDate,
+        label: formatRecurringGroundsLabel(nextRecurringGroundsRule.rule),
+        subtext: "Recurring grounds schedule",
+      }
       : null;
 
   const upcomingBooking = useMemo(() => {
@@ -1061,15 +1068,14 @@ export default function OwnerPage() {
                         ) : null}
                       </div>
                       <div
-                        className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${
-                          item.tone === "emerald"
+                        className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${item.tone === "emerald"
                             ? "bg-emerald-400"
                             : item.tone === "sky"
                               ? "bg-sky-400"
                               : item.tone === "rose"
                                 ? "bg-rose-400"
                                 : "bg-[#b08b47]"
-                        }`}
+                          }`}
                       />
                     </div>
                     <div className="mt-3 text-xs uppercase tracking-[0.18em] text-[#bfa67b]">
@@ -1141,6 +1147,7 @@ export default function OwnerPage() {
         open={reportOpen}
         onClose={() => setReportOpen(false)}
         propertyId={selectedProperty.id}
+        organizationId={selectedProperty.organization_id}
         onSubmitted={() => {
           setReportSuccess("Issue submitted successfully.");
           setTimeout(() => setReportSuccess(""), 3500);
