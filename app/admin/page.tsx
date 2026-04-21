@@ -5486,97 +5486,97 @@ This removes its linked members and deletes the grounds account.`
         {selectedPropertyId ? (
           <>
             <div className="mt-6 rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
-  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-    <div className="min-w-0">
-      <div className="flex items-center gap-3">
-        <h3 className="text-base font-semibold">Owner Portal</h3>
-        <span className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-medium text-[#6f6255]">
-          {selectedPropertyOwnerEmail ? "Owner linked" : "No owner linked"}
-        </span>
-      </div>
-      <p className="mt-1 text-sm text-[#7f7263]">
-        Link or update the owner for this property.
-      </p>
-    </div>
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-3">
+                    <h3 className="text-base font-semibold">Owner Portal</h3>
+                    <span className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-medium text-[#6f6255]">
+                      {selectedPropertyOwnerEmail ? "Owner linked" : "No owner linked"}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-sm text-[#7f7263]">
+                    Link or update the owner for this property.
+                  </p>
+                </div>
 
-    <div className="grid gap-2 sm:grid-cols-2 lg:w-[520px]">
-      <input
-        value={selectedPropertyOwnerName}
-        onChange={(e) => setSelectedPropertyOwnerName(e.target.value)}
-        placeholder="Owner name"
-        className="w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
-      />
+                <div className="grid gap-2 sm:grid-cols-2 lg:w-[520px]">
+                  <input
+                    value={selectedPropertyOwnerName}
+                    onChange={(e) => setSelectedPropertyOwnerName(e.target.value)}
+                    placeholder="Owner name"
+                    className="w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
+                  />
 
-      <input
-        value={selectedPropertyOwnerEmail}
-        onChange={(e) => setSelectedPropertyOwnerEmail(e.target.value)}
-        placeholder="Owner email"
-        className="w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
-      />
-    </div>
+                  <input
+                    value={selectedPropertyOwnerEmail}
+                    onChange={(e) => setSelectedPropertyOwnerEmail(e.target.value)}
+                    placeholder="Owner email"
+                    className="w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
+                  />
+                </div>
 
- <div className="flex flex-wrap gap-2">
-  <button
-    type="button"
-    onClick={saveSelectedPropertyOwner}
-    disabled={!selectedPropertyId || savingSelectedPropertyOwner}
-    className="rounded-full bg-[#241c15] px-4 py-2 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:cursor-not-allowed disabled:opacity-60"
-  >
-    {savingSelectedPropertyOwner ? "Saving..." : "Save"}
-  </button>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={saveSelectedPropertyOwner}
+                    disabled={!selectedPropertyId || savingSelectedPropertyOwner}
+                    className="rounded-full bg-[#241c15] px-5 py-3 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {savingSelectedPropertyOwner ? "Saving..." : "Save owner"}
+                  </button>
 
-  <button
-    type="button"
-    onClick={async () => {
-      if (!selectedPropertyId) {
-        setError("Select a property first.");
-        return;
-      }
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!selectedPropertyId) {
+                        setError("Select a property first.");
+                        return;
+                      }
 
-      const trimmedEmail = selectedPropertyOwnerEmail.trim().toLowerCase();
-      const trimmedName = selectedPropertyOwnerName.trim();
+                      const trimmedEmail = selectedPropertyOwnerEmail.trim().toLowerCase();
+                      const trimmedName = selectedPropertyOwnerName.trim();
 
-      if (!trimmedEmail) {
-        setError("Owner email is required before sending an invite.");
-        return;
-      }
+                      if (!trimmedEmail) {
+                        setError("Owner email is required before sending an invite.");
+                        return;
+                      }
 
-      await saveSelectedPropertyOwner();
-      await inviteOwnerForProperty(
-        selectedPropertyId,
-        trimmedEmail,
-        trimmedName
-      );
-    }}
-    disabled={
-      !selectedPropertyId ||
-      savingSelectedPropertyOwner ||
-      sendingOwnerInviteId === selectedPropertyId
-    }
-    className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-medium text-[#5f5245] transition hover:bg-[#fcfaf7] disabled:cursor-not-allowed disabled:opacity-60"
-  >
-    {sendingOwnerInviteId === selectedPropertyId ? "Sending..." : "Send Invite"}
-  </button>
+                      await saveSelectedPropertyOwner();
+                      await inviteOwnerForProperty(
+                        selectedPropertyId,
+                        trimmedEmail,
+                        trimmedName
+                      );
+                    }}
+                    disabled={
+                      !selectedPropertyId ||
+                      savingSelectedPropertyOwner ||
+                      sendingOwnerInviteId === selectedPropertyId
+                    }
+                    className="rounded-full border border-[#d8c7ab] bg-white px-5 py-3 text-sm font-medium text-[#5f5245] transition hover:bg-[#fcfaf7] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {sendingOwnerInviteId === selectedPropertyId ? "Sending..." : "Send Invite"}
+                  </button>
 
-  {selectedPropertyOwnerEmail ? (
-    <button
-      type="button"
-      onClick={async () => {
-        setSelectedPropertyOwnerName("");
-        setSelectedPropertyOwnerEmail("");
-        await saveSelectedPropertyOwner();
-      }}
-      disabled={!selectedPropertyId || savingSelectedPropertyOwner}
-      className="rounded-full border border-[#e7c6c1] bg-white px-4 py-2 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff4f2] disabled:cursor-not-allowed disabled:opacity-60"
-    >
-      Remove
-    </button>
-  ) : null}
-</div>
-  </div>
-</div>
+                  {selectedPropertyOwnerEmail ? (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setSelectedPropertyOwnerName("");
+                        setSelectedPropertyOwnerEmail("");
+                        await saveSelectedPropertyOwner();
+                      }}
+                      disabled={!selectedPropertyId || savingSelectedPropertyOwner}
+                      className="rounded-full border border-[#e7c6c1] bg-white px-5 py-3 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff4f2] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Remove owner link
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            </div>
 
-<div className="mt-6 grid gap-6 lg:grid-cols-3">
+            <div className="mt-6 grid gap-6 lg:grid-cols-3">
               <div className="rounded-[26px] border border-[#eadfce] bg-[#fcfaf7] p-5 lg:col-span-3">
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div>
