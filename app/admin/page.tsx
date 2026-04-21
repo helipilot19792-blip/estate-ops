@@ -5543,15 +5543,7 @@ This removes its linked members and deletes the grounds account.`
                     className="w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
                   />
 
-                  <input
-                    value={selectedPropertyOwnerEmail}
-                    onChange={(e) => {
-                      setSelectedPropertyOwnerEmail(e.target.value);
-                      setSelectedPropertyOwnerDirty(true);
-                    }}
-                    placeholder="Owner email"
-                    className="w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
-                  />
+
                 </div>
 
                 <div className="mt-4 flex flex-wrap gap-3">
