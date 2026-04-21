@@ -30,7 +30,12 @@ const MAINTENANCE_URGENCY_OPTIONS = [
 type ReportIssueModalProps = {
   open: boolean;
   onClose: () => void;
-  availableProperties: Array<{ id: string; name: string | null; address: string | null }>;
+  availableProperties: Array<{
+    id: string;
+    organization_id: string;
+    name: string | null;
+    address: string | null;
+  }>;
   defaultPropertyId: string;
   currentProfileId: string | null;
   onSubmitted?: () => void;
@@ -84,13 +89,23 @@ function ReportIssueModal({
       setError("Your grounds profile could not be confirmed.");
       return;
     }
-
     setSaving(true);
     setError("");
+
+    const selectedProperty = availableProperties.find(
+      (property) => property.id === propertyId
+    );
+
+    if (!selectedProperty?.organization_id) {
+      setError("Organization could not be determined for this property.");
+      setSaving(false);
+      return;
+    }
 
     const { data: flag, error: insertError } = await supabase
       .from("property_maintenance_flags")
       .insert({
+        organization_id: selectedProperty.organization_id,
         property_id: propertyId,
         source: "grounds",
         category,
@@ -416,7 +431,7 @@ function JobCard({
             <p className="mt-1 text-sm text-[#a9c9b0]">{propertyAddress}</p>
 
             <p className="mt-2 text-sm font-medium text-[#f0d59f]">
-              Cleaning date: {formatDateLabel(item.jobDate)}
+              Service date: {formatDateLabel(item.jobDate)}
             </p>
 
             <p className="mt-2 text-sm text-[#d9c5a1]">{getTeamMessage(item)}</p>
@@ -462,7 +477,7 @@ function JobCard({
                 {selectedJobProperty?.address || propertyAddress}
               </p>
               <p className="mt-2 text-sm text-[#e7c98a]">
-                Cleaning date: {formatDateLabel(item.jobDate)}
+                Service date: {formatDateLabel(item.jobDate)}
               </p>
               <p className="mt-2 text-sm text-[#d9c5a1]">{getTeamMessage(item)}</p>
             </div>
@@ -734,13 +749,13 @@ export default function GroundsDesktopView({
   formatDateTimeLabel,
   getTimeRemainingMs,
   formatRemaining,
-getCountdownTone,
-getSlotDisplayStatus,
-getStatusTone,
-getTeamMessage,
-canSwitchToCleaner,
-cleanerWaitingCount,
-handleSwitchToCleaner,
+  getCountdownTone,
+  getSlotDisplayStatus,
+  getStatusTone,
+  getTeamMessage,
+  canSwitchToCleaner,
+  cleanerWaitingCount,
+  handleSwitchToCleaner,
 }: GroundsViewProps) {
   const [jobView, setJobView] = useState<"active" | "history">("active");
 

@@ -27,7 +27,12 @@ const MAINTENANCE_URGENCY_OPTIONS = [
 type ReportIssueModalProps = {
   open: boolean;
   onClose: () => void;
-  availableProperties: Array<{ id: string; name: string | null; address: string | null }>;
+  availableProperties: Array<{
+    id: string;
+    organization_id: string;
+    name: string | null;
+    address: string | null;
+  }>;
   defaultPropertyId: string;
   currentProfileId: string | null;
   onSubmitted?: () => void;
@@ -85,9 +90,20 @@ function ReportIssueModal({
     setSaving(true);
     setError("");
 
+    const selectedProperty = availableProperties.find(
+      (property) => property.id === propertyId
+    );
+
+    if (!selectedProperty?.organization_id) {
+      setError("Organization could not be determined for this property.");
+      setSaving(false);
+      return;
+    }
+
     const { data: flag, error: insertError } = await supabase
       .from("property_maintenance_flags")
       .insert({
+        organization_id: selectedProperty.organization_id,
         property_id: propertyId,
         source: "grounds",
         category,
@@ -196,11 +212,10 @@ function ReportIssueModal({
                     key={item}
                     type="button"
                     onClick={() => setCategory(item)}
-                    className={`rounded-2xl border px-4 py-3 text-sm font-medium transition ${
-                      isSelected
+                    className={`rounded-2xl border px-4 py-3 text-sm font-medium transition ${isSelected
                         ? "border-[#e7c98a] bg-[#7fb685]/20 text-[#f2fbf4] ring-2 ring-[#7fb685]/45"
                         : "border-[#356046]/25 bg-[#0f1b14] text-[#d8eadc] hover:bg-[#19140f]"
-                    }`}
+                      }`}
                   >
                     {item}
                   </button>
@@ -226,11 +241,10 @@ function ReportIssueModal({
                     key={option.value}
                     type="button"
                     onClick={() => setUrgency(option.value)}
-                    className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                      isSelected
+                    className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${isSelected
                         ? selectedClass
                         : "border-[#356046]/25 bg-[#0f1b14] text-[#d8eadc] hover:bg-[#19140f]"
-                    }`}
+                      }`}
                   >
                     {option.label}
                   </button>
@@ -415,11 +429,11 @@ export default function GroundsMobileView({
   function getParsedNotes(notes: string | null) {
     const cleanedLines = notes
       ? notes
-          .split("\n")
-          .map((line) => line.trim())
-          .filter(Boolean)
-          .filter((line) => !/^\[AUTO_SYNC:/i.test(line))
-          .filter((line) => !/^Auto-created from .*calendar sync\.?$/i.test(line))
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .filter((line) => !/^\[AUTO_SYNC:/i.test(line))
+        .filter((line) => !/^Auto-created from .*calendar sync\.?$/i.test(line))
       : [];
 
     const guestLine =
@@ -464,9 +478,8 @@ export default function GroundsMobileView({
       return (
         <div
           key={item.slot.id}
-          className={`rounded-2xl border text-left transition ${tone.card} ${
-            isSelected ? tone.selectedRing : ""
-          }`}
+          className={`rounded-2xl border text-left transition ${tone.card} ${isSelected ? tone.selectedRing : ""
+            }`}
         >
           <button
             type="button"
@@ -510,17 +523,16 @@ export default function GroundsMobileView({
                 <div className="min-w-0">
                   <p className="text-sm text-[#a9c9b0]">{propertyAddress}</p>
                   <p className="mt-1 text-sm text-[#f0d59f]">
-                    Cleaning date: {formatDateLabel(normalizeJobDate(selectedGroundsJob.jobDate))}
+                    Service date: {formatDateLabel(normalizeJobDate(selectedGroundsJob.jobDate))}
                   </p>
                 </div>
 
                 <span
-                  className={`w-fit rounded-full px-3 py-1 text-[11px] font-semibold ${
-                    getStatusTone(
-                      selectedGroundsJob.slot.status,
-                      selectedGroundsJob.job.staffing_status
-                    ).badge
-                  }`}
+                  className={`w-fit rounded-full px-3 py-1 text-[11px] font-semibold ${getStatusTone(
+                    selectedGroundsJob.slot.status,
+                    selectedGroundsJob.job.staffing_status
+                  ).badge
+                    }`}
                 >
                   {getSlotDisplayStatus(
                     selectedGroundsJob.slot.status,
@@ -785,11 +797,10 @@ export default function GroundsMobileView({
           <button
             type="button"
             onClick={() => setJobView("active")}
-            className={`flex-1 rounded-xl px-4 py-3 text-sm font-semibold transition ${
-              jobView === "active"
+            className={`flex-1 rounded-xl px-4 py-3 text-sm font-semibold transition ${jobView === "active"
                 ? "bg-[#7fb685] text-[#120f0b]"
                 : "text-[#eef7ef] hover:bg-[#173022]"
-            }`}
+              }`}
           >
             Active Jobs ({activeJobs.length})
             {unacceptedCount > 0 ? (
@@ -802,11 +813,10 @@ export default function GroundsMobileView({
           <button
             type="button"
             onClick={() => setJobView("history")}
-            className={`flex-1 rounded-xl px-4 py-3 text-sm font-semibold transition ${
-              jobView === "history"
+            className={`flex-1 rounded-xl px-4 py-3 text-sm font-semibold transition ${jobView === "history"
                 ? "bg-[#7fb685] text-[#120f0b]"
                 : "text-[#eef7ef] hover:bg-[#173022]"
-            }`}
+              }`}
           >
             Job History ({historyJobs.length})
           </button>
@@ -840,15 +850,14 @@ export default function GroundsMobileView({
                     const first = jobsForDay[0];
                     setSelectedSlotId(first?.slot.id || null);
                   }}
-                  className={`min-w-[74px] rounded-xl border p-2 text-center transition ${
-                    isSelected
+                  className={`min-w-[74px] rounded-xl border p-2 text-center transition ${isSelected
                       ? "border-[#e7c98a] bg-[#2a2118] text-white ring-2 ring-[#e7c98a]"
                       : hasOffered
                         ? "border-red-500 bg-red-900/40 text-white shadow-[0_0_18px_rgba(239,68,68,0.18)]"
                         : allAccepted
                           ? "border-emerald-500 bg-emerald-900/30 text-emerald-200"
                           : "border-[#356046]/20 bg-[#0f1b14] text-[#eef7ef]"
-                  }`}
+                    }`}
                 >
                   <div className="text-xs">{formatShort(ymd)}</div>
                   <div className="mt-1 text-[11px] text-[#b9d3c0]">
@@ -869,13 +878,13 @@ export default function GroundsMobileView({
         <div className="space-y-3">
           {jobView === "active"
             ? renderJobList(
-                visibleJobs,
-                selectedDate ? "No active jobs for that date." : "No active jobs assigned yet."
-              )
+              visibleJobs,
+              selectedDate ? "No active jobs for that date." : "No active jobs assigned yet."
+            )
             : renderJobList(
-                visibleJobs,
-                selectedDate ? "No history jobs for that date." : "No job history yet."
-              )}
+              visibleJobs,
+              selectedDate ? "No history jobs for that date." : "No job history yet."
+            )}
         </div>
       </div>
     </main>

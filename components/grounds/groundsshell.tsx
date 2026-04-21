@@ -33,6 +33,7 @@ type GroundsAccount = {
 
 type Property = {
   id: string;
+  organization_id: string;
   name: string | null;
   address: string | null;
   notes: string | null;
