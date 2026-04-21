@@ -5486,507 +5486,690 @@ This removes its linked members and deletes the grounds account.`
         {selectedPropertyId ? (
           <>
             <div className="mt-6 rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-3">
-                    <h3 className="text-base font-semibold">Owner Portal</h3>
-                    <span className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-medium text-[#6f6255]">
-                      {selectedPropertyOwnerEmail ? "Owner linked" : "No owner linked"}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-sm text-[#7f7263]">
-                    Link or update the owner for this property.
-                  </p>
-                </div>
+  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+    <div className="min-w-0">
+      <div className="flex items-center gap-3">
+        <h3 className="text-base font-semibold">Owner Portal</h3>
+        <span className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-medium text-[#6f6255]">
+          {selectedPropertyOwnerEmail ? "Owner linked" : "No owner linked"}
+        </span>
+      </div>
+      <p className="mt-1 text-sm text-[#7f7263]">
+        Link or update the owner for this property.
+      </p>
+    </div>
 
-                <div className="grid gap-2 sm:grid-cols-2 lg:w-[520px]">
-                  <input
-                    value={selectedPropertyOwnerName}
-                    onChange={(e) => setSelectedPropertyOwnerName(e.target.value)}
-                    placeholder="Owner name"
-                    className="w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
-                  />
+    <div className="grid gap-2 sm:grid-cols-2 lg:w-[520px]">
+      <input
+        value={selectedPropertyOwnerName}
+        onChange={(e) => setSelectedPropertyOwnerName(e.target.value)}
+        placeholder="Owner name"
+        className="w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
+      />
 
-                  <input
-                    value={selectedPropertyOwnerEmail}
-                    onChange={(e) => setSelectedPropertyOwnerEmail(e.target.value)}
-                    placeholder="Owner email"
-                    className="w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
-                  />
-                </div>
+      <input
+        value={selectedPropertyOwnerEmail}
+        onChange={(e) => setSelectedPropertyOwnerEmail(e.target.value)}
+        placeholder="Owner email"
+        className="w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
+      />
+    </div>
 
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={saveSelectedPropertyOwner}
-                    disabled={!selectedPropertyId || savingSelectedPropertyOwner}
-                    className="rounded-full bg-[#241c15] px-4 py-2 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {savingSelectedPropertyOwner ? "Saving..." : "Save"}
-                  </button>
+ <div className="flex flex-wrap gap-2">
+  <button
+    type="button"
+    onClick={saveSelectedPropertyOwner}
+    disabled={!selectedPropertyId || savingSelectedPropertyOwner}
+    className="rounded-full bg-[#241c15] px-4 py-2 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:cursor-not-allowed disabled:opacity-60"
+  >
+    {savingSelectedPropertyOwner ? "Saving..." : "Save"}
+  </button>
 
-                  {selectedPropertyOwnerEmail ? (
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        setSelectedPropertyOwnerName("");
-                        setSelectedPropertyOwnerEmail("");
-                        await saveSelectedPropertyOwner();
-                      }}
-                      disabled={!selectedPropertyId || savingSelectedPropertyOwner}
-                      className="rounded-full border border-[#e7c6c1] bg-white px-4 py-2 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff4f2] disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      Remove
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            </div>
+  <button
+    type="button"
+    onClick={async () => {
+      if (!selectedPropertyId) {
+        setError("Select a property first.");
+        return;
+      }
 
-            <div className="mt-6 grid gap-6 lg:grid-cols-3"><div className="mt-6 rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-3">
-                    <h3 className="text-base font-semibold">Owner Portal</h3>
-                    <span className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-medium text-[#6f6255]">
-                      {selectedPropertyOwnerEmail ? "Owner linked" : "No owner linked"}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-sm text-[#7f7263]">
-                    Link or update the owner for this property.
-                  </p>
-                </div>
+      const trimmedEmail = selectedPropertyOwnerEmail.trim().toLowerCase();
+      const trimmedName = selectedPropertyOwnerName.trim();
 
-                <div className="grid gap-2 sm:grid-cols-2 lg:w-[520px]">
-                  <input
-                    value={selectedPropertyOwnerName}
-                    onChange={(e) => setSelectedPropertyOwnerName(e.target.value)}
-                    placeholder="Owner name"
-                    className="w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
-                  />
+      if (!trimmedEmail) {
+        setError("Owner email is required before sending an invite.");
+        return;
+      }
 
-                  <input
-                    value={selectedPropertyOwnerEmail}
-                    onChange={(e) => setSelectedPropertyOwnerEmail(e.target.value)}
-                    placeholder="Owner email"
-                    className="w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
-                  />
-                </div>
+      await saveSelectedPropertyOwner();
+      await inviteOwnerForProperty(
+        selectedPropertyId,
+        trimmedEmail,
+        trimmedName
+      );
+    }}
+    disabled={
+      !selectedPropertyId ||
+      savingSelectedPropertyOwner ||
+      sendingOwnerInviteId === selectedPropertyId
+    }
+    className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-medium text-[#5f5245] transition hover:bg-[#fcfaf7] disabled:cursor-not-allowed disabled:opacity-60"
+  >
+    {sendingOwnerInviteId === selectedPropertyId ? "Sending..." : "Send Invite"}
+  </button>
 
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={saveSelectedPropertyOwner}
-                    disabled={!selectedPropertyId || savingSelectedPropertyOwner}
-                    className="rounded-full bg-[#241c15] px-4 py-2 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {savingSelectedPropertyOwner ? "Saving..." : "Save"}
-                  </button>
+  {selectedPropertyOwnerEmail ? (
+    <button
+      type="button"
+      onClick={async () => {
+        setSelectedPropertyOwnerName("");
+        setSelectedPropertyOwnerEmail("");
+        await saveSelectedPropertyOwner();
+      }}
+      disabled={!selectedPropertyId || savingSelectedPropertyOwner}
+      className="rounded-full border border-[#e7c6c1] bg-white px-4 py-2 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff4f2] disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      Remove
+    </button>
+  ) : null}
+</div>
+  </div>
+</div>
 
-                  {selectedPropertyOwnerEmail ? (
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        setSelectedPropertyOwnerName("");
-                        setSelectedPropertyOwnerEmail("");
-                        await saveSelectedPropertyOwner();
-                      }}
-                      disabled={!selectedPropertyId || savingSelectedPropertyOwner}
-                      className="rounded-full border border-[#e7c6c1] bg-white px-4 py-2 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff4f2] disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      Remove
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-
-              <div className="mt-6 grid gap-6 lg:grid-cols-3">
-                <div className="rounded-[26px] border border-[#eadfce] bg-[#fcfaf7] p-5 lg:col-span-3">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div>
-                      <h3 className="text-lg font-semibold">Property Staffing Defaults</h3>
-                    </div>
-                  </div>
-                  <button
-                    className="inline-flex items-center justify-center rounded-full border border-[#efc6c6] bg-[#fff5f5] px-5 py-2.5 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-50"
-                    onClick={() => {
-                      const property = properties.find((p) => p.id === selectedPropertyId);
-                      if (property) void deleteProperty(property);
-                    }}
-                    disabled={deletingPropertyId === selectedPropertyId}
-                  >
-                    {deletingPropertyId === selectedPropertyId ? "Deleting property..." : "Delete This Property"}
-                  </button>
-                </div>
-                <p className="mt-1 text-sm text-[#7f7263]">Edit how many cleaner units this property usually needs, whether the full team must accept, and whether cleaners can see team progress.</p>
-                <div className="mt-4 grid gap-4 md:grid-cols-3">
+<div className="mt-6 grid gap-6 lg:grid-cols-3">
+              <div className="rounded-[26px] border border-[#eadfce] bg-[#fcfaf7] p-5 lg:col-span-3">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-[#5f5245]">Cleaner units needed</label>
-                    <select className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" value={selectedPropertyUnitsNeeded} onChange={(e) => {
-                      setSelectedPropertyUnitsNeeded(e.target.value);
-                      setPropertyDefaultsDirty(true);
-                    }}>
-                      <option value="1">1 cleaner unit</option>
-                      <option value="2">2 cleaner units</option>
-                      <option value="3">3 cleaner units</option>
-                    </select>
-                  </div>
-                  <label className="flex items-center gap-2 rounded-[18px] border border-[#eadfce] bg-white px-4 py-3 text-sm text-[#6f6255]">
-                    <input type="checkbox" checked={selectedPropertyUnitsStrict} onChange={(e) => {
-                      setSelectedPropertyUnitsStrict(e.target.checked);
-                      setPropertyDefaultsDirty(true);
-                    }} />
-                    Property must have full team
-                  </label>
-                  <label className="flex items-center gap-2 rounded-[18px] border border-[#eadfce] bg-white px-4 py-3 text-sm text-[#6f6255]">
-                    <input type="checkbox" checked={selectedPropertyShowTeamStatus} onChange={(e) => {
-                      setSelectedPropertyShowTeamStatus(e.target.checked);
-                      setPropertyDefaultsDirty(true);
-                    }} />
-                    Show team status to cleaners
-                  </label>
-                </div>
-                <div className="mt-4">
-                  <button className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60" onClick={() => void saveSelectedPropertyDefaults()} disabled={savingSelectedPropertyDefaults}>
-                    {savingSelectedPropertyDefaults ? "Saving..." : "Save Property Setup"}
-                  </button>
-                </div>
-              </div>
-
-              <div className="rounded-[26px] border border-[#eadfce] bg-[#fcfaf7] p-5">
-                <h3 className="text-lg font-semibold">Access Notes</h3>
-                <div className="mt-4 space-y-3">
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-[#5f5245]">Door code</label>
-                    <input className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" placeholder="Front door / smart lock code" value={doorCode} onChange={(e) => {
-                      setDoorCode(e.target.value);
-                      setAccessDirty(true);
-                    }} />
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-[#5f5245]">Alarm code</label>
-                    <input className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" placeholder="Alarm panel code" value={alarmCode} onChange={(e) => {
-                      setAlarmCode(e.target.value);
-                      setAccessDirty(true);
-                    }} />
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-[#5f5245]">Extra access notes</label>
-                    <textarea className="min-h-[120px] w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" placeholder="Entry directions, tricky locks, gate notes, etc." value={accessNotes} onChange={(e) => {
-                      setAccessNotes(e.target.value);
-                      setAccessDirty(true);
-                    }} />
-                  </div>
-                  <button className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]" onClick={() => void saveAccess()}>
-                    Save Access
-                  </button>
-                </div>
-              </div>
-
-              <div className="rounded-[26px] border border-[#eadfce] bg-[#fcfaf7] p-5">
-                <h3 className="text-lg font-semibold">Booking Calendars</h3>
-                <p className="mt-1 text-sm text-[#7f7263]">
-                  Add as many calendar feeds as you need for this property. Examples:
-                  Airbnb, VRBO, Booking.com, direct booking, Hospitable, or any custom iCal URL.
-                </p>
-
-                <div className="mt-4 space-y-4">
-                  <div className="rounded-[18px] border border-[#eadfce] bg-white px-4 py-3 text-sm text-[#6f6255]">
-                    Draft rows: {calendarRowsDraft.length}. Saved rows for this property: {propertyCalendars.filter((calendar) => calendar.property_id === selectedPropertyId).length}.
-                  </div>
-
-                  {propertyCalendars.filter((calendar) => calendar.property_id === selectedPropertyId).length > 0 ? (
-                    <div className="rounded-[20px] border border-[#eadfce] bg-white p-4">
-                      <div className="mb-3 text-sm font-medium text-[#5f5245]">Currently saved calendars</div>
-                      <div className="space-y-2">
-                        {propertyCalendars
-                          .filter((calendar) => calendar.property_id === selectedPropertyId)
-                          .map((calendar) => (
-                            <div
-                              key={calendar.id}
-                              className="flex flex-wrap items-center justify-between gap-3 rounded-[16px] border border-[#eadfce] bg-[#fcfaf7] px-3 py-2"
-                            >
-                              <div className="min-w-0">
-                                <div className="text-sm font-medium text-[#241c15]">{calendar.source || "Unnamed calendar"}</div>
-                                <div className="truncate text-xs text-[#8a7b68]">{calendar.ical_url}</div>
-                              </div>
-                              <div className="text-xs text-[#8a7b68]">
-                                {calendar.is_active === false ? "Inactive" : "Active"}
-                              </div>
-                            </div>
-                          ))}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {calendarRowsDraft.length === 0 ? (
-                    <div className="rounded-[18px] border border-dashed border-[#d8c7ab] bg-white px-4 py-4 text-sm text-[#7f7263]">
-                      No calendars added yet.
-                    </div>
-                  ) : null}
-
-                  {calendarRowsDraft.map((row, index) => (
-                    <div
-                      key={row.id ?? `draft-${index}`}
-                      className="rounded-[20px] border border-[#eadfce] bg-white p-4"
-                    >
-                      <div className="grid gap-3">
-                        <div>
-                          <label className="mb-2 block text-sm font-medium text-[#5f5245]">
-                            Source name
-                          </label>
-                          <input
-                            className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                            placeholder="Airbnb, VRBO, Booking.com, Direct, etc."
-                            value={row.source}
-                            onChange={(e) =>
-                              updateCalendarDraftRow(index, "source", e.target.value)
-                            }
-                          />
-                        </div>
-
-                        <div>
-                          <label className="mb-2 block text-sm font-medium text-[#5f5245]">
-                            iCal URL
-                          </label>
-                          <input
-                            className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                            placeholder="Paste calendar URL"
-                            value={row.ical_url}
-                            onChange={(e) =>
-                              updateCalendarDraftRow(index, "ical_url", e.target.value)
-                            }
-                          />
-                        </div>
-
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <label className="flex items-center gap-2 text-sm text-[#6f6255]">
-                            <input
-                              type="checkbox"
-                              checked={row.is_active}
-                              onChange={(e) =>
-                                updateCalendarDraftRow(index, "is_active", e.target.checked)
-                              }
-                            />
-                            Active
-                          </label>
-
-                          <button
-                            type="button"
-                            className="rounded-full border border-[#efc6c6] bg-[#fff5f5] px-4 py-2 text-sm text-[#8a2e22] transition hover:bg-[#fff0f0]"
-                            onClick={() => removeCalendarDraftRow(index)}
-                          >
-                            Remove calendar
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-
-                  <div className="flex flex-wrap gap-3">
-                    <button
-                      type="button"
-                      className="inline-flex items-center justify-center rounded-full border border-[#241c15] bg-white px-5 py-2.5 text-sm font-medium text-[#241c15] transition hover:bg-[#f7f3ee]"
-                      onClick={addCalendarDraftRow}
-                    >
-                      Add Calendar
-                    </button>
-
-                    <button className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60" onClick={() => void saveCalendars()} disabled={savingCalendars}>
-                      {savingCalendars ? "Saving..." : "Save Calendars"}
-                    </button>
-
-                    <button className="inline-flex items-center justify-center rounded-full border border-[#241c15] bg-white px-5 py-2.5 text-sm font-medium text-[#241c15] transition hover:bg-[#f7f3ee] disabled:opacity-60" onClick={() => void syncCalendarsNow()} disabled={syncingCalendarsNow}>
-                      {syncingCalendarsNow ? "Syncing..." : "Sync Calendars Now"}
-                    </button>
+                    <h3 className="text-lg font-semibold">Property Staffing Defaults</h3>
                   </div>
                 </div>
+                <button
+                  className="inline-flex items-center justify-center rounded-full border border-[#efc6c6] bg-[#fff5f5] px-5 py-2.5 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-50"
+                  onClick={() => {
+                    const property = properties.find((p) => p.id === selectedPropertyId);
+                    if (property) void deleteProperty(property);
+                  }}
+                  disabled={deletingPropertyId === selectedPropertyId}
+                >
+                  {deletingPropertyId === selectedPropertyId ? "Deleting property..." : "Delete This Property"}
+                </button>
               </div>
-
-              <div className="rounded-[26px] border border-[#eadfce] bg-[#fcfaf7] p-5">
-                <h3 className="text-lg font-semibold">Add SOP Note</h3>
-                <div className="mt-4 space-y-3">
-                  <input className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" placeholder="SOP title" value={sopTitle} onChange={(e) => setSopTitle(e.target.value)} />
-                  <textarea className="min-h-[120px] w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" placeholder="Optional note or instruction" value={sopContent} onChange={(e) => setSopContent(e.target.value)} />
-
-                  <div className="rounded-[20px] border border-dashed border-[#d8c7ab] bg-white p-4">
-                    <label className="mb-2 block text-sm font-medium text-[#5f5245]">SOP photos</label>
-                    <input type="file" accept="image/*" multiple onChange={handleSopFilesChange} className="block w-full text-sm text-[#6c5f51]" />
-                    <div className="mt-3 text-sm text-[#7f7263]">
-                      {sopFiles.length > 0 ? `${sopFiles.length} image${sopFiles.length === 1 ? "" : "s"} selected` : "No images selected yet."}
-                    </div>
-                  </div>
-
-                  <button className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60" onClick={() => void addSop()} disabled={uploadingSop}>
-                    {uploadingSop ? "Uploading..." : "Add SOP"}
-                  </button>
-                </div>
-              </div>
-            </>
-            ) : (
-            <div className="mt-6 rounded-[24px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-5 py-8 text-sm text-[#8a7b68]">
-              Select a property to manage calendars, SOPs, and access details.
-            </div>
-        )}
-
-            {selectedPropertyId ? (
-              <div className="mt-6">
-                <h3 className="mb-3 text-lg font-semibold">Existing SOP Notes</h3>
-                <div className="space-y-4">
-                  {selectedSops.length === 0 ? (
-                    <div className="rounded-[24px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-5 py-6 text-sm text-[#8a7b68]">No SOP notes yet.</div>
-                  ) : null}
-
-                  {selectedSops.map((s) => {
-                    const images = sopImagesBySopId[s.id] ?? [];
-                    return (
-                      <div key={s.id} className="rounded-[26px] border border-[#eadfce] bg-white p-4 shadow-sm">
-                        <div className="text-base font-semibold text-[#241c15]">{s.title || "Untitled"}</div>
-                        <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#6f6255]">{s.content || "No details"}</div>
-                        {images.length > 0 ? (
-                          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                            {images.map((image) => (
-                              <a key={image.id} href={image.image_url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] transition hover:shadow-md">
-                                <img src={image.image_url} alt={image.caption || s.title || "SOP image"} className="h-48 w-full cursor-zoom-in object-cover" />
-                                {image.caption ? <div className="px-3 py-2 text-sm text-[#6f6255]">{image.caption}</div> : null}
-                              </a>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="mt-4 text-sm text-[#a39584]">No images attached.</div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : null}
-          </section>
-        );
-  }
-
-
-        function renderMaintenanceSection() {
-    return (
-        <>
-          <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-              <div>
-                <h2 className="text-xl font-semibold tracking-tight">Maintenance Flags</h2>
-                <p className="mt-1 text-sm text-[#7f7263]">
-                  Admin-only maintenance tracking. Add flags here now, then we can wire cleaner-side reporting in later.
-                </p>
-              </div>
-
-              <div className="flex w-full flex-col gap-3 md:flex-row xl:w-auto xl:items-end">
-                <div className="w-full md:w-[280px]">
-                  <label className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">
-                    Filter by property
-                  </label>
-                  <select
-                    className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                    value={selectedJobsPropertyFilter}
-                    onChange={(e) => setSelectedJobsPropertyFilter(e.target.value)}
-                  >
-                    <option value="all">All properties</option>
-                    {properties.map((property) => (
-                      <option key={property.id} value={property.id}>
-                        {property.name || property.address || property.id}
-                      </option>
-                    ))}
+              <p className="mt-1 text-sm text-[#7f7263]">Edit how many cleaner units this property usually needs, whether the full team must accept, and whether cleaners can see team progress.</p>
+              <div className="mt-4 grid gap-4 md:grid-cols-3">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-[#5f5245]">Cleaner units needed</label>
+                  <select className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" value={selectedPropertyUnitsNeeded} onChange={(e) => {
+                    setSelectedPropertyUnitsNeeded(e.target.value);
+                    setPropertyDefaultsDirty(true);
+                  }}>
+                    <option value="1">1 cleaner unit</option>
+                    <option value="2">2 cleaner units</option>
+                    <option value="3">3 cleaner units</option>
                   </select>
                 </div>
-
-                <button
-                  className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-3 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]"
-                  onClick={openMaintenanceModal}
-                >
-                  Add Flag
+                <label className="flex items-center gap-2 rounded-[18px] border border-[#eadfce] bg-white px-4 py-3 text-sm text-[#6f6255]">
+                  <input type="checkbox" checked={selectedPropertyUnitsStrict} onChange={(e) => {
+                    setSelectedPropertyUnitsStrict(e.target.checked);
+                    setPropertyDefaultsDirty(true);
+                  }} />
+                  Property must have full team
+                </label>
+                <label className="flex items-center gap-2 rounded-[18px] border border-[#eadfce] bg-white px-4 py-3 text-sm text-[#6f6255]">
+                  <input type="checkbox" checked={selectedPropertyShowTeamStatus} onChange={(e) => {
+                    setSelectedPropertyShowTeamStatus(e.target.checked);
+                    setPropertyDefaultsDirty(true);
+                  }} />
+                  Show team status to cleaners
+                </label>
+              </div>
+              <div className="mt-4">
+                <button className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60" onClick={() => void saveSelectedPropertyDefaults()} disabled={savingSelectedPropertyDefaults}>
+                  {savingSelectedPropertyDefaults ? "Saving..." : "Save Property Setup"}
                 </button>
               </div>
             </div>
 
-            <div className="mt-5 grid gap-3 md:grid-cols-4">
-              {[
-                {
-                  label: "Total Flags",
-                  value: maintenanceFlagCounts.total,
-                  cardClass: "border-[#eadfce] bg-[#fcfaf7]",
-                  labelClass: "text-[#8a7b68]",
-                  valueClass: "text-[#241c15]",
-                },
-                {
-                  label: "Open",
-                  value: maintenanceFlagCounts.open,
-                  cardClass:
-                    maintenanceFlagCounts.open > 0
-                      ? "border-[#dc2626] bg-[#fff1f2] shadow-[0_10px_28px_rgba(220,38,38,0.12)]"
-                      : "border-[#eadfce] bg-[#fcfaf7]",
-                  labelClass: maintenanceFlagCounts.open > 0 ? "text-[#991b1b]" : "text-[#8a7b68]",
-                  valueClass: maintenanceFlagCounts.open > 0 ? "text-[#b91c1c]" : "text-[#241c15]",
-                },
-                {
-                  label: "Resolved",
-                  value: maintenanceFlagCounts.resolved,
-                  cardClass: "border-[#eadfce] bg-[#fcfaf7]",
-                  labelClass: "text-[#8a7b68]",
-                  valueClass: "text-[#241c15]",
-                },
-                {
-                  label: "Urgent",
-                  value: maintenanceFlagCounts.urgent,
-                  cardClass:
-                    maintenanceFlagCounts.urgent > 0
-                      ? "animate-pulse border-[#b91c1c] bg-[#dc2626] shadow-[0_16px_34px_rgba(185,28,28,0.28)]"
-                      : "border-[#eadfce] bg-[#fcfaf7]",
-                  labelClass: maintenanceFlagCounts.urgent > 0 ? "text-white/80" : "text-[#8a7b68]",
-                  valueClass: maintenanceFlagCounts.urgent > 0 ? "text-white" : "text-[#241c15]",
-                },
-              ].map((item) => (
-                <div key={item.label} className={`rounded-[24px] border px-4 py-4 shadow-sm ${item.cardClass}`}>
-                  <div className={`text-[11px] uppercase tracking-[0.22em] ${item.labelClass}`}>{item.label}</div>
-                  <div className={`mt-2 text-3xl font-semibold ${item.valueClass}`}>{item.value}</div>
+            <div className="rounded-[26px] border border-[#eadfce] bg-[#fcfaf7] p-5">
+              <h3 className="text-lg font-semibold">Access Notes</h3>
+              <div className="mt-4 space-y-3">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-[#5f5245]">Door code</label>
+                  <input className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" placeholder="Front door / smart lock code" value={doorCode} onChange={(e) => {
+                    setDoorCode(e.target.value);
+                    setAccessDirty(true);
+                  }} />
                 </div>
-              ))}
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-[#5f5245]">Alarm code</label>
+                  <input className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" placeholder="Alarm panel code" value={alarmCode} onChange={(e) => {
+                    setAlarmCode(e.target.value);
+                    setAccessDirty(true);
+                  }} />
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-[#5f5245]">Extra access notes</label>
+                  <textarea className="min-h-[120px] w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" placeholder="Entry directions, tricky locks, gate notes, etc." value={accessNotes} onChange={(e) => {
+                    setAccessNotes(e.target.value);
+                    setAccessDirty(true);
+                  }} />
+                </div>
+                <button className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]" onClick={() => void saveAccess()}>
+                  Save Access
+                </button>
+              </div>
             </div>
 
-            {filteredMaintenanceFlags.length === 0 ? (
-              <div className="mt-6 rounded-[24px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-5 py-8 text-sm text-[#8a7b68]">
-                No maintenance flags found for the current filter.
-              </div>
-            ) : (
-              <div className="mt-6 space-y-6">
-                <div>
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <div>
-                      <h3 className="text-lg font-semibold text-[#241c15]">Open Flags</h3>
-                      <div className="mt-1 text-sm text-[#7f7263]">
-                        {openMaintenanceFlags.length} active flag{openMaintenanceFlags.length === 1 ? "" : "s"}
+            <div className="rounded-[26px] border border-[#eadfce] bg-[#fcfaf7] p-5">
+              <h3 className="text-lg font-semibold">Booking Calendars</h3>
+              <p className="mt-1 text-sm text-[#7f7263]">
+                Add as many calendar feeds as you need for this property. Examples:
+                Airbnb, VRBO, Booking.com, direct booking, Hospitable, or any custom iCal URL.
+              </p>
+
+              <div className="mt-4 space-y-4">
+                <div className="rounded-[18px] border border-[#eadfce] bg-white px-4 py-3 text-sm text-[#6f6255]">
+                  Draft rows: {calendarRowsDraft.length}. Saved rows for this property: {propertyCalendars.filter((calendar) => calendar.property_id === selectedPropertyId).length}.
+                </div>
+
+                {propertyCalendars.filter((calendar) => calendar.property_id === selectedPropertyId).length > 0 ? (
+                  <div className="rounded-[20px] border border-[#eadfce] bg-white p-4">
+                    <div className="mb-3 text-sm font-medium text-[#5f5245]">Currently saved calendars</div>
+                    <div className="space-y-2">
+                      {propertyCalendars
+                        .filter((calendar) => calendar.property_id === selectedPropertyId)
+                        .map((calendar) => (
+                          <div
+                            key={calendar.id}
+                            className="flex flex-wrap items-center justify-between gap-3 rounded-[16px] border border-[#eadfce] bg-[#fcfaf7] px-3 py-2"
+                          >
+                            <div className="min-w-0">
+                              <div className="text-sm font-medium text-[#241c15]">{calendar.source || "Unnamed calendar"}</div>
+                              <div className="truncate text-xs text-[#8a7b68]">{calendar.ical_url}</div>
+                            </div>
+                            <div className="text-xs text-[#8a7b68]">
+                              {calendar.is_active === false ? "Inactive" : "Active"}
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {calendarRowsDraft.length === 0 ? (
+                  <div className="rounded-[18px] border border-dashed border-[#d8c7ab] bg-white px-4 py-4 text-sm text-[#7f7263]">
+                    No calendars added yet.
+                  </div>
+                ) : null}
+
+                {calendarRowsDraft.map((row, index) => (
+                  <div
+                    key={row.id ?? `draft-${index}`}
+                    className="rounded-[20px] border border-[#eadfce] bg-white p-4"
+                  >
+                    <div className="grid gap-3">
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-[#5f5245]">
+                          Source name
+                        </label>
+                        <input
+                          className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                          placeholder="Airbnb, VRBO, Booking.com, Direct, etc."
+                          value={row.source}
+                          onChange={(e) =>
+                            updateCalendarDraftRow(index, "source", e.target.value)
+                          }
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-[#5f5245]">
+                          iCal URL
+                        </label>
+                        <input
+                          className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                          placeholder="Paste calendar URL"
+                          value={row.ical_url}
+                          onChange={(e) =>
+                            updateCalendarDraftRow(index, "ical_url", e.target.value)
+                          }
+                        />
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <label className="flex items-center gap-2 text-sm text-[#6f6255]">
+                          <input
+                            type="checkbox"
+                            checked={row.is_active}
+                            onChange={(e) =>
+                              updateCalendarDraftRow(index, "is_active", e.target.checked)
+                            }
+                          />
+                          Active
+                        </label>
+
+                        <button
+                          type="button"
+                          className="rounded-full border border-[#efc6c6] bg-[#fff5f5] px-4 py-2 text-sm text-[#8a2e22] transition hover:bg-[#fff0f0]"
+                          onClick={() => removeCalendarDraftRow(index)}
+                        >
+                          Remove calendar
+                        </button>
                       </div>
                     </div>
                   </div>
+                ))}
 
-                  {openMaintenanceFlags.length === 0 ? (
-                    <div className="rounded-[22px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-5 py-6 text-sm text-[#8a7b68]">
-                      No open maintenance flags.
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    className="inline-flex items-center justify-center rounded-full border border-[#241c15] bg-white px-5 py-2.5 text-sm font-medium text-[#241c15] transition hover:bg-[#f7f3ee]"
+                    onClick={addCalendarDraftRow}
+                  >
+                    Add Calendar
+                  </button>
+
+                  <button className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60" onClick={() => void saveCalendars()} disabled={savingCalendars}>
+                    {savingCalendars ? "Saving..." : "Save Calendars"}
+                  </button>
+
+                  <button className="inline-flex items-center justify-center rounded-full border border-[#241c15] bg-white px-5 py-2.5 text-sm font-medium text-[#241c15] transition hover:bg-[#f7f3ee] disabled:opacity-60" onClick={() => void syncCalendarsNow()} disabled={syncingCalendarsNow}>
+                    {syncingCalendarsNow ? "Syncing..." : "Sync Calendars Now"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[26px] border border-[#eadfce] bg-[#fcfaf7] p-5">
+              <h3 className="text-lg font-semibold">Add SOP Note</h3>
+              <div className="mt-4 space-y-3">
+                <input className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" placeholder="SOP title" value={sopTitle} onChange={(e) => setSopTitle(e.target.value)} />
+                <textarea className="min-h-[120px] w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" placeholder="Optional note or instruction" value={sopContent} onChange={(e) => setSopContent(e.target.value)} />
+
+                <div className="rounded-[20px] border border-dashed border-[#d8c7ab] bg-white p-4">
+                  <label className="mb-2 block text-sm font-medium text-[#5f5245]">SOP photos</label>
+                  <input type="file" accept="image/*" multiple onChange={handleSopFilesChange} className="block w-full text-sm text-[#6c5f51]" />
+                  <div className="mt-3 text-sm text-[#7f7263]">
+                    {sopFiles.length > 0 ? `${sopFiles.length} image${sopFiles.length === 1 ? "" : "s"} selected` : "No images selected yet."}
+                  </div>
+                </div>
+
+                <button className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60" onClick={() => void addSop()} disabled={uploadingSop}>
+                  {uploadingSop ? "Uploading..." : "Add SOP"}
+                </button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="mt-6 rounded-[24px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-5 py-8 text-sm text-[#8a7b68]">
+            Select a property to manage calendars, SOPs, and access details.
+          </div>
+        )}
+
+        {selectedPropertyId ? (
+          <div className="mt-6">
+            <h3 className="mb-3 text-lg font-semibold">Existing SOP Notes</h3>
+            <div className="space-y-4">
+              {selectedSops.length === 0 ? (
+                <div className="rounded-[24px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-5 py-6 text-sm text-[#8a7b68]">No SOP notes yet.</div>
+              ) : null}
+
+              {selectedSops.map((s) => {
+                const images = sopImagesBySopId[s.id] ?? [];
+                return (
+                  <div key={s.id} className="rounded-[26px] border border-[#eadfce] bg-white p-4 shadow-sm">
+                    <div className="text-base font-semibold text-[#241c15]">{s.title || "Untitled"}</div>
+                    <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#6f6255]">{s.content || "No details"}</div>
+                    {images.length > 0 ? (
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                        {images.map((image) => (
+                          <a key={image.id} href={image.image_url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] transition hover:shadow-md">
+                            <img src={image.image_url} alt={image.caption || s.title || "SOP image"} className="h-48 w-full cursor-zoom-in object-cover" />
+                            {image.caption ? <div className="px-3 py-2 text-sm text-[#6f6255]">{image.caption}</div> : null}
+                          </a>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mt-4 text-sm text-[#a39584]">No images attached.</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+      </section>
+    );
+  }
+
+
+  function renderMaintenanceSection() {
+    return (
+      <>
+        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+            <div>
+              <h2 className="text-xl font-semibold tracking-tight">Maintenance Flags</h2>
+              <p className="mt-1 text-sm text-[#7f7263]">
+                Admin-only maintenance tracking. Add flags here now, then we can wire cleaner-side reporting in later.
+              </p>
+            </div>
+
+            <div className="flex w-full flex-col gap-3 md:flex-row xl:w-auto xl:items-end">
+              <div className="w-full md:w-[280px]">
+                <label className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">
+                  Filter by property
+                </label>
+                <select
+                  className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                  value={selectedJobsPropertyFilter}
+                  onChange={(e) => setSelectedJobsPropertyFilter(e.target.value)}
+                >
+                  <option value="all">All properties</option>
+                  {properties.map((property) => (
+                    <option key={property.id} value={property.id}>
+                      {property.name || property.address || property.id}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <button
+                className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-3 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]"
+                onClick={openMaintenanceModal}
+              >
+                Add Flag
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-3 md:grid-cols-4">
+            {[
+              {
+                label: "Total Flags",
+                value: maintenanceFlagCounts.total,
+                cardClass: "border-[#eadfce] bg-[#fcfaf7]",
+                labelClass: "text-[#8a7b68]",
+                valueClass: "text-[#241c15]",
+              },
+              {
+                label: "Open",
+                value: maintenanceFlagCounts.open,
+                cardClass:
+                  maintenanceFlagCounts.open > 0
+                    ? "border-[#dc2626] bg-[#fff1f2] shadow-[0_10px_28px_rgba(220,38,38,0.12)]"
+                    : "border-[#eadfce] bg-[#fcfaf7]",
+                labelClass: maintenanceFlagCounts.open > 0 ? "text-[#991b1b]" : "text-[#8a7b68]",
+                valueClass: maintenanceFlagCounts.open > 0 ? "text-[#b91c1c]" : "text-[#241c15]",
+              },
+              {
+                label: "Resolved",
+                value: maintenanceFlagCounts.resolved,
+                cardClass: "border-[#eadfce] bg-[#fcfaf7]",
+                labelClass: "text-[#8a7b68]",
+                valueClass: "text-[#241c15]",
+              },
+              {
+                label: "Urgent",
+                value: maintenanceFlagCounts.urgent,
+                cardClass:
+                  maintenanceFlagCounts.urgent > 0
+                    ? "animate-pulse border-[#b91c1c] bg-[#dc2626] shadow-[0_16px_34px_rgba(185,28,28,0.28)]"
+                    : "border-[#eadfce] bg-[#fcfaf7]",
+                labelClass: maintenanceFlagCounts.urgent > 0 ? "text-white/80" : "text-[#8a7b68]",
+                valueClass: maintenanceFlagCounts.urgent > 0 ? "text-white" : "text-[#241c15]",
+              },
+            ].map((item) => (
+              <div key={item.label} className={`rounded-[24px] border px-4 py-4 shadow-sm ${item.cardClass}`}>
+                <div className={`text-[11px] uppercase tracking-[0.22em] ${item.labelClass}`}>{item.label}</div>
+                <div className={`mt-2 text-3xl font-semibold ${item.valueClass}`}>{item.value}</div>
+              </div>
+            ))}
+          </div>
+
+          {filteredMaintenanceFlags.length === 0 ? (
+            <div className="mt-6 rounded-[24px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-5 py-8 text-sm text-[#8a7b68]">
+              No maintenance flags found for the current filter.
+            </div>
+          ) : (
+            <div className="mt-6 space-y-6">
+              <div>
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-lg font-semibold text-[#241c15]">Open Flags</h3>
+                    <div className="mt-1 text-sm text-[#7f7263]">
+                      {openMaintenanceFlags.length} active flag{openMaintenanceFlags.length === 1 ? "" : "s"}
+                    </div>
+                  </div>
+                </div>
+
+                {openMaintenanceFlags.length === 0 ? (
+                  <div className="rounded-[22px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-5 py-6 text-sm text-[#8a7b68]">
+                    No open maintenance flags.
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {openMaintenanceFlags.map((flag) => {
+                      const state = String(getMaintenanceFlagState(flag) || "open");
+                      const stateLower = state.toLowerCase();
+                      const urgency = String(flag.urgency || flag.priority || flag.severity || "normal");
+                      const urgencyLower = urgency.toLowerCase();
+                      const isResolved =
+                        stateLower.includes("resolved") ||
+                        stateLower.includes("closed") ||
+                        stateLower.includes("done");
+                      const isUrgent =
+                        urgencyLower.includes("high") ||
+                        urgencyLower.includes("urgent") ||
+                        urgencyLower.includes("critical");
+
+                      const flaggedByName = profiles.find((profile) => profile.id === flag.flagged_by_profile_id)?.full_name;
+                      const resolvedByName = profiles.find((profile) => profile.id === flag.resolved_by_profile_id)?.full_name;
+                      const labelKeys = Object.keys(flag).filter(
+                        (key) =>
+                          ![
+                            "id",
+                            "property_id",
+                            "source",
+                            "category",
+                            "urgency",
+                            "status",
+                            "notes",
+                            "flagged_by_profile_id",
+                            "flagged_at",
+                            "resolved_at",
+                            "resolved_by_profile_id",
+                            "created_at",
+                            "updated_at",
+                          ].includes(key) && flag[key] !== null && flag[key] !== ""
+                      );
+
+                      return (
+                        <div
+                          key={flag.id}
+                          className={`rounded-[24px] border p-4 shadow-sm ${isResolved
+                            ? "border-[#d7e7d7] bg-[#f5fbf5]"
+                            : isUrgent
+                              ? "animate-pulse border-[#b91c1c] bg-[#fff1f2] shadow-[0_16px_34px_rgba(185,28,28,0.16)]"
+                              : "border-[#dc2626] bg-[#fff5f5]"
+                            }`}
+                        >
+                          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <div className="text-base font-semibold text-[#241c15]">
+                                  {flag.category || getMaintenanceFlagLabel(flag, labelKeys)}
+                                </div>
+                                <span
+                                  className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${isResolved
+                                    ? "border-[#cfe4cf] bg-white text-[#2f6b2f]"
+                                    : isUrgent
+                                      ? "border-[#fecaca] bg-white text-[#991b1b]"
+                                      : "border-[#fecaca] bg-white text-[#991b1b]"
+                                    }`}
+                                >
+                                  {state}
+                                </span>
+                                <span
+                                  className={`inline-flex rounded-full border bg-white px-2.5 py-0.5 text-[11px] font-medium ${isUrgent ? "border-[#fecaca] text-[#991b1b]" : "border-[#d8c7ab] text-[#7f7263]"
+                                    }`}
+                                >
+                                  {urgency}
+                                </span>
+                                {flag.source ? (
+                                  <span className="inline-flex rounded-full border border-[#d8c7ab] bg-white px-2.5 py-0.5 text-[11px] font-medium text-[#7f7263]">
+                                    Source: {flag.source}
+                                  </span>
+                                ) : null}
+                              </div>
+
+                              <div className="mt-2 text-sm text-[#6f6255]">
+                                {getPropertyName(flag.property_id ?? null)}
+                              </div>
+
+                              {flag.notes ? (
+                                <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[#5f5245]">
+                                  {flag.notes}
+                                </div>
+                              ) : null}
+
+                              {(maintenanceImagesByFlagId[flag.id] ?? []).length > 0 ? (
+                                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                                  {(maintenanceImagesByFlagId[flag.id] ?? []).map((image) => (
+                                    <button
+                                      key={image.id}
+                                      type="button"
+                                      onClick={() => setExpandedImage(image.image_url)}
+                                      className="block overflow-hidden rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] text-left transition hover:shadow-md"
+                                    >
+                                      <img
+                                        src={image.image_url}
+                                        alt={image.caption || "Maintenance image"}
+                                        className="h-40 w-full object-cover"
+                                      />
+                                      {image.caption ? (
+                                        <div className="px-3 py-2 text-sm text-[#6f6255]">{image.caption}</div>
+                                      ) : null}
+                                    </button>
+                                  ))}
+                                </div>
+                              ) : null}
+
+                              {labelKeys.length > 0 ? (
+                                <div className="mt-4 flex flex-wrap gap-2">
+                                  {labelKeys.slice(0, 6).map((key) => (
+                                    <span
+                                      key={key}
+                                      className="inline-flex rounded-full border border-[#e2d6c6] bg-white px-3 py-1 text-xs text-[#6f6255]"
+                                    >
+                                      {key.replace(/_/g, " ")}: {String(flag[key])}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </div>
+
+                            <div className="flex w-full flex-col gap-3 lg:w-[260px]">
+                              <div className="grid gap-2 text-sm text-[#7f7263]">
+                                <div>
+                                  <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Flagged</div>
+                                  <div>{formatDateTime(flag.flagged_at || flag.created_at)}</div>
+                                </div>
+
+                                {flaggedByName || flag.flagged_by_profile_id ? (
+                                  <div>
+                                    <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Flagged by</div>
+                                    <div>{flaggedByName || flag.flagged_by_profile_id}</div>
+                                  </div>
+                                ) : null}
+
+                                {flag.resolved_at ? (
+                                  <div>
+                                    <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Resolved</div>
+                                    <div>{formatDateTime(flag.resolved_at)}</div>
+                                  </div>
+                                ) : null}
+
+                                {resolvedByName || flag.resolved_by_profile_id ? (
+                                  <div>
+                                    <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Resolved by</div>
+                                    <div>{resolvedByName || flag.resolved_by_profile_id}</div>
+                                  </div>
+                                ) : null}
+                              </div>
+
+                              <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
+                                {!isResolved ? (
+                                  <button
+                                    className="rounded-[16px] bg-[#241c15] px-4 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60"
+                                    onClick={() => void resolveMaintenanceFlag(flag.id)}
+                                    disabled={resolvingMaintenanceFlagId === flag.id || deletingMaintenanceFlagId === flag.id}
+                                  >
+                                    {resolvingMaintenanceFlagId === flag.id ? "Resolving..." : "Mark Resolved"}
+                                  </button>
+                                ) : null}
+
+                                <button
+                                  className="rounded-[16px] border border-[#efc6c6] bg-[#fff5f5] px-4 py-2.5 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-60"
+                                  onClick={() => void deleteMaintenanceFlag(flag.id)}
+                                  disabled={deletingMaintenanceFlagId === flag.id || resolvingMaintenanceFlagId === flag.id}
+                                >
+                                  {deletingMaintenanceFlagId === flag.id ? "Deleting..." : "Delete"}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-2 text-left text-lg font-semibold text-[#241c15]"
+                      onClick={() => setMaintenanceHistoryExpanded((prev) => !prev)}
+                    >
+                      <span>{maintenanceHistoryExpanded ? "▾" : "▸"}</span>
+                      Flag History
+                    </button>
+                    <div className="mt-1 text-sm text-[#7f7263]">
+                      {resolvedMaintenanceFlags.length} resolved flag{resolvedMaintenanceFlags.length === 1 ? "" : "s"}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <button
+                      type="button"
+                      className="rounded-[16px] border border-[#d8c7ab] bg-white px-4 py-2.5 text-sm font-medium text-[#6f6255] transition hover:bg-[#f7f3ee]"
+                      onClick={() => setMaintenanceHistoryExpanded((prev) => !prev)}
+                    >
+                      {maintenanceHistoryExpanded ? "Collapse" : "Expand"}
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-[16px] border border-[#efc6c6] bg-[#fff5f5] px-4 py-2.5 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-60"
+                      onClick={() => void deleteResolvedMaintenanceFlags()}
+                      disabled={deletingResolvedMaintenanceFlags || resolvedMaintenanceFlags.length === 0}
+                    >
+                      {deletingResolvedMaintenanceFlags ? "Deleting..." : "Delete All Resolved"}
+                    </button>
+                  </div>
+                </div>
+
+                {maintenanceHistoryExpanded ? (
+                  resolvedMaintenanceFlags.length === 0 ? (
+                    <div className="mt-4 rounded-[20px] border border-dashed border-[#d8c7ab] bg-white px-4 py-5 text-sm text-[#8a7b68]">
+                      No resolved maintenance flags yet.
                     </div>
                   ) : (
-                    <div className="space-y-4">
-                      {openMaintenanceFlags.map((flag) => {
-                        const state = String(getMaintenanceFlagState(flag) || "open");
-                        const stateLower = state.toLowerCase();
+                    <div className="mt-4 space-y-4">
+                      {resolvedMaintenanceFlags.map((flag) => {
+                        const state = String(getMaintenanceFlagState(flag) || "resolved");
                         const urgency = String(flag.urgency || flag.priority || flag.severity || "normal");
-                        const urgencyLower = urgency.toLowerCase();
-                        const isResolved =
-                          stateLower.includes("resolved") ||
-                          stateLower.includes("closed") ||
-                          stateLower.includes("done");
-                        const isUrgent =
-                          urgencyLower.includes("high") ||
-                          urgencyLower.includes("urgent") ||
-                          urgencyLower.includes("critical");
-
                         const flaggedByName = profiles.find((profile) => profile.id === flag.flagged_by_profile_id)?.full_name;
                         const resolvedByName = profiles.find((profile) => profile.id === flag.resolved_by_profile_id)?.full_name;
                         const labelKeys = Object.keys(flag).filter(
@@ -6009,83 +6192,26 @@ This removes its linked members and deletes the grounds account.`
                         );
 
                         return (
-                          <div
-                            key={flag.id}
-                            className={`rounded-[24px] border p-4 shadow-sm ${isResolved
-                              ? "border-[#d7e7d7] bg-[#f5fbf5]"
-                              : isUrgent
-                                ? "animate-pulse border-[#b91c1c] bg-[#fff1f2] shadow-[0_16px_34px_rgba(185,28,28,0.16)]"
-                                : "border-[#dc2626] bg-[#fff5f5]"
-                              }`}
-                          >
+                          <div key={flag.id} className="rounded-[24px] border border-[#d7e7d7] bg-[#f5fbf5] p-4 shadow-sm">
                             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                               <div className="min-w-0 flex-1">
                                 <div className="flex flex-wrap items-center gap-2">
                                   <div className="text-base font-semibold text-[#241c15]">
                                     {flag.category || getMaintenanceFlagLabel(flag, labelKeys)}
                                   </div>
-                                  <span
-                                    className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${isResolved
-                                      ? "border-[#cfe4cf] bg-white text-[#2f6b2f]"
-                                      : isUrgent
-                                        ? "border-[#fecaca] bg-white text-[#991b1b]"
-                                        : "border-[#fecaca] bg-white text-[#991b1b]"
-                                      }`}
-                                  >
+                                  <span className="inline-flex rounded-full border border-[#cfe4cf] bg-white px-2.5 py-0.5 text-[11px] font-medium text-[#2f6b2f]">
                                     {state}
                                   </span>
-                                  <span
-                                    className={`inline-flex rounded-full border bg-white px-2.5 py-0.5 text-[11px] font-medium ${isUrgent ? "border-[#fecaca] text-[#991b1b]" : "border-[#d8c7ab] text-[#7f7263]"
-                                      }`}
-                                  >
+                                  <span className="inline-flex rounded-full border border-[#d8c7ab] bg-white px-2.5 py-0.5 text-[11px] font-medium text-[#7f7263]">
                                     {urgency}
                                   </span>
-                                  {flag.source ? (
-                                    <span className="inline-flex rounded-full border border-[#d8c7ab] bg-white px-2.5 py-0.5 text-[11px] font-medium text-[#7f7263]">
-                                      Source: {flag.source}
-                                    </span>
-                                  ) : null}
                                 </div>
-
-                                <div className="mt-2 text-sm text-[#6f6255]">
-                                  {getPropertyName(flag.property_id ?? null)}
-                                </div>
-
-                                {flag.notes ? (
-                                  <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[#5f5245]">
-                                    {flag.notes}
-                                  </div>
-                                ) : null}
-
-                                {(maintenanceImagesByFlagId[flag.id] ?? []).length > 0 ? (
-                                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                                    {(maintenanceImagesByFlagId[flag.id] ?? []).map((image) => (
-                                      <button
-                                        key={image.id}
-                                        type="button"
-                                        onClick={() => setExpandedImage(image.image_url)}
-                                        className="block overflow-hidden rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] text-left transition hover:shadow-md"
-                                      >
-                                        <img
-                                          src={image.image_url}
-                                          alt={image.caption || "Maintenance image"}
-                                          className="h-40 w-full object-cover"
-                                        />
-                                        {image.caption ? (
-                                          <div className="px-3 py-2 text-sm text-[#6f6255]">{image.caption}</div>
-                                        ) : null}
-                                      </button>
-                                    ))}
-                                  </div>
-                                ) : null}
-
+                                <div className="mt-2 text-sm text-[#6f6255]">{getPropertyName(flag.property_id ?? null)}</div>
+                                {flag.notes ? <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[#5f5245]">{flag.notes}</div> : null}
                                 {labelKeys.length > 0 ? (
                                   <div className="mt-4 flex flex-wrap gap-2">
                                     {labelKeys.slice(0, 6).map((key) => (
-                                      <span
-                                        key={key}
-                                        className="inline-flex rounded-full border border-[#e2d6c6] bg-white px-3 py-1 text-xs text-[#6f6255]"
-                                      >
+                                      <span key={key} className="inline-flex rounded-full border border-[#e2d6c6] bg-white px-3 py-1 text-xs text-[#6f6255]">
                                         {key.replace(/_/g, " ")}: {String(flag[key])}
                                       </span>
                                     ))}
@@ -6099,21 +6225,18 @@ This removes its linked members and deletes the grounds account.`
                                     <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Flagged</div>
                                     <div>{formatDateTime(flag.flagged_at || flag.created_at)}</div>
                                   </div>
-
                                   {flaggedByName || flag.flagged_by_profile_id ? (
                                     <div>
                                       <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Flagged by</div>
                                       <div>{flaggedByName || flag.flagged_by_profile_id}</div>
                                     </div>
                                   ) : null}
-
                                   {flag.resolved_at ? (
                                     <div>
                                       <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Resolved</div>
                                       <div>{formatDateTime(flag.resolved_at)}</div>
                                     </div>
                                   ) : null}
-
                                   {resolvedByName || flag.resolved_by_profile_id ? (
                                     <div>
                                       <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Resolved by</div>
@@ -6122,395 +6245,317 @@ This removes its linked members and deletes the grounds account.`
                                   ) : null}
                                 </div>
 
-                                <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
-                                  {!isResolved ? (
-                                    <button
-                                      className="rounded-[16px] bg-[#241c15] px-4 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60"
-                                      onClick={() => void resolveMaintenanceFlag(flag.id)}
-                                      disabled={resolvingMaintenanceFlagId === flag.id || deletingMaintenanceFlagId === flag.id}
-                                    >
-                                      {resolvingMaintenanceFlagId === flag.id ? "Resolving..." : "Mark Resolved"}
-                                    </button>
-                                  ) : null}
-
-                                  <button
-                                    className="rounded-[16px] border border-[#efc6c6] bg-[#fff5f5] px-4 py-2.5 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-60"
-                                    onClick={() => void deleteMaintenanceFlag(flag.id)}
-                                    disabled={deletingMaintenanceFlagId === flag.id || resolvingMaintenanceFlagId === flag.id}
-                                  >
-                                    {deletingMaintenanceFlagId === flag.id ? "Deleting..." : "Delete"}
-                                  </button>
-                                </div>
+                                <button
+                                  className="rounded-[16px] border border-[#efc6c6] bg-[#fff5f5] px-4 py-2.5 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-60"
+                                  onClick={() => void deleteMaintenanceFlag(flag.id)}
+                                  disabled={deletingMaintenanceFlagId === flag.id || deletingResolvedMaintenanceFlags}
+                                >
+                                  {deletingMaintenanceFlagId === flag.id ? "Deleting..." : "Delete"}
+                                </button>
                               </div>
                             </div>
                           </div>
                         );
                       })}
                     </div>
-                  )}
-                </div>
-
-                <div className="rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] p-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-2 text-left text-lg font-semibold text-[#241c15]"
-                        onClick={() => setMaintenanceHistoryExpanded((prev) => !prev)}
-                      >
-                        <span>{maintenanceHistoryExpanded ? "▾" : "▸"}</span>
-                        Flag History
-                      </button>
-                      <div className="mt-1 text-sm text-[#7f7263]">
-                        {resolvedMaintenanceFlags.length} resolved flag{resolvedMaintenanceFlags.length === 1 ? "" : "s"}
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                      <button
-                        type="button"
-                        className="rounded-[16px] border border-[#d8c7ab] bg-white px-4 py-2.5 text-sm font-medium text-[#6f6255] transition hover:bg-[#f7f3ee]"
-                        onClick={() => setMaintenanceHistoryExpanded((prev) => !prev)}
-                      >
-                        {maintenanceHistoryExpanded ? "Collapse" : "Expand"}
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded-[16px] border border-[#efc6c6] bg-[#fff5f5] px-4 py-2.5 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-60"
-                        onClick={() => void deleteResolvedMaintenanceFlags()}
-                        disabled={deletingResolvedMaintenanceFlags || resolvedMaintenanceFlags.length === 0}
-                      >
-                        {deletingResolvedMaintenanceFlags ? "Deleting..." : "Delete All Resolved"}
-                      </button>
-                    </div>
-                  </div>
-
-                  {maintenanceHistoryExpanded ? (
-                    resolvedMaintenanceFlags.length === 0 ? (
-                      <div className="mt-4 rounded-[20px] border border-dashed border-[#d8c7ab] bg-white px-4 py-5 text-sm text-[#8a7b68]">
-                        No resolved maintenance flags yet.
-                      </div>
-                    ) : (
-                      <div className="mt-4 space-y-4">
-                        {resolvedMaintenanceFlags.map((flag) => {
-                          const state = String(getMaintenanceFlagState(flag) || "resolved");
-                          const urgency = String(flag.urgency || flag.priority || flag.severity || "normal");
-                          const flaggedByName = profiles.find((profile) => profile.id === flag.flagged_by_profile_id)?.full_name;
-                          const resolvedByName = profiles.find((profile) => profile.id === flag.resolved_by_profile_id)?.full_name;
-                          const labelKeys = Object.keys(flag).filter(
-                            (key) =>
-                              ![
-                                "id",
-                                "property_id",
-                                "source",
-                                "category",
-                                "urgency",
-                                "status",
-                                "notes",
-                                "flagged_by_profile_id",
-                                "flagged_at",
-                                "resolved_at",
-                                "resolved_by_profile_id",
-                                "created_at",
-                                "updated_at",
-                              ].includes(key) && flag[key] !== null && flag[key] !== ""
-                          );
-
-                          return (
-                            <div key={flag.id} className="rounded-[24px] border border-[#d7e7d7] bg-[#f5fbf5] p-4 shadow-sm">
-                              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <div className="text-base font-semibold text-[#241c15]">
-                                      {flag.category || getMaintenanceFlagLabel(flag, labelKeys)}
-                                    </div>
-                                    <span className="inline-flex rounded-full border border-[#cfe4cf] bg-white px-2.5 py-0.5 text-[11px] font-medium text-[#2f6b2f]">
-                                      {state}
-                                    </span>
-                                    <span className="inline-flex rounded-full border border-[#d8c7ab] bg-white px-2.5 py-0.5 text-[11px] font-medium text-[#7f7263]">
-                                      {urgency}
-                                    </span>
-                                  </div>
-                                  <div className="mt-2 text-sm text-[#6f6255]">{getPropertyName(flag.property_id ?? null)}</div>
-                                  {flag.notes ? <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[#5f5245]">{flag.notes}</div> : null}
-                                  {labelKeys.length > 0 ? (
-                                    <div className="mt-4 flex flex-wrap gap-2">
-                                      {labelKeys.slice(0, 6).map((key) => (
-                                        <span key={key} className="inline-flex rounded-full border border-[#e2d6c6] bg-white px-3 py-1 text-xs text-[#6f6255]">
-                                          {key.replace(/_/g, " ")}: {String(flag[key])}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  ) : null}
-                                </div>
-
-                                <div className="flex w-full flex-col gap-3 lg:w-[260px]">
-                                  <div className="grid gap-2 text-sm text-[#7f7263]">
-                                    <div>
-                                      <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Flagged</div>
-                                      <div>{formatDateTime(flag.flagged_at || flag.created_at)}</div>
-                                    </div>
-                                    {flaggedByName || flag.flagged_by_profile_id ? (
-                                      <div>
-                                        <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Flagged by</div>
-                                        <div>{flaggedByName || flag.flagged_by_profile_id}</div>
-                                      </div>
-                                    ) : null}
-                                    {flag.resolved_at ? (
-                                      <div>
-                                        <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Resolved</div>
-                                        <div>{formatDateTime(flag.resolved_at)}</div>
-                                      </div>
-                                    ) : null}
-                                    {resolvedByName || flag.resolved_by_profile_id ? (
-                                      <div>
-                                        <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Resolved by</div>
-                                        <div>{resolvedByName || flag.resolved_by_profile_id}</div>
-                                      </div>
-                                    ) : null}
-                                  </div>
-
-                                  <button
-                                    className="rounded-[16px] border border-[#efc6c6] bg-[#fff5f5] px-4 py-2.5 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-60"
-                                    onClick={() => void deleteMaintenanceFlag(flag.id)}
-                                    disabled={deletingMaintenanceFlagId === flag.id || deletingResolvedMaintenanceFlags}
-                                  >
-                                    {deletingMaintenanceFlagId === flag.id ? "Deleting..." : "Delete"}
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )
-                  ) : null}
-                </div>
-              </div>
-            )}
-          </section>
-
-          {maintenanceModalOpen ? (
-            <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/45 px-4 py-6">
-              <div className="w-full max-w-2xl rounded-[32px] border border-[#d8c7ab] bg-[#f8f3eb] p-5 shadow-[0_30px_80px_rgba(0,0,0,0.28)] md:p-6">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <div className="text-xl font-semibold tracking-tight text-[#241c15]">Create Maintenance Flag</div>
-                    <p className="mt-1 text-sm text-[#7f7263]">
-                      Add an internal maintenance issue now. This stays admin-only for the moment.
-                    </p>
-                  </div>
-                  <button
-                    className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1.5 text-sm text-[#6f6255] transition hover:bg-[#f7f3ee]"
-                    onClick={closeMaintenanceModal}
-                    disabled={creatingMaintenanceFlag}
-                  >
-                    Close
-                  </button>
-                </div>
-
-                {maintenanceFormError ? (
-                  <div className="mt-5 rounded-[18px] border border-[#fecaca] bg-[#fff1f2] px-4 py-3 text-sm text-[#991b1b]">
-                    {maintenanceFormError}
-                  </div>
+                  )
                 ) : null}
-
-                <div className="mt-5 grid gap-4 md:grid-cols-2">
-                  <div className="md:col-span-2">
-                    <label className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Property</label>
-                    <select
-                      className={`w-full rounded-[20px] border bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e] ${maintenanceFormError && !maintenanceFormPropertyId ? "border-[#dc2626] bg-[#fff5f5]" : "border-[#d9ccbb]"
-                        }`}
-                      value={maintenanceFormPropertyId}
-                      onChange={(e) => setMaintenanceFormPropertyId(e.target.value)}
-                    >
-                      <option value="">Select property</option>
-                      {properties.map((property) => (
-                        <option key={property.id} value={property.id}>
-                          {property.name || property.address || property.id}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Category</label>
-                    <select
-                      className={`w-full rounded-[20px] border bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e] ${maintenanceFormError && !maintenanceFormCategory ? "border-[#dc2626] bg-[#fff5f5]" : "border-[#d9ccbb]"
-                        }`}
-                      value={maintenanceFormCategory}
-                      onChange={(e) => setMaintenanceFormCategory(e.target.value)}
-                    >
-                      <option value="">Select category</option>
-                      {MAINTENANCE_CATEGORY_OPTIONS.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Urgency</label>
-                    <select
-                      className="w-full rounded-[20px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                      value={maintenanceFormUrgency}
-                      onChange={(e) => setMaintenanceFormUrgency(e.target.value)}
-                    >
-                      <option value="low">Low</option>
-                      <option value="normal">Normal</option>
-                      <option value="urgent">Urgent</option>
-                    </select>
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Notes</label>
-                    <textarea
-                      className={`min-h-[160px] w-full rounded-[20px] border bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e] ${maintenanceFormError && !maintenanceFormNotes.trim() ? "border-[#dc2626] bg-[#fff5f5]" : "border-[#d9ccbb]"
-                        }`}
-                      placeholder="Describe the issue clearly so it can be acted on later."
-                      value={maintenanceFormNotes}
-                      onChange={(e) => setMaintenanceFormNotes(e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
-                  <button
-                    className="rounded-full border border-[#d8c7ab] bg-white px-5 py-2.5 text-sm font-medium text-[#6f6255] transition hover:bg-[#f7f3ee]"
-                    onClick={closeMaintenanceModal}
-                    disabled={creatingMaintenanceFlag}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    className="rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60"
-                    onClick={() => void createMaintenanceFlag()}
-                    disabled={creatingMaintenanceFlag}
-                  >
-                    {creatingMaintenanceFlag ? "Creating..." : "Create Flag"}
-                  </button>
-                </div>
               </div>
             </div>
-          ) : null}
-        </>
-        );
+          )}
+        </section>
+
+        {maintenanceModalOpen ? (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/45 px-4 py-6">
+            <div className="w-full max-w-2xl rounded-[32px] border border-[#d8c7ab] bg-[#f8f3eb] p-5 shadow-[0_30px_80px_rgba(0,0,0,0.28)] md:p-6">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-xl font-semibold tracking-tight text-[#241c15]">Create Maintenance Flag</div>
+                  <p className="mt-1 text-sm text-[#7f7263]">
+                    Add an internal maintenance issue now. This stays admin-only for the moment.
+                  </p>
+                </div>
+                <button
+                  className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1.5 text-sm text-[#6f6255] transition hover:bg-[#f7f3ee]"
+                  onClick={closeMaintenanceModal}
+                  disabled={creatingMaintenanceFlag}
+                >
+                  Close
+                </button>
+              </div>
+
+              {maintenanceFormError ? (
+                <div className="mt-5 rounded-[18px] border border-[#fecaca] bg-[#fff1f2] px-4 py-3 text-sm text-[#991b1b]">
+                  {maintenanceFormError}
+                </div>
+              ) : null}
+
+              <div className="mt-5 grid gap-4 md:grid-cols-2">
+                <div className="md:col-span-2">
+                  <label className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Property</label>
+                  <select
+                    className={`w-full rounded-[20px] border bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e] ${maintenanceFormError && !maintenanceFormPropertyId ? "border-[#dc2626] bg-[#fff5f5]" : "border-[#d9ccbb]"
+                      }`}
+                    value={maintenanceFormPropertyId}
+                    onChange={(e) => setMaintenanceFormPropertyId(e.target.value)}
+                  >
+                    <option value="">Select property</option>
+                    {properties.map((property) => (
+                      <option key={property.id} value={property.id}>
+                        {property.name || property.address || property.id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Category</label>
+                  <select
+                    className={`w-full rounded-[20px] border bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e] ${maintenanceFormError && !maintenanceFormCategory ? "border-[#dc2626] bg-[#fff5f5]" : "border-[#d9ccbb]"
+                      }`}
+                    value={maintenanceFormCategory}
+                    onChange={(e) => setMaintenanceFormCategory(e.target.value)}
+                  >
+                    <option value="">Select category</option>
+                    {MAINTENANCE_CATEGORY_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Urgency</label>
+                  <select
+                    className="w-full rounded-[20px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                    value={maintenanceFormUrgency}
+                    onChange={(e) => setMaintenanceFormUrgency(e.target.value)}
+                  >
+                    <option value="low">Low</option>
+                    <option value="normal">Normal</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Notes</label>
+                  <textarea
+                    className={`min-h-[160px] w-full rounded-[20px] border bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e] ${maintenanceFormError && !maintenanceFormNotes.trim() ? "border-[#dc2626] bg-[#fff5f5]" : "border-[#d9ccbb]"
+                      }`}
+                    placeholder="Describe the issue clearly so it can be acted on later."
+                    value={maintenanceFormNotes}
+                    onChange={(e) => setMaintenanceFormNotes(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
+                <button
+                  className="rounded-full border border-[#d8c7ab] bg-white px-5 py-2.5 text-sm font-medium text-[#6f6255] transition hover:bg-[#f7f3ee]"
+                  onClick={closeMaintenanceModal}
+                  disabled={creatingMaintenanceFlag}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60"
+                  onClick={() => void createMaintenanceFlag()}
+                  disabled={creatingMaintenanceFlag}
+                >
+                  {creatingMaintenanceFlag ? "Creating..." : "Create Flag"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </>
+    );
   }
 
-        function renderActiveSection() {
+  function renderActiveSection() {
     switch (activeSection) {
       case "home":
         return renderHomeSection();
-        case "users":
+      case "users":
         return renderUsersSection();
-        case "properties":
+      case "properties":
         return (
-        <div className="space-y-6">
-          {renderAddPropertySection()}
-          {renderPropertySetupSection()}
-          {renderPropertiesSection()}
-        </div>
+          <div className="space-y-6">
+            {renderAddPropertySection()}
+            {renderPropertySetupSection()}
+            {renderPropertiesSection()}
+          </div>
         );
-        case "cleanerAccounts":
+      case "cleanerAccounts":
         return renderCleanerAccountsSection();
-        case "groundsAccounts":
+      case "groundsAccounts":
         return renderGroundsAccountsSection();
-        case "assignments":
+      case "assignments":
         return renderAssignmentsSection();
-        case "jobs":
+      case "jobs":
         return renderJobsSection();
-        case "calendar":
+      case "calendar":
         return renderCalendarSection();
-        case "maintenance":
+      case "maintenance":
         return renderMaintenanceSection();
-        default:
+      default:
         return renderUsersSection();
     }
   }
 
-        if (checkingAuth) {
+  if (checkingAuth) {
     return (
-        <main className="min-h-screen bg-[#f7f3ee] text-[#241c15]">
-          <div className="mx-auto max-w-7xl p-6">
-            <div className="rounded-[32px] border border-[#e7ddd0] bg-white p-8 shadow-[0_20px_50px_rgba(0,0,0,0.06)]">
-              <div className="flex items-center gap-4">
-                <div className="flex h-[90px] w-[90px] items-center justify-center rounded-[18px] border border-white/20 bg-white/10 backdrop-blur">
+      <main className="min-h-screen bg-[#f7f3ee] text-[#241c15]">
+        <div className="mx-auto max-w-7xl p-6">
+          <div className="rounded-[32px] border border-[#e7ddd0] bg-white p-8 shadow-[0_20px_50px_rgba(0,0,0,0.06)]">
+            <div className="flex items-center gap-4">
+              <div className="flex h-[90px] w-[90px] items-center justify-center rounded-[18px] border border-white/20 bg-white/10 backdrop-blur">
+                <Image
+                  src="/guleraoslogo.png"
+                  alt="GuleraOS"
+                  width={120}
+                  height={120}
+                  className="h-[70px] w-auto"
+                  priority
+                />
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-[0.28em] text-[#8a7b68]">GULERAOS</div>
+                <div className="mt-1 text-2xl font-semibold">Checking admin access...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <main className="min-h-screen bg-[#f7f3ee] text-[#241c15]">
+      <div className="mx-auto max-w-7xl p-4 md:p-6">
+        <div className="mb-6 overflow-hidden rounded-[34px] border border-[#e7ddd0] bg-white shadow-[0_30px_70px_rgba(0,0,0,0.08)]">
+          <div className="bg-[linear-gradient(135deg,#1f1812_0%,#2a2119_55%,#3a2c1d_100%)] px-6 py-8 text-white md:px-8 md:py-10">
+            <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+              <div className="flex items-start gap-4">
+
+                <div className="w-[220px] shrink-0 rounded-[18px] bg-white px-4 py-5 shadow-[0_10px_24px_rgba(0,0,0,0.18)]">
                   <Image
                     src="/guleraoslogo.png"
                     alt="GuleraOS"
-                    width={120}
+                    width={360}
                     height={120}
-                    className="h-[70px] w-auto"
+                    className="mx-auto h-auto w-full max-w-[180px]"
                     priority
                   />
                 </div>
                 <div>
-                  <div className="text-xs uppercase tracking-[0.28em] text-[#8a7b68]">GULERAOS</div>
-                  <div className="mt-1 text-2xl font-semibold">Checking admin access...</div>
+                  <div className="mb-2 text-xs uppercase tracking-[0.32em] text-[#d8c7ab]">GULERAOS</div>
+                  <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">Property operations, elevated.</h1>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-[#e7dccb] md:text-base">
+                    Staffing, scheduling, maintenance, and access — all in one place.
+                  </p>
                 </div>
+              </div>
+              <button
+                onClick={() => setShowSupport(true)}
+                className="mr-3 inline-flex items-center justify-center rounded-full border border-[#d6b36a]/40 bg-[#fef3c7] px-5 py-2.5 text-sm font-medium text-[#7c5a10] hover:bg-[#fde68a]"
+              >
+                Support
+              </button>
+              <button
+                className="inline-flex items-center justify-center rounded-full border border-[#d6b36a]/40 bg-white/10 px-5 py-2.5 text-sm font-medium text-[#f6efe4] shadow-sm transition hover:bg-white/20"
+                onClick={async () => {
+                  await supabase.auth.signOut();
+                  window.location.href = "/login";
+                }}
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+
+          <div className="grid gap-3 border-t border-[#efe6dc] bg-[#fbf8f4] px-6 py-4 md:grid-cols-7 md:px-8">
+            {[
+              { label: "Properties", value: properties.length },
+              { label: "Cleaner Accounts", value: cleanerAccounts.length },
+              { label: "Grounds Accounts", value: groundsAccounts.length },
+              { label: "Assignments", value: assignments.length + groundsAssignments.length },
+              { label: "Jobs", value: jobs.length + groundsJobs.length },
+              { label: "Users", value: profiles.length },
+              { label: "Flags", value: maintenanceFlags.length },
+            ].map((item) => (
+              <div key={item.label} className="rounded-[24px] border border-[#eadfce] bg-white px-4 py-4 shadow-sm">
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#8a7b68]">{item.label}</div>
+                <div className="mt-2 text-3xl font-semibold text-[#241c15]">{item.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {error ? (
+          <div className="mb-6 rounded-[24px] border border-[#e7c6c1] bg-[#fff4f2] px-4 py-3 text-sm text-[#8a2e22] shadow-sm">
+            {error}
+          </div>
+        ) : null}
+
+        {actionMessage ? (
+          <div className="mb-6 rounded-[24px] border border-[#cfe4cf] bg-[#f4fbf4] px-4 py-3 text-sm text-[#2f6b2f] shadow-sm">
+            {actionMessage}
+          </div>
+        ) : null}
+
+        {operationsAlerts.length > 0 ? (
+          <div className="sticky top-3 z-40 mb-6 rounded-[30px] border border-[#e7ddd0] bg-[rgba(255,255,255,0.94)] p-4 shadow-[0_18px_45px_rgba(0,0,0,0.08)] backdrop-blur">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <div className="text-sm font-semibold text-[#241c15]">Operations Alerts</div>
+                <div className="mt-1 text-sm text-[#7f7263]">
+                  Important items across jobs and maintenance.
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {operationsAlerts.map((alert) => (
+                  <button
+                    key={alert.key}
+                    onClick={alert.onClick}
+                    className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${alert.key === "maintenance-urgent"
+                      ? "animate-pulse border-[#b91c1c] bg-[#dc2626] text-white shadow-[0_8px_22px_rgba(185,28,28,0.28)] hover:bg-[#b91c1c]"
+                      : alert.tone === "red"
+                        ? "border-[#fecaca] bg-[#fff1f2] text-[#991b1b] hover:bg-[#ffe4e6]"
+                        : "border-[#ecd7a8] bg-[#fff8e8] text-[#8a6112] hover:bg-[#fff2cf]"
+                      }`}
+                  >
+                    <span>{alert.label}</span>
+                    <span className="rounded-full border border-current/20 px-2 py-0.5 text-[11px]">
+                      View
+                    </span>
+                  </button>
+                ))}
               </div>
             </div>
           </div>
-        </main>
-        );
-  }
+        ) : null}
 
-        return (
-        <main className="min-h-screen bg-[#f7f3ee] text-[#241c15]">
-          <div className="mx-auto max-w-7xl p-4 md:p-6">
-            <div className="mb-6 overflow-hidden rounded-[34px] border border-[#e7ddd0] bg-white shadow-[0_30px_70px_rgba(0,0,0,0.08)]">
-              <div className="bg-[linear-gradient(135deg,#1f1812_0%,#2a2119_55%,#3a2c1d_100%)] px-6 py-8 text-white md:px-8 md:py-10">
-                <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-                  <div className="flex items-start gap-4">
-
-                    <div className="w-[220px] shrink-0 rounded-[18px] bg-white px-4 py-5 shadow-[0_10px_24px_rgba(0,0,0,0.18)]">
-                      <Image
-                        src="/guleraoslogo.png"
-                        alt="GuleraOS"
-                        width={360}
-                        height={120}
-                        className="mx-auto h-auto w-full max-w-[180px]"
-                        priority
-                      />
-                    </div>
-                    <div>
-                      <div className="mb-2 text-xs uppercase tracking-[0.32em] text-[#d8c7ab]">GULERAOS</div>
-                      <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">Property operations, elevated.</h1>
-                      <p className="mt-2 max-w-2xl text-sm leading-6 text-[#e7dccb] md:text-base">
-                        Staffing, scheduling, maintenance, and access — all in one place.
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setShowSupport(true)}
-                    className="mr-3 inline-flex items-center justify-center rounded-full border border-[#d6b36a]/40 bg-[#fef3c7] px-5 py-2.5 text-sm font-medium text-[#7c5a10] hover:bg-[#fde68a]"
-                  >
-                    Support
-                  </button>
-                  <button
-                    className="inline-flex items-center justify-center rounded-full border border-[#d6b36a]/40 bg-white/10 px-5 py-2.5 text-sm font-medium text-[#f6efe4] shadow-sm transition hover:bg-white/20"
-                    onClick={async () => {
-                      await supabase.auth.signOut();
-                      window.location.href = "/login";
-                    }}
-                  >
-                    Logout
-                  </button>
+        <div className="mb-6 hidden rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="hidden text-xs uppercase tracking-[0.24em] text-[#8a7b68]">Today at a Glance</div>
+                <div className="hidden rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#6f6255]">
+                  {now.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
                 </div>
               </div>
-
-              <div className="grid gap-3 border-t border-[#efe6dc] bg-[#fbf8f4] px-6 py-4 md:grid-cols-7 md:px-8">
+              <div className="mt-3 hidden grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                 {[
-                  { label: "Properties", value: properties.length },
-                  { label: "Cleaner Accounts", value: cleanerAccounts.length },
-                  { label: "Grounds Accounts", value: groundsAccounts.length },
-                  { label: "Assignments", value: assignments.length + groundsAssignments.length },
-                  { label: "Jobs", value: jobs.length + groundsJobs.length },
-                  { label: "Users", value: profiles.length },
-                  { label: "Flags", value: maintenanceFlags.length },
+                  { label: "Cleaning Today", value: todayAtGlanceCounts.cleaning },
+                  { label: "Grounds Today", value: todayAtGlanceCounts.grounds },
+                  { label: "Waiting", value: todayAtGlanceCounts.waiting },
+                  { label: "Overdue", value: todayAtGlanceCounts.overdue },
+                  { label: "Open Flags", value: todayAtGlanceCounts.flags },
                 ].map((item) => (
-                  <div key={item.label} className="rounded-[24px] border border-[#eadfce] bg-white px-4 py-4 shadow-sm">
+                  <div key={item.label} className="rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-4 shadow-sm">
                     <div className="text-[11px] uppercase tracking-[0.22em] text-[#8a7b68]">{item.label}</div>
                     <div className="mt-2 text-3xl font-semibold text-[#241c15]">{item.value}</div>
                   </div>
@@ -6518,274 +6563,204 @@ This removes its linked members and deletes the grounds account.`
               </div>
             </div>
 
-            {error ? (
-              <div className="mb-6 rounded-[24px] border border-[#e7c6c1] bg-[#fff4f2] px-4 py-3 text-sm text-[#8a2e22] shadow-sm">
-                {error}
-              </div>
-            ) : null}
-
-            {actionMessage ? (
-              <div className="mb-6 rounded-[24px] border border-[#cfe4cf] bg-[#f4fbf4] px-4 py-3 text-sm text-[#2f6b2f] shadow-sm">
-                {actionMessage}
-              </div>
-            ) : null}
-
-            {operationsAlerts.length > 0 ? (
-              <div className="sticky top-3 z-40 mb-6 rounded-[30px] border border-[#e7ddd0] bg-[rgba(255,255,255,0.94)] p-4 shadow-[0_18px_45px_rgba(0,0,0,0.08)] backdrop-blur">
-                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="w-full lg:max-w-xl hidden">
+              <div className="rounded-[26px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+                <div className="flex items-center justify-between gap-3">
                   <div>
-                    <div className="text-sm font-semibold text-[#241c15]">Operations Alerts</div>
+                    <div className="text-sm font-semibold text-[#241c15]">Today’s Schedule</div>
                     <div className="mt-1 text-sm text-[#7f7263]">
-                      Important items across jobs and maintenance.
+                      Quick view of today’s jobs by property and town.
                     </div>
                   </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    {operationsAlerts.map((alert) => (
-                      <button
-                        key={alert.key}
-                        onClick={alert.onClick}
-                        className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${alert.key === "maintenance-urgent"
-                          ? "animate-pulse border-[#b91c1c] bg-[#dc2626] text-white shadow-[0_8px_22px_rgba(185,28,28,0.28)] hover:bg-[#b91c1c]"
-                          : alert.tone === "red"
-                            ? "border-[#fecaca] bg-[#fff1f2] text-[#991b1b] hover:bg-[#ffe4e6]"
-                            : "border-[#ecd7a8] bg-[#fff8e8] text-[#8a6112] hover:bg-[#fff2cf]"
-                          }`}
-                      >
-                        <span>{alert.label}</span>
-                        <span className="rounded-full border border-current/20 px-2 py-0.5 text-[11px]">
-                          View
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
-            <div className="mb-6 hidden rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-              <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <div className="hidden text-xs uppercase tracking-[0.24em] text-[#8a7b68]">Today at a Glance</div>
-                    <div className="hidden rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#6f6255]">
-                      {now.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
-                    </div>
-                  </div>
-                  <div className="mt-3 hidden grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                    {[
-                      { label: "Cleaning Today", value: todayAtGlanceCounts.cleaning },
-                      { label: "Grounds Today", value: todayAtGlanceCounts.grounds },
-                      { label: "Waiting", value: todayAtGlanceCounts.waiting },
-                      { label: "Overdue", value: todayAtGlanceCounts.overdue },
-                      { label: "Open Flags", value: todayAtGlanceCounts.flags },
-                    ].map((item) => (
-                      <div key={item.label} className="rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-4 shadow-sm">
-                        <div className="text-[11px] uppercase tracking-[0.22em] text-[#8a7b68]">{item.label}</div>
-                        <div className="mt-2 text-3xl font-semibold text-[#241c15]">{item.value}</div>
-                      </div>
-                    ))}
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveSection("jobs");
+                      setAdminSelectedDate(todayYmd);
+                      setTimeout(() => {
+                        document.getElementById("admin-calendar-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                      }, 50);
+                    }}
+                    className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-xs font-medium text-[#6f6255] transition hover:bg-[#fffdf9]"
+                  >
+                    Open day view
+                  </button>
                 </div>
 
-                <div className="w-full lg:max-w-xl hidden">
-                  <div className="rounded-[26px] border border-[#eadfce] bg-[#fcfaf7] p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-semibold text-[#241c15]">Today’s Schedule</div>
-                        <div className="mt-1 text-sm text-[#7f7263]">
-                          Quick view of today’s jobs by property and town.
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setActiveSection("jobs");
-                          setAdminSelectedDate(todayYmd);
-                          setTimeout(() => {
-                            document.getElementById("admin-calendar-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
-                          }, 50);
-                        }}
-                        className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-xs font-medium text-[#6f6255] transition hover:bg-[#fffdf9]"
-                      >
-                        Open day view
-                      </button>
+                <div className="mt-4 space-y-2">
+                  {todayAtGlanceItems.length === 0 ? (
+                    <div className="rounded-[20px] border border-dashed border-[#d8c7ab] bg-white px-4 py-4 text-sm text-[#7f7263]">
+                      Nothing scheduled today.
                     </div>
-
-                    <div className="mt-4 space-y-2">
-                      {todayAtGlanceItems.length === 0 ? (
-                        <div className="rounded-[20px] border border-dashed border-[#d8c7ab] bg-white px-4 py-4 text-sm text-[#7f7263]">
-                          Nothing scheduled today.
-                        </div>
-                      ) : (
-                        todayAtGlanceItems.slice(0, 8).map((item) => (
-                          <div key={item.id} className="rounded-[18px] border border-[#eadfce] bg-white px-4 py-3">
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <div className="min-w-0">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${item.kind === "Cleaning" ? "bg-[#fff4dd] text-[#8a6112]" : "bg-[#edf7ef] text-[#2f6b2f]"}`}>
-                                    {item.kind}
-                                  </span>
-                                  <span className="text-sm font-semibold text-[#241c15]">{item.title}</span>
-                                </div>
-                                <div className="mt-1 text-sm text-[#6f6255]">
-                                  {item.propertyName}{item.city ? ` · ${item.city}` : ""}
-                                </div>
-                              </div>
-                              <div className="text-xs font-medium text-[#8a7b68]">{item.status}</div>
+                  ) : (
+                    todayAtGlanceItems.slice(0, 8).map((item) => (
+                      <div key={item.id} className="rounded-[18px] border border-[#eadfce] bg-white px-4 py-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${item.kind === "Cleaning" ? "bg-[#fff4dd] text-[#8a6112]" : "bg-[#edf7ef] text-[#2f6b2f]"}`}>
+                                {item.kind}
+                              </span>
+                              <span className="text-sm font-semibold text-[#241c15]">{item.title}</span>
+                            </div>
+                            <div className="mt-1 text-sm text-[#6f6255]">
+                              {item.propertyName}{item.city ? ` · ${item.city}` : ""}
                             </div>
                           </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
+                          <div className="text-xs font-medium text-[#8a7b68]">{item.status}</div>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             </div>
-
-            <div className="mb-6 rounded-[30px] border border-[#e7ddd0] bg-white p-3 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-              <div className="flex flex-wrap gap-2">
-                {menuItems.map((item) => (
-                  <button
-                    key={item.key}
-                    onClick={() => setActiveSection(item.key)}
-                    className={`rounded-full px-4 py-2 text-sm font-medium transition ${activeSection === item.key
-                      ? "bg-[#241c15] text-[#f8f2e8]"
-                      : "border border-[#d8c7ab] bg-[#fcfaf7] text-[#6f6255] hover:bg-white"
-                      }`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {renderActiveSection()}
           </div>
+        </div>
 
-          {expandedImage ? (
-            <div
-              className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 p-4"
-              onClick={() => setExpandedImage(null)}
-            >
-              <img
-                src={expandedImage}
-                alt="Expanded maintenance image"
-                className="max-h-[92vh] max-w-[96vw] rounded-[20px] shadow-2xl"
-              />
-            </div>
-          ) : null}
-          {showSupport && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-              <div className="w-full max-w-lg rounded-[24px] bg-white p-6 shadow-xl">
-                <h2 className="text-lg font-semibold text-[#241c15]">Report an issue</h2>
+        <div className="mb-6 rounded-[30px] border border-[#e7ddd0] bg-white p-3 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <div className="flex flex-wrap gap-2">
+            {menuItems.map((item) => (
+              <button
+                key={item.key}
+                onClick={() => setActiveSection(item.key)}
+                className={`rounded-full px-4 py-2 text-sm font-medium transition ${activeSection === item.key
+                  ? "bg-[#241c15] text-[#f8f2e8]"
+                  : "border border-[#d8c7ab] bg-[#fcfaf7] text-[#6f6255] hover:bg-white"
+                  }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
-                <input
-                  type="text"
-                  placeholder="Subject"
-                  value={supportSubject}
-                  onChange={(e) => setSupportSubject(e.target.value)}
-                  className="mt-4 w-full rounded-[16px] border border-[#eadfce] px-4 py-3"
-                />
+        {renderActiveSection()}
+      </div>
 
-                <textarea
-                  placeholder="Describe the issue..."
-                  value={supportMessage}
-                  onChange={(e) => setSupportMessage(e.target.value)}
-                  className="mt-3 w-full rounded-[16px] border border-[#eadfce] px-4 py-3 min-h-[120px]"
-                />
+      {expandedImage ? (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setExpandedImage(null)}
+        >
+          <img
+            src={expandedImage}
+            alt="Expanded maintenance image"
+            className="max-h-[92vh] max-w-[96vw] rounded-[20px] shadow-2xl"
+          />
+        </div>
+      ) : null}
+      {showSupport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-lg rounded-[24px] bg-white p-6 shadow-xl">
+            <h2 className="text-lg font-semibold text-[#241c15]">Report an issue</h2>
 
-                <div className="mt-5 flex justify-end gap-3">
-                  <button
-                    onClick={() => setShowSupport(false)}
-                    className="rounded-full border px-4 py-2"
-                  >
-                    Cancel
-                  </button>
+            <input
+              type="text"
+              placeholder="Subject"
+              value={supportSubject}
+              onChange={(e) => setSupportSubject(e.target.value)}
+              className="mt-4 w-full rounded-[16px] border border-[#eadfce] px-4 py-3"
+            />
 
-                  <button
-                    onClick={async () => {
-                      if (!supportMessage.trim()) {
-                        alert("Please describe the issue.");
-                        return;
+            <textarea
+              placeholder="Describe the issue..."
+              value={supportMessage}
+              onChange={(e) => setSupportMessage(e.target.value)}
+              className="mt-3 w-full rounded-[16px] border border-[#eadfce] px-4 py-3 min-h-[120px]"
+            />
+
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                onClick={() => setShowSupport(false)}
+                className="rounded-full border px-4 py-2"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={async () => {
+                  if (!supportMessage.trim()) {
+                    alert("Please describe the issue.");
+                    return;
+                  }
+
+                  try {
+                    setSendingSupport(true);
+
+                    const {
+                      data: { user },
+                    } = await supabase.auth.getUser();
+
+                    if (!user) {
+                      alert("You must be signed in to submit a support request.");
+                      return;
+                    }
+
+                    let organizationId: string | null = null;
+
+                    const { data: membership } = await supabase
+                      .from("organization_members")
+                      .select("organization_id")
+                      .eq("user_id", user.id)
+                      .maybeSingle();
+
+                    organizationId = membership?.organization_id ?? null;
+
+                    const { error } = await supabase.from("support_tickets").insert({
+                      user_id: user.id,
+                      organization_id: organizationId,
+                      subject: supportSubject.trim() || "Support request",
+                      message: supportMessage.trim(),
+                      status: "open",
+                    });
+
+                    if (error) {
+                      console.error("Support ticket insert failed:", error);
+                      alert(`Error submitting: ${error.message}`);
+                      return;
+                    }
+
+                    const { data: emailData, error: emailError } = await supabase.functions.invoke(
+                      "send-support-email",
+                      {
+                        body: {
+                          subject: supportSubject,
+                          message: supportMessage,
+                          userEmail: user.email,
+                        },
                       }
+                    );
 
-                      try {
-                        setSendingSupport(true);
+                    console.log("Support email response:", emailData, emailError);
 
-                        const {
-                          data: { user },
-                        } = await supabase.auth.getUser();
+                    setShowSupport(false);
+                    setSupportMessage("");
+                    setSupportSubject("");
 
-                        if (!user) {
-                          alert("You must be signed in to submit a support request.");
-                          return;
-                        }
+                    if (emailError) {
+                      console.error("Support email failed:", emailError);
+                      alert("Ticket saved, but email failed.");
+                      return;
+                    }
 
-                        let organizationId: string | null = null;
-
-                        const { data: membership } = await supabase
-                          .from("organization_members")
-                          .select("organization_id")
-                          .eq("user_id", user.id)
-                          .maybeSingle();
-
-                        organizationId = membership?.organization_id ?? null;
-
-                        const { error } = await supabase.from("support_tickets").insert({
-                          user_id: user.id,
-                          organization_id: organizationId,
-                          subject: supportSubject.trim() || "Support request",
-                          message: supportMessage.trim(),
-                          status: "open",
-                        });
-
-                        if (error) {
-                          console.error("Support ticket insert failed:", error);
-                          alert(`Error submitting: ${error.message}`);
-                          return;
-                        }
-
-                        const { data: emailData, error: emailError } = await supabase.functions.invoke(
-                          "send-support-email",
-                          {
-                            body: {
-                              subject: supportSubject,
-                              message: supportMessage,
-                              userEmail: user.email,
-                            },
-                          }
-                        );
-
-                        console.log("Support email response:", emailData, emailError);
-
-                        setShowSupport(false);
-                        setSupportMessage("");
-                        setSupportSubject("");
-
-                        if (emailError) {
-                          console.error("Support email failed:", emailError);
-                          alert("Ticket saved, but email failed.");
-                          return;
-                        }
-
-                        alert("Submitted 👍");
-                      } catch (error) {
-                        console.error("Unexpected support submit error:", error);
-                        alert("Something went wrong submitting your request.");
-                      } finally {
-                        setSendingSupport(false);
-                      }
-                    }}
-                    disabled={sendingSupport}
-                    className="rounded-full bg-[#1f2937] px-5 py-2 text-white disabled:opacity-60"
-                  >
-                    {sendingSupport ? "Submitting..." : "Submit"}
-                  </button>
-                </div>
-              </div>
+                    alert("Submitted 👍");
+                  } catch (error) {
+                    console.error("Unexpected support submit error:", error);
+                    alert("Something went wrong submitting your request.");
+                  } finally {
+                    setSendingSupport(false);
+                  }
+                }}
+                disabled={sendingSupport}
+                className="rounded-full bg-[#1f2937] px-5 py-2 text-white disabled:opacity-60"
+              >
+                {sendingSupport ? "Submitting..." : "Submit"}
+              </button>
             </div>
-          )}
-        </main>
-        );
+          </div>
+        </div>
+      )}
+    </main>
+  );
 }
