@@ -746,10 +746,27 @@ export default function AdminPage() {
   }, [checkingAuth, currentOrganizationId]);
 
   useEffect(() => {
-    if (checkingAuth || !currentOrganizationId) return;
+    if (
+      checkingAuth ||
+      !currentOrganizationId ||
+      selectedPropertyOwnerDirty ||
+      accessDirty ||
+      calendarDraftDirty ||
+      propertyDefaultsDirty
+    ) {
+      return;
+    }
+
     const interval = window.setInterval(() => void loadData(), 15000);
     return () => window.clearInterval(interval);
-  }, [checkingAuth, currentOrganizationId]);
+  }, [
+    checkingAuth,
+    currentOrganizationId,
+    selectedPropertyOwnerDirty,
+    accessDirty,
+    calendarDraftDirty,
+    propertyDefaultsDirty,
+  ]);
 
   useEffect(() => {
     setCalendarDraftDirty(false);
@@ -5507,14 +5524,20 @@ This removes its linked members and deletes the grounds account.`
                 <div className="grid gap-2 sm:grid-cols-2 lg:w-[520px]">
                   <input
                     value={selectedPropertyOwnerName}
-                    onChange={(e) => setSelectedPropertyOwnerName(e.target.value)}
+                    onChange={(e) => {
+                      setSelectedPropertyOwnerName(e.target.value);
+                      setSelectedPropertyOwnerDirty(true);
+                    }}
                     placeholder="Owner name"
                     className="w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
                   />
 
                   <input
                     value={selectedPropertyOwnerEmail}
-                    onChange={(e) => setSelectedPropertyOwnerEmail(e.target.value)}
+                    onChange={(e) => {
+                      setSelectedPropertyOwnerEmail(e.target.value);
+                      setSelectedPropertyOwnerDirty(true);
+                    }}
                     placeholder="Owner email"
                     className="w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
                   />
