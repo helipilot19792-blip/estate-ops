@@ -769,6 +769,7 @@ export default function AdminPage() {
   ]);
 
   useEffect(() => {
+    setSelectedPropertyOwnerDirty(false);
     setCalendarDraftDirty(false);
     setAccessDirty(false);
     setPropertyDefaultsDirty(false);
@@ -5529,6 +5530,16 @@ This removes its linked members and deletes the grounds account.`
                       setSelectedPropertyOwnerDirty(true);
                     }}
                     placeholder="Owner name"
+                    className="w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
+                  />
+
+                  <input
+                    value={selectedPropertyOwnerEmail}
+                    onChange={(e) => {
+                      setSelectedPropertyOwnerEmail(e.target.value);
+                      setSelectedPropertyOwnerDirty(true);
+                    }}
+                    placeholder="Owner email"
                     className="w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
                   />
 
