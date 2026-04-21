@@ -547,6 +547,7 @@ export default function AdminPage() {
   const [selectedPropertyOwnerName, setSelectedPropertyOwnerName] = useState("");
   const [selectedPropertyOwnerEmail, setSelectedPropertyOwnerEmail] = useState("");
   const [savingSelectedPropertyOwner, setSavingSelectedPropertyOwner] = useState(false);
+  const [selectedPropertyOwnerDirty, setSelectedPropertyOwnerDirty] = useState(false);
   const [propertyUnitsNeeded, setPropertyUnitsNeeded] = useState("1");
   const [propertyUnitsStrict, setPropertyUnitsStrict] = useState(false);
   const [propertyShowTeamStatus, setPropertyShowTeamStatus] = useState(true);
@@ -763,6 +764,7 @@ export default function AdminPage() {
       setAccessNotes("");
       setSelectedPropertyOwnerName("");
       setSelectedPropertyOwnerEmail("");
+      setSelectedPropertyOwnerDirty(false);
       setCalendarRowsDraft([]);
       setCalendarDraftDirty(false);
       setAccessDirty(false);
@@ -793,8 +795,10 @@ export default function AdminPage() {
     const selectedProperty = properties.find((p) => p.id === selectedPropertyId);
     const linkedOwner = getOwnerForProperty(selectedPropertyId);
 
-    setSelectedPropertyOwnerName(linkedOwner?.full_name || "");
-    setSelectedPropertyOwnerEmail(linkedOwner?.email || "");
+    if (!selectedPropertyOwnerDirty) {
+      setSelectedPropertyOwnerName(linkedOwner?.full_name || "");
+      setSelectedPropertyOwnerEmail(linkedOwner?.email || "");
+    }
 
     if (!propertyDefaultsDirty) {
       setSelectedPropertyUnitsNeeded(String(selectedProperty?.default_cleaner_units_needed || 1));
@@ -809,6 +813,7 @@ export default function AdminPage() {
     calendarDraftDirty,
     accessDirty,
     propertyDefaultsDirty,
+    selectedPropertyOwnerDirty,
   ]);
   async function handleSubmitSupportTicket() {
     if (!supportMessage.trim()) return;
@@ -2606,7 +2611,7 @@ This removes its linked members and deletes the grounds account.`
 
         if (insertAccessError) throw insertAccessError;
       }
-
+      setSelectedPropertyOwnerDirty(false);
       setActionMessage("Owner saved for property.");
       await loadData();
     } catch (err: any) {
