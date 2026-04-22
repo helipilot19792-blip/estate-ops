@@ -117,6 +117,15 @@ export async function POST(request: Request) {
 
     const flagIds = (flags ?? []).map((f) => f.id);
 
+    const { data: sops, error: sopsError } = await supabase
+      .from("property_sops")
+      .select("id")
+      .in("property_id", propertyIds.length > 0 ? propertyIds : ["00000000-0000-0000-0000-000000000000"]);
+
+    if (sopsError) throw sopsError;
+
+    const sopIds = (sops ?? []).map((s) => s.id);
+
     let deletedFlagImages = 0;
     if (flagIds.length > 0) {
       const { error, count } = await supabase
@@ -237,6 +246,28 @@ export async function POST(request: Request) {
       deletedGroundsRecurringRules = count ?? 0;
     }
 
+    let deletedSopImages = 0;
+    if (sopIds.length > 0) {
+      const { error, count } = await supabase
+        .from("property_sop_images")
+        .delete({ count: "exact" })
+        .in("sop_id", sopIds);
+
+      if (error) throw error;
+      deletedSopImages = count ?? 0;
+    }
+
+    let deletedSops = 0;
+    if (propertyIds.length > 0) {
+      const { error, count } = await supabase
+        .from("property_sops")
+        .delete({ count: "exact" })
+        .in("property_id", propertyIds);
+
+      if (error) throw error;
+      deletedSops = count ?? 0;
+    }
+
     return Response.json({
       ok: true,
       message: "Reset step completed.",
@@ -253,6 +284,8 @@ export async function POST(request: Request) {
         property_grounds_account_assignments: deletedGroundsAssignments,
         property_grounds_recurring_tasks: deletedGroundsRecurringTasks,
         property_grounds_recurring_rules: deletedGroundsRecurringRules,
+        property_sop_images: deletedSopImages,
+        property_sops: deletedSops,
       },
     });
   } catch (error: any) {
