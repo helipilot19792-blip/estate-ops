@@ -57,15 +57,6 @@ async function getPortalDestinationForUser(userId: string, role: string | null |
       .limit(1),
   ]);
 
-  alert(
-    `DEBUG getPortalDestinationForUser\n` +
-    `userId: ${userId}\n` +
-    `role: ${role}\n` +
-    `cleanerError: ${cleanerError?.message || "none"}\n` +
-    `groundsError: ${groundsError?.message || "none"}\n` +
-    `cleanerMemberships: ${JSON.stringify(cleanerMemberships || [])}\n` +
-    `groundsMemberships: ${JSON.stringify(groundsMemberships || [])}`
-  );
 
   const hasCleaner = !!cleanerMemberships?.length;
   const hasGrounds = !!groundsMemberships?.length;
@@ -152,7 +143,7 @@ export default function LoginPage() {
         return;
       }
 
-      alert(`DEBUG login destination: ${destination}`);
+
       window.location.href = destination;
       return;
     } finally {
