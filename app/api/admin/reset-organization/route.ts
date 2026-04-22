@@ -120,11 +120,41 @@ export async function POST(request: Request) {
     const { data: sops, error: sopsError } = await supabase
       .from("property_sops")
       .select("id")
-      .in("property_id", propertyIds.length > 0 ? propertyIds : ["00000000-0000-0000-0000-000000000000"]);
+      .in(
+        "property_id",
+        propertyIds.length > 0 ? propertyIds : ["00000000-0000-0000-0000-000000000000"]
+      );
 
     if (sopsError) throw sopsError;
 
     const sopIds = (sops ?? []).map((s) => s.id);
+
+    const { data: ownerAccounts, error: ownerAccountsError } = await supabase
+      .from("owner_accounts")
+      .select("id")
+      .eq("organization_id", organizationId);
+
+    if (ownerAccountsError) throw ownerAccountsError;
+
+    const ownerAccountIds = (ownerAccounts ?? []).map((o) => o.id);
+
+    const { data: cleanerAccounts, error: cleanerAccountsError } = await supabase
+      .from("cleaner_accounts")
+      .select("id")
+      .eq("organization_id", organizationId);
+
+    if (cleanerAccountsError) throw cleanerAccountsError;
+
+    const cleanerAccountIds = (cleanerAccounts ?? []).map((c) => c.id);
+
+    const { data: groundsAccounts, error: groundsAccountsError } = await supabase
+      .from("grounds_accounts")
+      .select("id")
+      .eq("organization_id", organizationId);
+
+    if (groundsAccountsError) throw groundsAccountsError;
+
+    const groundsAccountIds = (groundsAccounts ?? []).map((g) => g.id);
 
     let deletedFlagImages = 0;
     if (flagIds.length > 0) {
@@ -268,6 +298,86 @@ export async function POST(request: Request) {
       deletedSops = count ?? 0;
     }
 
+    let deletedOwnerPropertyAccess = 0;
+    if (ownerAccountIds.length > 0 || propertyIds.length > 0) {
+      const { error, count } = await supabase
+        .from("owner_property_access")
+        .delete({ count: "exact" })
+        .or(
+          [
+            ownerAccountIds.length > 0 ? `owner_account_id.in.(${ownerAccountIds.join(",")})` : null,
+            propertyIds.length > 0 ? `property_id.in.(${propertyIds.join(",")})` : null,
+          ]
+            .filter(Boolean)
+            .join(",")
+        );
+
+      if (error) throw error;
+      deletedOwnerPropertyAccess = count ?? 0;
+    }
+
+    let deletedOwnerAccounts = 0;
+    if (ownerAccountIds.length > 0) {
+      const { error, count } = await supabase
+        .from("owner_accounts")
+        .delete({ count: "exact" })
+        .eq("organization_id", organizationId);
+
+      if (error) throw error;
+      deletedOwnerAccounts = count ?? 0;
+    }
+
+    let deletedCleanerAccountMembers = 0;
+    if (cleanerAccountIds.length > 0) {
+      const { error, count } = await supabase
+        .from("cleaner_account_members")
+        .delete({ count: "exact" })
+        .in("cleaner_account_id", cleanerAccountIds);
+
+      if (error) throw error;
+      deletedCleanerAccountMembers = count ?? 0;
+    }
+
+    let deletedGroundsAccountMembers = 0;
+    if (groundsAccountIds.length > 0) {
+      const { error, count } = await supabase
+        .from("grounds_account_members")
+        .delete({ count: "exact" })
+        .in("grounds_account_id", groundsAccountIds);
+
+      if (error) throw error;
+      deletedGroundsAccountMembers = count ?? 0;
+    }
+
+    let deletedCleanerAccounts = 0;
+    if (cleanerAccountIds.length > 0) {
+      const { error, count } = await supabase
+        .from("cleaner_accounts")
+        .delete({ count: "exact" })
+        .eq("organization_id", organizationId);
+
+      if (error) throw error;
+      deletedCleanerAccounts = count ?? 0;
+    }
+
+    let deletedGroundsAccounts = 0;
+    if (groundsAccountIds.length > 0) {
+      const { error, count } = await supabase
+        .from("grounds_accounts")
+        .delete({ count: "exact" })
+        .eq("organization_id", organizationId);
+
+      if (error) throw error;
+      deletedGroundsAccounts = count ?? 0;
+    }
+
+    const { error: invitesDeleteError, count: deletedInvites } = await supabase
+      .from("organization_invites")
+      .delete({ count: "exact" })
+      .eq("organization_id", organizationId);
+
+    if (invitesDeleteError) throw invitesDeleteError;
+
     return Response.json({
       ok: true,
       message: "Reset step completed.",
@@ -286,6 +396,13 @@ export async function POST(request: Request) {
         property_grounds_recurring_rules: deletedGroundsRecurringRules,
         property_sop_images: deletedSopImages,
         property_sops: deletedSops,
+        owner_property_access: deletedOwnerPropertyAccess,
+        owner_accounts: deletedOwnerAccounts,
+        cleaner_account_members: deletedCleanerAccountMembers,
+        grounds_account_members: deletedGroundsAccountMembers,
+        cleaner_accounts: deletedCleanerAccounts,
+        grounds_accounts: deletedGroundsAccounts,
+        organization_invites: deletedInvites ?? 0,
       },
     });
   } catch (error: any) {
