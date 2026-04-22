@@ -48,6 +48,7 @@ export async function POST(request: Request) {
       );
     }
 
+    // 🔐 Auth check
     const {
       data: { user },
       error: userError,
@@ -60,6 +61,7 @@ export async function POST(request: Request) {
       );
     }
 
+    // 🔐 Membership check
     const { data: membership, error: membershipError } = await supabase
       .from("organization_members")
       .select("role")
@@ -81,73 +83,84 @@ export async function POST(request: Request) {
       );
     }
 
+    // 🔍 Get properties
     const { data: properties, error: propertiesError } = await supabase
       .from("properties")
       .select("id")
       .eq("organization_id", organizationId);
 
-    if (propertiesError) {
-      throw propertiesError;
-    }
+    if (propertiesError) throw propertiesError;
 
-    const propertyIds = (properties ?? []).map((property) => property.id);
+    const propertyIds = (properties ?? []).map((p) => p.id);
 
-    const { data: flags, error: flagsError } = await supabase
-      .from("property_maintenance_flags")
+    // 🔍 Get turnover jobs
+    const { data: turnoverJobs, error: tjError } = await supabase
+      .from("turnover_jobs")
       .select("id")
       .eq("organization_id", organizationId);
 
-    if (flagsError) {
-      throw flagsError;
-    }
+    if (tjError) throw tjError;
 
-    const flagIds = (flags ?? []).map((flag) => flag.id);
-    let deletedFlagImages = 0;
+    const turnoverJobIds = (turnoverJobs ?? []).map((j) => j.id);
 
-    if (flagIds.length > 0) {
-      const { error: imageDeleteError, count } = await supabase
-        .from("property_maintenance_flag_images")
+    // 🔍 Get grounds jobs
+    const { data: groundsJobs, error: gjError } = await supabase
+      .from("grounds_jobs")
+      .select("id")
+      .eq("organization_id", organizationId);
+
+    if (gjError) throw gjError;
+
+    const groundsJobIds = (groundsJobs ?? []).map((j) => j.id);
+
+    // 🧹 Delete turnover job slots
+    let deletedTurnoverSlots = 0;
+    if (turnoverJobIds.length > 0) {
+      const { error, count } = await supabase
+        .from("turnover_job_slots")
         .delete({ count: "exact" })
-        .in("flag_id", flagIds);
+        .in("job_id", turnoverJobIds);
 
-      if (imageDeleteError) {
-        throw imageDeleteError;
-      }
-
-      deletedFlagImages = count ?? 0;
+      if (error) throw error;
+      deletedTurnoverSlots = count ?? 0;
     }
 
-    const { error: flagDeleteError, count: deletedFlags } = await supabase
-      .from("property_maintenance_flags")
+    // 🧹 Delete grounds job slots
+    let deletedGroundsSlots = 0;
+    if (groundsJobIds.length > 0) {
+      const { error, count } = await supabase
+        .from("grounds_job_slots")
+        .delete({ count: "exact" })
+        .in("job_id", groundsJobIds);
+
+      if (error) throw error;
+      deletedGroundsSlots = count ?? 0;
+    }
+
+    // 🧹 Delete turnover jobs
+    const { error: delTJError, count: deletedTurnoverJobs } = await supabase
+      .from("turnover_jobs")
       .delete({ count: "exact" })
       .eq("organization_id", organizationId);
 
-    if (flagDeleteError) {
-      throw flagDeleteError;
-    }
+    if (delTJError) throw delTJError;
 
-    let deletedPropertyCalendars = 0;
+    // 🧹 Delete grounds jobs
+    const { error: delGJError, count: deletedGroundsJobs } = await supabase
+      .from("grounds_jobs")
+      .delete({ count: "exact" })
+      .eq("organization_id", organizationId);
 
-    if (propertyIds.length > 0) {
-      const { error: calendarDeleteError, count } = await supabase
-        .from("property_calendars")
-        .delete({ count: "exact" })
-        .in("property_id", propertyIds);
-
-      if (calendarDeleteError) {
-        throw calendarDeleteError;
-      }
-
-      deletedPropertyCalendars = count ?? 0;
-    }
+    if (delGJError) throw delGJError;
 
     return Response.json({
       ok: true,
       message: "Reset step completed.",
       deleted: {
-        property_maintenance_flag_images: deletedFlagImages,
-        property_maintenance_flags: deletedFlags ?? 0,
-        property_calendars: deletedPropertyCalendars,
+        turnover_job_slots: deletedTurnoverSlots,
+        grounds_job_slots: deletedGroundsSlots,
+        turnover_jobs: deletedTurnoverJobs ?? 0,
+        grounds_jobs: deletedGroundsJobs ?? 0,
       },
     });
   } catch (error: any) {
