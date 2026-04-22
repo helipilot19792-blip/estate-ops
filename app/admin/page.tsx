@@ -523,6 +523,8 @@ export default function AdminPage() {
   const [deletingPropertyId, setDeletingPropertyId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState("");
   const [sendingOwnerInviteId, setSendingOwnerInviteId] = useState<string | null>(null);
+  const [resetConfirmText, setResetConfirmText] = useState("");
+  const [resettingOrganization, setResettingOrganization] = useState(false);
   const [selectedJobsPropertyFilter, setSelectedJobsPropertyFilter] = useState("all");
   const [maintenanceModalOpen, setMaintenanceModalOpen] = useState(false);
   const [maintenanceFormPropertyId, setMaintenanceFormPropertyId] = useState("");
@@ -1926,7 +1928,61 @@ export default function AdminPage() {
       setSyncingCalendarsNow(false);
     }
   }
+  async function handleResetOrganization() {
+    if (resetConfirmText.trim().toUpperCase() !== "WIPE ALL DATA") {
+      return;
+    }
 
+    if (!currentOrganizationId) {
+      setError("No organization selected.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "This will permanently delete all data for the current organization. This cannot be undone."
+    );
+    if (!confirmed) return;
+
+    setError("");
+    setActionMessage("");
+    setResettingOrganization(true);
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        throw new Error("Could not verify your admin session.");
+      }
+
+      const response = await fetch("/api/admin/reset-organization", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          organizationId: currentOrganizationId,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(payload?.error || "Reset failed.");
+      }
+
+      setActionMessage(payload?.message || "Reset request completed.");
+      setResetConfirmText("");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Reset failed.");
+    } finally {
+      setResettingOrganization(false);
+    }
+  }
   async function reassignStrandedJob(jobId: string) {
     const cleanerAccountId = reassignSelections[jobId];
     if (!cleanerAccountId) {
@@ -3569,7 +3625,28 @@ This removes its linked members and deletes the grounds account.`
               </button>
             </div>
           </div>
+          <div className="mt-5 rounded-[22px] border border-red-200 bg-red-50 p-4">
+            <p className="text-sm font-semibold text-red-700">Reset Organization Data</p>
+            <p className="mt-1 text-xs text-red-600">
+              This will permanently delete all data for the current organization. This cannot be undone.
+            </p>
 
+            <input
+              value={resetConfirmText}
+              onChange={(e) => setResetConfirmText(e.target.value)}
+              placeholder='Type "WIPE ALL DATA" to enable reset'
+              className="mt-3 w-full rounded-[12px] border border-red-200 bg-white px-3 py-2 text-sm outline-none"
+            />
+
+            <button
+              type="button"
+              onClick={() => void handleResetOrganization()}
+              disabled={resetConfirmText.trim().toUpperCase() !== "WIPE ALL DATA" || resettingOrganization}
+              className="mt-3 rounded-full bg-red-600 px-5 py-2 text-sm font-medium text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {resettingOrganization ? "Resetting..." : "Reset Organization Data"}
+            </button>
+          </div>
           <div className="mt-5 grid gap-5 lg:grid-cols-[1.4fr_0.9fr]">
             <div className="space-y-5">
               <div className="rounded-[26px] border border-[#cfe1ff] bg-[#eef5ff] p-4 shadow-[0_10px_30px_rgba(59,130,246,0.10)]">
@@ -6494,7 +6571,7 @@ This removes its linked members and deletes the grounds account.`
                   <div className="mb-2 text-xs uppercase tracking-[0.32em] text-[#d8c7ab]">GULERAOS</div>
                   <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">Property operations, elevated.</h1>
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-[#e7dccb] md:text-base">
-                    Staffing, scheduling, maintenance, and access — all in one place.
+                    Staffing, scheduling, and maintenance.
                   </p>
                 </div>
               </div>
