@@ -48,7 +48,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // 🔐 Verify user from token
     const {
       data: { user },
       error: userError,
@@ -61,7 +60,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // 🔐 Verify membership + role
     const { data: membership, error: membershipError } = await supabase
       .from("organization_members")
       .select("role")
@@ -83,11 +81,47 @@ export async function POST(request: Request) {
       );
     }
 
-    // ✅ SAFE — no deletes yet
+    const { data: flags, error: flagsError } = await supabase
+      .from("property_maintenance_flags")
+      .select("id")
+      .eq("organization_id", organizationId);
+
+    if (flagsError) {
+      throw flagsError;
+    }
+
+    const flagIds = (flags ?? []).map((flag) => flag.id);
+    let deletedFlagImages = 0;
+
+    if (flagIds.length > 0) {
+      const { error: imageDeleteError, count } = await supabase
+        .from("property_maintenance_flag_images")
+        .delete({ count: "exact" })
+        .in("flag_id", flagIds);
+
+      if (imageDeleteError) {
+        throw imageDeleteError;
+      }
+
+      deletedFlagImages = count ?? 0;
+    }
+
+    const { error: flagDeleteError, count: deletedFlags } = await supabase
+      .from("property_maintenance_flags")
+      .delete({ count: "exact" })
+      .eq("organization_id", organizationId);
+
+    if (flagDeleteError) {
+      throw flagDeleteError;
+    }
+
     return Response.json({
       ok: true,
-      message: "Safety checks passed. Ready for reset.",
-      organizationId,
+      message: "Reset step completed.",
+      deleted: {
+        property_maintenance_flag_images: deletedFlagImages,
+        property_maintenance_flags: deletedFlags ?? 0,
+      },
     });
   } catch (error: any) {
     return Response.json(
