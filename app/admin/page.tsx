@@ -3538,26 +3538,36 @@ This removes its linked members and deletes the grounds account.`
                 })}
               </p>
             </div>
-            <button
-              onClick={() => router.push("/help")}
-              className="rounded-full bg-[#b48d4e] px-4 py-2 text-black"
-            >
-              Help
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveSection("jobs")}
-              className="inline-flex items-center justify-center rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#f7f1e8]"
-            >
-              View jobs
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowSupport(true)}
-              className="ml-2 inline-flex items-center justify-center rounded-full border border-[#d8c7ab] bg-[#fff7ed] px-4 py-2 text-sm font-medium text-[#7a4b1f] hover:bg-[#ffedd5]"
-            >
-              Support
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => router.push("/help")}
+                className="rounded-full bg-[#b48d4e] px-4 py-2 text-black"
+              >
+                Help
+              </button>
+              <button
+                type="button"
+                onClick={() => void syncCalendarsNow()}
+                disabled={syncingCalendarsNow}
+                className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-4 py-2 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {syncingCalendarsNow ? "Syncing..." : "Sync all calendars"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveSection("jobs")}
+                className="inline-flex items-center justify-center rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#f7f1e8]"
+              >
+                View jobs
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowSupport(true)}
+                className="inline-flex items-center justify-center rounded-full border border-[#d8c7ab] bg-[#fff7ed] px-4 py-2 text-sm font-medium text-[#7a4b1f] hover:bg-[#ffedd5]"
+              >
+                Support
+              </button>
+            </div>
           </div>
 
           <div className="mt-5 grid gap-5 lg:grid-cols-[1.4fr_0.9fr]">
