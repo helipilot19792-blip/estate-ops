@@ -1,7 +1,9 @@
 // supabase/functions/send-support-email/index.ts
 // @ts-ignore
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
 declare const Deno: { env: { get: (key: string) => string | undefined } };
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -15,7 +17,7 @@ serve(async (req: Request) => {
   }
 
   try {
-    const { subject, message, userEmail, page, context } = await req.json();
+    const { subject, message, userEmail } = await req.json();
 
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 
@@ -46,8 +48,6 @@ serve(async (req: Request) => {
         html: `
           <h2>New Support Ticket</h2>
           <p><strong>User:</strong> ${userEmail || "Unknown"}</p>
-          <p><strong>Page:</strong> ${page || "Unknown"}</p>
-          <p><strong>Context:</strong> ${context || "None"}</p>
           <p><strong>Subject:</strong> ${subject || "Support request"}</p>
           <p><strong>Message:</strong></p>
           <p>${message || ""}</p>
