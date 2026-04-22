@@ -48,7 +48,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // 🔐 Auth check
     const {
       data: { user },
       error: userError,
@@ -61,7 +60,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // 🔐 Membership check
     const { data: membership, error: membershipError } = await supabase
       .from("organization_members")
       .select("role")
@@ -83,7 +81,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // 🔍 Get properties
     const { data: properties, error: propertiesError } = await supabase
       .from("properties")
       .select("id")
@@ -93,7 +90,6 @@ export async function POST(request: Request) {
 
     const propertyIds = (properties ?? []).map((p) => p.id);
 
-    // 🔍 Get turnover jobs
     const { data: turnoverJobs, error: tjError } = await supabase
       .from("turnover_jobs")
       .select("id")
@@ -103,7 +99,6 @@ export async function POST(request: Request) {
 
     const turnoverJobIds = (turnoverJobs ?? []).map((j) => j.id);
 
-    // 🔍 Get grounds jobs
     const { data: groundsJobs, error: gjError } = await supabase
       .from("grounds_jobs")
       .select("id")
@@ -113,7 +108,44 @@ export async function POST(request: Request) {
 
     const groundsJobIds = (groundsJobs ?? []).map((j) => j.id);
 
-    // 🧹 Delete turnover job slots
+    const { data: flags, error: flagsError } = await supabase
+      .from("property_maintenance_flags")
+      .select("id")
+      .eq("organization_id", organizationId);
+
+    if (flagsError) throw flagsError;
+
+    const flagIds = (flags ?? []).map((f) => f.id);
+
+    let deletedFlagImages = 0;
+    if (flagIds.length > 0) {
+      const { error, count } = await supabase
+        .from("property_maintenance_flag_images")
+        .delete({ count: "exact" })
+        .in("flag_id", flagIds);
+
+      if (error) throw error;
+      deletedFlagImages = count ?? 0;
+    }
+
+    const { error: delFlagsError, count: deletedFlags } = await supabase
+      .from("property_maintenance_flags")
+      .delete({ count: "exact" })
+      .eq("organization_id", organizationId);
+
+    if (delFlagsError) throw delFlagsError;
+
+    let deletedPropertyCalendars = 0;
+    if (propertyIds.length > 0) {
+      const { error, count } = await supabase
+        .from("property_calendars")
+        .delete({ count: "exact" })
+        .in("property_id", propertyIds);
+
+      if (error) throw error;
+      deletedPropertyCalendars = count ?? 0;
+    }
+
     let deletedTurnoverSlots = 0;
     if (turnoverJobIds.length > 0) {
       const { error, count } = await supabase
@@ -125,7 +157,6 @@ export async function POST(request: Request) {
       deletedTurnoverSlots = count ?? 0;
     }
 
-    // 🧹 Delete grounds job slots
     let deletedGroundsSlots = 0;
     if (groundsJobIds.length > 0) {
       const { error, count } = await supabase
@@ -137,7 +168,6 @@ export async function POST(request: Request) {
       deletedGroundsSlots = count ?? 0;
     }
 
-    // 🧹 Delete turnover jobs
     const { error: delTJError, count: deletedTurnoverJobs } = await supabase
       .from("turnover_jobs")
       .delete({ count: "exact" })
@@ -145,7 +175,6 @@ export async function POST(request: Request) {
 
     if (delTJError) throw delTJError;
 
-    // 🧹 Delete grounds jobs
     const { error: delGJError, count: deletedGroundsJobs } = await supabase
       .from("grounds_jobs")
       .delete({ count: "exact" })
@@ -153,14 +182,77 @@ export async function POST(request: Request) {
 
     if (delGJError) throw delGJError;
 
+    let deletedPropertyAccess = 0;
+    if (propertyIds.length > 0) {
+      const { error, count } = await supabase
+        .from("property_access")
+        .delete({ count: "exact" })
+        .in("property_id", propertyIds);
+
+      if (error) throw error;
+      deletedPropertyAccess = count ?? 0;
+    }
+
+    let deletedCleanerAssignments = 0;
+    if (propertyIds.length > 0) {
+      const { error, count } = await supabase
+        .from("property_cleaner_account_assignments")
+        .delete({ count: "exact" })
+        .in("property_id", propertyIds);
+
+      if (error) throw error;
+      deletedCleanerAssignments = count ?? 0;
+    }
+
+    let deletedGroundsAssignments = 0;
+    if (propertyIds.length > 0) {
+      const { error, count } = await supabase
+        .from("property_grounds_account_assignments")
+        .delete({ count: "exact" })
+        .in("property_id", propertyIds);
+
+      if (error) throw error;
+      deletedGroundsAssignments = count ?? 0;
+    }
+
+    let deletedGroundsRecurringTasks = 0;
+    if (propertyIds.length > 0) {
+      const { error, count } = await supabase
+        .from("property_grounds_recurring_tasks")
+        .delete({ count: "exact" })
+        .in("property_id", propertyIds);
+
+      if (error) throw error;
+      deletedGroundsRecurringTasks = count ?? 0;
+    }
+
+    let deletedGroundsRecurringRules = 0;
+    if (propertyIds.length > 0) {
+      const { error, count } = await supabase
+        .from("property_grounds_recurring_rules")
+        .delete({ count: "exact" })
+        .in("property_id", propertyIds);
+
+      if (error) throw error;
+      deletedGroundsRecurringRules = count ?? 0;
+    }
+
     return Response.json({
       ok: true,
       message: "Reset step completed.",
       deleted: {
+        property_maintenance_flag_images: deletedFlagImages,
+        property_maintenance_flags: deletedFlags ?? 0,
+        property_calendars: deletedPropertyCalendars,
         turnover_job_slots: deletedTurnoverSlots,
         grounds_job_slots: deletedGroundsSlots,
         turnover_jobs: deletedTurnoverJobs ?? 0,
         grounds_jobs: deletedGroundsJobs ?? 0,
+        property_access: deletedPropertyAccess,
+        property_cleaner_account_assignments: deletedCleanerAssignments,
+        property_grounds_account_assignments: deletedGroundsAssignments,
+        property_grounds_recurring_tasks: deletedGroundsRecurringTasks,
+        property_grounds_recurring_rules: deletedGroundsRecurringRules,
       },
     });
   } catch (error: any) {
