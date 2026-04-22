@@ -4043,7 +4043,7 @@ This removes its linked members and deletes the grounds account.`
 
               <input
                 className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                placeholder="Province"
+                placeholder="State/Province"
                 value={propertyProvince}
                 onChange={(e) => setPropertyProvince(e.target.value)}
               />
@@ -4051,7 +4051,7 @@ This removes its linked members and deletes the grounds account.`
 
             <input
               className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-              placeholder="Postal Code"
+              placeholder="Zip/Postal Code"
               value={propertyPostal}
               onChange={(e) => setPropertyPostal(e.target.value)}
             />
