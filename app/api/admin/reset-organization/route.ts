@@ -300,20 +300,22 @@ export async function POST(request: Request) {
 
     let deletedOwnerPropertyAccess = 0;
     if (ownerAccountIds.length > 0 || propertyIds.length > 0) {
-      const { error, count } = await supabase
-        .from("owner_property_access")
-        .delete({ count: "exact" })
-        .or(
-          [
-            ownerAccountIds.length > 0 ? `owner_account_id.in.(${ownerAccountIds.join(",")})` : null,
-            propertyIds.length > 0 ? `property_id.in.(${propertyIds.join(",")})` : null,
-          ]
-            .filter(Boolean)
-            .join(",")
-        );
+      const filters = [
+        ownerAccountIds.length > 0
+          ? `owner_account_id.in.(${ownerAccountIds.join(",")})`
+          : null,
+        propertyIds.length > 0 ? `property_id.in.(${propertyIds.join(",")})` : null,
+      ].filter(Boolean);
 
-      if (error) throw error;
-      deletedOwnerPropertyAccess = count ?? 0;
+      if (filters.length > 0) {
+        const { error, count } = await supabase
+          .from("owner_property_access")
+          .delete({ count: "exact" })
+          .or(filters.join(","));
+
+        if (error) throw error;
+        deletedOwnerPropertyAccess = count ?? 0;
+      }
     }
 
     let deletedOwnerAccounts = 0;
@@ -378,9 +380,23 @@ export async function POST(request: Request) {
 
     if (invitesDeleteError) throw invitesDeleteError;
 
+    const { error: supportDeleteError, count: deletedSupportTickets } = await supabase
+      .from("support_tickets")
+      .delete({ count: "exact" })
+      .eq("organization_id", organizationId);
+
+    if (supportDeleteError) throw supportDeleteError;
+
+    const { error: propertiesDeleteError, count: deletedProperties } = await supabase
+      .from("properties")
+      .delete({ count: "exact" })
+      .eq("organization_id", organizationId);
+
+    if (propertiesDeleteError) throw propertiesDeleteError;
+
     return Response.json({
       ok: true,
-      message: "Reset step completed.",
+      message: "Organization data reset completed.",
       deleted: {
         property_maintenance_flag_images: deletedFlagImages,
         property_maintenance_flags: deletedFlags ?? 0,
@@ -403,6 +419,8 @@ export async function POST(request: Request) {
         cleaner_accounts: deletedCleanerAccounts,
         grounds_accounts: deletedGroundsAccounts,
         organization_invites: deletedInvites ?? 0,
+        support_tickets: deletedSupportTickets ?? 0,
+        properties: deletedProperties ?? 0,
       },
     });
   } catch (error: any) {
