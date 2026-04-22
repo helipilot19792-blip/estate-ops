@@ -12,6 +12,7 @@ type PropertyCalendarRow = {
 
 type PropertyRow = {
   id: string;
+  organization_id: string;
   name: string | null;
   address: string | null;
 };
@@ -191,7 +192,9 @@ async function loadCalendars() {
 }
 
 async function loadPropertiesMap() {
-  const { data, error } = await supabase.from("properties").select("id, name, address");
+ const { data, error } = await supabase
+  .from("properties")
+  .select("id, organization_id, name, address");
 
   if (error) throw error;
 
@@ -350,22 +353,26 @@ export async function POST() {
             "",
             marker,
           ].join("\n");
-
-          const { data: insertedJob, error: insertError } = await supabase
-            .from("turnover_jobs")
-            .insert({
-              property_id: calendar.property_id,
-              status: "pending",
-              notes,
-              scheduled_for: event.checkoutDate,
-              cleaners_needed: 1,
-              cleaners_required_strict: false,
-              cleaner_units_needed: 1,
-              cleaner_units_required_strict: false,
-              show_team_status_to_cleaners: true,
-            })
-            .select("id")
-            .single();
+if (!property?.organization_id) {
+  resultBucket.errors.push(`Missing organization_id for property ${propertyName}`);
+  continue;
+}
+         const { data: insertedJob, error: insertError } = await supabase
+  .from("turnover_jobs")
+  .insert({
+    organization_id: property?.organization_id,
+    property_id: calendar.property_id,
+    status: "pending",
+    notes,
+    scheduled_for: event.checkoutDate,
+    cleaners_needed: 1,
+    cleaners_required_strict: false,
+    cleaner_units_needed: 1,
+    cleaner_units_required_strict: false,
+    show_team_status_to_cleaners: true,
+  })
+  .select("id")
+  .single();
 
           if (insertError || !insertedJob) {
             resultBucket.errors.push(
