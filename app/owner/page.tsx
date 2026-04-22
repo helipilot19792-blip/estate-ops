@@ -140,6 +140,7 @@ function parseBookingFromNotes(notes: string | null) {
     return {
       sourceLabel: null as string | null,
       guest: null as string | null,
+      checkinDate: null as string | null,
       checkoutDate: null as string | null,
     };
   }
@@ -160,11 +161,13 @@ function parseBookingFromNotes(notes: string | null) {
             : null;
 
   const guestMatch = normalized.match(/Guest\s*\/\s*reservation\s*:\s*(.+)/i);
+  const checkinMatch = normalized.match(/Check-in date\s*:\s*(\d{4}-\d{2}-\d{2})/i);
   const checkoutMatch = normalized.match(/Checkout date\s*:\s*(\d{4}-\d{2}-\d{2})/i);
 
   return {
     sourceLabel,
     guest: guestMatch?.[1]?.trim() || null,
+    checkinDate: checkinMatch?.[1] || null,
     checkoutDate: checkoutMatch?.[1] || null,
   };
 }
@@ -478,8 +481,8 @@ function ReportIssueModal({
                       type="button"
                       onClick={() => setCategory(item)}
                       className={`rounded-2xl border px-4 py-3 text-sm font-medium transition ${selected
-                          ? "border-[#e7c98a] bg-[#b08b47]/20 text-[#f7f1e8]"
-                          : "border-white/8 bg-white/[0.03] text-[#e8ddca] hover:bg-white/[0.05]"
+                        ? "border-[#e7c98a] bg-[#b08b47]/20 text-[#f7f1e8]"
+                        : "border-white/8 bg-white/[0.03] text-[#e8ddca] hover:bg-white/[0.05]"
                         }`}
                     >
                       {item}
@@ -502,10 +505,10 @@ function ReportIssueModal({
                     type="button"
                     onClick={() => setUrgency(item.value)}
                     className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${urgency === item.value
-                        ? item.value === "urgent"
-                          ? "border-red-400/70 bg-red-500 text-white"
-                          : "border-[#e7c98a] bg-[#b08b47]/20 text-[#f7f1e8]"
-                        : "border-white/8 bg-white/[0.03] text-[#e8ddca] hover:bg-white/[0.05]"
+                      ? item.value === "urgent"
+                        ? "border-red-400/70 bg-red-500 text-white"
+                        : "border-[#e7c98a] bg-[#b08b47]/20 text-[#f7f1e8]"
+                      : "border-white/8 bg-white/[0.03] text-[#e8ddca] hover:bg-white/[0.05]"
                       }`}
                   >
                     {item.label}
@@ -842,8 +845,8 @@ export default function OwnerPage() {
         const booking = parseBookingFromNotes(job.notes);
         return { job, booking };
       })
-      .filter((item) => !!item.booking.checkoutDate && isFutureOrToday(item.booking.checkoutDate))
-      .sort((a, b) => (a.booking.checkoutDate || "").localeCompare(b.booking.checkoutDate || ""))[0] || null;
+      .filter((item) => !!item.booking.checkinDate && isFutureOrToday(item.booking.checkinDate))
+      .sort((a, b) => (a.booking.checkinDate || "").localeCompare(b.booking.checkinDate || ""))[0] || null;
   }, [propertyTurnoverJobs]);
 
   const timelineItems = useMemo<TimelineItem[]>(() => {
@@ -865,12 +868,12 @@ export default function OwnerPage() {
         });
       }
 
-      if (booking.checkoutDate && isFutureOrToday(booking.checkoutDate)) {
+      if (booking.checkinDate && isFutureOrToday(booking.checkinDate)) {
         items.push({
           id: `booking-${job.id}`,
           type: "booking",
-          title: "Upcoming booking / turnover",
-          date: booking.checkoutDate,
+          title: "Upcoming booking",
+          date: booking.checkinDate,
           subtitle:
             booking.guest || booking.sourceLabel
               ? [booking.guest, booking.sourceLabel].filter(Boolean).join(" • ")
@@ -1025,7 +1028,7 @@ export default function OwnerPage() {
           />
           <StatCard
             label="Upcoming Booking"
-            value={bookingInfo?.checkoutDate ? formatDateLabel(bookingInfo.checkoutDate) : "Not available"}
+            value={bookingInfo?.checkinDate ? formatDateLabel(bookingInfo.checkinDate) : "Not available"}
             subtext={
               bookingInfo
                 ? [bookingInfo.guest, bookingInfo.sourceLabel].filter(Boolean).join(" • ") || "Booking found from sync"
@@ -1069,12 +1072,12 @@ export default function OwnerPage() {
                       </div>
                       <div
                         className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${item.tone === "emerald"
-                            ? "bg-emerald-400"
-                            : item.tone === "sky"
-                              ? "bg-sky-400"
-                              : item.tone === "rose"
-                                ? "bg-rose-400"
-                                : "bg-[#b08b47]"
+                          ? "bg-emerald-400"
+                          : item.tone === "sky"
+                            ? "bg-sky-400"
+                            : item.tone === "rose"
+                              ? "bg-rose-400"
+                              : "bg-[#b08b47]"
                           }`}
                       />
                     </div>

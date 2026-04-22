@@ -28,6 +28,7 @@ type ParsedEvent = {
   summary: string;
   dtstartRaw: string | null;
   dtendRaw: string | null;
+  checkinDate: string | null;
   checkoutDate: string | null;
 };
 
@@ -75,7 +76,7 @@ function unescapeIcsText(value: string): string {
     .replace(/\\\\/g, "\\");
 }
 
-function parseCheckoutDate(rawValue: string | null): string | null {
+function parseIcsDate(rawValue: string | null): string | null {
   if (!rawValue) return null;
 
   const dateOnlyMatch = rawValue.match(/^(\d{4})(\d{2})(\d{2})$/);
@@ -110,15 +111,17 @@ function parseIcsEvents(icsText: string): ParsedEvent[] {
         const summary = unescapeIcsText(current.SUMMARY?.[0] ?? "Reservation");
         const dtstartRaw = current.DTSTART?.[0] ?? null;
         const dtendRaw = current.DTEND?.[0] ?? null;
-        const checkoutDate = parseCheckoutDate(dtendRaw);
+        const checkinDate = parseIcsDate(dtstartRaw);
+const checkoutDate = parseIcsDate(dtendRaw);
 
-        events.push({
-          uid,
-          summary,
-          dtstartRaw,
-          dtendRaw,
-          checkoutDate,
-        });
+      events.push({
+  uid,
+  summary,
+  dtstartRaw,
+  dtendRaw,
+  checkinDate,
+  checkoutDate,
+});
       }
 
       inEvent = false;
@@ -352,14 +355,15 @@ export async function POST(request: Request) {
             continue;
           }
 
-          const notes = [
-            `Auto-created from ${calendar.source.toUpperCase()} calendar sync.`,
-            `Property: ${propertyName}`,
-            `Guest / reservation: ${event.summary || "Reservation"}`,
-            `Checkout date: ${event.checkoutDate}`,
-            "",
-            marker,
-          ].join("\n");
+       const notes = [
+  `Auto-created from ${calendar.source.toUpperCase()} calendar sync.`,
+  `Property: ${propertyName}`,
+  `Guest / reservation: ${event.summary || "Reservation"}`,
+  `Check-in date: ${event.checkinDate || "Unknown"}`,
+  `Checkout date: ${event.checkoutDate}`,
+  "",
+  marker,
+].join("\n");
 if (!property?.organization_id) {
   resultBucket.errors.push(`Missing organization_id for property ${propertyName}`);
   continue;
