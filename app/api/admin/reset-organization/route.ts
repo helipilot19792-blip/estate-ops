@@ -48,9 +48,45 @@ export async function POST(request: Request) {
       );
     }
 
+    // 🔐 Verify user from token
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser(token);
+
+    if (userError || !user) {
+      return Response.json(
+        { ok: false, error: "Invalid user." },
+        { status: 401 }
+      );
+    }
+
+    // 🔐 Verify membership + role
+    const { data: membership, error: membershipError } = await supabase
+      .from("organization_members")
+      .select("role")
+      .eq("organization_id", organizationId)
+      .eq("profile_id", user.id)
+      .maybeSingle();
+
+    if (membershipError || !membership) {
+      return Response.json(
+        { ok: false, error: "You do not have access to this organization." },
+        { status: 403 }
+      );
+    }
+
+    if (membership.role !== "admin") {
+      return Response.json(
+        { ok: false, error: "Only admins can reset organization data." },
+        { status: 403 }
+      );
+    }
+
+    // ✅ SAFE — no deletes yet
     return Response.json({
       ok: true,
-      message: "Reset route reached.",
+      message: "Safety checks passed. Ready for reset.",
       organizationId,
     });
   } catch (error: any) {
