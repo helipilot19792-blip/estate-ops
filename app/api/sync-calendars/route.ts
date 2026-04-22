@@ -286,7 +286,14 @@ export async function GET() {
   }
 }
 
-export async function POST() {
+export async function POST(request: Request) {
+  const authHeader = request.headers.get("authorization");
+  const expected = process.env.CRON_SECRET;
+
+  if (expected && authHeader !== `Bearer ${expected}`) {
+    return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const calendars = await loadCalendars();
     const propertiesMap = await loadPropertiesMap();
