@@ -81,6 +81,17 @@ export async function POST(request: Request) {
       );
     }
 
+    const { data: properties, error: propertiesError } = await supabase
+      .from("properties")
+      .select("id")
+      .eq("organization_id", organizationId);
+
+    if (propertiesError) {
+      throw propertiesError;
+    }
+
+    const propertyIds = (properties ?? []).map((property) => property.id);
+
     const { data: flags, error: flagsError } = await supabase
       .from("property_maintenance_flags")
       .select("id")
@@ -115,12 +126,28 @@ export async function POST(request: Request) {
       throw flagDeleteError;
     }
 
+    let deletedPropertyCalendars = 0;
+
+    if (propertyIds.length > 0) {
+      const { error: calendarDeleteError, count } = await supabase
+        .from("property_calendars")
+        .delete({ count: "exact" })
+        .in("property_id", propertyIds);
+
+      if (calendarDeleteError) {
+        throw calendarDeleteError;
+      }
+
+      deletedPropertyCalendars = count ?? 0;
+    }
+
     return Response.json({
       ok: true,
       message: "Reset step completed.",
       deleted: {
         property_maintenance_flag_images: deletedFlagImages,
         property_maintenance_flags: deletedFlags ?? 0,
+        property_calendars: deletedPropertyCalendars,
       },
     });
   } catch (error: any) {
