@@ -704,6 +704,22 @@ export default function AdminPage() {
   const pendingGroundsInvites = useMemo(() => {
     return organizationInvites.filter((invite) => invite.role === "grounds");
   }, [organizationInvites]);
+
+  const duplicateGroundsInviteEmails = useMemo(() => {
+    const counts = new Map<string, number>();
+
+    for (const invite of pendingGroundsInvites) {
+      const email = invite.email.trim().toLowerCase();
+      counts.set(email, (counts.get(email) ?? 0) + 1);
+    }
+
+    return new Set(
+      Array.from(counts.entries())
+        .filter(([, count]) => count > 1)
+        .map(([email]) => email)
+    );
+  }, [pendingGroundsInvites]);
+
   const openMaintenanceFlagsCount = useMemo(() => {
     return maintenanceFlags.filter((flag) => {
       const status = (flag.status || "").toLowerCase();
@@ -4718,6 +4734,11 @@ This removes its linked members and deletes the grounds account.`
                         <div>
                           <div className="text-sm font-medium text-[#241c15]">
                             {invite.full_name || invite.email}
+                            {duplicateGroundsInviteEmails.has(invite.email.trim().toLowerCase()) ? (
+                              <span className="ml-2 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                                Duplicate
+                              </span>
+                            ) : null}
                           </div>
                           <div className="text-sm text-[#7f7263]">{invite.email}</div>
                           <div className="mt-1 text-xs text-[#8a7b68]">
