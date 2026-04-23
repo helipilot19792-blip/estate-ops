@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
@@ -372,6 +373,19 @@ export default function LoginPage() {
                     Use the login tab to access your existing portal.
                   </div>
                 </div>
+
+                <div className="rounded-[20px] border border-[#d8c7ab]/35 bg-[#f2e6d1]/10 px-4 py-4">
+                  <div className="text-sm font-semibold text-white">Looking for owner access?</div>
+                  <div className="mt-1 text-sm text-[#e7dccb]">
+                    Owners sign in through the separate owner portal login page.
+                  </div>
+                  <Link
+                    href="/owner/login"
+                    className="mt-3 inline-flex items-center rounded-full border border-[#d8c7ab] px-4 py-2 text-sm font-medium text-[#f7e5bf] transition hover:bg-white/10"
+                  >
+                    Go to Owner Login
+                  </Link>
+                </div>
               </div>
             </div>
           </section>
@@ -421,6 +435,16 @@ export default function LoginPage() {
                   <section className="rounded-[28px] border border-[#e7ddd0] bg-[#fcfaf7] p-5 shadow-sm">
                     <h2 className="text-2xl font-semibold tracking-tight">Login</h2>
                     <p className="mt-1 text-sm text-[#7f7263]">Existing staff or admin account</p>
+
+                    <div className="mt-4 rounded-[20px] border border-[#d8c7ab] bg-white px-4 py-3 text-sm text-[#5f5245]">
+                      <div className="font-medium text-[#241c15]">Owner trying to sign in?</div>
+                      <div className="mt-1">
+                        Use the dedicated owner portal here:{" "}
+                        <Link href="/owner/login" className="font-medium text-[#7a5a23] underline underline-offset-2">
+                          Owner Login
+                        </Link>
+                      </div>
+                    </div>
 
                     <form onSubmit={handleLogin} className="mt-5 space-y-3">
                       <input
