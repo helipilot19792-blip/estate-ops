@@ -4,6 +4,7 @@ import { Resend } from "resend";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const OWNER_FRESH_LINK_COOLDOWN_MS = 60 * 1000;
 
 if (!supabaseUrl) {
   throw new Error("NEXT_PUBLIC_SUPABASE_URL is missing.");
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
 
     const { data: owner, error: ownerError } = await serviceClient
       .from("owner_accounts")
-      .select("id,email,full_name,is_active")
+      .select("id,email,full_name,is_active,invite_sent_at")
       .eq("email", ownerEmail)
       .maybeSingle();
 
@@ -55,10 +56,20 @@ export async function POST(request: NextRequest) {
     }
 
     if (!owner || owner.is_active === false) {
-      return NextResponse.json(
-        { error: "No active owner account was found for that email. Resend the owner invite from admin first." },
-        { status: 404 }
-      );
+      return NextResponse.json({
+        success: true,
+      });
+    }
+
+    const lastInviteSentAt = owner.invite_sent_at ? new Date(owner.invite_sent_at) : null;
+    if (
+      lastInviteSentAt &&
+      !Number.isNaN(lastInviteSentAt.getTime()) &&
+      Date.now() - lastInviteSentAt.getTime() < OWNER_FRESH_LINK_COOLDOWN_MS
+    ) {
+      return NextResponse.json({
+        success: true,
+      });
     }
 
     const ownerWelcomeUrl = getOwnerWelcomeUrl(request.nextUrl.origin, ownerEmail);

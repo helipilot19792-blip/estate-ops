@@ -242,7 +242,7 @@ export async function POST(request: NextRequest) {
       property_id: propertyId,
       property_calendar_id: null,
       source: row.source,
-      external_uid: `csv:${row.source}:${row.checkinDate}:${row.checkoutDate}:${row.summary}`,
+      external_uid: `csv:${row.source}:${row.checkinDate}:${row.checkoutDate}`,
       summary: row.summary,
       checkin_date: row.checkinDate,
       checkout_date: row.checkoutDate,

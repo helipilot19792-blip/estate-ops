@@ -150,15 +150,17 @@ function buildSyncMarker(source: string, uid: string): string {
   return `[AUTO_SYNC:${source}:${uid}]`;
 }
 
-function isFutureOrToday(dateString: string): boolean {
+function getTodayYmd() {
   const today = new Date();
-  const todayYmd = new Date(
+  return new Date(
     Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate())
   )
     .toISOString()
     .slice(0, 10);
+}
 
-  return dateString >= todayYmd;
+function isFutureOrToday(dateString: string): boolean {
+  return dateString >= getTodayYmd();
 }
 
 function isRealBookingEvent(summary: string, source: string): boolean {
@@ -273,6 +275,34 @@ async function upsertBookingEvent(
   if (error) throw error;
 }
 
+async function deleteStaleUpcomingBookingEvents(
+  calendarId: string,
+  seenExternalUids: Set<string>
+) {
+  const { data, error } = await supabase
+    .from("property_booking_events")
+    .select("id, external_uid")
+    .eq("property_calendar_id", calendarId)
+    .gte("checkout_date", getTodayYmd());
+
+  if (error) throw error;
+
+  const staleIds = ((data ?? []) as Array<{ id: string; external_uid: string }>)
+    .filter((row) => !seenExternalUids.has(row.external_uid))
+    .map((row) => row.id);
+
+  if (staleIds.length === 0) return 0;
+
+  const { error: deleteError } = await supabase
+    .from("property_booking_events")
+    .delete()
+    .in("id", staleIds);
+
+  if (deleteError) throw deleteError;
+
+  return staleIds.length;
+}
+
 export async function GET() {
   try {
     const calendars = await loadCalendars();
@@ -343,6 +373,7 @@ export async function POST(request: Request) {
       skipped_past: number;
       skipped_non_booking: number;
       booking_events_saved: number;
+      removed_missing_future: number;
       created_dates: string[];
       existing_dates: string[];
       errors: string[];
@@ -361,6 +392,7 @@ export async function POST(request: Request) {
         skipped_past: 0,
         skipped_non_booking: 0,
         booking_events_saved: 0,
+        removed_missing_future: 0,
         created_dates: [] as string[],
         existing_dates: [] as string[],
         errors: [] as string[],
@@ -368,6 +400,7 @@ export async function POST(request: Request) {
 
       try {
         const events = await getCalendarEvents(calendar);
+        const seenExternalUids = new Set<string>();
 
         for (const event of events) {
           if (!event.checkoutDate) continue;
@@ -380,6 +413,7 @@ export async function POST(request: Request) {
           const uid =
             event.uid ||
             `${calendar.property_id}:${calendar.source}:${event.dtstartRaw ?? "start"}:${event.dtendRaw ?? "end"}:${event.summary}`;
+          seenExternalUids.add(uid);
 
           if (property?.organization_id && event.checkinDate) {
             try {
@@ -457,6 +491,11 @@ if (!property?.organization_id) {
           resultBucket.created += 1;
           resultBucket.created_dates.push(event.checkoutDate);
         }
+
+        resultBucket.removed_missing_future = await deleteStaleUpcomingBookingEvents(
+          calendar.id,
+          seenExternalUids
+        );
       } catch (calendarError: any) {
         resultBucket.errors.push(calendarError?.message || "Calendar processing failed");
       }
@@ -471,6 +510,7 @@ if (!property?.organization_id) {
         acc.skipped_past += item.skipped_past;
         acc.skipped_non_booking += item.skipped_non_booking;
         acc.booking_events_saved += item.booking_events_saved;
+        acc.removed_missing_future += item.removed_missing_future;
         acc.errors += item.errors.length;
         return acc;
       },
@@ -480,6 +520,7 @@ if (!property?.organization_id) {
         skipped_past: 0,
         skipped_non_booking: 0,
         booking_events_saved: 0,
+        removed_missing_future: 0,
         errors: 0,
       }
     );
