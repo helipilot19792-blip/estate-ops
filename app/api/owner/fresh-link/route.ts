@@ -76,12 +76,19 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    if (linkError || !linkData?.properties?.action_link) {
+    if (linkError || !linkData?.properties?.hashed_token) {
       return NextResponse.json(
         { error: linkError?.message || "Could not generate owner login link." },
         { status: 500 }
       );
     }
+
+    const ownerVerifyUrl = new URL(ownerWelcomeUrl);
+    ownerVerifyUrl.searchParams.set("token_hash", linkData.properties.hashed_token);
+    ownerVerifyUrl.searchParams.set(
+      "type",
+      linkData.properties.verification_type || "magiclink"
+    );
 
     const resend = new Resend(process.env.RESEND_API_KEY);
     const ownerName = owner.full_name || "there";
@@ -96,13 +103,13 @@ export async function POST(request: NextRequest) {
           <p>Hi ${ownerName},</p>
           <p>Use this fresh secure link to finish setting up your owner portal access.</p>
           <p style="margin: 24px 0;">
-            <a href="${linkData.properties.action_link}" style="display:inline-block;padding:12px 18px;background:#241c15;color:#ffffff;border-radius:999px;text-decoration:none;">
+            <a href="${ownerVerifyUrl.toString()}" style="display:inline-block;padding:12px 18px;background:#241c15;color:#ffffff;border-radius:999px;text-decoration:none;">
               Open owner portal
             </a>
           </p>
           <p style="font-size:12px;color:#777;">
             If the button does not work, copy and paste this link into your browser:<br />
-            <span style="word-break:break-all;">${linkData.properties.action_link}</span>
+            <span style="word-break:break-all;">${ownerVerifyUrl.toString()}</span>
           </p>
         </div>
       `,

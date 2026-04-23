@@ -83,8 +83,41 @@ export default function OwnerWelcomePage() {
           ? new URLSearchParams(window.location.search).get("owner_email")?.trim().toLowerCase() || ""
           : "";
       const inviteLinkError = getSupabaseInviteError();
+      const tokenHash =
+        typeof window !== "undefined"
+          ? new URLSearchParams(window.location.search).get("token_hash")?.trim() || ""
+          : "";
+      const tokenType =
+        typeof window !== "undefined"
+          ? new URLSearchParams(window.location.search).get("type")?.trim() || "magiclink"
+          : "magiclink";
 
       setExpectedOwnerEmail(expectedFromQuery);
+
+      if (tokenHash) {
+        const { error: verifyError } = await supabase.auth.verifyOtp({
+          token_hash: tokenHash,
+          type: tokenType as any,
+        });
+
+        if (verifyError) {
+          if (!cancelled) {
+            setError(
+              verifyError.message ||
+                "This owner login link could not be confirmed. Please request a fresh link."
+            );
+            setLoading(false);
+          }
+          return;
+        }
+
+        if (typeof window !== "undefined") {
+          const cleanUrl = new URL(window.location.href);
+          cleanUrl.searchParams.delete("token_hash");
+          cleanUrl.searchParams.delete("type");
+          window.history.replaceState(null, "", cleanUrl.toString());
+        }
+      }
 
       const {
         data: { session },
