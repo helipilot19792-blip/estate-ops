@@ -652,6 +652,7 @@ export default function AdminPage() {
     Array<{ id?: string; source: string; ical_url: string; is_active: boolean }>
   >([]);
   const [calendarDraftDirty, setCalendarDraftDirty] = useState(false);
+  const [importingBookingHistory, setImportingBookingHistory] = useState(false);
   const [sopTitle, setSopTitle] = useState("");
   const [sopContent, setSopContent] = useState("");
   const [sopFiles, setSopFiles] = useState<File[]>([]);
@@ -3119,6 +3120,60 @@ This removes its linked members and deletes the grounds account.`
       setError(err?.message || "Could not save calendars.");
     } finally {
       setSavingCalendars(false);
+    }
+  }
+
+  async function importBookingHistory(file: File | null) {
+    if (!selectedPropertyId) {
+      setError("Please select a property first.");
+      return;
+    }
+
+    if (!file) {
+      setError("Please choose a CSV file to import.");
+      return;
+    }
+
+    setError("");
+    setActionMessage("");
+    setImportingBookingHistory(true);
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        throw new Error("Could not verify your admin session.");
+      }
+
+      const formData = new FormData();
+      formData.append("propertyId", selectedPropertyId);
+      formData.append("file", file);
+
+      const response = await fetch("/api/admin/import-booking-history", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: formData,
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(payload?.error || "Could not import booking history.");
+      }
+
+      setActionMessage(
+        `Imported ${payload?.imported || 0} booking histor${payload?.imported === 1 ? "y row" : "y rows"} for ${payload?.propertyName || "this property"}.`
+      );
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Could not import booking history.");
+    } finally {
+      setImportingBookingHistory(false);
     }
   }
 
@@ -6541,6 +6596,36 @@ This removes its linked members and deletes the grounds account.`
                   <button className="inline-flex items-center justify-center rounded-full border border-[#241c15] bg-white px-5 py-2.5 text-sm font-medium text-[#241c15] transition hover:bg-[#f7f3ee] disabled:opacity-60" onClick={() => void syncCalendarsNow()} disabled={syncingCalendarsNow}>
                     {syncingCalendarsNow ? "Syncing..." : "Sync Calendars Now"}
                   </button>
+                </div>
+
+                <div className="rounded-[20px] border border-[#eadfce] bg-white p-4">
+                  <div className="text-sm font-medium text-[#241c15]">Import booking history</div>
+                  <p className="mt-1 text-sm text-[#7f7263]">
+                    Backfill older stays when platform iCal feeds do not include enough history.
+                    Upload a CSV with columns like <span className="font-medium text-[#5f5245]">source</span>, <span className="font-medium text-[#5f5245]">guest</span> or <span className="font-medium text-[#5f5245]">summary</span>, <span className="font-medium text-[#5f5245]">checkin</span>, and <span className="font-medium text-[#5f5245]">checkout</span>.
+                  </p>
+                  <div className="mt-3 flex flex-wrap items-center gap-3">
+                    <label className="inline-flex cursor-pointer items-center justify-center rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-5 py-2.5 text-sm font-medium text-[#5f5245] transition hover:bg-white">
+                      Choose CSV
+                      <input
+                        type="file"
+                        accept=".csv,text/csv"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0] || null;
+                          void importBookingHistory(file);
+                          e.currentTarget.value = "";
+                        }}
+                        disabled={importingBookingHistory}
+                      />
+                    </label>
+                    <div className="text-xs text-[#8a7b68]">
+                      Sample headers: <span className="font-medium">source, guest, checkin, checkout</span>
+                    </div>
+                  </div>
+                  {importingBookingHistory ? (
+                    <div className="mt-3 text-sm text-[#7f7263]">Importing booking history...</div>
+                  ) : null}
                 </div>
               </div>
             </div>
