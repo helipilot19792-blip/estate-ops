@@ -57,6 +57,7 @@ export default function OwnerWelcomePage() {
   const [savingPassword, setSavingPassword] = useState(false);
   const [continuing, setContinuing] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [requestingFreshLink, setRequestingFreshLink] = useState(false);
   const [hasInviteSession, setHasInviteSession] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -326,9 +327,41 @@ async function handleSignOut() {
   router.replace("/owner/login");
 }
 
-function handleFreshLoginLink() {
+async function handleFreshLoginLink() {
   const loginEmail = expectedOwnerEmail || ownerAccount?.email || signedInEmail || "";
-  router.replace(`/owner/login${loginEmail ? `?email=${encodeURIComponent(loginEmail)}` : ""}`);
+
+  if (!loginEmail) {
+    router.replace("/owner/login");
+    return;
+  }
+
+  setRequestingFreshLink(true);
+  setError("");
+  setStatusMessage("");
+
+  const redirectTo =
+    typeof window !== "undefined"
+      ? `${window.location.origin}/owner/welcome?owner_email=${encodeURIComponent(loginEmail)}`
+      : undefined;
+
+  const { error: otpError } = await supabase.auth.signInWithOtp({
+    email: loginEmail,
+    options: {
+      emailRedirectTo: redirectTo,
+      shouldCreateUser: false,
+    },
+  });
+
+  if (otpError) {
+    setError(
+      `${otpError.message}. If this keeps happening, resend the owner invite from admin first.`
+    );
+    setRequestingFreshLink(false);
+    return;
+  }
+
+  setStatusMessage(`Fresh owner login link sent to ${loginEmail}. Open the newest email, then set the password from that link.`);
+  setRequestingFreshLink(false);
 }
 
   if (loading) {
@@ -370,10 +403,11 @@ function handleFreshLoginLink() {
             <div className="mt-3 flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={handleFreshLoginLink}
-                className="rounded-full bg-[#b08b47] px-4 py-2 text-xs font-semibold text-[#17120d] transition hover:brightness-110"
+                onClick={() => void handleFreshLoginLink()}
+                disabled={requestingFreshLink}
+                className="rounded-full bg-[#b08b47] px-4 py-2 text-xs font-semibold text-[#17120d] transition hover:brightness-110 disabled:opacity-60"
               >
-                Request fresh login link
+                {requestingFreshLink ? "Sending link..." : "Email me a fresh link"}
               </button>
               <button
                 type="button"
@@ -447,7 +481,7 @@ function handleFreshLoginLink() {
           </p>
           {!hasInviteSession ? (
             <div className="mt-4 rounded-2xl border border-amber-400/25 bg-amber-950/20 px-4 py-3 text-sm text-amber-100">
-              Password setup needs an active email-link session. Use the fresh-login-link button above, then open the newest email.
+              Password setup needs an active email-link session. Click "Email me a fresh link" above, then open the newest email.
             </div>
           ) : null}
 
