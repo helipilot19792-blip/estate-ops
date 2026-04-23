@@ -25,6 +25,7 @@ type Property = {
   name: string | null;
   address: string | null;
   notes: string | null;
+  cover_photo_url?: string | null;
 };
 
 type TurnoverJob = {
@@ -719,7 +720,7 @@ export default function OwnerPage() {
     ] = await Promise.all([
       supabase
         .from("properties")
-        .select("id,organization_id,name,address,notes")
+        .select("*")
         .in("id", propertyIds)
         .order("created_at", { ascending: false }),
       supabase
@@ -1043,6 +1044,63 @@ export default function OwnerPage() {
             </div>
           </div>
         </section>
+
+        {properties.length > 1 ? (
+          <section className="rounded-[28px] border border-white/8 bg-[#15110d] p-4 sm:p-5">
+            <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#bfa67b]">
+                  Properties
+                </div>
+                <h2 className="mt-2 text-xl font-semibold text-[#f7f1e8]">
+                  Switch by photo
+                </h2>
+              </div>
+              <div className="text-sm text-[#9f9079]">
+                {properties.length} linked properties
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {properties.map((property) => {
+                const isSelected = property.id === selectedProperty.id;
+
+                return (
+                  <button
+                    key={property.id}
+                    type="button"
+                    onClick={() => handleOwnerPropertyChange(property.id)}
+                    className={`overflow-hidden rounded-[22px] border text-left transition ${isSelected
+                      ? "border-[#b08b47] bg-[#201911] shadow-[0_0_0_1px_rgba(176,139,71,0.35)]"
+                      : "border-white/8 bg-white/[0.02] hover:border-white/18 hover:bg-white/[0.04]"
+                      }`}
+                  >
+                    {property.cover_photo_url ? (
+                      <img
+                        src={property.cover_photo_url}
+                        alt={property.name || "Property cover photo"}
+                        className="h-32 w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-32 items-center justify-center bg-[radial-gradient(circle_at_top,rgba(176,139,71,0.32),transparent_36%),linear-gradient(135deg,#2a2119,#14100c)] px-4 text-center text-xs uppercase tracking-[0.2em] text-[#bfa67b]">
+                        No photo
+                      </div>
+                    )}
+
+                    <div className="px-4 py-3">
+                      <div className="truncate text-sm font-semibold text-[#f7f1e8]">
+                        {property.name || "Unnamed property"}
+                      </div>
+                      <div className="mt-1 truncate text-xs text-[#9f9079]">
+                        {getCityFromAddress(property.address) || property.address || "Location unavailable"}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
 
         {reportSuccess ? (
           <div className="rounded-2xl border border-emerald-500/25 bg-emerald-950/20 px-4 py-3 text-sm text-emerald-200">

@@ -92,17 +92,23 @@ function InvitePageContent() {
     setLoadingInvite(true);
 
     try {
-      const { data, error } = await supabase
-        .from("organization_invites")
-        .select("*")
-        .eq("token", token)
-        .maybeSingle<InviteRow>();
+      const response = await fetch("/api/invite/lookup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ token }),
+      });
 
-      if (error) {
-        setError(error.message);
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        setError(payload?.error || "This invite link is invalid or no longer exists.");
         setInviteChecked(true);
         return;
       }
+
+      const data = payload?.invite as InviteRow | null;
 
       if (!data) {
         setError("This invite link is invalid or no longer exists.");

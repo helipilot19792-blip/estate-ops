@@ -22,6 +22,7 @@ type Property = {
   name: string | null;
   address: string | null;
   notes?: string | null;
+  cover_photo_url?: string | null;
   default_cleaner_units_needed: number;
   cleaner_units_required_strict: boolean;
   show_team_status_to_cleaners: boolean;
@@ -573,6 +574,7 @@ export default function AdminPage() {
   const [selectedPropertyOwnerDirty, setSelectedPropertyOwnerDirty] = useState(false);
   const [ownerLinkTargetPropertyId, setOwnerLinkTargetPropertyId] = useState("");
   const [linkingOwnerProperty, setLinkingOwnerProperty] = useState(false);
+  const [uploadingPropertyCover, setUploadingPropertyCover] = useState(false);
   const [propertyUnitsNeeded, setPropertyUnitsNeeded] = useState("1");
   const [propertyUnitsStrict, setPropertyUnitsStrict] = useState(false);
   const [propertyShowTeamStatus, setPropertyShowTeamStatus] = useState(true);
@@ -2831,6 +2833,88 @@ This removes its linked members and deletes the grounds account.`
       setSavingSelectedPropertyOwner(false);
     }
   }
+
+  async function uploadSelectedPropertyCoverPhoto(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] || null;
+    e.target.value = "";
+
+    if (!selectedPropertyId) {
+      setError("Please select a property first.");
+      return;
+    }
+
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setError("Please choose an image file for the cover photo.");
+      return;
+    }
+
+    setError("");
+    setActionMessage("");
+    setUploadingPropertyCover(true);
+
+    try {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const filePath = `${selectedPropertyId}/cover/${Date.now()}-${safeName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("property-sop-images")
+        .upload(filePath, file, { cacheControl: "3600", upsert: false });
+
+      if (uploadError) throw uploadError;
+
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("property-sop-images").getPublicUrl(filePath);
+
+      const { error: updateError } = await supabase
+        .from("properties")
+        .update({
+          cover_photo_url: publicUrl,
+        })
+        .eq("id", selectedPropertyId);
+
+      if (updateError) throw updateError;
+
+      setActionMessage("Property cover photo updated.");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Could not upload property cover photo.");
+    } finally {
+      setUploadingPropertyCover(false);
+    }
+  }
+
+  async function removeSelectedPropertyCoverPhoto() {
+    if (!selectedPropertyId) return;
+
+    const confirmed = window.confirm("Remove this property's cover photo?");
+    if (!confirmed) return;
+
+    setError("");
+    setActionMessage("");
+    setUploadingPropertyCover(true);
+
+    try {
+      const { error } = await supabase
+        .from("properties")
+        .update({
+          cover_photo_url: null,
+        })
+        .eq("id", selectedPropertyId);
+
+      if (error) throw error;
+
+      setActionMessage("Property cover photo removed.");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Could not remove property cover photo.");
+    } finally {
+      setUploadingPropertyCover(false);
+    }
+  }
+
   function addCalendarDraftRow() {
     setCalendarDraftDirty(true);
     setCalendarRowsDraft((prev) => [
@@ -5915,6 +5999,7 @@ This removes its linked members and deletes the grounds account.`
     const ownerLinkPropertyOptions = selectedOwner
       ? properties.filter((property) => !selectedOwnerPropertyIds.has(property.id))
       : [];
+    const selectedProperty = properties.find((property) => property.id === selectedPropertyId) || null;
 
     return (
       <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
@@ -6081,6 +6166,55 @@ This removes its linked members and deletes the grounds account.`
                   </div>
                 </div>
               ) : null}
+            </div>
+
+            <div className="mt-6 rounded-[26px] border border-[#eadfce] bg-[#fcfaf7] p-5">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="min-w-0">
+                  <h3 className="text-lg font-semibold">Property cover photo</h3>
+                  <p className="mt-1 text-sm text-[#7f7263]">
+                    Add a photo owners can use to visually switch between properties.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-3">
+                  <label className="inline-flex cursor-pointer items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]">
+                    {uploadingPropertyCover ? "Uploading..." : "Upload cover photo"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="sr-only"
+                      disabled={uploadingPropertyCover}
+                      onChange={(e) => void uploadSelectedPropertyCoverPhoto(e)}
+                    />
+                  </label>
+
+                  {selectedProperty?.cover_photo_url ? (
+                    <button
+                      type="button"
+                      onClick={() => void removeSelectedPropertyCoverPhoto()}
+                      disabled={uploadingPropertyCover}
+                      className="rounded-full border border-[#e7c6c1] bg-white px-5 py-2.5 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff4f2] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Remove photo
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="mt-4 overflow-hidden rounded-[22px] border border-[#eadfce] bg-white">
+                {selectedProperty?.cover_photo_url ? (
+                  <img
+                    src={selectedProperty.cover_photo_url}
+                    alt={selectedProperty.name || "Property cover photo"}
+                    className="h-56 w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-44 items-center justify-center bg-[linear-gradient(135deg,#f8f2e8,#eadfce)] px-6 text-center text-sm text-[#7f7263]">
+                    No cover photo added yet.
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="mt-6 grid gap-6 lg:grid-cols-3">
