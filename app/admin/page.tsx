@@ -537,6 +537,7 @@ export default function AdminPage() {
   const [deletingPropertyId, setDeletingPropertyId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState("");
   const [sendingOwnerInviteId, setSendingOwnerInviteId] = useState<string | null>(null);
+  const [deletingOrganizationInviteId, setDeletingOrganizationInviteId] = useState<string | null>(null);
   const [resetConfirmText, setResetConfirmText] = useState("");
   const [resettingOrganization, setResettingOrganization] = useState(false);
   const [selectedJobsPropertyFilter, setSelectedJobsPropertyFilter] = useState("all");
@@ -676,19 +677,23 @@ export default function AdminPage() {
     );
   }, [groundsJobs, tomorrowYmd]);
   const pendingCleanerInvites = useMemo(() => {
-    const seen = new Set<string>();
-
-    return organizationInvites.filter((invite) => {
-      if (invite.role !== "cleaner") return false;
-
-      const key = invite.email.toLowerCase();
-
-      if (seen.has(key)) return false;
-
-      seen.add(key);
-      return true;
-    });
+    return organizationInvites.filter((invite) => invite.role === "cleaner");
   }, [organizationInvites]);
+
+  const duplicateCleanerInviteEmails = useMemo(() => {
+    const counts = new Map<string, number>();
+
+    for (const invite of pendingCleanerInvites) {
+      const email = invite.email.trim().toLowerCase();
+      counts.set(email, (counts.get(email) ?? 0) + 1);
+    }
+
+    return new Set(
+      Array.from(counts.entries())
+        .filter(([, count]) => count > 1)
+        .map(([email]) => email)
+    );
+  }, [pendingCleanerInvites]);
 
   const pendingGroundsInvites = useMemo(() => {
     return organizationInvites.filter((invite) => invite.role === "grounds");
@@ -1638,6 +1643,33 @@ export default function AdminPage() {
     const inviteUrl = `${window.location.origin}/invite?token=${data.token}`;
     setActionMessage(`${params.role} invite resent: ${inviteUrl}`);
     return data;
+  }
+
+  async function deleteOrganizationInvite(inviteId: string) {
+    const confirmed = window.confirm(
+      "Delete this pending invite? This will remove the invite record."
+    );
+    if (!confirmed) return;
+
+    setError("");
+    setActionMessage("");
+    setDeletingOrganizationInviteId(inviteId);
+
+    try {
+      const { error } = await supabase
+        .from("organization_invites")
+        .delete()
+        .eq("id", inviteId);
+
+      if (error) throw error;
+
+      setActionMessage("Pending invite deleted.");
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete pending invite.");
+    } finally {
+      setDeletingOrganizationInviteId(null);
+    }
   }
   async function inviteCleanerFromForm() {
     if (!inviteCleanerEmail.trim()) {
@@ -4359,6 +4391,11 @@ This removes its linked members and deletes the grounds account.`
                         <div>
                           <div className="text-sm font-medium text-[#241c15]">
                             {invite.full_name || invite.email}
+                            {duplicateCleanerInviteEmails.has(invite.email.trim().toLowerCase()) ? (
+                              <span className="ml-2 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                                Duplicate
+                              </span>
+                            ) : null}
                           </div>
                           <div className="text-sm text-[#7f7263]">{invite.email}</div>
                           <div className="mt-1 text-xs text-[#8a7b68]">
@@ -4372,18 +4409,29 @@ This removes its linked members and deletes the grounds account.`
                           </div>
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() =>
-                            void resendOrganizationInvite({
-                              email: invite.email,
-                              role: "cleaner",
-                            })
-                          }
-                          className="inline-flex items-center justify-center rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-medium text-[#5f5245] transition hover:bg-white"
-                        >
-                          Resend Invite
-                        </button>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void resendOrganizationInvite({
+                                email: invite.email,
+                                role: "cleaner",
+                              })
+                            }
+                            className="inline-flex items-center justify-center rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-medium text-[#5f5245] transition hover:bg-white"
+                          >
+                            Resend Invite
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => void deleteOrganizationInvite(invite.id)}
+                            disabled={deletingOrganizationInviteId === invite.id}
+                            className="inline-flex items-center justify-center rounded-full border border-[#efc6c6] bg-[#fff5f5] px-4 py-2 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {deletingOrganizationInviteId === invite.id ? "Deleting..." : "Delete"}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -4608,18 +4656,29 @@ This removes its linked members and deletes the grounds account.`
                           </div>
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() =>
-                            void resendOrganizationInvite({
-                              email: invite.email,
-                              role: "grounds",
-                            })
-                          }
-                          className="inline-flex items-center justify-center rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-medium text-[#5f5245] transition hover:bg-white"
-                        >
-                          Resend Invite
-                        </button>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void resendOrganizationInvite({
+                                email: invite.email,
+                                role: "grounds",
+                              })
+                            }
+                            className="inline-flex items-center justify-center rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-medium text-[#5f5245] transition hover:bg-white"
+                          >
+                            Resend Invite
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => void deleteOrganizationInvite(invite.id)}
+                            disabled={deletingOrganizationInviteId === invite.id}
+                            className="inline-flex items-center justify-center rounded-full border border-[#efc6c6] bg-[#fff5f5] px-4 py-2 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {deletingOrganizationInviteId === invite.id ? "Deleting..." : "Delete"}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))}
