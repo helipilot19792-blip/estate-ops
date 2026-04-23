@@ -398,9 +398,9 @@ function StatCard({
 }) {
   return (
     <div className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5 backdrop-blur-sm">
-      <div className="text-[11px] uppercase tracking-[0.22em] text-[#bfa67b]">{label}</div>
+      <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">{label}</div>
       <div className="mt-3 text-2xl font-semibold text-[#f7f1e8]">{value}</div>
-      {subtext ? <div className="mt-2 text-sm text-[#cdbda0]">{subtext}</div> : null}
+      {subtext ? <div className="mt-2 text-sm text-[#e6d8bf]">{subtext}</div> : null}
     </div>
   );
 }
@@ -425,13 +425,13 @@ function TimelineRow({ item }: { item: TimelineItem }) {
       <div className="min-w-0 flex-1">
         <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-sm font-semibold text-[#f7f1e8]">{item.title}</div>
-          <div className="text-xs uppercase tracking-[0.18em] text-[#bfa67b]">
+          <div className="text-xs uppercase tracking-[0.18em] text-[#e7c98a]">
             {formatDateLabel(item.date)}
           </div>
         </div>
 
         {item.subtitle ? (
-          <div className="mt-1 text-sm leading-relaxed text-[#cdbda0]">{item.subtitle}</div>
+          <div className="mt-1 text-sm leading-relaxed text-[#e6d8bf]">{item.subtitle}</div>
         ) : null}
       </div>
     </div>
@@ -566,16 +566,16 @@ function ReportIssueModal({
       <div className="flex min-h-full items-start justify-center">
         <div className="my-auto w-full max-w-xl rounded-[28px] border border-white/10 bg-[#17120d] shadow-[0_30px_90px_rgba(0,0,0,0.45)] max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-h-[calc(100vh-3rem)]">
           <div className="border-b border-white/8 px-5 py-4 sm:px-6">
-            <div className="text-[11px] uppercase tracking-[0.22em] text-[#bfa67b]">Owner Portal</div>
+            <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">Owner Portal</div>
             <h3 className="mt-2 text-xl font-semibold text-[#f7f1e8]">Report an Issue</h3>
-            <p className="mt-1 text-sm text-[#cdbda0]">
+            <p className="mt-1 text-sm text-[#e6d8bf]">
               Send us a concern and it will be added to the maintenance queue.
             </p>
           </div>
 
           <div className="space-y-5 px-5 py-5 sm:px-6">
             <div>
-              <label className="text-xs uppercase tracking-[0.18em] text-[#bfa67b]">Category</label>
+              <label className="text-xs uppercase tracking-[0.18em] text-[#e7c98a]">Category</label>
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 {ISSUE_CATEGORIES.map((item) => {
                   const selected = item === category;
@@ -597,7 +597,7 @@ function ReportIssueModal({
             </div>
 
             <div>
-              <label className="text-xs uppercase tracking-[0.18em] text-[#bfa67b]">Priority</label>
+              <label className="text-xs uppercase tracking-[0.18em] text-[#e7c98a]">Priority</label>
               <div className="mt-2 flex flex-wrap gap-2">
                 {[
                   { value: "low", label: "Low" },
@@ -622,7 +622,7 @@ function ReportIssueModal({
             </div>
 
             <div>
-              <label className="text-xs uppercase tracking-[0.18em] text-[#bfa67b]">Details</label>
+              <label className="text-xs uppercase tracking-[0.18em] text-[#e7c98a]">Details</label>
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
@@ -632,7 +632,7 @@ function ReportIssueModal({
             </div>
 
             <div>
-              <label className="text-xs uppercase tracking-[0.18em] text-[#bfa67b]">Photos</label>
+              <label className="text-xs uppercase tracking-[0.18em] text-[#e7c98a]">Photos</label>
 
               <input
                 ref={cameraInputRef}
@@ -670,13 +670,13 @@ function ReportIssueModal({
                 </button>
               </div>
 
-              <div className="mt-2 text-xs text-[#9f9079]">
+              <div className="mt-2 text-xs text-[#ccb99a]">
                 Use your camera or photo library to help explain the issue.
               </div>
 
               {files.length > 0 ? (
                 <div className="mt-3 space-y-2">
-                  <div className="text-sm text-[#cdbda0]">
+                  <div className="text-sm text-[#e6d8bf]">
                     {files.length} photo{files.length === 1 ? "" : "s"} selected
                   </div>
 
@@ -684,7 +684,7 @@ function ReportIssueModal({
                     {files.map((file, index) => (
                       <div
                         key={`${file.name}-${index}`}
-                        className="rounded-full border border-white/8 bg-white/[0.03] px-3 py-1 text-xs text-[#cdbda0]"
+                        className="rounded-full border border-white/8 bg-white/[0.03] px-3 py-1 text-xs text-[#e6d8bf]"
                       >
                         {file.name}
                       </div>
@@ -1311,24 +1311,24 @@ export default function OwnerPage() {
             <div>
               {!selectedProperty.cover_photo_url ? (
                 <>
-                  <div className="text-[11px] uppercase tracking-[0.24em] text-[#bfa67b]">
+                  <div className="text-[11px] uppercase tracking-[0.24em] text-[#e7c98a]">
                     Owner Dashboard
                   </div>
                   <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[#f7f1e8] sm:text-4xl">
                     {selectedProperty.name || "Property Overview"}
                   </h1>
-                  <p className="mt-2 text-base text-[#cdbda0]">
+                  <p className="mt-2 text-base text-[#e6d8bf]">
                     {getCityFromAddress(selectedProperty.address) || selectedProperty.address || "Location unavailable"}
                   </p>
                 </>
               ) : (
-                <div className="text-sm text-[#cdbda0]">
+                <div className="text-sm text-[#e6d8bf]">
                   {getCityFromAddress(selectedProperty.address) || selectedProperty.address || "Location unavailable"}
                 </div>
               )}
 
               {ownerAccount?.email ? (
-                <div className="mt-3 text-sm text-[#9f9079]">{ownerAccount.email}</div>
+                <div className="mt-3 text-sm text-[#ccb99a]">{ownerAccount.email}</div>
               ) : null}
             </div>
 
@@ -1388,7 +1388,7 @@ export default function OwnerPage() {
                     }`}
                 >
                   <div className="text-sm font-semibold">{tab.label}</div>
-                  <div className={`mt-1 text-xs ${isActive ? "text-[#382511]" : "text-[#9f9079]"}`}>
+                  <div className={`mt-1 text-xs ${isActive ? "text-[#382511]" : "text-[#ccb99a]"}`}>
                     {tab.subtext}
                   </div>
                 </button>
@@ -1403,14 +1403,14 @@ export default function OwnerPage() {
           <section className="rounded-[28px] border border-white/8 bg-[#15110d] p-4 sm:p-5">
             <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <div className="text-[11px] uppercase tracking-[0.22em] text-[#bfa67b]">
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">
                   Properties
                 </div>
                 <h2 className="mt-2 text-xl font-semibold text-[#f7f1e8]">
                   Switch by photo
                 </h2>
               </div>
-              <div className="text-sm text-[#9f9079]">
+              <div className="text-sm text-[#ccb99a]">
                 {properties.length} linked properties
               </div>
             </div>
@@ -1436,7 +1436,7 @@ export default function OwnerPage() {
                         className="h-32 w-full object-cover"
                       />
                     ) : (
-                      <div className="flex h-32 items-center justify-center bg-[radial-gradient(circle_at_top,rgba(176,139,71,0.32),transparent_36%),linear-gradient(135deg,#2a2119,#14100c)] px-4 text-center text-xs uppercase tracking-[0.2em] text-[#bfa67b]">
+                      <div className="flex h-32 items-center justify-center bg-[radial-gradient(circle_at_top,rgba(176,139,71,0.32),transparent_36%),linear-gradient(135deg,#2a2119,#14100c)] px-4 text-center text-xs uppercase tracking-[0.2em] text-[#e7c98a]">
                         No photo
                       </div>
                     )}
@@ -1445,7 +1445,7 @@ export default function OwnerPage() {
                       <div className="truncate text-sm font-semibold text-[#f7f1e8]">
                         {property.name || "Unnamed property"}
                       </div>
-                      <div className="mt-1 truncate text-xs text-[#9f9079]">
+                      <div className="mt-1 truncate text-xs text-[#ccb99a]">
                         {getCityFromAddress(property.address) || property.address || "Location unavailable"}
                       </div>
                     </div>
@@ -1497,12 +1497,12 @@ export default function OwnerPage() {
           <div className="rounded-[28px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="text-[11px] uppercase tracking-[0.22em] text-[#bfa67b]">
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">
                   Today at a Glance
                 </div>
                 <h2 className="mt-2 text-xl font-semibold text-[#f7f1e8]">Upcoming Activity</h2>
               </div>
-              <div className="rounded-full border border-white/8 bg-white/[0.03] px-3 py-1 text-xs uppercase tracking-[0.18em] text-[#bfa67b]">
+              <div className="rounded-full border border-white/8 bg-white/[0.03] px-3 py-1 text-xs uppercase tracking-[0.18em] text-[#e7c98a]">
                 {Math.min(timelineItems.length, 4)} shown
               </div>
             </div>
@@ -1518,7 +1518,7 @@ export default function OwnerPage() {
                       <div className="min-w-0">
                         <div className="text-sm font-semibold text-[#f7f1e8]">{item.title}</div>
                         {item.subtitle ? (
-                          <div className="mt-1 line-clamp-2 text-sm text-[#cdbda0]">{item.subtitle}</div>
+                          <div className="mt-1 line-clamp-2 text-sm text-[#e6d8bf]">{item.subtitle}</div>
                         ) : null}
                       </div>
                       <div
@@ -1532,13 +1532,13 @@ export default function OwnerPage() {
                           }`}
                       />
                     </div>
-                    <div className="mt-3 text-xs uppercase tracking-[0.18em] text-[#bfa67b]">
+                    <div className="mt-3 text-xs uppercase tracking-[0.18em] text-[#e7c98a]">
                       {formatDateLabel(item.date)}
                     </div>
                   </div>
                 ))
               ) : (
-                <div className="rounded-2xl border border-white/7 bg-white/[0.02] px-4 py-5 text-sm text-[#cdbda0] sm:col-span-2">
+                <div className="rounded-2xl border border-white/7 bg-white/[0.02] px-4 py-5 text-sm text-[#e6d8bf] sm:col-span-2">
                   Nothing upcoming has been scheduled yet.
                 </div>
               )}
@@ -1546,7 +1546,7 @@ export default function OwnerPage() {
           </div>
 
           <div className="rounded-[28px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
-            <div className="text-[11px] uppercase tracking-[0.22em] text-[#bfa67b]">Active Issues</div>
+            <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">Active Issues</div>
             <h2 className="mt-2 text-xl font-semibold text-[#f7f1e8]">Maintenance Status</h2>
 
             <div className="mt-5 space-y-3">
@@ -1582,7 +1582,7 @@ export default function OwnerPage() {
                       </div>
                     ) : null}
 
-                    <div className="mt-3 text-xs uppercase tracking-[0.18em] text-[#bfa67b]">
+                    <div className="mt-3 text-xs uppercase tracking-[0.18em] text-[#e7c98a]">
                       Reported {formatDateLabel(flag.flagged_at || flag.created_at)}
                     </div>
                   </div>
@@ -1601,13 +1601,13 @@ export default function OwnerPage() {
             <section className="overflow-hidden rounded-[32px] border border-white/8 bg-[radial-gradient(circle_at_top_left,rgba(176,139,71,0.22),transparent_30%),linear-gradient(180deg,#18130f_0%,#100d0a_100%)] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.26)] sm:p-6">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <div>
-                  <div className="text-[11px] uppercase tracking-[0.24em] text-[#bfa67b]">
+                  <div className="text-[11px] uppercase tracking-[0.24em] text-[#e7c98a]">
                     Booking Performance
                   </div>
                   <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#f7f1e8] sm:text-3xl">
                     Occupancy story for {selectedProperty.name || "this property"}
                   </h2>
-                  <p className="mt-2 max-w-2xl text-sm leading-6 text-[#cdbda0]">
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-[#e6d8bf]">
                     Built from synced booking calendar data. Financial ROI can be added later once nightly rate and cost assumptions are available.
                   </p>
                 </div>
@@ -1645,14 +1645,14 @@ export default function OwnerPage() {
               <div className="rounded-[30px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                   <div>
-                    <div className="text-[11px] uppercase tracking-[0.22em] text-[#bfa67b]">
+                    <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">
                       Occupancy Trend
                     </div>
                     <h3 className="mt-2 text-xl font-semibold text-[#f7f1e8]">
                       Monthly booked nights
                     </h3>
                   </div>
-                  <div className="text-sm text-[#9f9079]">
+                  <div className="text-sm text-[#ccb99a]">
                     Bars show occupied nights, labels show occupancy.
                   </div>
                 </div>
@@ -1671,7 +1671,7 @@ export default function OwnerPage() {
                           }}
                         />
                       </div>
-                      <div className="text-[10px] uppercase tracking-[0.16em] text-[#9f9079]">
+                      <div className="text-[10px] uppercase tracking-[0.16em] text-[#ccb99a]">
                         {month.label}
                       </div>
                     </div>
@@ -1680,7 +1680,7 @@ export default function OwnerPage() {
               </div>
 
               <div className="rounded-[30px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
-                <div className="text-[11px] uppercase tracking-[0.22em] text-[#bfa67b]">
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">
                   Booking Pace
                 </div>
                 <h3 className="mt-2 text-xl font-semibold text-[#f7f1e8]">
@@ -1692,7 +1692,7 @@ export default function OwnerPage() {
                     <div key={pace.label}>
                       <div className="flex items-center justify-between gap-3">
                         <div className="text-sm font-semibold text-[#f7f1e8]">{pace.label} days</div>
-                        <div className="text-sm text-[#cdbda0]">
+                        <div className="text-sm text-[#e6d8bf]">
                           {pace.bookedNights}/{pace.days} nights
                         </div>
                       </div>
@@ -1702,14 +1702,14 @@ export default function OwnerPage() {
                           style={{ width: `${Math.min(100, pace.percentage)}%` }}
                         />
                       </div>
-                      <div className="mt-1 text-xs text-[#9f9079]">{pace.percentage}% booked</div>
+                      <div className="mt-1 text-xs text-[#ccb99a]">{pace.percentage}% booked</div>
                     </div>
                   ))}
                 </div>
 
                 <div className="mt-7 rounded-[22px] border border-[#b08b47]/20 bg-[#b08b47]/10 p-4">
                   <div className="text-sm font-semibold text-[#f7f1e8]">Read this as booking pace</div>
-                  <p className="mt-2 text-sm leading-6 text-[#cdbda0]">
+                  <p className="mt-2 text-sm leading-6 text-[#e6d8bf]">
                     A high next-30 score means the near-term calendar is filling. A low next-90 score can still be normal for slower seasons.
                   </p>
                 </div>
@@ -1718,7 +1718,7 @@ export default function OwnerPage() {
 
             <section className="grid gap-6 xl:grid-cols-3">
               <div className="rounded-[30px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
-                <div className="text-[11px] uppercase tracking-[0.22em] text-[#bfa67b]">
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">
                   Source Mix
                 </div>
                 <h3 className="mt-2 text-xl font-semibold text-[#f7f1e8]">Booked nights by source</h3>
@@ -1729,7 +1729,7 @@ export default function OwnerPage() {
                       <div key={source.label}>
                         <div className="flex items-center justify-between gap-3 text-sm">
                           <span className="font-semibold text-[#f7f1e8]">{source.label}</span>
-                          <span className="text-[#cdbda0]">{source.nights} nights</span>
+                          <span className="text-[#e6d8bf]">{source.nights} nights</span>
                         </div>
                         <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-white/8">
                           <div
@@ -1740,7 +1740,7 @@ export default function OwnerPage() {
                       </div>
                     ))
                   ) : (
-                    <div className="rounded-2xl border border-white/7 bg-white/[0.02] px-4 py-5 text-sm text-[#cdbda0]">
+                    <div className="rounded-2xl border border-white/7 bg-white/[0.02] px-4 py-5 text-sm text-[#e6d8bf]">
                       No booking source data found yet.
                     </div>
                   )}
@@ -1748,7 +1748,7 @@ export default function OwnerPage() {
               </div>
 
               <div className="rounded-[30px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
-                <div className="text-[11px] uppercase tracking-[0.22em] text-[#bfa67b]">
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">
                   Gap Opportunities
                 </div>
                 <h3 className="mt-2 text-xl font-semibold text-[#f7f1e8]">Empty windows between stays</h3>
@@ -1777,7 +1777,7 @@ export default function OwnerPage() {
                             style={{ height: `${Math.max(8, (bucket.value / maxGap) * 100)}%` }}
                           />
                         </div>
-                        <div className="mt-3 text-center text-[10px] uppercase tracking-[0.14em] text-[#9f9079]">
+                        <div className="mt-3 text-center text-[10px] uppercase tracking-[0.14em] text-[#ccb99a]">
                           {bucket.label}
                         </div>
                       </div>
@@ -1787,7 +1787,7 @@ export default function OwnerPage() {
               </div>
 
               <div className="rounded-[30px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
-                <div className="text-[11px] uppercase tracking-[0.22em] text-[#bfa67b]">
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">
                   Reservation Volume
                 </div>
                 <h3 className="mt-2 text-xl font-semibold text-[#f7f1e8]">Bookings by month</h3>
@@ -1795,7 +1795,7 @@ export default function OwnerPage() {
                 <div className="mt-6 space-y-3">
                   {bookingInsightStats.monthly.map((month) => (
                     <div key={month.monthKey} className="grid grid-cols-[42px_1fr_32px] items-center gap-3">
-                      <div className="text-xs uppercase tracking-[0.14em] text-[#9f9079]">{month.label}</div>
+                      <div className="text-xs uppercase tracking-[0.14em] text-[#ccb99a]">{month.label}</div>
                       <div className="h-3 overflow-hidden rounded-full bg-white/8">
                         <div
                           className="h-full rounded-full bg-[linear-gradient(90deg,#7dd3fc,#2563eb)]"
@@ -1812,12 +1812,12 @@ export default function OwnerPage() {
             <section className="rounded-[30px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                 <div>
-                  <div className="text-[11px] uppercase tracking-[0.22em] text-[#bfa67b]">
+                  <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">
                     Booking History
                   </div>
                   <h3 className="mt-2 text-xl font-semibold text-[#f7f1e8]">Recent synced stays</h3>
                 </div>
-                <div className="text-sm text-[#9f9079]">
+                <div className="text-sm text-[#ccb99a]">
                   {bookingInsights.length} stays found
                 </div>
               </div>
@@ -1831,7 +1831,7 @@ export default function OwnerPage() {
                           <div className="truncate text-sm font-semibold text-[#f7f1e8]">
                             {booking.guest || "Guest stay"}
                           </div>
-                          <div className="mt-1 text-sm text-[#cdbda0]">
+                          <div className="mt-1 text-sm text-[#e6d8bf]">
                             {formatDateLabel(booking.checkinDate)} to {formatDateLabel(booking.checkoutDate)}
                           </div>
                         </div>
@@ -1839,13 +1839,13 @@ export default function OwnerPage() {
                           {booking.nights} nights
                         </div>
                       </div>
-                      <div className="mt-3 text-xs uppercase tracking-[0.18em] text-[#9f9079]">
+                      <div className="mt-3 text-xs uppercase tracking-[0.18em] text-[#ccb99a]">
                         {booking.sourceLabel || "Source unavailable"}
                       </div>
                     </div>
                   ))
                 ) : (
-                  <div className="rounded-2xl border border-white/7 bg-white/[0.02] px-4 py-5 text-sm text-[#cdbda0] md:col-span-2">
+                  <div className="rounded-2xl border border-white/7 bg-white/[0.02] px-4 py-5 text-sm text-[#e6d8bf] md:col-span-2">
                     No synced booking history was found yet. Once calendar sync creates bookings with check-in and checkout dates, insights will populate here.
                   </div>
                 )}
@@ -1869,3 +1869,4 @@ export default function OwnerPage() {
     </main>
   );
 }
+
