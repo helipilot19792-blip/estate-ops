@@ -124,7 +124,7 @@ export default function OwnerLoginPage() {
     return (
       <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(176,139,71,0.14),transparent_28%),#0f0d0a] px-4 py-8 text-[#f7f1e8] sm:px-6">
         <div className="mx-auto max-w-md rounded-[32px] border border-white/8 bg-[#15110d] p-8 shadow-[0_24px_80px_rgba(0,0,0,0.36)]">
-          <div className="text-sm text-[#cdbda0]">Checking your owner session...</div>
+          <div className="text-sm text-[#e6d8bf]">Checking your owner session...</div>
         </div>
       </main>
     );
@@ -134,13 +134,13 @@ export default function OwnerLoginPage() {
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(176,139,71,0.14),transparent_28%),#0f0d0a] px-4 py-8 text-[#f7f1e8] sm:px-6">
       <div className="mx-auto max-w-md space-y-6">
         <section className="rounded-[32px] border border-white/8 bg-[linear-gradient(180deg,rgba(23,18,13,0.98)_0%,rgba(14,11,8,1)_100%)] px-6 py-7 shadow-[0_24px_80px_rgba(0,0,0,0.36)] sm:px-8">
-          <div className="text-[11px] uppercase tracking-[0.24em] text-[#bfa67b]">
+          <div className="text-[11px] uppercase tracking-[0.24em] text-[#e7c98a]">
             Gulera OS Owner Portal
           </div>
           <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[#f7f1e8] sm:text-4xl">
             Owner Login
           </h1>
-          <p className="mt-3 text-base leading-relaxed text-[#cdbda0]">
+          <p className="mt-3 text-base leading-relaxed text-[#e6d8bf]">
             Sign in with your email && password. You can also request a fresh login link if needed.
           </p>
         </section>
@@ -166,7 +166,7 @@ export default function OwnerLoginPage() {
     }}
   >
     <div>
-      <label className="text-xs uppercase tracking-[0.18em] text-[#bfa67b]">Email</label>
+      <label className="text-xs uppercase tracking-[0.18em] text-[#e7c98a]">Email</label>
       <input
         type="email"
         autoComplete="email"
@@ -178,7 +178,7 @@ export default function OwnerLoginPage() {
     </div>
 
     <div>
-      <label className="text-xs uppercase tracking-[0.18em] text-[#bfa67b]">Password</label>
+      <label className="text-xs uppercase tracking-[0.18em] text-[#e7c98a]">Password</label>
       <div className="mt-2 flex rounded-2xl border border-white/8 bg-[#100c08] focus-within:border-[#b08b47]">
         <input
           type={showPassword ? "text" : "password"}
@@ -191,7 +191,7 @@ export default function OwnerLoginPage() {
         <button
           type="button"
           onClick={() => setShowPassword((value) => !value)}
-          className="rounded-r-2xl px-4 text-sm font-medium text-[#cdbda0]"
+          className="rounded-r-2xl px-4 text-sm font-medium text-[#e6d8bf]"
         >
           {showPassword ? "Hide" : "Show"}
         </button>
