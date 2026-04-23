@@ -676,7 +676,18 @@ export default function AdminPage() {
     );
   }, [groundsJobs, tomorrowYmd]);
   const pendingCleanerInvites = useMemo(() => {
-    return organizationInvites.filter((invite) => invite.role === "cleaner");
+    const seen = new Set<string>();
+
+    return organizationInvites.filter((invite) => {
+      if (invite.role !== "cleaner") return false;
+
+      const key = invite.email.toLowerCase();
+
+      if (seen.has(key)) return false;
+
+      seen.add(key);
+      return true;
+    });
   }, [organizationInvites]);
 
   const pendingGroundsInvites = useMemo(() => {
@@ -1506,37 +1517,7 @@ export default function AdminPage() {
     }
 
     if (existingInvite) {
-      const inviteUrl = `${window.location.origin}/invite?token=${existingInvite.token}`;
-
-      try {
-        const response = await fetch("/api/send-invite-email", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            email,
-            inviteUrl,
-            role: params.role,
-            name: fullName,
-          }),
-        });
-
-        const payload = await response.json().catch(() => null);
-
-        if (!response.ok) {
-          throw new Error(payload?.error || "Invite email failed to send.");
-        }
-
-        const message = `${params.role} invite already exists and email was sent: ${inviteUrl}`;
-        setActionMessage(message);
-        window.alert(message);
-      } catch (err: any) {
-        const message = `${params.role} invite already exists, but email failed: ${err?.message || inviteUrl}`;
-        setActionMessage(message);
-        window.alert(message);
-      }
-
+      setActionMessage(`${params.role} invite already exists and is pending.`);
       return existingInvite;
     }
     const { data, error } = await supabase
