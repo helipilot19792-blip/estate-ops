@@ -2086,6 +2086,7 @@ export default function AdminPage() {
     const skippedExisting = Number(totals.skipped_existing ?? 0);
     const skippedPast = Number(totals.skipped_past ?? 0);
     const skippedNonBooking = Number(totals.skipped_non_booking ?? 0);
+    const bookingEventsSaved = Number(totals.booking_events_saved ?? 0);
     const errors = Number(totals.errors ?? 0);
 
     const propertySummaries =
@@ -2095,10 +2096,11 @@ export default function AdminPage() {
             const propertyName = result?.property_name || "Unknown property";
             const source = result?.source || "calendar";
             const resultCreated = Number(result?.created ?? 0);
+            const resultBookingEvents = Number(result?.booking_events_saved ?? 0);
             const resultErrors = Array.isArray(result?.errors) ? result.errors.length : 0;
             const createdDates = Array.isArray(result?.created_dates) ? result.created_dates.slice(0, 3).join(", ") : "";
             const existingDates = Array.isArray(result?.existing_dates) ? result.existing_dates.slice(0, 3).join(", ") : "";
-            return `${propertyName} / ${source}: ${resultCreated} created${createdDates ? ` (${createdDates})` : ""}${existingDates ? `, existing on ${existingDates}` : ""}${resultErrors > 0 ? `, ${resultErrors} error${resultErrors === 1 ? "" : "s"}` : ""}`;
+            return `${propertyName} / ${source}: ${resultCreated} created${createdDates ? ` (${createdDates})` : ""}, ${resultBookingEvents} booking event${resultBookingEvents === 1 ? "" : "s"} saved${existingDates ? `, existing on ${existingDates}` : ""}${resultErrors > 0 ? `, ${resultErrors} error${resultErrors === 1 ? "" : "s"}` : ""}`;
           })
           .slice(0, 4)
           .join(" | ")
@@ -2114,6 +2116,7 @@ export default function AdminPage() {
       `${skippedExisting} existing skipped`,
       `${skippedPast} past skipped`,
       `${skippedNonBooking} blocked/non-booking skipped`,
+      `${bookingEventsSaved} booking history event${bookingEventsSaved === 1 ? "" : "s"} saved`,
     ];
 
     if (errors > 0) {

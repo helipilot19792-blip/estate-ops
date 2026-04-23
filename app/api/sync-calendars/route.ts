@@ -240,6 +240,39 @@ async function getCalendarEvents(calendar: PropertyCalendarRow): Promise<ParsedE
   return parseIcsEvents(icsText);
 }
 
+async function upsertBookingEvent(
+  calendar: PropertyCalendarRow,
+  property: PropertyRow,
+  event: ParsedEvent,
+  externalUid: string
+) {
+  if (!event.checkinDate || !event.checkoutDate) return;
+
+  const { error } = await supabase
+    .from("property_booking_events")
+    .upsert(
+      {
+        organization_id: property.organization_id,
+        property_id: calendar.property_id,
+        property_calendar_id: calendar.id,
+        source: calendar.source,
+        external_uid: externalUid,
+        summary: event.summary || "Reservation",
+        checkin_date: event.checkinDate,
+        checkout_date: event.checkoutDate,
+        raw_dtstart: event.dtstartRaw,
+        raw_dtend: event.dtendRaw,
+        last_seen_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      {
+        onConflict: "property_id,source,external_uid",
+      }
+    );
+
+  if (error) throw error;
+}
+
 export async function GET() {
   try {
     const calendars = await loadCalendars();
@@ -309,6 +342,7 @@ export async function POST(request: Request) {
       skipped_existing: number;
       skipped_past: number;
       skipped_non_booking: number;
+      booking_events_saved: number;
       created_dates: string[];
       existing_dates: string[];
       errors: string[];
@@ -326,6 +360,7 @@ export async function POST(request: Request) {
         skipped_existing: 0,
         skipped_past: 0,
         skipped_non_booking: 0,
+        booking_events_saved: 0,
         created_dates: [] as string[],
         existing_dates: [] as string[],
         errors: [] as string[],
@@ -342,14 +377,25 @@ export async function POST(request: Request) {
             continue;
           }
 
+          const uid =
+            event.uid ||
+            `${calendar.property_id}:${calendar.source}:${event.dtstartRaw ?? "start"}:${event.dtendRaw ?? "end"}:${event.summary}`;
+
+          if (property?.organization_id && event.checkinDate) {
+            try {
+              await upsertBookingEvent(calendar, property, event, uid);
+              resultBucket.booking_events_saved += 1;
+            } catch (bookingEventError: any) {
+              resultBucket.errors.push(
+                `Booking history save failed for ${event.summary || "reservation"} on ${event.checkoutDate}: ${bookingEventError?.message || "Unknown booking history error"}`
+              );
+            }
+          }
+
           if (!isFutureOrToday(event.checkoutDate)) {
             resultBucket.skipped_past += 1;
             continue;
           }
-
-          const uid =
-            event.uid ||
-            `${calendar.property_id}:${calendar.source}:${event.dtstartRaw ?? "start"}:${event.dtendRaw ?? "end"}:${event.summary}`;
 
           const marker = buildSyncMarker(calendar.source, uid);
           const exists = await jobAlreadyExists(calendar.property_id, marker);
@@ -424,6 +470,7 @@ if (!property?.organization_id) {
         acc.skipped_existing += item.skipped_existing;
         acc.skipped_past += item.skipped_past;
         acc.skipped_non_booking += item.skipped_non_booking;
+        acc.booking_events_saved += item.booking_events_saved;
         acc.errors += item.errors.length;
         return acc;
       },
@@ -432,6 +479,7 @@ if (!property?.organization_id) {
         skipped_existing: 0,
         skipped_past: 0,
         skipped_non_booking: 0,
+        booking_events_saved: 0,
         errors: 0,
       }
     );

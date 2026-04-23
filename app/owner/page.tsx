@@ -37,6 +37,16 @@ type TurnoverJob = {
   scheduled_for?: string | null;
 };
 
+type BookingEvent = {
+  id: string;
+  property_id: string;
+  source: string | null;
+  summary: string | null;
+  checkin_date: string;
+  checkout_date: string;
+  created_at?: string | null;
+};
+
 type GroundsJob = {
   id: string;
   property_id: string;
@@ -199,6 +209,14 @@ function isFutureOrToday(dateYmd: string | null) {
     `${today.getDate()}`.padStart(2, "0"),
   ].join("-");
   return dateYmd >= todayYmd;
+}
+
+function getBookingSourceLabel(source: string | null | undefined) {
+  const normalized = (source || "").trim().toLowerCase();
+  if (normalized === "airbnb") return "Airbnb";
+  if (normalized === "vrbo") return "VRBO";
+  if (normalized === "booking" || normalized === "booking.com") return "Booking.com";
+  return normalized ? normalized.toUpperCase() : null;
 }
 
 function getMonthKey(date: Date) {
@@ -714,6 +732,7 @@ export default function OwnerPage() {
   const [ownerAccount, setOwnerAccount] = useState<OwnerAccountRow | null>(null);
   const [properties, setProperties] = useState<Property[]>([]);
   const [turnoverJobs, setTurnoverJobs] = useState<TurnoverJob[]>([]);
+  const [bookingEvents, setBookingEvents] = useState<BookingEvent[]>([]);
   const [groundsJobs, setGroundsJobs] = useState<GroundsJob[]>([]);
   const [groundsRecurringRules, setGroundsRecurringRules] = useState<GroundsRecurringRule[]>([]);
   const [flags, setFlags] = useState<MaintenanceFlag[]>([]);
@@ -788,6 +807,7 @@ export default function OwnerPage() {
     if (propertyIds.length === 0) {
       setProperties([]);
       setTurnoverJobs([]);
+      setBookingEvents([]);
       setGroundsJobs([]);
       setGroundsRecurringRules([]);
       setFlags([]);
@@ -799,6 +819,7 @@ export default function OwnerPage() {
     const [
       propertiesRes,
       turnoverRes,
+      bookingEventsRes,
       groundsRes,
       groundsRecurringRulesRes,
       flagsRes,
@@ -814,6 +835,11 @@ export default function OwnerPage() {
         .select("id,property_id,status,notes,created_at,scheduled_for")
         .in("property_id", propertyIds)
         .order("created_at", { ascending: false }),
+      supabase
+        .from("property_booking_events")
+        .select("id,property_id,source,summary,checkin_date,checkout_date,created_at")
+        .in("property_id", propertyIds)
+        .order("checkin_date", { ascending: false }),
       supabase
         .from("grounds_jobs")
         .select("id,property_id,status,notes,created_at,scheduled_for,job_type")
@@ -838,12 +864,21 @@ export default function OwnerPage() {
     for (const res of [
       propertiesRes,
       turnoverRes,
+      bookingEventsRes,
       groundsRes,
       groundsRecurringRulesRes,
       flagsRes,
       flagImagesRes,
     ]) {
       if (res.error) {
+        if (
+          res === bookingEventsRes &&
+          ((res.error as any).code === "PGRST205" ||
+            String(res.error.message || "").includes("property_booking_events"))
+        ) {
+          continue;
+        }
+
         setError(res.error.message);
         setLoading(false);
         return;
@@ -853,6 +888,7 @@ export default function OwnerPage() {
     const loadedProperties = (propertiesRes.data ?? []) as Property[];
     setProperties(loadedProperties);
     setTurnoverJobs((turnoverRes.data ?? []) as TurnoverJob[]);
+    setBookingEvents(bookingEventsRes.error ? [] : ((bookingEventsRes.data ?? []) as BookingEvent[]));
     setGroundsJobs((groundsRes.data ?? []) as GroundsJob[]);
     setGroundsRecurringRules((groundsRecurringRulesRes.data ?? []) as GroundsRecurringRule[]);
     setFlags((flagsRes.data ?? []) as MaintenanceFlag[]);
@@ -900,6 +936,11 @@ export default function OwnerPage() {
     if (!selectedProperty) return [];
     return turnoverJobs.filter((job) => job.property_id === selectedProperty.id);
   }, [selectedProperty, turnoverJobs]);
+
+  const propertyBookingEvents = useMemo(() => {
+    if (!selectedProperty) return [];
+    return bookingEvents.filter((event) => event.property_id === selectedProperty.id);
+  }, [selectedProperty, bookingEvents]);
 
   const propertyGroundsJobs = useMemo(() => {
     if (!selectedProperty) return [];
@@ -952,6 +993,23 @@ export default function OwnerPage() {
       : null;
 
   const upcomingBooking = useMemo(() => {
+    const eventBooking =
+      propertyBookingEvents
+        .filter((event) => isFutureOrToday(event.checkin_date))
+        .sort((a, b) => a.checkin_date.localeCompare(b.checkin_date))[0] || null;
+
+    if (eventBooking) {
+      return {
+        job: null,
+        booking: {
+          sourceLabel: getBookingSourceLabel(eventBooking.source),
+          guest: eventBooking.summary,
+          checkinDate: eventBooking.checkin_date,
+          checkoutDate: eventBooking.checkout_date,
+        },
+      };
+    }
+
     return propertyTurnoverJobs
       .map((job) => {
         const booking = parseBookingFromNotes(job.notes);
@@ -959,7 +1017,7 @@ export default function OwnerPage() {
       })
       .filter((item) => !!item.booking.checkinDate && isFutureOrToday(item.booking.checkinDate))
       .sort((a, b) => (a.booking.checkinDate || "").localeCompare(b.booking.checkinDate || ""))[0] || null;
-  }, [propertyTurnoverJobs]);
+  }, [propertyBookingEvents, propertyTurnoverJobs]);
 
   const timelineItems = useMemo<TimelineItem[]>(() => {
     const items: TimelineItem[] = [];
@@ -989,6 +1047,26 @@ export default function OwnerPage() {
           subtitle:
             booking.guest || booking.sourceLabel
               ? [booking.guest, booking.sourceLabel].filter(Boolean).join(" • ")
+              : "Upcoming reservation activity",
+          tone: "sky",
+        });
+      }
+    }
+
+    if (propertyBookingEvents.length > 0) {
+      for (const event of propertyBookingEvents) {
+        if (!isFutureOrToday(event.checkin_date)) continue;
+
+        const sourceLabel = getBookingSourceLabel(event.source);
+
+        items.push({
+          id: `booking-event-${event.id}`,
+          type: "booking",
+          title: "Upcoming booking",
+          date: event.checkin_date,
+          subtitle:
+            event.summary || sourceLabel
+              ? [event.summary, sourceLabel].filter(Boolean).join(" â€¢ ")
               : "Upcoming reservation activity",
           tone: "sky",
         });
@@ -1040,9 +1118,28 @@ export default function OwnerPage() {
         return aDate.localeCompare(bDate);
       })
       .slice(0, 8);
-  }, [propertyTurnoverJobs, propertyGroundsJobs, propertyGroundsRecurringRules, openFlags]);
+  }, [propertyTurnoverJobs, propertyBookingEvents, propertyGroundsJobs, propertyGroundsRecurringRules, openFlags]);
 
   const bookingInsights = useMemo<BookingInsight[]>(() => {
+    if (propertyBookingEvents.length > 0) {
+      return propertyBookingEvents
+        .map((event) => {
+          const nights = getDateRangeNights(event.checkin_date, event.checkout_date);
+          if (nights <= 0) return null;
+
+          return {
+            id: event.id,
+            sourceLabel: getBookingSourceLabel(event.source),
+            guest: event.summary,
+            checkinDate: event.checkin_date,
+            checkoutDate: event.checkout_date,
+            nights,
+          } satisfies BookingInsight;
+        })
+        .filter((booking): booking is BookingInsight => !!booking)
+        .sort((a, b) => a.checkinDate.localeCompare(b.checkinDate));
+    }
+
     return propertyTurnoverJobs
       .map((job) => {
         const booking = parseBookingFromNotes(job.notes);
@@ -1062,7 +1159,7 @@ export default function OwnerPage() {
       })
       .filter((booking): booking is BookingInsight => !!booking)
       .sort((a, b) => a.checkinDate.localeCompare(b.checkinDate));
-  }, [propertyTurnoverJobs]);
+  }, [propertyBookingEvents, propertyTurnoverJobs]);
 
   const bookingInsightStats = useMemo(() => {
     const monthKeys = getLastMonthKeys(12);
