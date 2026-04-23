@@ -992,17 +992,50 @@ export default function OwnerPage() {
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(176,139,71,0.14),transparent_28%),#0f0d0a] px-4 py-6 text-[#f7f1e8] sm:px-6 sm:py-8">
       <div className="mx-auto max-w-6xl space-y-6">
         <section className="overflow-hidden rounded-[32px] border border-white/8 bg-[linear-gradient(180deg,rgba(23,18,13,0.98)_0%,rgba(14,11,8,1)_100%)] shadow-[0_24px_80px_rgba(0,0,0,0.36)]">
+          {selectedProperty.cover_photo_url ? (
+            <div className="relative h-64 overflow-hidden sm:h-80">
+              <img
+                src={selectedProperty.cover_photo_url}
+                alt={selectedProperty.name || "Property cover photo"}
+                className="h-full w-full object-cover"
+              />
+              <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(15,13,10,0.12)_0%,rgba(15,13,10,0.78)_100%)]" />
+              <div className="absolute inset-x-0 bottom-0 px-6 py-6 sm:px-8">
+                <div className="max-w-2xl">
+                  <div className="text-[11px] uppercase tracking-[0.24em] text-[#ead7b8]">
+                    Owner Dashboard
+                  </div>
+                  <h1 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-5xl">
+                    {selectedProperty.name || "Property Overview"}
+                  </h1>
+                  <p className="mt-2 text-base text-[#f2e5d0]">
+                    {getCityFromAddress(selectedProperty.address) || selectedProperty.address || "Location unavailable"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           <div className="flex flex-col gap-6 px-6 py-7 sm:px-8 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <div className="text-[11px] uppercase tracking-[0.24em] text-[#bfa67b]">
-                Owner Dashboard
-              </div>
-              <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[#f7f1e8] sm:text-4xl">
-                {selectedProperty.name || "Property Overview"}
-              </h1>
-              <p className="mt-2 text-base text-[#cdbda0]">
-                {getCityFromAddress(selectedProperty.address) || selectedProperty.address || "Location unavailable"}
-              </p>
+              {!selectedProperty.cover_photo_url ? (
+                <>
+                  <div className="text-[11px] uppercase tracking-[0.24em] text-[#bfa67b]">
+                    Owner Dashboard
+                  </div>
+                  <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[#f7f1e8] sm:text-4xl">
+                    {selectedProperty.name || "Property Overview"}
+                  </h1>
+                  <p className="mt-2 text-base text-[#cdbda0]">
+                    {getCityFromAddress(selectedProperty.address) || selectedProperty.address || "Location unavailable"}
+                  </p>
+                </>
+              ) : (
+                <div className="text-sm text-[#cdbda0]">
+                  {getCityFromAddress(selectedProperty.address) || selectedProperty.address || "Location unavailable"}
+                </div>
+              )}
+
               {ownerAccount?.email ? (
                 <div className="mt-3 text-sm text-[#9f9079]">{ownerAccount.email}</div>
               ) : null}
