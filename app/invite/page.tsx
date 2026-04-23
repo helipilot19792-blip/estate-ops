@@ -285,104 +285,44 @@ function InvitePageContent() {
 
     try {
       const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
 
-      if (userError) {
-        setError(userError.message);
+      if (sessionError) {
+        setError(sessionError.message);
         return;
       }
 
-      if (!user) {
+      if (!session?.access_token) {
         return;
       }
 
-      const userEmail = user.email?.trim().toLowerCase() || "";
-      const inviteEmail = inviteData.email.trim().toLowerCase();
+      const response = await fetch("/api/invite/accept", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ token }),
+      });
 
-      if (!userEmail || userEmail !== inviteEmail) {
-        setError("You are signed in with a different email than the invite.");
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        setError(payload?.error || "Could not finish invite acceptance.");
         return;
       }
 
-      const { data: existingOrgMembership, error: membershipLookupError } = await supabase
-        .from("organization_members")
-        .select("organization_id, profile_id")
-        .eq("organization_id", inviteData.organization_id)
-        .eq("profile_id", user.id)
-        .maybeSingle();
-
-      if (membershipLookupError) {
-        setError(membershipLookupError.message);
-        return;
-      }
-
-      if (!existingOrgMembership) {
-        const { error: insertMembershipError } = await supabase
-          .from("organization_members")
-          .insert({
-            organization_id: inviteData.organization_id,
-            profile_id: user.id,
-            role: inviteData.role,
-          });
-
-        if (insertMembershipError) {
-          setError(insertMembershipError.message);
-          return;
-        }
-      }
-
-      const profileUpdates: ProfileUpdate = {
-        role: inviteData.role,
-      };
-
-      if (inviteData.phone) {
-        profileUpdates.phone = inviteData.phone;
-      }
-
-      if (inviteData.full_name) {
-        profileUpdates.full_name = inviteData.full_name;
-      }
-
-      const { error: profileUpdateError } = await supabase
-        .from("profiles")
-        .update(profileUpdates)
-        .eq("id", user.id);
-
-      if (profileUpdateError) {
-        setError(profileUpdateError.message);
-        return;
-      }
-
-      if (inviteData.role === "cleaner") {
-        await ensureCleanerMembership(user.id, inviteData);
-      }
-
-      if (inviteData.role === "grounds") {
-        await ensureGroundsMembership(user.id, inviteData);
-      }
-
-      const { error: inviteUpdateError } = await supabase
-        .from("organization_invites")
-        .update({
-          accepted_at: new Date().toISOString(),
-          status: "accepted",
-        })
-        .eq("id", inviteData.id);
-
-      if (inviteUpdateError) {
-        setError(inviteUpdateError.message);
-        return;
-      }
-
-      setInviteAccepted(true);
-      setMessage("Your account has been connected to the organization.");
-      setInvite({
+      const acceptedInvite = (payload?.invite || {
         ...inviteData,
         status: "accepted",
         accepted_at: new Date().toISOString(),
-      });
+      }) as InviteRow;
+
+      setInviteAccepted(true);
+      setMessage("Your account has been connected to the organization.");
+      setInvite(acceptedInvite);
     } catch (err: any) {
       setError(err?.message || "Could not finish invite acceptance.");
     } finally {
