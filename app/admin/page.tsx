@@ -6249,13 +6249,25 @@ This removes its linked members and deletes the grounds account.`
                 </div>
               ) : null}
 
-              <div className="mt-4 overflow-hidden rounded-[22px] border border-[#eadfce] bg-white">
+              <div className="mt-4 overflow-hidden rounded-[26px] border border-[#eadfce] bg-white shadow-sm">
                 {selectedProperty?.cover_photo_url ? (
-                  <img
-                    src={selectedProperty.cover_photo_url}
-                    alt={selectedProperty.name || "Property cover photo"}
-                    className="h-56 w-full object-cover"
-                  />
+                  <div>
+                    <div className="relative bg-[#1f1812]">
+                      <img
+                        src={selectedProperty.cover_photo_url}
+                        alt={selectedProperty.name || "Property cover photo"}
+                        className="max-h-[520px] w-full object-contain"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1 border-t border-[#eadfce] bg-[#fffaf4] px-4 py-3 text-sm text-[#6f6255] sm:flex-row sm:items-center sm:justify-between">
+                      <span className="font-medium text-[#241c15]">
+                        {selectedProperty.name || "Property cover photo"}
+                      </span>
+                      <span className="text-xs text-[#8a7b68]">
+                        Owner portal cover preview
+                      </span>
+                    </div>
+                  </div>
                 ) : (
                   <div className="flex h-44 items-center justify-center bg-[linear-gradient(135deg,#f8f2e8,#eadfce)] px-6 text-center text-sm text-[#7f7263]">
                     No cover photo added yet.
