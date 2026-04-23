@@ -316,6 +316,19 @@ type MyOrganizationRow = {
   organization_slug: string;
   role: string;
 };
+type OrganizationInviteRow = {
+  id: string;
+  organization_id: string;
+  email: string;
+  full_name: string | null;
+  phone: string | null;
+  role: "cleaner" | "grounds" | "owner";
+  status: string | null;
+  token: string;
+  sent_at?: string | null;
+  expires_at?: string | null;
+  created_at?: string | null;
+};
 function getMonthGrid(baseDate: Date) {
   const year = baseDate.getFullYear();
   const month = baseDate.getMonth();
@@ -508,6 +521,7 @@ export default function AdminPage() {
   const [propertyCalendars, setPropertyCalendars] = useState<PropertyCalendarRow[]>([]);
   const [maintenanceFlags, setMaintenanceFlags] = useState<MaintenanceFlagRow[]>([]);
   const [maintenanceFlagImages, setMaintenanceFlagImages] = useState<MaintenanceFlagImageRow[]>([]);
+  const [organizationInvites, setOrganizationInvites] = useState<OrganizationInviteRow[]>([]);
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
 
   const [error, setError] = useState("");
@@ -661,7 +675,13 @@ export default function AdminPage() {
       (job) => job.scheduled_for === tomorrowYmd
     );
   }, [groundsJobs, tomorrowYmd]);
+  const pendingCleanerInvites = useMemo(() => {
+    return organizationInvites.filter((invite) => invite.role === "cleaner");
+  }, [organizationInvites]);
 
+  const pendingGroundsInvites = useMemo(() => {
+    return organizationInvites.filter((invite) => invite.role === "grounds");
+  }, [organizationInvites]);
   const openMaintenanceFlagsCount = useMemo(() => {
     return maintenanceFlags.filter((flag) => {
       const status = (flag.status || "").toLowerCase();
@@ -917,6 +937,7 @@ export default function AdminPage() {
       propertyCalendarsRes,
       maintenanceFlagsRes,
       maintenanceFlagImagesRes,
+      organizationInvitesRes,
     ] = await Promise.all([
       supabase
         .from("properties")
@@ -993,6 +1014,13 @@ export default function AdminPage() {
         .eq("organization_id", currentOrganizationId)
         .order("created_at", { ascending: false }),
       supabase.from("property_maintenance_flag_images").select("*").order("sort_order", { ascending: true }),
+      supabase
+        .from("organization_invites")
+        .select("*")
+        .eq("organization_id", currentOrganizationId)
+        .in("role", ["cleaner", "grounds"])
+        .in("status", ["pending", "sent"])
+        .order("created_at", { ascending: false }),
     ]);
 
     const responses = [
@@ -1019,6 +1047,7 @@ export default function AdminPage() {
       propertyCalendarsRes,
       maintenanceFlagsRes,
       maintenanceFlagImagesRes,
+      organizationInvitesRes,
     ];
 
     for (const response of responses) {
@@ -1067,6 +1096,7 @@ export default function AdminPage() {
     setPropertyCalendars((propertyCalendarsRes.data ?? []) as PropertyCalendarRow[]);
     setMaintenanceFlags((maintenanceFlagsRes.data ?? []) as MaintenanceFlagRow[]);
     setMaintenanceFlagImages((maintenanceFlagImagesRes.data ?? []) as MaintenanceFlagImageRow[]);
+    setOrganizationInvites((organizationInvitesRes.data ?? []) as OrganizationInviteRow[]);
 
     setReassignSelections((prev) => {
       const next = { ...prev };
@@ -4332,6 +4362,53 @@ This removes its linked members and deletes the grounds account.`
                 Resend Invite
               </button>
             </div>
+            {pendingCleanerInvites.length > 0 ? (
+              <div className="mt-5 rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+                <div className="mb-2 text-sm font-medium text-[#5f5245]">
+                  Pending Cleaner Invites
+                </div>
+
+                <div className="space-y-3">
+                  {pendingCleanerInvites.map((invite) => (
+                    <div
+                      key={invite.id}
+                      className="rounded-[16px] border border-[#e7ddd0] bg-white px-4 py-3"
+                    >
+                      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <div className="text-sm font-medium text-[#241c15]">
+                            {invite.full_name || invite.email}
+                          </div>
+                          <div className="text-sm text-[#7f7263]">{invite.email}</div>
+                          <div className="mt-1 text-xs text-[#8a7b68]">
+                            Status: {invite.status || "sent"}
+                            {invite.sent_at
+                              ? ` • Sent ${new Date(invite.sent_at).toLocaleDateString()}`
+                              : ""}
+                            {invite.expires_at
+                              ? ` • Expires ${new Date(invite.expires_at).toLocaleDateString()}`
+                              : ""}
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void resendOrganizationInvite({
+                              email: invite.email,
+                              role: "cleaner",
+                            })
+                          }
+                          className="inline-flex items-center justify-center rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-medium text-[#5f5245] transition hover:bg-white"
+                        >
+                          Resend Invite
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         </section>
         <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
@@ -4521,6 +4598,53 @@ This removes its linked members and deletes the grounds account.`
                 Resend Invite
               </button>
             </div>
+            {pendingGroundsInvites.length > 0 ? (
+              <div className="mt-5 rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+                <div className="mb-2 text-sm font-medium text-[#5f5245]">
+                  Pending Grounds Invites
+                </div>
+
+                <div className="space-y-3">
+                  {pendingGroundsInvites.map((invite) => (
+                    <div
+                      key={invite.id}
+                      className="rounded-[16px] border border-[#e7ddd0] bg-white px-4 py-3"
+                    >
+                      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <div className="text-sm font-medium text-[#241c15]">
+                            {invite.full_name || invite.email}
+                          </div>
+                          <div className="text-sm text-[#7f7263]">{invite.email}</div>
+                          <div className="mt-1 text-xs text-[#8a7b68]">
+                            Status: {invite.status || "sent"}
+                            {invite.sent_at
+                              ? ` • Sent ${new Date(invite.sent_at).toLocaleDateString()}`
+                              : ""}
+                            {invite.expires_at
+                              ? ` • Expires ${new Date(invite.expires_at).toLocaleDateString()}`
+                              : ""}
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void resendOrganizationInvite({
+                              email: invite.email,
+                              role: "grounds",
+                            })
+                          }
+                          className="inline-flex items-center justify-center rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-medium text-[#5f5245] transition hover:bg-white"
+                        >
+                          Resend Invite
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         </section>
         <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
