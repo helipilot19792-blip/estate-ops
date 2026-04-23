@@ -428,56 +428,11 @@ async function handleFreshLoginLink() {
         ) : null}
 
         <section className="rounded-[28px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
-          <div className="text-[11px] uppercase tracking-[0.22em] text-[#bfa67b]">Confirmed Account</div>
-
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <div>
-              <div className="text-sm text-[#cdbda0]">Signed-in email</div>
-              <div className="mt-1 text-lg font-semibold text-[#f7f1e8]">
-                {signedInEmail || "Unknown"}
-              </div>
-            </div>
-
-            <div>
-              <div className="text-sm text-[#cdbda0]">Invite email</div>
-              <div className="mt-1 text-lg font-semibold text-[#f7f1e8]">
-                {expectedOwnerEmail || ownerAccount?.email || "Unknown"}
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-6">
-            <div className="text-[11px] uppercase tracking-[0.22em] text-[#bfa67b]">Assigned Properties</div>
-            <div className="mt-3 space-y-3">
-              {properties.length > 0 ? (
-                properties.map((property) => (
-                  <div
-                    key={property.id}
-                    className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-4"
-                  >
-                    <div className="text-sm font-semibold text-[#f7f1e8]">
-                      {property.name || "Property"}
-                    </div>
-                    <div className="mt-1 text-sm text-[#cdbda0]">
-                      {getCityFromAddress(property.address) || property.address || "Location unavailable"}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-4 text-sm text-[#cdbda0]">
-                  No properties are linked yet.
-                </div>
-              )}
-            </div>
-          </div>
-        </section>
-
-        <section className="rounded-[28px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
-          <div className="text-[11px] uppercase tracking-[0.22em] text-[#bfa67b]">Set Password</div>
-          <h2 className="mt-2 text-xl font-semibold text-[#f7f1e8]">Finish your setup</h2>
+          <div className="text-[11px] uppercase tracking-[0.22em] text-[#bfa67b]">Owner Access</div>
+          <h2 className="mt-2 text-xl font-semibold text-[#f7f1e8]">Set your password or log in</h2>
           <p className="mt-2 text-sm leading-relaxed text-[#cdbda0]">
-            Setting a password is recommended. After you save it, you will be taken to the owner
-            login page to sign in normally.
+            Start here. If this is your first time, set a password from the newest email link.
+            If your password is already set, go straight to owner login.
           </p>
           {!hasInviteSession ? (
             <div className="mt-4 rounded-2xl border border-amber-400/25 bg-amber-950/20 px-4 py-3 text-sm text-amber-100">
@@ -545,6 +500,62 @@ async function handleFreshLoginLink() {
             >
               {continuing ? "Opening..." : "Continue to Dashboard"}
             </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                const loginEmail = expectedOwnerEmail || ownerAccount?.email || signedInEmail || "";
+                router.push(`/owner/login${loginEmail ? `?email=${encodeURIComponent(loginEmail)}` : ""}`);
+              }}
+              className="rounded-full border border-[#b08b47]/50 px-5 py-2.5 text-sm font-semibold text-[#f7f1e8] transition hover:bg-[#b08b47]/10"
+            >
+              Already have a password? Log in
+            </button>
+          </div>
+        </section>
+
+        <section className="rounded-[28px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
+          <div className="text-[11px] uppercase tracking-[0.22em] text-[#bfa67b]">Confirmed Account</div>
+
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <div>
+              <div className="text-sm text-[#cdbda0]">Signed-in email</div>
+              <div className="mt-1 text-lg font-semibold text-[#f7f1e8]">
+                {signedInEmail || "Unknown"}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-sm text-[#cdbda0]">Invite email</div>
+              <div className="mt-1 text-lg font-semibold text-[#f7f1e8]">
+                {expectedOwnerEmail || ownerAccount?.email || "Unknown"}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <div className="text-[11px] uppercase tracking-[0.22em] text-[#bfa67b]">Assigned Properties</div>
+            <div className="mt-3 space-y-3">
+              {properties.length > 0 ? (
+                properties.map((property) => (
+                  <div
+                    key={property.id}
+                    className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-4"
+                  >
+                    <div className="text-sm font-semibold text-[#f7f1e8]">
+                      {property.name || "Property"}
+                    </div>
+                    <div className="mt-1 text-sm text-[#cdbda0]">
+                      {getCityFromAddress(property.address) || property.address || "Location unavailable"}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-4 text-sm text-[#cdbda0]">
+                  No properties are linked yet.
+                </div>
+              )}
+            </div>
           </div>
         </section>
       </div>
