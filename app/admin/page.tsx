@@ -571,6 +571,8 @@ export default function AdminPage() {
   const [selectedPropertyOwnerEmail, setSelectedPropertyOwnerEmail] = useState("");
   const [savingSelectedPropertyOwner, setSavingSelectedPropertyOwner] = useState(false);
   const [selectedPropertyOwnerDirty, setSelectedPropertyOwnerDirty] = useState(false);
+  const [ownerLinkTargetPropertyId, setOwnerLinkTargetPropertyId] = useState("");
+  const [linkingOwnerProperty, setLinkingOwnerProperty] = useState(false);
   const [propertyUnitsNeeded, setPropertyUnitsNeeded] = useState("1");
   const [propertyUnitsStrict, setPropertyUnitsStrict] = useState(false);
   const [propertyShowTeamStatus, setPropertyShowTeamStatus] = useState(true);
@@ -833,6 +835,7 @@ export default function AdminPage() {
     setCalendarDraftDirty(false);
     setAccessDirty(false);
     setPropertyDefaultsDirty(false);
+    setOwnerLinkTargetPropertyId("");
   }, [selectedPropertyId]);
 
   useEffect(() => {
@@ -4081,6 +4084,16 @@ This removes its linked members and deletes the grounds account.`
     return ownerAccounts.find((owner) => owner.id === accessRow.owner_account_id) || null;
   }
 
+  function getPropertiesForOwner(ownerAccountId: string) {
+    const linkedPropertyIds = new Set(
+      ownerPropertyAccess
+        .filter((row) => row.owner_account_id === ownerAccountId)
+        .map((row) => row.property_id)
+    );
+
+    return properties.filter((property) => linkedPropertyIds.has(property.id));
+  }
+
   function getOwnerInviteStatus(owner: OwnerAccountRow | null) {
     if (!owner) return "No owner linked";
     if (owner.invite_accepted_at) return "Active";
@@ -4141,6 +4154,63 @@ This removes its linked members and deletes the grounds account.`
     setActionMessage(`Invite sent to ${trimmedEmail}.`);
     setSendingOwnerInviteId(null);
     await loadData();
+  }
+
+  async function linkSelectedOwnerToProperty() {
+    if (!selectedPropertyId) {
+      setError("Select a property first.");
+      return;
+    }
+
+    if (!ownerLinkTargetPropertyId) {
+      setError("Choose another property to link.");
+      return;
+    }
+
+    const trimmedEmail = selectedPropertyOwnerEmail.trim().toLowerCase();
+
+    if (!trimmedEmail) {
+      setError("Save an owner email before linking more properties.");
+      return;
+    }
+
+    const owner = ownerAccounts.find((account) => account.email.trim().toLowerCase() === trimmedEmail);
+
+    if (!owner) {
+      setError("Save this owner first, then link additional properties.");
+      return;
+    }
+
+    const alreadyLinked = ownerPropertyAccess.some(
+      (row) => row.owner_account_id === owner.id && row.property_id === ownerLinkTargetPropertyId
+    );
+
+    if (alreadyLinked) {
+      setActionMessage("Owner is already linked to that property.");
+      setOwnerLinkTargetPropertyId("");
+      return;
+    }
+
+    setError("");
+    setActionMessage("");
+    setLinkingOwnerProperty(true);
+
+    try {
+      const { error } = await supabase.from("owner_property_access").insert({
+        owner_account_id: owner.id,
+        property_id: ownerLinkTargetPropertyId,
+      });
+
+      if (error) throw error;
+
+      setOwnerLinkTargetPropertyId("");
+      setActionMessage("Owner linked to additional property.");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Could not link owner to property.");
+    } finally {
+      setLinkingOwnerProperty(false);
+    }
   }
 
   function renderAddPropertySection() {
@@ -5834,6 +5904,18 @@ This removes its linked members and deletes the grounds account.`
     );
   }
   function renderPropertySetupSection() {
+    const selectedOwner = selectedPropertyOwnerEmail
+      ? ownerAccounts.find(
+        (owner) =>
+          owner.email.trim().toLowerCase() === selectedPropertyOwnerEmail.trim().toLowerCase()
+      ) || null
+      : null;
+    const selectedOwnerProperties = selectedOwner ? getPropertiesForOwner(selectedOwner.id) : [];
+    const selectedOwnerPropertyIds = new Set(selectedOwnerProperties.map((property) => property.id));
+    const ownerLinkPropertyOptions = selectedOwner
+      ? properties.filter((property) => !selectedOwnerPropertyIds.has(property.id))
+      : [];
+
     return (
       <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
         <h2 className="text-xl font-semibold tracking-tight">Property Setup</h2>
@@ -5953,6 +6035,52 @@ This removes its linked members and deletes the grounds account.`
                   ) : null}
                 </div>
               </div>
+
+              {selectedOwner ? (
+                <div className="mt-4 rounded-[18px] border border-[#eadfce] bg-white px-4 py-3">
+                  <div className="text-sm font-semibold text-[#241c15]">
+                    Owner property access
+                  </div>
+                  <p className="mt-1 text-xs text-[#8a7b68]">
+                    This owner can switch between every property linked here.
+                  </p>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {selectedOwnerProperties.map((property) => (
+                      <span
+                        key={property.id}
+                        className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#6f6255]"
+                      >
+                        {property.name || property.address || "Unnamed property"}
+                      </span>
+                    ))}
+                  </div>
+
+                  <div className="mt-4 grid gap-2 md:grid-cols-[1fr_auto]">
+                    <select
+                      value={ownerLinkTargetPropertyId}
+                      onChange={(e) => setOwnerLinkTargetPropertyId(e.target.value)}
+                      className="w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none transition focus:border-[#b48d4e]"
+                    >
+                      <option value="">Link this owner to another property</option>
+                      {ownerLinkPropertyOptions.map((property) => (
+                        <option key={property.id} value={property.id}>
+                          {property.name || property.address || property.id}
+                        </option>
+                      ))}
+                    </select>
+
+                    <button
+                      type="button"
+                      onClick={() => void linkSelectedOwnerToProperty()}
+                      disabled={!ownerLinkTargetPropertyId || linkingOwnerProperty}
+                      className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-5 py-2 text-sm font-medium text-[#5f5245] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {linkingOwnerProperty ? "Linking..." : "Link property"}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div className="mt-6 grid gap-6 lg:grid-cols-3">

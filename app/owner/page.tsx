@@ -634,12 +634,7 @@ export default function OwnerPage() {
   const [flagImages, setFlagImages] = useState<MaintenanceFlagImage[]>([]);
   const [reportOpen, setReportOpen] = useState(false);
   const [reportSuccess, setReportSuccess] = useState("");
-
-  const selectedPropertyId = useMemo(() => {
-    if (typeof window === "undefined") return "";
-    const params = new URLSearchParams(window.location.search);
-    return params.get("property") || "";
-  }, []);
+  const [selectedPropertyId, setSelectedPropertyId] = useState("");
 
   const flagImagesByFlagId = useMemo(() => {
     const map = new Map<string, MaintenanceFlagImage[]>();
@@ -768,12 +763,28 @@ export default function OwnerPage() {
       }
     }
 
-    setProperties((propertiesRes.data ?? []) as Property[]);
+    const loadedProperties = (propertiesRes.data ?? []) as Property[];
+    setProperties(loadedProperties);
     setTurnoverJobs((turnoverRes.data ?? []) as TurnoverJob[]);
     setGroundsJobs((groundsRes.data ?? []) as GroundsJob[]);
     setGroundsRecurringRules((groundsRecurringRulesRes.data ?? []) as GroundsRecurringRule[]);
     setFlags((flagsRes.data ?? []) as MaintenanceFlag[]);
     setFlagImages((flagImagesRes.data ?? []) as MaintenanceFlagImage[]);
+    setSelectedPropertyId((currentPropertyId) => {
+      if (loadedProperties.some((property) => property.id === currentPropertyId)) {
+        return currentPropertyId;
+      }
+
+      if (typeof window !== "undefined") {
+        const params = new URLSearchParams(window.location.search);
+        const propertyFromUrl = params.get("property") || "";
+        if (loadedProperties.some((property) => property.id === propertyFromUrl)) {
+          return propertyFromUrl;
+        }
+      }
+
+      return loadedProperties[0]?.id || "";
+    });
     setLoading(false);
   }
 
@@ -783,6 +794,20 @@ export default function OwnerPage() {
 
   const selectedProperty =
     properties.find((property) => property.id === selectedPropertyId) || properties[0] || null;
+
+  function handleOwnerPropertyChange(propertyId: string) {
+    setSelectedPropertyId(propertyId);
+
+    if (typeof window === "undefined") return;
+
+    const url = new URL(window.location.href);
+    if (propertyId) {
+      url.searchParams.set("property", propertyId);
+    } else {
+      url.searchParams.delete("property");
+    }
+    window.history.replaceState(null, "", url.toString());
+  }
 
   const propertyTurnoverJobs = useMemo(() => {
     if (!selectedProperty) return [];
@@ -983,6 +1008,20 @@ export default function OwnerPage() {
             </div>
 
             <div className="flex flex-wrap gap-3">
+              {properties.length > 1 ? (
+                <select
+                  value={selectedProperty.id}
+                  onChange={(e) => handleOwnerPropertyChange(e.target.value)}
+                  className="min-w-[220px] rounded-full border border-white/12 bg-[#15110d] px-5 py-3 text-sm font-semibold text-[#f7f1e8] outline-none transition hover:bg-white/[0.05] focus:border-[#b08b47]"
+                >
+                  {properties.map((property) => (
+                    <option key={property.id} value={property.id}>
+                      {property.name || property.address || "Unnamed property"}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+
               <button
                 type="button"
                 onClick={() => setReportOpen(true)}
