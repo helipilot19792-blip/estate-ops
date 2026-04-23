@@ -575,6 +575,8 @@ export default function AdminPage() {
   const [ownerLinkTargetPropertyId, setOwnerLinkTargetPropertyId] = useState("");
   const [linkingOwnerProperty, setLinkingOwnerProperty] = useState(false);
   const [uploadingPropertyCover, setUploadingPropertyCover] = useState(false);
+  const [propertyCoverMessage, setPropertyCoverMessage] = useState("");
+  const [propertyCoverError, setPropertyCoverError] = useState("");
   const [propertyUnitsNeeded, setPropertyUnitsNeeded] = useState("1");
   const [propertyUnitsStrict, setPropertyUnitsStrict] = useState(false);
   const [propertyShowTeamStatus, setPropertyShowTeamStatus] = useState(true);
@@ -838,6 +840,8 @@ export default function AdminPage() {
     setAccessDirty(false);
     setPropertyDefaultsDirty(false);
     setOwnerLinkTargetPropertyId("");
+    setPropertyCoverMessage("");
+    setPropertyCoverError("");
   }, [selectedPropertyId]);
 
   useEffect(() => {
@@ -2840,6 +2844,7 @@ This removes its linked members and deletes the grounds account.`
 
     if (!selectedPropertyId) {
       setError("Please select a property first.");
+      setPropertyCoverError("Please select a property first.");
       return;
     }
 
@@ -2847,11 +2852,14 @@ This removes its linked members and deletes the grounds account.`
 
     if (!file.type.startsWith("image/")) {
       setError("Please choose an image file for the cover photo.");
+      setPropertyCoverError("Please choose an image file for the cover photo.");
       return;
     }
 
     setError("");
     setActionMessage("");
+    setPropertyCoverError("");
+    setPropertyCoverMessage("Uploading cover photo...");
     setUploadingPropertyCover(true);
 
     try {
@@ -2877,10 +2885,24 @@ This removes its linked members and deletes the grounds account.`
 
       if (updateError) throw updateError;
 
+      setProperties((prev) =>
+        prev.map((property) =>
+          property.id === selectedPropertyId
+            ? { ...property, cover_photo_url: publicUrl }
+            : property
+        )
+      );
+      setPropertyCoverMessage("Cover photo uploaded.");
       setActionMessage("Property cover photo updated.");
       await loadData();
     } catch (err: any) {
-      setError(err?.message || "Could not upload property cover photo.");
+      const message = err?.message || "Could not upload property cover photo.";
+      const helpfulMessage = message.includes("cover_photo_url")
+        ? `${message} Run supabase/add_property_cover_photo.sql in Supabase, then try again.`
+        : message;
+      setPropertyCoverError(helpfulMessage);
+      setPropertyCoverMessage("");
+      setError(helpfulMessage);
     } finally {
       setUploadingPropertyCover(false);
     }
@@ -2894,6 +2916,8 @@ This removes its linked members and deletes the grounds account.`
 
     setError("");
     setActionMessage("");
+    setPropertyCoverError("");
+    setPropertyCoverMessage("Removing cover photo...");
     setUploadingPropertyCover(true);
 
     try {
@@ -2906,10 +2930,21 @@ This removes its linked members and deletes the grounds account.`
 
       if (error) throw error;
 
+      setProperties((prev) =>
+        prev.map((property) =>
+          property.id === selectedPropertyId
+            ? { ...property, cover_photo_url: null }
+            : property
+        )
+      );
+      setPropertyCoverMessage("Cover photo removed.");
       setActionMessage("Property cover photo removed.");
       await loadData();
     } catch (err: any) {
-      setError(err?.message || "Could not remove property cover photo.");
+      const message = err?.message || "Could not remove property cover photo.";
+      setPropertyCoverError(message);
+      setPropertyCoverMessage("");
+      setError(message);
     } finally {
       setUploadingPropertyCover(false);
     }
@@ -6201,6 +6236,18 @@ This removes its linked members and deletes the grounds account.`
                   ) : null}
                 </div>
               </div>
+
+              {propertyCoverError ? (
+                <div className="mt-4 rounded-[16px] border border-[#e7c6c1] bg-[#fff4f2] px-4 py-3 text-sm text-[#8a2e22]">
+                  {propertyCoverError}
+                </div>
+              ) : null}
+
+              {propertyCoverMessage ? (
+                <div className="mt-4 rounded-[16px] border border-[#cfe4cf] bg-[#f4fbf4] px-4 py-3 text-sm text-[#2f6b2f]">
+                  {propertyCoverMessage}
+                </div>
+              ) : null}
 
               <div className="mt-4 overflow-hidden rounded-[22px] border border-[#eadfce] bg-white">
                 {selectedProperty?.cover_photo_url ? (
