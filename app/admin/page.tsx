@@ -7401,6 +7401,35 @@ This removes its linked members and deletes the grounds account.`
         {renderActiveSection()}
       </div>
 
+      {error || actionMessage ? (
+        <div
+          className={`fixed bottom-4 left-4 right-4 z-[45] rounded-[24px] border px-4 py-3 text-sm shadow-[0_18px_45px_rgba(0,0,0,0.16)] backdrop-blur sm:left-auto sm:max-w-xl ${
+            error
+              ? "border-[#e7c6c1] bg-[#fff4f2]/95 text-[#8a2e22]"
+              : "border-[#cfe4cf] bg-[#f4fbf4]/95 text-[#2f6b2f]"
+          }`}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-[0.18em]">
+                {error ? "Needs attention" : "Update complete"}
+              </div>
+              <div className="mt-1 leading-5">{error || actionMessage}</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (error) setError("");
+                if (actionMessage) setActionMessage("");
+              }}
+              className="rounded-full border border-current/20 px-3 py-1 text-xs font-semibold opacity-80 transition hover:opacity-100"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {expandedImage ? (
         <div
           className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 p-4"
