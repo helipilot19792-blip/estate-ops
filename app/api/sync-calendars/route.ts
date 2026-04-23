@@ -309,6 +309,8 @@ export async function POST(request: Request) {
       skipped_existing: number;
       skipped_past: number;
       skipped_non_booking: number;
+      created_dates: string[];
+      existing_dates: string[];
       errors: string[];
     }> = [];
 
@@ -324,6 +326,8 @@ export async function POST(request: Request) {
         skipped_existing: 0,
         skipped_past: 0,
         skipped_non_booking: 0,
+        created_dates: [] as string[],
+        existing_dates: [] as string[],
         errors: [] as string[],
       };
 
@@ -352,6 +356,7 @@ export async function POST(request: Request) {
 
           if (exists) {
             resultBucket.skipped_existing += 1;
+            resultBucket.existing_dates.push(event.checkoutDate);
             continue;
           }
 
@@ -404,6 +409,7 @@ if (!property?.organization_id) {
           }
 
           resultBucket.created += 1;
+          resultBucket.created_dates.push(event.checkoutDate);
         }
       } catch (calendarError: any) {
         resultBucket.errors.push(calendarError?.message || "Calendar processing failed");

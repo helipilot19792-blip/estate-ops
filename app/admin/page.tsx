@@ -2091,7 +2091,9 @@ export default function AdminPage() {
             const source = result?.source || "calendar";
             const resultCreated = Number(result?.created ?? 0);
             const resultErrors = Array.isArray(result?.errors) ? result.errors.length : 0;
-            return `${propertyName} / ${source}: ${resultCreated} created${resultErrors > 0 ? `, ${resultErrors} error${resultErrors === 1 ? "" : "s"}` : ""}`;
+            const createdDates = Array.isArray(result?.created_dates) ? result.created_dates.slice(0, 3).join(", ") : "";
+            const existingDates = Array.isArray(result?.existing_dates) ? result.existing_dates.slice(0, 3).join(", ") : "";
+            return `${propertyName} / ${source}: ${resultCreated} created${createdDates ? ` (${createdDates})` : ""}${existingDates ? `, existing on ${existingDates}` : ""}${resultErrors > 0 ? `, ${resultErrors} error${resultErrors === 1 ? "" : "s"}` : ""}`;
           })
           .slice(0, 4)
           .join(" | ")
