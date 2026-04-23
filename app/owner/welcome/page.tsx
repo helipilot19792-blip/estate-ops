@@ -34,6 +34,22 @@ function getCityFromAddress(address?: string | null) {
   return address;
 }
 
+function getSupabaseInviteError() {
+  if (typeof window === "undefined" || !window.location.hash) return "";
+
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const errorCode = hashParams.get("error_code");
+  const errorDescription = hashParams.get("error_description");
+
+  if (!errorCode && !errorDescription) return "";
+
+  if (errorCode === "otp_expired") {
+    return "This owner invite link is expired or has already been used. Please request a fresh owner login link, or resend the owner invite from admin.";
+  }
+
+  return errorDescription || "We could not confirm this owner invite link.";
+}
+
 export default function OwnerWelcomePage() {
   const router = useRouter();
 
@@ -41,6 +57,7 @@ export default function OwnerWelcomePage() {
   const [savingPassword, setSavingPassword] = useState(false);
   const [continuing, setContinuing] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [hasInviteSession, setHasInviteSession] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState("");
@@ -64,6 +81,7 @@ export default function OwnerWelcomePage() {
         typeof window !== "undefined"
           ? new URLSearchParams(window.location.search).get("owner_email")?.trim().toLowerCase() || ""
           : "";
+      const inviteLinkError = getSupabaseInviteError();
 
       setExpectedOwnerEmail(expectedFromQuery);
 
@@ -81,6 +99,7 @@ export default function OwnerWelcomePage() {
       }
 
       const accessToken = session?.access_token;
+      setHasInviteSession(!!accessToken);
 
       const {
         data: { user },
@@ -89,7 +108,10 @@ export default function OwnerWelcomePage() {
 
       if (userError || !user) {
         if (!cancelled) {
-          setError("We could not confirm your invite session. Please open the link from your email again.");
+          setError(
+            inviteLinkError ||
+              "We could not confirm your invite session. Please open the newest link from your email again."
+          );
           setLoading(false);
         }
         return;
@@ -237,8 +259,19 @@ export default function OwnerWelcomePage() {
   const ownerMatched = !!ownerAccount;
   const wrongSignedInUser =
     !!expectedOwnerEmail && !!signedInEmail && expectedOwnerEmail !== signedInEmail;
+  const canUseSetupActions = ownerMatched && hasInviteSession && !wrongSignedInUser;
 
   async function handleSetPassword() {
+    if (!hasInviteSession) {
+      setError("This owner invite session is not active anymore. Please request a fresh owner login link, then set the password from the newest email.");
+      return;
+    }
+
+    if (wrongSignedInUser) {
+      setError("This browser is signed in under a different email than the owner invite. Please sign out and open the invite with the invited email.");
+      return;
+    }
+
     if (!ownerMatched) {
       setError("Please use the correct invited email before setting a password.");
       return;
@@ -272,6 +305,11 @@ export default function OwnerWelcomePage() {
   }
 
   async function handleContinue() {
+    if (!hasInviteSession) {
+      setError("Please request a fresh owner login link before continuing.");
+      return;
+    }
+
     if (!ownerMatched) {
       setError("We could not match this session to an owner account yet.");
       return;
@@ -286,6 +324,11 @@ async function handleSignOut() {
   await supabase.auth.signOut();
   setSigningOut(false);
   router.replace("/owner/login");
+}
+
+function handleFreshLoginLink() {
+  const loginEmail = expectedOwnerEmail || ownerAccount?.email || signedInEmail || "";
+  router.replace(`/owner/login${loginEmail ? `?email=${encodeURIComponent(loginEmail)}` : ""}`);
 }
 
   if (loading) {
@@ -324,7 +367,14 @@ async function handleSignOut() {
               </div>
             ) : null}
 
-            <div className="mt-3">
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={handleFreshLoginLink}
+                className="rounded-full bg-[#b08b47] px-4 py-2 text-xs font-semibold text-[#17120d] transition hover:brightness-110"
+              >
+                Request fresh login link
+              </button>
               <button
                 type="button"
                 onClick={() => void handleSignOut()}
@@ -395,6 +445,11 @@ async function handleSignOut() {
             Setting a password is recommended. After you save it, you will be taken to the owner
             login page to sign in normally.
           </p>
+          {!hasInviteSession ? (
+            <div className="mt-4 rounded-2xl border border-amber-400/25 bg-amber-950/20 px-4 py-3 text-sm text-amber-100">
+              Password setup needs an active email-link session. Use the fresh-login-link button above, then open the newest email.
+            </div>
+          ) : null}
 
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             <div>
@@ -442,7 +497,7 @@ async function handleSignOut() {
             <button
               type="button"
               onClick={() => void handleSetPassword()}
-              disabled={savingPassword || !ownerMatched}
+              disabled={savingPassword || !canUseSetupActions}
               className="rounded-full bg-[#b08b47] px-5 py-2.5 text-sm font-semibold text-[#17120d] transition hover:brightness-110 disabled:opacity-60"
             >
               {savingPassword ? "Saving..." : "Set Password"}
@@ -451,7 +506,7 @@ async function handleSignOut() {
             <button
               type="button"
               onClick={() => void handleContinue()}
-              disabled={continuing || !ownerMatched}
+              disabled={continuing || !canUseSetupActions}
               className="rounded-full border border-white/12 px-5 py-2.5 text-sm font-semibold text-[#f7f1e8] transition hover:bg-white/[0.05] disabled:opacity-60"
             >
               {continuing ? "Opening..." : "Continue to Dashboard"}

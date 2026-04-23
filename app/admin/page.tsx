@@ -470,6 +470,11 @@ const PROPERTY_CALENDAR_COLORS = [
   { bg: "#fff1f2", text: "#be123c", border: "#fda4af" },
 ];
 
+const PROPERTY_CALENDAR_SOURCE_OPTIONS = [
+  { value: "airbnb", label: "Airbnb" },
+  { value: "vrbo", label: "VRBO" },
+];
+
 function getPropertyColor(propertyId: string | null) {
   if (!propertyId) {
     return { bg: "#f4efe8", text: "#6f6255", border: "#d8c7ab" };
@@ -3044,7 +3049,7 @@ This removes its linked members and deletes the grounds account.`
       const normalizedRows = calendarRowsDraft
         .map((row) => ({
           id: row.id,
-          source: row.source.trim(),
+          source: row.source.trim().toLowerCase(),
           ical_url: row.ical_url.trim(),
           is_active: row.is_active,
         }))
@@ -3052,10 +3057,13 @@ This removes its linked members and deletes the grounds account.`
 
       for (const row of normalizedRows) {
         if (!row.source) {
-          throw new Error("Each calendar row needs a source name.");
+          throw new Error("Each calendar row needs a source.");
+        }
+        if (!PROPERTY_CALENDAR_SOURCE_OPTIONS.some((option) => option.value === row.source)) {
+          throw new Error("Calendar source must be Airbnb or VRBO.");
         }
         if (!row.ical_url) {
-          throw new Error(`Calendar URL is missing for ${row.source}.`);
+          throw new Error(`Calendar URL is missing for ${getCalendarSourceLabel(row.source)}.`);
         }
       }
 
@@ -6412,8 +6420,7 @@ This removes its linked members and deletes the grounds account.`
             <div className="rounded-[26px] border border-[#eadfce] bg-[#fcfaf7] p-5">
               <h3 className="text-lg font-semibold">Booking Calendars</h3>
               <p className="mt-1 text-sm text-[#7f7263]">
-                Add as many calendar feeds as you need for this property. Examples:
-                Airbnb, VRBO, Booking.com, direct booking, Hospitable, or any custom iCal URL.
+                Add Airbnb and VRBO iCal feeds for this property. Save them here, then use Sync Now to create future cleaning jobs from checkout dates.
               </p>
 
               <div className="mt-4 space-y-4">
@@ -6433,7 +6440,7 @@ This removes its linked members and deletes the grounds account.`
                             className="flex flex-wrap items-center justify-between gap-3 rounded-[16px] border border-[#eadfce] bg-[#fcfaf7] px-3 py-2"
                           >
                             <div className="min-w-0">
-                              <div className="text-sm font-medium text-[#241c15]">{calendar.source || "Unnamed calendar"}</div>
+                              <div className="text-sm font-medium text-[#241c15]">{getCalendarSourceLabel(calendar.source)}</div>
                               <div className="truncate text-xs text-[#8a7b68]">{calendar.ical_url}</div>
                             </div>
                             <div className="text-xs text-[#8a7b68]">
@@ -6459,16 +6466,22 @@ This removes its linked members and deletes the grounds account.`
                     <div className="grid gap-3">
                       <div>
                         <label className="mb-2 block text-sm font-medium text-[#5f5245]">
-                          Source name
+                          Source
                         </label>
-                        <input
+                        <select
                           className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                          placeholder="Airbnb, VRBO, Booking.com, Direct, etc."
-                          value={row.source}
+                          value={row.source.trim().toLowerCase()}
                           onChange={(e) =>
                             updateCalendarDraftRow(index, "source", e.target.value)
                           }
-                        />
+                        >
+                          <option value="">Choose source</option>
+                          {PROPERTY_CALENDAR_SOURCE_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
                       </div>
 
                       <div>
@@ -7512,5 +7525,14 @@ This removes its linked members and deletes the grounds account.`
         </div>
       )}
     </main>
+  );
+}
+
+function getCalendarSourceLabel(source: string | null | undefined) {
+  const normalized = (source || "").trim().toLowerCase();
+  return (
+    PROPERTY_CALENDAR_SOURCE_OPTIONS.find((option) => option.value === normalized)?.label ||
+    source ||
+    "Unnamed calendar"
   );
 }
