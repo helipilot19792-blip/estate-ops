@@ -1651,19 +1651,45 @@ export default function AdminPage() {
     );
     if (!confirmed) return;
 
+    if (!currentOrganizationId) {
+      setError("No organization selected.");
+      return;
+    }
+
     setError("");
     setActionMessage("");
     setDeletingOrganizationInviteId(inviteId);
 
     try {
-      const { error } = await supabase
-        .from("organization_invites")
-        .delete()
-        .eq("id", inviteId);
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
 
-      if (error) throw error;
+      if (sessionError || !session?.access_token) {
+        throw new Error("Could not verify your admin session.");
+      }
 
-      setActionMessage("Pending invite deleted.");
+      const response = await fetch("/api/admin/delete-organization-invite", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          inviteId,
+          organizationId: currentOrganizationId,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(payload?.error || "Could not delete pending invite.");
+      }
+
+      setOrganizationInvites((prev) => prev.filter((invite) => invite.id !== inviteId));
+      setActionMessage(payload?.message || "Pending invite deleted.");
       await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not delete pending invite.");
