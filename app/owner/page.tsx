@@ -96,6 +96,17 @@ type TimelineItem = {
   tone?: "gold" | "emerald" | "sky" | "rose";
 };
 
+type OwnerTab = "overview" | "insights";
+
+type BookingInsight = {
+  id: string;
+  sourceLabel: string | null;
+  guest: string | null;
+  checkinDate: string;
+  checkoutDate: string;
+  nights: number;
+};
+
 const ISSUE_CATEGORIES = [
   "General concern",
   "Damage",
@@ -188,6 +199,80 @@ function isFutureOrToday(dateYmd: string | null) {
     `${today.getDate()}`.padStart(2, "0"),
   ].join("-");
   return dateYmd >= todayYmd;
+}
+
+function getMonthKey(date: Date) {
+  return `${date.getFullYear()}-${`${date.getMonth() + 1}`.padStart(2, "0")}`;
+}
+
+function getMonthLabel(monthKey: string) {
+  const [year, month] = monthKey.split("-").map(Number);
+  return new Date(year, month - 1, 1).toLocaleDateString(undefined, {
+    month: "short",
+  });
+}
+
+function getDaysInMonth(monthKey: string) {
+  const [year, month] = monthKey.split("-").map(Number);
+  return new Date(year, month, 0).getDate();
+}
+
+function getLastMonthKeys(count: number) {
+  const today = new Date();
+  const keys: string[] = [];
+
+  for (let i = count - 1; i >= 0; i -= 1) {
+    keys.push(getMonthKey(new Date(today.getFullYear(), today.getMonth() - i, 1)));
+  }
+
+  return keys;
+}
+
+function getDateRangeNights(startYmd: string, endYmd: string) {
+  const start = new Date(`${startYmd}T12:00:00`);
+  const end = new Date(`${endYmd}T12:00:00`);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0;
+
+  return Math.max(0, Math.round((end.getTime() - start.getTime()) / 86400000));
+}
+
+function countBookedNightsInMonth(booking: BookingInsight, monthKey: string) {
+  const [year, month] = monthKey.split("-").map(Number);
+  const monthStart = new Date(year, month - 1, 1);
+  const monthEnd = new Date(year, month, 1);
+  const bookingStart = new Date(`${booking.checkinDate}T12:00:00`);
+  const bookingEnd = new Date(`${booking.checkoutDate}T12:00:00`);
+
+  if (Number.isNaN(bookingStart.getTime()) || Number.isNaN(bookingEnd.getTime())) return 0;
+
+  const overlapStart = bookingStart > monthStart ? bookingStart : monthStart;
+  const overlapEnd = bookingEnd < monthEnd ? bookingEnd : monthEnd;
+  const nights = Math.round((overlapEnd.getTime() - overlapStart.getTime()) / 86400000);
+
+  return Math.max(0, nights);
+}
+
+function countBookedNightsInWindow(bookings: BookingInsight[], days: number) {
+  const today = new Date();
+  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const end = new Date(start);
+  end.setDate(start.getDate() + days);
+
+  return bookings.reduce((total, booking) => {
+    const bookingStart = new Date(`${booking.checkinDate}T12:00:00`);
+    const bookingEnd = new Date(`${booking.checkoutDate}T12:00:00`);
+
+    if (Number.isNaN(bookingStart.getTime()) || Number.isNaN(bookingEnd.getTime())) {
+      return total;
+    }
+
+    const overlapStart = bookingStart > start ? bookingStart : start;
+    const overlapEnd = bookingEnd < end ? bookingEnd : end;
+    const nights = Math.round((overlapEnd.getTime() - overlapStart.getTime()) / 86400000);
+
+    return total + Math.max(0, nights);
+  }, 0);
 }
 
 function getGroundsLabel(jobType?: string | null) {
@@ -636,6 +721,7 @@ export default function OwnerPage() {
   const [reportOpen, setReportOpen] = useState(false);
   const [reportSuccess, setReportSuccess] = useState("");
   const [selectedPropertyId, setSelectedPropertyId] = useState("");
+  const [activeOwnerTab, setActiveOwnerTab] = useState<OwnerTab>("overview");
 
   const flagImagesByFlagId = useMemo(() => {
     const map = new Map<string, MaintenanceFlagImage[]>();
@@ -956,6 +1042,114 @@ export default function OwnerPage() {
       .slice(0, 8);
   }, [propertyTurnoverJobs, propertyGroundsJobs, propertyGroundsRecurringRules, openFlags]);
 
+  const bookingInsights = useMemo<BookingInsight[]>(() => {
+    return propertyTurnoverJobs
+      .map((job) => {
+        const booking = parseBookingFromNotes(job.notes);
+        if (!booking.checkinDate || !booking.checkoutDate) return null;
+
+        const nights = getDateRangeNights(booking.checkinDate, booking.checkoutDate);
+        if (nights <= 0) return null;
+
+        return {
+          id: job.id,
+          sourceLabel: booking.sourceLabel,
+          guest: booking.guest,
+          checkinDate: booking.checkinDate,
+          checkoutDate: booking.checkoutDate,
+          nights,
+        } satisfies BookingInsight;
+      })
+      .filter((booking): booking is BookingInsight => !!booking)
+      .sort((a, b) => a.checkinDate.localeCompare(b.checkinDate));
+  }, [propertyTurnoverJobs]);
+
+  const bookingInsightStats = useMemo(() => {
+    const monthKeys = getLastMonthKeys(12);
+    const monthly = monthKeys.map((monthKey) => {
+      const bookedNights = bookingInsights.reduce(
+        (total, booking) => total + countBookedNightsInMonth(booking, monthKey),
+        0
+      );
+      const bookings = bookingInsights.filter((booking) => booking.checkinDate.slice(0, 7) === monthKey);
+      const daysInMonth = getDaysInMonth(monthKey);
+
+      return {
+        monthKey,
+        label: getMonthLabel(monthKey),
+        bookedNights,
+        bookingCount: bookings.length,
+        occupancyRate: daysInMonth > 0 ? Math.round((bookedNights / daysInMonth) * 100) : 0,
+      };
+    });
+
+    const totalBookedNights = monthly.reduce((total, month) => total + month.bookedNights, 0);
+    const totalBookingCount = monthly.reduce((total, month) => total + month.bookingCount, 0);
+    const averageStay =
+      bookingInsights.length > 0
+        ? bookingInsights.reduce((total, booking) => total + booking.nights, 0) / bookingInsights.length
+        : 0;
+    const averageOccupancy =
+      monthly.length > 0
+        ? Math.round(monthly.reduce((total, month) => total + month.occupancyRate, 0) / monthly.length)
+        : 0;
+    const bestMonth = [...monthly].sort((a, b) => b.occupancyRate - a.occupancyRate)[0] || null;
+    const maxBookedNights = Math.max(1, ...monthly.map((month) => month.bookedNights));
+    const maxBookingCount = Math.max(1, ...monthly.map((month) => month.bookingCount));
+    const next30 = countBookedNightsInWindow(bookingInsights, 30);
+    const next60 = countBookedNightsInWindow(bookingInsights, 60);
+    const next90 = countBookedNightsInWindow(bookingInsights, 90);
+
+    const sourceCounts = bookingInsights.reduce<Record<string, number>>((counts, booking) => {
+      const label = booking.sourceLabel || "Other";
+      counts[label] = (counts[label] || 0) + booking.nights;
+      return counts;
+    }, {});
+
+    const sourceMix = Object.entries(sourceCounts)
+      .map(([label, nights]) => ({
+        label,
+        nights,
+        percentage: totalBookedNights > 0 ? Math.round((nights / totalBookedNights) * 100) : 0,
+      }))
+      .sort((a, b) => b.nights - a.nights);
+
+    const gapBuckets = {
+      oneNight: 0,
+      twoNight: 0,
+      threeNight: 0,
+      fourPlus: 0,
+    };
+
+    for (let i = 1; i < bookingInsights.length; i += 1) {
+      const gap = getDateRangeNights(bookingInsights[i - 1].checkoutDate, bookingInsights[i].checkinDate);
+      if (gap <= 0) continue;
+      if (gap === 1) gapBuckets.oneNight += 1;
+      else if (gap === 2) gapBuckets.twoNight += 1;
+      else if (gap === 3) gapBuckets.threeNight += 1;
+      else gapBuckets.fourPlus += 1;
+    }
+
+    return {
+      monthly,
+      totalBookedNights,
+      totalBookingCount,
+      averageStay,
+      averageOccupancy,
+      bestMonth,
+      maxBookedNights,
+      maxBookingCount,
+      bookingPace: [
+        { label: "Next 30", days: 30, bookedNights: next30, percentage: Math.round((next30 / 30) * 100) },
+        { label: "Next 60", days: 60, bookedNights: next60, percentage: Math.round((next60 / 60) * 100) },
+        { label: "Next 90", days: 90, bookedNights: next90, percentage: Math.round((next90 / 90) * 100) },
+      ],
+      sourceMix,
+      gapBuckets,
+      recentBookings: [...bookingInsights].reverse().slice(0, 6),
+    };
+  }, [bookingInsights]);
+
   if (loading) {
     return (
       <main className="min-h-screen bg-[#0f0d0a] px-4 py-10 text-[#f7f1e8]">
@@ -1078,6 +1272,36 @@ export default function OwnerPage() {
           </div>
         </section>
 
+        <section className="rounded-[26px] border border-white/8 bg-[#15110d] p-2">
+          <div className="grid gap-2 sm:grid-cols-2">
+            {[
+              { key: "overview" as OwnerTab, label: "Overview", subtext: "Operations and upcoming activity" },
+              { key: "insights" as OwnerTab, label: "Booking Insights", subtext: "Occupancy trends and booking history" },
+            ].map((tab) => {
+              const isActive = activeOwnerTab === tab.key;
+
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setActiveOwnerTab(tab.key)}
+                  className={`rounded-[22px] px-5 py-4 text-left transition ${isActive
+                    ? "bg-[linear-gradient(135deg,#b08b47,#e3c177)] text-[#17120d] shadow-[0_16px_40px_rgba(176,139,71,0.22)]"
+                    : "bg-white/[0.03] text-[#f7f1e8] hover:bg-white/[0.06]"
+                    }`}
+                >
+                  <div className="text-sm font-semibold">{tab.label}</div>
+                  <div className={`mt-1 text-xs ${isActive ? "text-[#382511]" : "text-[#9f9079]"}`}>
+                    {tab.subtext}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        {activeOwnerTab === "overview" ? (
+          <>
         {properties.length > 1 ? (
           <section className="rounded-[28px] border border-white/8 bg-[#15110d] p-4 sm:p-5">
             <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
@@ -1274,6 +1498,264 @@ export default function OwnerPage() {
             </div>
           </div>
         </section>
+          </>
+        ) : (
+          <>
+            <section className="overflow-hidden rounded-[32px] border border-white/8 bg-[radial-gradient(circle_at_top_left,rgba(176,139,71,0.22),transparent_30%),linear-gradient(180deg,#18130f_0%,#100d0a_100%)] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.26)] sm:p-6">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.24em] text-[#bfa67b]">
+                    Booking Performance
+                  </div>
+                  <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#f7f1e8] sm:text-3xl">
+                    Occupancy story for {selectedProperty.name || "this property"}
+                  </h2>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-[#cdbda0]">
+                    Built from synced booking calendar data. Financial ROI can be added later once nightly rate and cost assumptions are available.
+                  </p>
+                </div>
+
+                <div className="rounded-full border border-[#b08b47]/30 bg-[#b08b47]/10 px-4 py-2 text-sm font-semibold text-[#f1d9a5]">
+                  Last 12 months
+                </div>
+              </div>
+
+              <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <StatCard
+                  label="Avg Occupancy"
+                  value={`${bookingInsightStats.averageOccupancy}%`}
+                  subtext="Average monthly booked-night coverage"
+                />
+                <StatCard
+                  label="Booked Nights"
+                  value={String(bookingInsightStats.totalBookedNights)}
+                  subtext="Total nights found in synced bookings"
+                />
+                <StatCard
+                  label="Reservations"
+                  value={String(bookingInsightStats.totalBookingCount)}
+                  subtext="Bookings with check-in dates in the period"
+                />
+                <StatCard
+                  label="Avg Stay"
+                  value={`${bookingInsightStats.averageStay.toFixed(1)} nights`}
+                  subtext={bookingInsightStats.bestMonth ? `Best month: ${bookingInsightStats.bestMonth.label}` : "Based on synced stays"}
+                />
+              </div>
+            </section>
+
+            <section className="grid gap-6 xl:grid-cols-[1.35fr_0.85fr]">
+              <div className="rounded-[30px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <div className="text-[11px] uppercase tracking-[0.22em] text-[#bfa67b]">
+                      Occupancy Trend
+                    </div>
+                    <h3 className="mt-2 text-xl font-semibold text-[#f7f1e8]">
+                      Monthly booked nights
+                    </h3>
+                  </div>
+                  <div className="text-sm text-[#9f9079]">
+                    Bars show occupied nights, labels show occupancy.
+                  </div>
+                </div>
+
+                <div className="mt-6 grid h-72 grid-cols-12 items-end gap-2 rounded-[24px] border border-white/7 bg-black/20 px-4 pb-5 pt-6">
+                  {bookingInsightStats.monthly.map((month) => (
+                    <div key={month.monthKey} className="flex h-full min-w-0 flex-col items-center justify-end gap-2">
+                      <div className="text-[10px] font-semibold text-[#ead7b8]">
+                        {month.occupancyRate}%
+                      </div>
+                      <div className="flex h-48 w-full items-end justify-center">
+                        <div
+                          className="w-full max-w-9 rounded-t-full bg-[linear-gradient(180deg,#f2d48a_0%,#b08b47_58%,#67491e_100%)] shadow-[0_0_24px_rgba(176,139,71,0.24)]"
+                          style={{
+                            height: `${Math.max(6, (month.bookedNights / bookingInsightStats.maxBookedNights) * 100)}%`,
+                          }}
+                        />
+                      </div>
+                      <div className="text-[10px] uppercase tracking-[0.16em] text-[#9f9079]">
+                        {month.label}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-[30px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#bfa67b]">
+                  Booking Pace
+                </div>
+                <h3 className="mt-2 text-xl font-semibold text-[#f7f1e8]">
+                  Future demand
+                </h3>
+
+                <div className="mt-6 space-y-5">
+                  {bookingInsightStats.bookingPace.map((pace) => (
+                    <div key={pace.label}>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-sm font-semibold text-[#f7f1e8]">{pace.label} days</div>
+                        <div className="text-sm text-[#cdbda0]">
+                          {pace.bookedNights}/{pace.days} nights
+                        </div>
+                      </div>
+                      <div className="mt-2 h-3 overflow-hidden rounded-full bg-white/8">
+                        <div
+                          className="h-full rounded-full bg-[linear-gradient(90deg,#b08b47,#f0d28b)]"
+                          style={{ width: `${Math.min(100, pace.percentage)}%` }}
+                        />
+                      </div>
+                      <div className="mt-1 text-xs text-[#9f9079]">{pace.percentage}% booked</div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-7 rounded-[22px] border border-[#b08b47]/20 bg-[#b08b47]/10 p-4">
+                  <div className="text-sm font-semibold text-[#f7f1e8]">Read this as booking pace</div>
+                  <p className="mt-2 text-sm leading-6 text-[#cdbda0]">
+                    A high next-30 score means the near-term calendar is filling. A low next-90 score can still be normal for slower seasons.
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            <section className="grid gap-6 xl:grid-cols-3">
+              <div className="rounded-[30px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#bfa67b]">
+                  Source Mix
+                </div>
+                <h3 className="mt-2 text-xl font-semibold text-[#f7f1e8]">Booked nights by source</h3>
+
+                <div className="mt-6 space-y-4">
+                  {bookingInsightStats.sourceMix.length > 0 ? (
+                    bookingInsightStats.sourceMix.map((source) => (
+                      <div key={source.label}>
+                        <div className="flex items-center justify-between gap-3 text-sm">
+                          <span className="font-semibold text-[#f7f1e8]">{source.label}</span>
+                          <span className="text-[#cdbda0]">{source.nights} nights</span>
+                        </div>
+                        <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-white/8">
+                          <div
+                            className="h-full rounded-full bg-[linear-gradient(90deg,#f0d28b,#b08b47)]"
+                            style={{ width: `${Math.max(4, source.percentage)}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-2xl border border-white/7 bg-white/[0.02] px-4 py-5 text-sm text-[#cdbda0]">
+                      No booking source data found yet.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-[30px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#bfa67b]">
+                  Gap Opportunities
+                </div>
+                <h3 className="mt-2 text-xl font-semibold text-[#f7f1e8]">Empty windows between stays</h3>
+
+                <div className="mt-6 grid grid-cols-4 gap-3">
+                  {[
+                    { label: "1 night", value: bookingInsightStats.gapBuckets.oneNight },
+                    { label: "2 nights", value: bookingInsightStats.gapBuckets.twoNight },
+                    { label: "3 nights", value: bookingInsightStats.gapBuckets.threeNight },
+                    { label: "4+ nights", value: bookingInsightStats.gapBuckets.fourPlus },
+                  ].map((bucket) => {
+                    const maxGap = Math.max(
+                      1,
+                      bookingInsightStats.gapBuckets.oneNight,
+                      bookingInsightStats.gapBuckets.twoNight,
+                      bookingInsightStats.gapBuckets.threeNight,
+                      bookingInsightStats.gapBuckets.fourPlus
+                    );
+
+                    return (
+                      <div key={bucket.label} className="flex h-44 flex-col items-center justify-end rounded-2xl border border-white/7 bg-black/20 px-3 py-4">
+                        <div className="text-lg font-semibold text-[#f7f1e8]">{bucket.value}</div>
+                        <div className="mt-3 flex h-24 w-full items-end justify-center">
+                          <div
+                            className="w-7 rounded-t-full bg-[linear-gradient(180deg,#c5f2d0,#45a36f)]"
+                            style={{ height: `${Math.max(8, (bucket.value / maxGap) * 100)}%` }}
+                          />
+                        </div>
+                        <div className="mt-3 text-center text-[10px] uppercase tracking-[0.14em] text-[#9f9079]">
+                          {bucket.label}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="rounded-[30px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#bfa67b]">
+                  Reservation Volume
+                </div>
+                <h3 className="mt-2 text-xl font-semibold text-[#f7f1e8]">Bookings by month</h3>
+
+                <div className="mt-6 space-y-3">
+                  {bookingInsightStats.monthly.map((month) => (
+                    <div key={month.monthKey} className="grid grid-cols-[42px_1fr_32px] items-center gap-3">
+                      <div className="text-xs uppercase tracking-[0.14em] text-[#9f9079]">{month.label}</div>
+                      <div className="h-3 overflow-hidden rounded-full bg-white/8">
+                        <div
+                          className="h-full rounded-full bg-[linear-gradient(90deg,#7dd3fc,#2563eb)]"
+                          style={{ width: `${Math.max(3, (month.bookingCount / bookingInsightStats.maxBookingCount) * 100)}%` }}
+                        />
+                      </div>
+                      <div className="text-right text-sm font-semibold text-[#f7f1e8]">{month.bookingCount}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-[30px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.22em] text-[#bfa67b]">
+                    Booking History
+                  </div>
+                  <h3 className="mt-2 text-xl font-semibold text-[#f7f1e8]">Recent synced stays</h3>
+                </div>
+                <div className="text-sm text-[#9f9079]">
+                  {bookingInsights.length} stays found
+                </div>
+              </div>
+
+              <div className="mt-5 grid gap-3 md:grid-cols-2">
+                {bookingInsightStats.recentBookings.length > 0 ? (
+                  bookingInsightStats.recentBookings.map((booking) => (
+                    <div key={booking.id} className="rounded-2xl border border-white/7 bg-white/[0.02] px-4 py-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold text-[#f7f1e8]">
+                            {booking.guest || "Guest stay"}
+                          </div>
+                          <div className="mt-1 text-sm text-[#cdbda0]">
+                            {formatDateLabel(booking.checkinDate)} to {formatDateLabel(booking.checkoutDate)}
+                          </div>
+                        </div>
+                        <div className="rounded-full border border-[#b08b47]/25 bg-[#b08b47]/10 px-3 py-1 text-xs font-semibold text-[#f1d9a5]">
+                          {booking.nights} nights
+                        </div>
+                      </div>
+                      <div className="mt-3 text-xs uppercase tracking-[0.18em] text-[#9f9079]">
+                        {booking.sourceLabel || "Source unavailable"}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-2xl border border-white/7 bg-white/[0.02] px-4 py-5 text-sm text-[#cdbda0] md:col-span-2">
+                    No synced booking history was found yet. Once calendar sync creates bookings with check-in and checkout dates, insights will populate here.
+                  </div>
+                )}
+              </div>
+            </section>
+          </>
+        )}
       </div>
 
       <ReportIssueModal
