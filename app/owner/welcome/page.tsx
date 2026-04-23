@@ -339,28 +339,28 @@ async function handleFreshLoginLink() {
   setError("");
   setStatusMessage("");
 
-  const redirectTo =
-    typeof window !== "undefined"
-      ? `${window.location.origin}/owner/welcome?owner_email=${encodeURIComponent(loginEmail)}`
-      : undefined;
-
-  const { error: otpError } = await supabase.auth.signInWithOtp({
-    email: loginEmail,
-    options: {
-      emailRedirectTo: redirectTo,
-      shouldCreateUser: false,
+  const response = await fetch("/api/owner/fresh-link", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
     },
+    body: JSON.stringify({
+      email: loginEmail,
+    }),
   });
 
-  if (otpError) {
+  const payload = await response.json().catch(() => null);
+
+  if (!response.ok) {
     setError(
-      `${otpError.message}. If this keeps happening, resend the owner invite from admin first.`
+      `${payload?.error || "Could not send a fresh owner login link."} If this keeps happening, resend the owner invite from admin first.`
     );
     setRequestingFreshLink(false);
     return;
   }
 
-  setStatusMessage(`Fresh owner login link sent to ${loginEmail}. Open the newest email, then set the password from that link.`);
+  const deliveryId = payload?.emailId ? ` Delivery ID: ${payload.emailId}.` : "";
+  setStatusMessage(`Fresh owner login link sent to ${loginEmail}.${deliveryId} Open the newest email, then set the password from that link.`);
   setRequestingFreshLink(false);
 }
 
