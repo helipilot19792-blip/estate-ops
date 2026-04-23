@@ -482,6 +482,12 @@ function getPropertyColor(propertyId: string | null) {
   return PROPERTY_CALENDAR_COLORS[hash % PROPERTY_CALENDAR_COLORS.length];
 }
 
+function createInviteToken() {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 export default function AdminPage() {
   const router = useRouter();
 
@@ -1499,10 +1505,7 @@ export default function AdminPage() {
     setError("");
     setActionMessage("");
 
-    const token =
-      typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const token = createInviteToken();
 
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     const { data: existingInvite, error: existingInviteError } = await supabase
@@ -1521,26 +1524,36 @@ export default function AdminPage() {
       return null;
     }
 
-    if (existingInvite) {
-      setActionMessage(`${params.role} invite already exists and is pending.`);
-      return existingInvite;
-    }
-    const { data, error } = await supabase
-      .from("organization_invites")
-      .insert({
-        organization_id: currentOrganizationId,
-        email,
-        full_name: fullName,
-        phone,
-        role: params.role,
-        status: "sent",
-        token,
-        invited_by_profile_id: currentAdminUserId,
-        sent_at: new Date().toISOString(),
-        expires_at: expiresAt,
-      })
-      .select()
-      .single();
+    const { data, error } = existingInvite
+      ? await supabase
+        .from("organization_invites")
+        .update({
+          full_name: fullName || existingInvite.full_name,
+          phone: phone || existingInvite.phone,
+          status: "sent",
+          token,
+          sent_at: new Date().toISOString(),
+          expires_at: expiresAt,
+        })
+        .eq("id", existingInvite.id)
+        .select()
+        .single()
+      : await supabase
+        .from("organization_invites")
+        .insert({
+          organization_id: currentOrganizationId,
+          email,
+          full_name: fullName,
+          phone,
+          role: params.role,
+          status: "sent",
+          token,
+          invited_by_profile_id: currentAdminUserId,
+          sent_at: new Date().toISOString(),
+          expires_at: expiresAt,
+        })
+        .select()
+        .single();
 
     if (error) {
       setError(error.message);
@@ -1573,11 +1586,19 @@ export default function AdminPage() {
         throw new Error(detailedError);
       }
 
-      setActionMessage(`${params.role} invite created and email sent: ${inviteUrl}`);
+      setActionMessage(
+        existingInvite
+          ? `${params.role} invite refreshed and email sent: ${inviteUrl}`
+          : `${params.role} invite created and email sent: ${inviteUrl}`
+      );
     } catch (err: any) {
       const detailedMessage = err?.message || "Unknown email send error.";
       setError(detailedMessage);
-      setActionMessage(`${params.role} invite created, but email failed to send: ${detailedMessage}`);
+      setActionMessage(
+        existingInvite
+          ? `${params.role} invite refreshed, but email failed to send: ${detailedMessage}`
+          : `${params.role} invite created, but email failed to send: ${detailedMessage}`
+      );
     }
 
     return data;
@@ -1623,6 +1644,7 @@ export default function AdminPage() {
     }
 
     const refreshedExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const refreshedToken = createInviteToken();
 
     const { data, error } = await supabase
       .from("organization_invites")
@@ -1630,6 +1652,7 @@ export default function AdminPage() {
         sent_at: new Date().toISOString(),
         expires_at: refreshedExpiry,
         status: "sent",
+        token: refreshedToken,
       })
       .eq("id", existingInvite.id)
       .select()
@@ -1641,7 +1664,33 @@ export default function AdminPage() {
     }
 
     const inviteUrl = `${window.location.origin}/invite?token=${data.token}`;
-    setActionMessage(`${params.role} invite resent: ${inviteUrl}`);
+
+    try {
+      const response = await fetch("/api/send-invite-email", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          inviteUrl,
+          role: params.role,
+          name: data.full_name || undefined,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(payload?.error || "Invite email failed to send.");
+      }
+
+      setActionMessage(`${params.role} invite resent and email sent: ${inviteUrl}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Invite email failed to send.");
+      setActionMessage(`${params.role} invite was refreshed, but email failed to send: ${inviteUrl}`);
+    }
+
     return data;
   }
 
