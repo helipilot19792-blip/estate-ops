@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { sendJobOfferEmailsForSlots } from "@/lib/server/job-notifications";
 
 export const dynamic = "force-dynamic";
 
@@ -486,6 +487,27 @@ if (!property?.organization_id) {
               `Job created but slot creation failed for ${event.summary || "reservation"} on ${event.checkoutDate}: ${slotError.message}`
             );
             continue;
+          }
+
+          const { data: offerSlots, error: offerSlotsError } = await supabase
+            .from("turnover_job_slots")
+            .select("id")
+            .eq("job_id", insertedJob.id)
+            .eq("status", "offered")
+            .not("cleaner_account_id", "is", null);
+
+          if (!offerSlotsError && (offerSlots ?? []).length > 0) {
+            const notificationResult = await sendJobOfferEmailsForSlots(
+              "cleaner",
+              (offerSlots ?? []).map((slot) => slot.id),
+              new URL(request.url).origin
+            );
+
+            if (notificationResult.errors.length > 0) {
+              resultBucket.errors.push(
+                `Job offer email notification issue for ${event.summary || "reservation"} on ${event.checkoutDate}: ${notificationResult.errors.join("; ")}`
+              );
+            }
           }
 
           resultBucket.created += 1;

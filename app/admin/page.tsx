@@ -1777,6 +1777,54 @@ export default function AdminPage() {
       setDeletingOrganizationInviteId(null);
     }
   }
+  async function notifyJobOffers(kind: "cleaner" | "grounds", slotIds: string[]) {
+    const uniqueSlotIds = [...new Set(slotIds.filter(Boolean))];
+
+    if (uniqueSlotIds.length === 0) {
+      return { sent: 0, skipped: 0, errors: [] as string[] };
+    }
+
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (sessionError || !session?.access_token) {
+      return {
+        sent: 0,
+        skipped: uniqueSlotIds.length,
+        errors: ["Could not verify your admin session for email notifications."],
+      };
+    }
+
+    const response = await fetch("/api/admin/notify-job-offers", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        kind,
+        slotIds: uniqueSlotIds,
+      }),
+    });
+
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      return {
+        sent: 0,
+        skipped: uniqueSlotIds.length,
+        errors: [payload?.error || "Could not send job offer notifications."],
+      };
+    }
+
+    return {
+      sent: Number(payload?.sent ?? 0),
+      skipped: Number(payload?.skipped ?? 0),
+      errors: Array.isArray(payload?.errors) ? payload.errors : [],
+    };
+  }
   async function inviteCleanerFromForm() {
     if (!inviteCleanerEmail.trim()) {
       setError("Cleaner email is required to send an invite.");
@@ -2028,6 +2076,27 @@ export default function AdminPage() {
       }
     }
 
+    const { data: createdOfferSlots, error: createdOfferSlotsError } = await supabase
+      .from("turnover_job_slots")
+      .select("id")
+      .eq("job_id", insertedJob.id)
+      .eq("status", "offered")
+      .not("cleaner_account_id", "is", null);
+
+    let notificationNote = "";
+    if (!createdOfferSlotsError && (createdOfferSlots ?? []).length > 0) {
+      const notifyResult = await notifyJobOffers(
+        "cleaner",
+        (createdOfferSlots ?? []).map((slot) => slot.id)
+      );
+
+      if (notifyResult.errors.length > 0) {
+        notificationNote = " Offer email notification needs attention.";
+      } else if (notifyResult.sent > 0) {
+        notificationNote = ` ${notifyResult.sent} offer email${notifyResult.sent === 1 ? "" : "s"} sent.`;
+      }
+    }
+
     setJobPropertyId("");
     setJobScheduledFor("");
     setJobNotes("");
@@ -2035,7 +2104,7 @@ export default function AdminPage() {
     setJobUnitsNeeded("1");
     setJobUnitsStrict(false);
     setJobShowTeamStatus(true);
-    setActionMessage("Job created successfully.");
+    setActionMessage(`Job created successfully.${notificationNote}`.trim());
     alert("Cleaning job created.");
     await loadData();
     setActiveSection("jobs");
@@ -2225,6 +2294,9 @@ export default function AdminPage() {
         declined_at: null,
         accepted_by_profile_id: null,
         declined_by_profile_id: null,
+        offer_email_sent_at: null,
+        offer_reminder_sent_at: null,
+        day_of_reminder_sent_at: null,
       })
       .eq("id", slot.id);
 
@@ -2234,7 +2306,14 @@ export default function AdminPage() {
       return;
     }
 
-    setActionMessage("Stranded job reassigned.");
+    const notifyResult = await notifyJobOffers("cleaner", [slot.id]);
+    setActionMessage(
+      notifyResult.errors.length > 0
+        ? "Stranded job reassigned. Offer email notification needs attention."
+        : notifyResult.sent > 0
+          ? `Stranded job reassigned. ${notifyResult.sent} offer email${notifyResult.sent === 1 ? "" : "s"} sent.`
+          : "Stranded job reassigned."
+    );
     await loadData();
     setReassigningJobId(null);
   }
@@ -2320,6 +2399,9 @@ export default function AdminPage() {
         declined_at: null,
         accepted_by_profile_id: null,
         declined_by_profile_id: null,
+        offer_email_sent_at: null,
+        offer_reminder_sent_at: null,
+        day_of_reminder_sent_at: null,
       })
       .eq("id", slot.id);
 
@@ -2329,7 +2411,14 @@ export default function AdminPage() {
       return;
     }
 
-    setActionMessage("Job reassigned.");
+    const notifyResult = await notifyJobOffers("cleaner", [slot.id]);
+    setActionMessage(
+      notifyResult.errors.length > 0
+        ? "Job reassigned. Offer email notification needs attention."
+        : notifyResult.sent > 0
+          ? `Job reassigned. ${notifyResult.sent} offer email${notifyResult.sent === 1 ? "" : "s"} sent.`
+          : "Job reassigned."
+    );
     await loadData();
     setReassigningJobId(null);
 
@@ -2679,12 +2768,28 @@ export default function AdminPage() {
         expires_at: expiresAt,
       }));
 
-      const { error: slotError } = await supabase.from("grounds_job_slots").insert(slotRows);
+      const { data: insertedSlots, error: slotError } = await supabase
+        .from("grounds_job_slots")
+        .insert(slotRows)
+        .select("id");
 
       if (slotError) {
         setError(`Grounds job created, but slot creation failed: ${slotError.message}`);
         await loadData();
         return;
+      }
+
+      const notifyResult = await notifyJobOffers(
+        "grounds",
+        (insertedSlots ?? []).map((slot) => slot.id)
+      );
+
+      if (notifyResult.errors.length > 0) {
+        setActionMessage("Grounds job created. Offer email notification needs attention.");
+      } else if (notifyResult.sent > 0) {
+        setActionMessage(
+          `Grounds job created. ${notifyResult.sent} offer email${notifyResult.sent === 1 ? "" : "s"} sent.`
+        );
       }
     }
 
@@ -2700,7 +2805,9 @@ export default function AdminPage() {
     setGroundsJobNeedsGarageAccess(false);
     setJobMode("single");
     setRecurringType("weekly");
-    setActionMessage("Grounds job created.");
+    if (assignedAccounts.length === 0) {
+      setActionMessage("Grounds job created.");
+    }
     await loadData();
   }
 

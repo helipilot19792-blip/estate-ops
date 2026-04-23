@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { sendJobOfferEmailsForSlots } from "@/lib/server/job-notifications";
 
 export const dynamic = "force-dynamic";
 
@@ -110,6 +111,7 @@ export async function POST(req: NextRequest) {
 
     let reoffered = 0;
     let stranded = 0;
+    const reofferedSlotIds: string[] = [];
 
     for (const slot of futureSlots) {
       const job = jobsMap.get(slot.job_id);
@@ -143,10 +145,14 @@ export async function POST(req: NextRequest) {
             declined_at: null,
             accepted_by_profile_id: null,
             declined_by_profile_id: null,
+            offer_email_sent_at: null,
+            offer_reminder_sent_at: null,
+            day_of_reminder_sent_at: null,
           })
           .eq("id", slot.id);
 
         reoffered++;
+        reofferedSlotIds.push(slot.id);
       } else {
         await supabase
           .from("turnover_job_slots")
@@ -164,11 +170,22 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    let notificationErrors: string[] = [];
+    if (reofferedSlotIds.length > 0) {
+      const notifyResult = await sendJobOfferEmailsForSlots(
+        "cleaner",
+        reofferedSlotIds,
+        new URL(req.url).origin
+      );
+      notificationErrors = notifyResult.errors;
+    }
+
     return Response.json({
       ok: true,
       affected: futureSlots.length,
       reoffered,
       stranded,
+      notificationErrors,
     });
   } catch (err: any) {
     return Response.json(
