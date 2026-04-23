@@ -2063,13 +2063,61 @@ export default function AdminPage() {
         throw new Error(payload?.error || payload?.message || "Calendar sync failed.");
       }
 
-      setActionMessage(payload?.message || "Calendars synced successfully.");
+      setActionMessage(getCalendarSyncMessage(payload));
       await loadData();
     } catch (err: any) {
       setError(err?.message || "Calendar sync failed.");
     } finally {
       setSyncingCalendarsNow(false);
     }
+  }
+
+  function getCalendarSyncMessage(payload: any) {
+    if (payload?.message) return payload.message;
+
+    const calendarsFound = Number(payload?.calendars_found ?? 0);
+    const totals = payload?.totals || {};
+    const created = Number(totals.created ?? 0);
+    const skippedExisting = Number(totals.skipped_existing ?? 0);
+    const skippedPast = Number(totals.skipped_past ?? 0);
+    const skippedNonBooking = Number(totals.skipped_non_booking ?? 0);
+    const errors = Number(totals.errors ?? 0);
+
+    const propertySummaries =
+      Array.isArray(payload?.results)
+        ? payload.results
+          .map((result: any) => {
+            const propertyName = result?.property_name || "Unknown property";
+            const source = result?.source || "calendar";
+            const resultCreated = Number(result?.created ?? 0);
+            const resultErrors = Array.isArray(result?.errors) ? result.errors.length : 0;
+            return `${propertyName} / ${source}: ${resultCreated} created${resultErrors > 0 ? `, ${resultErrors} error${resultErrors === 1 ? "" : "s"}` : ""}`;
+          })
+          .slice(0, 4)
+          .join(" | ")
+        : "";
+
+    if (calendarsFound === 0) {
+      return "Calendar sync finished, but no active calendar feeds were found. Add an iCal URL to the property, save calendars, then sync again.";
+    }
+
+    const parts = [
+      `Calendar sync finished: ${calendarsFound} active feed${calendarsFound === 1 ? "" : "s"}`,
+      `${created} job${created === 1 ? "" : "s"} created`,
+      `${skippedExisting} existing skipped`,
+      `${skippedPast} past skipped`,
+      `${skippedNonBooking} blocked/non-booking skipped`,
+    ];
+
+    if (errors > 0) {
+      parts.push(`${errors} error${errors === 1 ? "" : "s"}`);
+    }
+
+    if (propertySummaries) {
+      parts.push(propertySummaries);
+    }
+
+    return `${parts.join(". ")}.`;
   }
   async function handleResetOrganization() {
     if (resetConfirmText.trim().toUpperCase() !== "WIPE ALL DATA") {
@@ -3052,7 +3100,7 @@ This removes its linked members and deletes the grounds account.`
 
       setCalendarDraftDirty(false);
       const activeCount = normalizedRows.filter((row) => row.is_active).length;
-      setActionMessage(`Calendars saved. ${normalizedRows.length} feed${normalizedRows.length === 1 ? "" : "s"} configured, ${activeCount} active.`);
+      setActionMessage(`Calendars saved. ${normalizedRows.length} feed${normalizedRows.length === 1 ? "" : "s"} configured, ${activeCount} active. Run "Sync Now" to create cleaning jobs from future checkouts.`);
       await loadData();
     } catch (err: any) {
       setError(err?.message || "Could not save calendars.");
@@ -5807,7 +5855,7 @@ This removes its linked members and deletes the grounds account.`
           <div>
             <h2 className="text-xl font-semibold tracking-tight">Admin Calendar</h2>
             <p className="mt-1 text-sm text-[#7f7263]">
-              Month view of all scheduled cleanings. Click a day to see everything happening on that date.
+              Month view of scheduled cleaning jobs. New iCal feeds appear here after calendars are saved and synced into future checkout jobs.
             </p>
           </div>
 
