@@ -175,8 +175,17 @@ export default function PlatformPage() {
                 </p>
               </div>
 
-              <div className="rounded-[22px] border border-white/10 bg-white/10 px-5 py-4 text-sm text-[#f7e5bf]">
-                {currentProfile?.full_name || currentProfile?.email || "Platform admin"}
+              <div className="flex flex-wrap items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => router.push("/admin")}
+                  className="inline-flex items-center justify-center rounded-full border border-[#d8c7ab]/40 bg-[#fef3c7] px-5 py-2.5 text-sm font-medium text-[#7c5a10] transition hover:bg-[#fde68a]"
+                >
+                  Open My Admin Workspace
+                </button>
+                <div className="rounded-[22px] border border-white/10 bg-white/10 px-5 py-4 text-sm text-[#f7e5bf]">
+                  {currentProfile?.full_name || currentProfile?.email || "Platform admin"}
+                </div>
               </div>
             </div>
           </div>

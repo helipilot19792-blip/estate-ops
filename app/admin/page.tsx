@@ -516,6 +516,7 @@ export default function AdminPage() {
 
 
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [currentPortalRole, setCurrentPortalRole] = useState<string | null>(null);
   const [currentAdminUserId, setCurrentAdminUserId] = useState<string | null>(null);
   const [currentOrganizationId, setCurrentOrganizationId] = useState<string | null>(null);
   const [currentOrganizationBilling, setCurrentOrganizationBilling] = useState<OrganizationBillingRow | null>(null);
@@ -801,12 +802,7 @@ export default function AdminPage() {
         return;
       }
 
-      if (profile.role === "platform_admin") {
-        router.replace("/platform");
-        return;
-      }
-
-      if (profile.role !== "admin") {
+      if (profile.role !== "admin" && profile.role !== "platform_admin") {
         setError(`This account is not admin. Current role: ${profile.role}`);
         setCheckingAuth(false);
         return;
@@ -826,6 +822,7 @@ export default function AdminPage() {
         return;
       }
 
+      setCurrentPortalRole(profile.role);
       setMyOrganizations(orgRows as MyOrganizationRow[]);
       setCurrentOrganizationId(orgRows[0].organization_id);
       setCurrentAdminUserId(user.id);
@@ -2496,10 +2493,19 @@ export default function AdminPage() {
     setReassigningJobId(account.id);
 
     try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("Could not verify your admin session.");
+      }
+
       const response = await fetch("/api/admin/delete-cleaner-account", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
           cleanerAccountId: account.id,
@@ -7475,21 +7481,32 @@ This removes its linked members and deletes the grounds account.`
                   </p>
                 </div>
               </div>
-              <button
-                onClick={() => setShowSupport(true)}
-                className="mr-3 inline-flex items-center justify-center rounded-full border border-[#d6b36a]/40 bg-[#fef3c7] px-5 py-2.5 text-sm font-medium text-[#7c5a10] hover:bg-[#fde68a]"
-              >
-                Support
-              </button>
-              <button
-                className="inline-flex items-center justify-center rounded-full border border-[#d6b36a]/40 bg-white/10 px-5 py-2.5 text-sm font-medium text-[#f6efe4] shadow-sm transition hover:bg-white/20"
-                onClick={async () => {
-                  await supabase.auth.signOut();
-                  window.location.href = "/login";
-                }}
-              >
-                Logout
-              </button>
+              <div className="flex flex-wrap items-center gap-3">
+                {currentPortalRole === "platform_admin" ? (
+                  <button
+                    type="button"
+                    onClick={() => router.push("/platform")}
+                    className="inline-flex items-center justify-center rounded-full border border-[#d6b36a]/40 bg-white/10 px-5 py-2.5 text-sm font-medium text-[#f6efe4] shadow-sm transition hover:bg-white/20"
+                  >
+                    SaaS Tower
+                  </button>
+                ) : null}
+                <button
+                  onClick={() => setShowSupport(true)}
+                  className="inline-flex items-center justify-center rounded-full border border-[#d6b36a]/40 bg-[#fef3c7] px-5 py-2.5 text-sm font-medium text-[#7c5a10] hover:bg-[#fde68a]"
+                >
+                  Support
+                </button>
+                <button
+                  className="inline-flex items-center justify-center rounded-full border border-[#d6b36a]/40 bg-white/10 px-5 py-2.5 text-sm font-medium text-[#f6efe4] shadow-sm transition hover:bg-white/20"
+                  onClick={async () => {
+                    await supabase.auth.signOut();
+                    window.location.href = "/login";
+                  }}
+                >
+                  Logout
+                </button>
+              </div>
             </div>
           </div>
 
