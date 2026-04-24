@@ -38,6 +38,17 @@ function scrollInputIntoView(target: EventTarget | null) {
   }, 250);
 }
 
+function scrollFeedbackIntoView() {
+  if (typeof window === "undefined") return;
+
+  window.setTimeout(() => {
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  }, 100);
+}
+
 async function getPortalDestinationForUser(userId: string, role: string | null | undefined) {
   if (role === "platform_admin") {
     return "/platform";
@@ -163,22 +174,27 @@ export default function LoginPage() {
 
     if (!loginEmail.trim()) {
       setError("Enter your email above first.");
+      scrollFeedbackIntoView();
       return;
     }
 
     setLoadingReset(true);
 
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(loginEmail.trim(), {
-        redirectTo: `${window.location.origin}/auth/reset`,
+      const normalizedEmail = loginEmail.trim().toLowerCase();
+
+      const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+        redirectTo: `${window.location.origin}/auth/confirm?next=/auth/reset`,
       });
 
       if (error) {
         setError(error.message);
+        scrollFeedbackIntoView();
         return;
       }
 
-      setMessage("Password reset email sent.");
+      setMessage(`Password reset email sent to ${normalizedEmail}. Check your inbox and spam folder.`);
+      scrollFeedbackIntoView();
     } finally {
       setLoadingReset(false);
     }
