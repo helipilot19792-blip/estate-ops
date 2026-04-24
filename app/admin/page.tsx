@@ -801,6 +801,11 @@ export default function AdminPage() {
         return;
       }
 
+      if (profile.role === "platform_admin") {
+        router.replace("/platform");
+        return;
+      }
+
       if (profile.role !== "admin") {
         setError(`This account is not admin. Current role: ${profile.role}`);
         setCheckingAuth(false);

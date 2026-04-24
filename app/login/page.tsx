@@ -39,6 +39,10 @@ function scrollInputIntoView(target: EventTarget | null) {
 }
 
 async function getPortalDestinationForUser(userId: string, role: string | null | undefined) {
+  if (role === "platform_admin") {
+    return "/platform";
+  }
+
   if (role === "admin") {
     return "/admin";
   }

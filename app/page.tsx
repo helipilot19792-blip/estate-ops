@@ -24,6 +24,10 @@ async function getPortalDestination() {
     .eq("id", user.id)
     .single<ProfileRow>();
 
+  if (profile?.role === "platform_admin") {
+    return "/platform";
+  }
+
   if (profile?.role === "admin") {
     return "/admin";
   }

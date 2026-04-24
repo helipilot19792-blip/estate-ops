@@ -50,6 +50,11 @@ export default function ChoosePortalPage() {
             .limit(1),
         ]);
 
+      if (profile?.role === "platform_admin") {
+        router.replace("/platform");
+        return;
+      }
+
       if (profile?.role === "admin") {
         router.replace("/admin");
         return;
