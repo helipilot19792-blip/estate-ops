@@ -122,8 +122,8 @@ export default function OwnerLoginPage() {
 
   if (checkingSession) {
     return (
-      <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(176,139,71,0.14),transparent_28%),#0f0d0a] px-4 py-8 text-[#f7f1e8] sm:px-6">
-        <div className="mx-auto max-w-md rounded-[32px] border border-white/8 bg-[#15110d] p-8 shadow-[0_24px_80px_rgba(0,0,0,0.36)]">
+      <main className="owner-shell min-h-screen px-4 py-8 text-[#f7f1e8] sm:px-6">
+        <div className="owner-card mx-auto max-w-md rounded-[32px] border border-white/8 p-8 shadow-[0_24px_80px_rgba(0,0,0,0.36)]">
           <div className="text-sm text-[#e6d8bf]">Checking your owner session...</div>
         </div>
       </main>
@@ -131,9 +131,9 @@ export default function OwnerLoginPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(176,139,71,0.14),transparent_28%),#0f0d0a] px-4 py-8 text-[#f7f1e8] sm:px-6">
+    <main className="owner-shell min-h-screen px-4 py-8 text-[#f7f1e8] sm:px-6">
       <div className="mx-auto max-w-md space-y-6">
-        <section className="rounded-[32px] border border-white/8 bg-[linear-gradient(180deg,rgba(23,18,13,0.98)_0%,rgba(14,11,8,1)_100%)] px-6 py-7 shadow-[0_24px_80px_rgba(0,0,0,0.36)] sm:px-8">
+        <section className="owner-hero rounded-[32px] border border-white/8 px-6 py-7 shadow-[0_24px_80px_rgba(0,0,0,0.36)] sm:px-8">
           <div className="text-[11px] uppercase tracking-[0.24em] text-[#e7c98a]">
             Gulera OS Owner Portal
           </div>
@@ -157,7 +157,7 @@ export default function OwnerLoginPage() {
           </div>
         ) : null}
 
-       <section className="rounded-[28px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
+       <section className="owner-card rounded-[28px] border border-white/8 p-5 sm:p-6">
   <form
     className="space-y-4"
     onSubmit={(e) => {
@@ -172,14 +172,14 @@ export default function OwnerLoginPage() {
         autoComplete="email"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
-        className="mt-2 w-full rounded-2xl border border-white/8 bg-[#100c08] px-4 py-3 text-sm text-[#f7f1e8] outline-none transition focus:border-[#b08b47]"
+        className="owner-field mt-2 w-full rounded-2xl border border-white/8 px-4 py-3 text-sm text-[#f7f1e8] outline-none transition focus:border-[#b08b47]"
         placeholder="you@example.com"
       />
     </div>
 
     <div>
       <label className="text-xs uppercase tracking-[0.18em] text-[#e7c98a]">Password</label>
-      <div className="mt-2 flex rounded-2xl border border-white/8 bg-[#100c08] focus-within:border-[#b08b47]">
+      <div className="owner-field mt-2 flex rounded-2xl border border-white/8 focus-within:border-[#b08b47]">
         <input
           type={showPassword ? "text" : "password"}
           autoComplete="current-password"

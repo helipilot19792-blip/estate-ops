@@ -24,3 +24,147 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+.owner-shell {
+  --owner-page-bg: radial-gradient(circle at top, rgba(176, 139, 71, 0.14), transparent 28%), #0f0d0a;
+  --owner-surface: #15110d;
+  --owner-surface-strong:
+    linear-gradient(180deg, rgba(23, 18, 13, 0.98) 0%, rgba(14, 11, 8, 1) 100%);
+  --owner-field: #100c08;
+  --owner-border: rgba(255, 255, 255, 0.08);
+  --owner-border-strong: rgba(255, 255, 255, 0.12);
+  --owner-subtle-surface: rgba(255, 255, 255, 0.03);
+  --owner-subtle-surface-2: rgba(255, 255, 255, 0.02);
+  --owner-dark-surface: rgba(0, 0, 0, 0.2);
+  --owner-text: #f7f1e8;
+  --owner-muted: #e6d8bf;
+  --owner-soft: #ccb99a;
+  --owner-accent: #e7c98a;
+  --owner-accent-strong: #f1d9a5;
+  background: var(--owner-page-bg) !important;
+  color: var(--owner-text) !important;
+}
+
+.owner-shell .owner-hero {
+  background: var(--owner-surface-strong) !important;
+  border-color: var(--owner-border) !important;
+}
+
+.owner-shell .owner-card {
+  background: var(--owner-surface) !important;
+  border-color: var(--owner-border) !important;
+}
+
+.owner-shell .owner-field {
+  background: var(--owner-field) !important;
+  border-color: var(--owner-border) !important;
+  color: var(--owner-text) !important;
+}
+
+.owner-shell .owner-subtle {
+  background: var(--owner-subtle-surface) !important;
+}
+
+.owner-shell .owner-subtle-2 {
+  background: var(--owner-subtle-surface-2) !important;
+}
+
+.owner-shell .owner-dark-subtle {
+  background: var(--owner-dark-surface) !important;
+}
+
+.owner-shell .text-\[\#f7f1e8\] {
+  color: var(--owner-text) !important;
+}
+
+.owner-shell .text-\[\#e6d8bf\] {
+  color: var(--owner-muted) !important;
+}
+
+.owner-shell .text-\[\#ccb99a\] {
+  color: var(--owner-soft) !important;
+}
+
+.owner-shell .text-\[\#e7c98a\] {
+  color: var(--owner-accent) !important;
+}
+
+.owner-shell .text-\[\#f1d9a5\] {
+  color: var(--owner-accent-strong) !important;
+}
+
+.owner-shell .bg-\[\#15110d\] {
+  background: var(--owner-surface) !important;
+}
+
+.owner-shell .bg-\[\#100c08\] {
+  background: var(--owner-field) !important;
+}
+
+.owner-shell .border-white\/8,
+.owner-shell .border-white\/7 {
+  border-color: var(--owner-border) !important;
+}
+
+.owner-shell .border-white\/12 {
+  border-color: var(--owner-border-strong) !important;
+}
+
+.owner-shell .bg-white\/\[0\.03\] {
+  background: var(--owner-subtle-surface) !important;
+}
+
+.owner-shell .bg-white\/\[0\.02\] {
+  background: var(--owner-subtle-surface-2) !important;
+}
+
+.owner-shell .bg-black\/20 {
+  background: var(--owner-dark-surface) !important;
+}
+
+@media (prefers-color-scheme: light) {
+  .owner-shell {
+    --owner-page-bg:
+      radial-gradient(circle at top, rgba(176, 139, 71, 0.18), transparent 30%),
+      linear-gradient(180deg, #fcf8f1 0%, #f3eadf 100%);
+    --owner-surface: rgba(255, 251, 245, 0.96);
+    --owner-surface-strong:
+      linear-gradient(180deg, rgba(255, 252, 248, 0.98) 0%, rgba(248, 241, 231, 1) 100%);
+    --owner-field: #fffdf9;
+    --owner-border: rgba(117, 87, 44, 0.16);
+    --owner-border-strong: rgba(117, 87, 44, 0.22);
+    --owner-subtle-surface: rgba(255, 255, 255, 0.72);
+    --owner-subtle-surface-2: rgba(255, 255, 255, 0.84);
+    --owner-dark-surface: rgba(117, 87, 44, 0.08);
+    --owner-text: #2c2116;
+    --owner-muted: #5a4833;
+    --owner-soft: #786452;
+    --owner-accent: #7d581b;
+    --owner-accent-strong: #694811;
+  }
+
+  .owner-shell {
+    color-scheme: light;
+  }
+
+  .owner-shell .bg-red-950\/20 {
+    background: rgba(185, 28, 28, 0.08) !important;
+  }
+
+  .owner-shell .bg-emerald-950\/20 {
+    background: rgba(5, 150, 105, 0.08) !important;
+  }
+
+  .owner-shell .bg-emerald-950\/15 {
+    background: rgba(5, 150, 105, 0.08) !important;
+  }
+
+  .owner-shell .bg-red-950\/15 {
+    background: rgba(185, 28, 28, 0.07) !important;
+  }
+
+  .owner-shell .hover\:bg-white\/\[0\.05\]:hover,
+  .owner-shell .hover\:bg-white\/\[0\.06\]:hover {
+    background: rgba(255, 255, 255, 0.92) !important;
+  }
+}

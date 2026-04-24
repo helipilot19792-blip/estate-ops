@@ -399,8 +399,8 @@ async function handleFreshLoginLink() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(176,139,71,0.14),transparent_28%),#0f0d0a] px-4 py-8 text-[#f7f1e8] sm:px-6">
-        <div className="mx-auto max-w-3xl rounded-[32px] border border-white/8 bg-[#15110d] p-8 shadow-[0_24px_80px_rgba(0,0,0,0.36)]">
+      <main className="owner-shell min-h-screen px-4 py-8 text-[#f7f1e8] sm:px-6">
+        <div className="owner-card mx-auto max-w-3xl rounded-[32px] border border-white/8 p-8 shadow-[0_24px_80px_rgba(0,0,0,0.36)]">
           <div className="text-sm text-[#e6d8bf]">Confirming your owner access...</div>
         </div>
       </main>
@@ -408,9 +408,9 @@ async function handleFreshLoginLink() {
   }
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(176,139,71,0.14),transparent_28%),#0f0d0a] px-4 py-8 text-[#f7f1e8] sm:px-6">
+    <main className="owner-shell min-h-screen px-4 py-8 text-[#f7f1e8] sm:px-6">
       <div className="mx-auto max-w-3xl space-y-6">
-        <section className="rounded-[32px] border border-white/8 bg-[linear-gradient(180deg,rgba(23,18,13,0.98)_0%,rgba(14,11,8,1)_100%)] px-6 py-7 shadow-[0_24px_80px_rgba(0,0,0,0.36)] sm:px-8">
+        <section className="owner-hero rounded-[32px] border border-white/8 px-6 py-7 shadow-[0_24px_80px_rgba(0,0,0,0.36)] sm:px-8">
           <div className="text-[11px] uppercase tracking-[0.24em] text-[#e7c98a]">
             Gulera OS Owner Portal
           </div>
@@ -460,7 +460,7 @@ async function handleFreshLoginLink() {
           </div>
         ) : null}
 
-        <section className="rounded-[28px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
+        <section className="owner-card rounded-[28px] border border-white/8 p-5 sm:p-6">
           <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">Owner Access</div>
           <h2 className="mt-2 text-xl font-semibold text-[#f7f1e8]">Set your password or log in</h2>
           <p className="mt-2 text-sm leading-relaxed text-[#e6d8bf]">
@@ -476,7 +476,7 @@ async function handleFreshLoginLink() {
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             <div>
               <label className="text-xs uppercase tracking-[0.18em] text-[#e7c98a]">New password</label>
-              <div className="mt-2 flex rounded-2xl border border-white/8 bg-[#100c08] focus-within:border-[#b08b47]">
+              <div className="owner-field mt-2 flex rounded-2xl border border-white/8 focus-within:border-[#b08b47]">
                 <input
                   type={showPassword ? "text" : "password"}
                   value={password}
@@ -496,7 +496,7 @@ async function handleFreshLoginLink() {
 
             <div>
               <label className="text-xs uppercase tracking-[0.18em] text-[#e7c98a]">Confirm password</label>
-              <div className="mt-2 flex rounded-2xl border border-white/8 bg-[#100c08] focus-within:border-[#b08b47]">
+              <div className="owner-field mt-2 flex rounded-2xl border border-white/8 focus-within:border-[#b08b47]">
                 <input
                   type={showConfirmPassword ? "text" : "password"}
                   value={confirmPassword}
@@ -547,7 +547,7 @@ async function handleFreshLoginLink() {
           </div>
         </section>
 
-        <section className="rounded-[28px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
+        <section className="owner-card rounded-[28px] border border-white/8 p-5 sm:p-6">
           <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">Confirmed Account</div>
 
           <div className="mt-4 grid gap-4 sm:grid-cols-2">

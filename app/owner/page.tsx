@@ -1249,7 +1249,7 @@ export default function OwnerPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-[#0f0d0a] px-4 py-10 text-[#f7f1e8]">
+    <main className="owner-shell min-h-screen bg-[#0f0d0a] px-4 py-10 text-[#f7f1e8]">
         <div className="mx-auto max-w-6xl rounded-[32px] border border-white/8 bg-[#15110d] p-8">
           Loading owner dashboard...
         </div>
@@ -1259,7 +1259,7 @@ export default function OwnerPage() {
 
   if (error) {
     return (
-      <main className="min-h-screen bg-[#0f0d0a] px-4 py-10 text-[#f7f1e8]">
+    <main className="owner-shell min-h-screen bg-[#0f0d0a] px-4 py-10 text-[#f7f1e8]">
         <div className="mx-auto max-w-6xl rounded-[32px] border border-red-500/20 bg-red-950/20 p-8">
           {error}
         </div>
@@ -1269,7 +1269,7 @@ export default function OwnerPage() {
 
   if (!selectedProperty) {
     return (
-      <main className="min-h-screen bg-[#0f0d0a] px-4 py-10 text-[#f7f1e8]">
+    <main className="owner-shell min-h-screen bg-[#0f0d0a] px-4 py-10 text-[#f7f1e8]">
         <div className="mx-auto max-w-6xl rounded-[32px] border border-white/8 bg-[#15110d] p-8">
           No property found yet.
         </div>
@@ -1280,7 +1280,7 @@ export default function OwnerPage() {
   const bookingInfo = upcomingBooking?.booking || null;
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(176,139,71,0.14),transparent_28%),#0f0d0a] px-4 py-6 text-[#f7f1e8] sm:px-6 sm:py-8">
+    <main className="owner-shell min-h-screen px-4 py-6 text-[#f7f1e8] sm:px-6 sm:py-8">
       <div className="mx-auto max-w-6xl space-y-6">
         <section className="overflow-hidden rounded-[32px] border border-white/8 bg-[linear-gradient(180deg,rgba(23,18,13,0.98)_0%,rgba(14,11,8,1)_100%)] shadow-[0_24px_80px_rgba(0,0,0,0.36)]">
           {selectedProperty.cover_photo_url ? (
