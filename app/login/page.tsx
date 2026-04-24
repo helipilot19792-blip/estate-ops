@@ -15,6 +15,7 @@ type ProfileRow = {
 };
 
 type AuthMode = "login" | "company";
+const ORGANIZATION_TRIAL_DAYS = 30;
 
 function slugifyCompanyName(value: string) {
   return value
@@ -251,18 +252,33 @@ export default function LoginPage() {
         const baseSlug = slugifyCompanyName(companyName);
         const uniqueSlug = `${baseSlug || "company"}-${Date.now().toString().slice(-6)}`;
 
+        const trialStartedAt = new Date();
+        const trialEndsAt = new Date(trialStartedAt);
+        trialEndsAt.setDate(trialEndsAt.getDate() + ORGANIZATION_TRIAL_DAYS);
+
         const { data: org, error: orgError } = await supabase
           .from("organizations")
           .insert({
             name: companyName.trim(),
             slug: uniqueSlug,
             created_by: userId,
+            subscription_status: "trialing",
+            trial_started_at: trialStartedAt.toISOString(),
+            trial_ends_at: trialEndsAt.toISOString(),
+            billing_enabled: false,
           })
           .select("id")
           .single();
 
         if (orgError || !org) {
-          setError(orgError?.message || "Failed to create organization.");
+          const message = orgError?.message || "Failed to create organization.";
+          if (message.includes("subscription_status") || message.includes("trial_ends_at")) {
+            setError(
+              "The organization trial fields are not in Supabase yet. Run supabase/add_organization_trial_fields.sql, then try creating the company again."
+            );
+          } else {
+            setError(message);
+          }
           return;
         }
 
@@ -278,7 +294,9 @@ export default function LoginPage() {
         }
       }
 
-      setMessage("Company account created. Check your email to confirm your account.");
+      setMessage(
+        `Company account created with a ${ORGANIZATION_TRIAL_DAYS}-day free trial. Check your email to confirm your account.`
+      );
 
       setSignupName("");
       setSignupPhone("");

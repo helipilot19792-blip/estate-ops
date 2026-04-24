@@ -317,6 +317,16 @@ type MyOrganizationRow = {
   organization_slug: string;
   role: string;
 };
+type OrganizationBillingRow = {
+  id: string;
+  name: string | null;
+  subscription_status?: string | null;
+  trial_started_at?: string | null;
+  trial_ends_at?: string | null;
+  billing_enabled?: boolean | null;
+  stripe_customer_id?: string | null;
+  stripe_subscription_id?: string | null;
+};
 type OrganizationInviteRow = {
   id: string;
   organization_id: string;
@@ -370,6 +380,13 @@ function formatDateLabel(dateString: string | null) {
     day: "numeric",
     year: "numeric",
   });
+}
+
+function getTrialDaysRemaining(trialEndsAt?: string | null, now = new Date()) {
+  if (!trialEndsAt) return null;
+  const end = new Date(trialEndsAt);
+  if (Number.isNaN(end.getTime())) return null;
+  return Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 }
 
 function extractCheckoutDate(notes: string | null): string | null {
@@ -501,6 +518,7 @@ export default function AdminPage() {
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [currentAdminUserId, setCurrentAdminUserId] = useState<string | null>(null);
   const [currentOrganizationId, setCurrentOrganizationId] = useState<string | null>(null);
+  const [currentOrganizationBilling, setCurrentOrganizationBilling] = useState<OrganizationBillingRow | null>(null);
   const [myOrganizations, setMyOrganizations] = useState<MyOrganizationRow[]>([]);
   const [now, setNow] = useState(() => new Date());
   const [adminCalendarMonth, setAdminCalendarMonth] = useState(() => {
@@ -739,6 +757,15 @@ export default function AdminPage() {
     }).length;
   }, [maintenanceFlags]);
 
+  const currentTrialStatus = (currentOrganizationBilling?.subscription_status || "trialing").toLowerCase();
+  const trialDaysRemaining = getTrialDaysRemaining(currentOrganizationBilling?.trial_ends_at, now);
+  const trialExpired = currentTrialStatus === "trialing" && trialDaysRemaining !== null && trialDaysRemaining < 0;
+  const trialEndingSoon =
+    currentTrialStatus === "trialing" &&
+    trialDaysRemaining !== null &&
+    trialDaysRemaining >= 0 &&
+    trialDaysRemaining <= 7;
+
   useEffect(() => {
     const interval = window.setInterval(() => setNow(new Date()), 1000);
     return () => window.clearInterval(interval);
@@ -816,6 +843,31 @@ export default function AdminPage() {
       void loadData();
     }
   }, [checkingAuth, currentOrganizationId]);
+
+  useEffect(() => {
+    async function loadOrganizationBilling() {
+      if (!currentOrganizationId) {
+        setCurrentOrganizationBilling(null);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("organizations")
+        .select("*")
+        .eq("id", currentOrganizationId)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Organization billing lookup failed:", error.message);
+        setCurrentOrganizationBilling(null);
+        return;
+      }
+
+      setCurrentOrganizationBilling((data ?? null) as OrganizationBillingRow | null);
+    }
+
+    void loadOrganizationBilling();
+  }, [currentOrganizationId]);
 
   useEffect(() => {
     if (
@@ -7463,6 +7515,51 @@ This removes its linked members and deletes the grounds account.`
         {actionMessage ? (
           <div className="mb-6 rounded-[24px] border border-[#cfe4cf] bg-[#f4fbf4] px-4 py-3 text-sm text-[#2f6b2f] shadow-sm">
             {actionMessage}
+          </div>
+        ) : null}
+
+        {currentOrganizationBilling ? (
+          <div
+            className={`mb-6 rounded-[24px] border px-4 py-4 shadow-sm ${
+              trialExpired
+                ? "border-[#f5c2c7] bg-[#fff1f2] text-[#8a2e22]"
+                : trialEndingSoon
+                  ? "border-[#ecd7a8] bg-[#fff8e8] text-[#8a6112]"
+                  : "border-[#d8c7ab] bg-[#fcfaf7] text-[#5f5245]"
+            }`}
+          >
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.18em]">
+                  {currentTrialStatus === "active"
+                    ? "Billing Ready"
+                    : trialExpired
+                      ? "Trial Ended"
+                      : "Free Trial"}
+                </div>
+                <div className="mt-1 text-sm leading-6">
+                  {currentTrialStatus === "active"
+                    ? "This organization is marked as active for future billing integration."
+                    : trialExpired
+                      ? "This organization’s free trial has ended. Billing enforcement is not turned on yet, but this workspace is now flagged for a future upgrade flow."
+                      : trialDaysRemaining === null
+                        ? "This organization is in trial mode while billing is being prepared."
+                        : trialDaysRemaining === 0
+                          ? "This organization’s free trial ends today."
+                          : `${trialDaysRemaining} day${trialDaysRemaining === 1 ? "" : "s"} left in the free trial.`}
+                </div>
+                <div className="mt-1 text-xs opacity-80">
+                  Status: {currentTrialStatus}
+                  {currentOrganizationBilling.trial_ends_at
+                    ? ` • Trial ends ${new Date(currentOrganizationBilling.trial_ends_at).toLocaleDateString()}`
+                    : ""}
+                </div>
+              </div>
+
+              <div className="rounded-full border border-current/15 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em]">
+                Pricing coming later
+              </div>
+            </div>
           </div>
         ) : null}
 
