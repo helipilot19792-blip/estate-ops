@@ -311,6 +311,7 @@ type AdminSection =
   | "jobs"
   | "calendar"
   | "maintenance";
+type PropertySetupTab = "overview" | "access" | "calendars" | "sops";
 type MyOrganizationRow = {
   organization_id: string;
   organization_name: string;
@@ -657,6 +658,7 @@ export default function AdminPage() {
   const [jobShowTeamStatus, setJobShowTeamStatus] = useState(true);
 
   const [selectedPropertyId, setSelectedPropertyId] = useState("");
+  const [propertySetupTab, setPropertySetupTab] = useState<PropertySetupTab>("overview");
   const [selectedPropertyUnitsNeeded, setSelectedPropertyUnitsNeeded] = useState("1");
   const [selectedPropertyUnitsStrict, setSelectedPropertyUnitsStrict] = useState(false);
   const [selectedPropertyShowTeamStatus, setSelectedPropertyShowTeamStatus] = useState(true);
@@ -899,6 +901,7 @@ export default function AdminPage() {
     setCalendarDraftDirty(false);
     setAccessDirty(false);
     setPropertyDefaultsDirty(false);
+    setPropertySetupTab("overview");
     setOwnerLinkTargetPropertyId("");
     setPropertyCoverMessage("");
     setPropertyCoverError("");
@@ -6348,6 +6351,15 @@ This removes its linked members and deletes the grounds account.`
       ? properties.filter((property) => !selectedOwnerPropertyIds.has(property.id))
       : [];
     const selectedProperty = properties.find((property) => property.id === selectedPropertyId) || null;
+    const selectedPropertySavedCalendars = propertyCalendars.filter(
+      (calendar) => calendar.property_id === selectedPropertyId
+    );
+    const propertySetupTabs: Array<{ id: PropertySetupTab; label: string }> = [
+      { id: "overview", label: "Overview" },
+      { id: "access", label: "Access" },
+      { id: "calendars", label: "Calendars" },
+      { id: "sops", label: "SOPs" },
+    ];
 
     return (
       <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
@@ -6371,413 +6383,505 @@ This removes its linked members and deletes the grounds account.`
 
         {selectedPropertyId ? (
           <>
-            <div className="mt-6 rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="mt-6 rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                 <div className="min-w-0">
-                  <div className="flex items-center gap-3">
-                    <h3 className="text-base font-semibold">Owner Portal</h3>
+                  <h3 className="text-lg font-semibold text-[#241c15]">
+                    {selectedProperty?.name || "Selected property"}
+                  </h3>
+                  <p className="mt-1 text-sm text-[#7f7263]">
+                    {selectedProperty?.address || "No address saved yet"}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <span className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-medium text-[#6f6255]">
+                      {selectedPropertySavedCalendars.length} calendar
+                      {selectedPropertySavedCalendars.length === 1 ? "" : "s"}
+                    </span>
+                    <span className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-medium text-[#6f6255]">
+                      {selectedSops.length} SOP{selectedSops.length === 1 ? "" : "s"}
+                    </span>
                     <span className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-medium text-[#6f6255]">
                       {selectedPropertyOwnerEmail ? "Owner linked" : "No owner linked"}
                     </span>
                   </div>
-                  <p className="mt-1 text-sm text-[#7f7263]">
-                    Link or update the owner for this property.
-                  </p>
                 </div>
 
-                <div className="grid gap-2 sm:grid-cols-2 lg:w-[520px]">
-                  <input
-                    value={selectedPropertyOwnerName}
-                    onChange={(e) => {
-                      setSelectedPropertyOwnerName(e.target.value);
-                      setSelectedPropertyOwnerDirty(true);
-                    }}
-                    placeholder="Owner name"
-                    className="w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
-                  />
-
-                  <input
-                    value={selectedPropertyOwnerEmail}
-                    onChange={(e) => {
-                      setSelectedPropertyOwnerEmail(e.target.value);
-                      setSelectedPropertyOwnerDirty(true);
-                    }}
-                    placeholder="Owner email"
-                    className="w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
-                  />
-
-
-                </div>
-
-                <div className="mt-4 flex flex-wrap gap-3">
-                  <button
-                    type="button"
-                    onClick={saveSelectedPropertyOwner}
-                    disabled={!selectedPropertyId || savingSelectedPropertyOwner}
-                    className="rounded-full bg-[#241c15] px-5 py-3 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {savingSelectedPropertyOwner ? "Saving..." : "Save owner"}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      if (!selectedPropertyId) {
-                        setError("Select a property first.");
-                        return;
-                      }
-
-                      const trimmedEmail = selectedPropertyOwnerEmail.trim().toLowerCase();
-                      const trimmedName = selectedPropertyOwnerName.trim();
-
-                      if (!trimmedEmail) {
-                        setError("Owner email is required before sending an invite.");
-                        return;
-                      }
-
-                      await saveSelectedPropertyOwner();
-                      await inviteOwnerForProperty(
-                        selectedPropertyId,
-                        trimmedEmail,
-                        trimmedName
-                      );
-                    }}
-                    disabled={
-                      !selectedPropertyId ||
-                      savingSelectedPropertyOwner ||
-                      sendingOwnerInviteId === selectedPropertyId
-                    }
-                    className="rounded-full border border-[#d8c7ab] bg-white px-5 py-3 text-sm font-medium text-[#5f5245] transition hover:bg-[#fcfaf7] disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {sendingOwnerInviteId === selectedPropertyId ? "Sending..." : "Send Invite"}
-                  </button>
-
-                  {selectedPropertyOwnerEmail ? (
+                <div className="flex flex-wrap gap-2">
+                  {propertySetupTabs.map((tab) => (
                     <button
+                      key={tab.id}
                       type="button"
-                      onClick={async () => {
-                        setSelectedPropertyOwnerName("");
-                        setSelectedPropertyOwnerEmail("");
-                        await saveSelectedPropertyOwner();
-                      }}
-                      disabled={!selectedPropertyId || savingSelectedPropertyOwner}
-                      className="rounded-full border border-[#e7c6c1] bg-white px-5 py-3 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff4f2] disabled:cursor-not-allowed disabled:opacity-60"
+                      onClick={() => setPropertySetupTab(tab.id)}
+                      className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                        propertySetupTab === tab.id
+                          ? "bg-[#241c15] text-[#f8f2e8]"
+                          : "border border-[#d8c7ab] bg-white text-[#5f5245] hover:bg-[#fffaf4]"
+                      }`}
                     >
-                      Remove owner link
+                      {tab.label}
                     </button>
-                  ) : null}
+                  ))}
                 </div>
               </div>
-
-              {selectedOwner ? (
-                <div className="mt-4 rounded-[18px] border border-[#eadfce] bg-white px-4 py-3">
-                  <div className="text-sm font-semibold text-[#241c15]">
-                    Owner property access
-                  </div>
-                  <p className="mt-1 text-xs text-[#8a7b68]">
-                    This owner can switch between every property linked here.
-                  </p>
-
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {selectedOwnerProperties.map((property) => (
-                      <span
-                        key={property.id}
-                        className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#6f6255]"
-                      >
-                        {property.name || property.address || "Unnamed property"}
-                      </span>
-                    ))}
-                  </div>
-
-                  <div className="mt-4 grid gap-2 md:grid-cols-[1fr_auto]">
-                    <select
-                      value={ownerLinkTargetPropertyId}
-                      onChange={(e) => setOwnerLinkTargetPropertyId(e.target.value)}
-                      className="w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none transition focus:border-[#b48d4e]"
-                    >
-                      <option value="">Link this owner to another property</option>
-                      {ownerLinkPropertyOptions.map((property) => (
-                        <option key={property.id} value={property.id}>
-                          {property.name || property.address || property.id}
-                        </option>
-                      ))}
-                    </select>
-
-                    <button
-                      type="button"
-                      onClick={() => void linkSelectedOwnerToProperty()}
-                      disabled={!ownerLinkTargetPropertyId || linkingOwnerProperty}
-                      className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-5 py-2 text-sm font-medium text-[#5f5245] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {linkingOwnerProperty ? "Linking..." : "Link property"}
-                    </button>
-                  </div>
-                </div>
-              ) : null}
             </div>
 
-            <div className="mt-6 rounded-[26px] border border-[#eadfce] bg-[#fcfaf7] p-5">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                <div className="min-w-0">
-                  <h3 className="text-lg font-semibold">Property cover photo</h3>
-                  <p className="mt-1 text-sm text-[#7f7263]">
-                    Add a photo owners can use to visually switch between properties.
-                  </p>
-                </div>
+            {propertySetupTab === "overview" ? (
+              <div className="mt-6 grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+                <div className="space-y-6">
+                  <div className="rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] p-5">
+                    <div className="flex items-center gap-3">
+                      <h3 className="text-base font-semibold text-[#241c15]">Owner Portal</h3>
+                      <span className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-medium text-[#6f6255]">
+                        {selectedPropertyOwnerEmail ? "Owner linked" : "No owner linked"}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm text-[#7f7263]">
+                      Link or update the owner for this property.
+                    </p>
 
-                <div className="flex flex-wrap gap-3">
-                  <label className="inline-flex cursor-pointer items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]">
-                    {uploadingPropertyCover ? "Uploading..." : "Upload cover photo"}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="sr-only"
-                      disabled={uploadingPropertyCover}
-                      onChange={(e) => void uploadSelectedPropertyCoverPhoto(e)}
-                    />
-                  </label>
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      <input
+                        value={selectedPropertyOwnerName}
+                        onChange={(e) => {
+                          setSelectedPropertyOwnerName(e.target.value);
+                          setSelectedPropertyOwnerDirty(true);
+                        }}
+                        placeholder="Owner name"
+                        className="w-full rounded-[16px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
+                      />
 
-                  {selectedProperty?.cover_photo_url ? (
-                    <button
-                      type="button"
-                      onClick={() => void removeSelectedPropertyCoverPhoto()}
-                      disabled={uploadingPropertyCover}
-                      className="rounded-full border border-[#e7c6c1] bg-white px-5 py-2.5 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff4f2] disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      Remove photo
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-
-              {propertyCoverError ? (
-                <div className="mt-4 rounded-[16px] border border-[#e7c6c1] bg-[#fff4f2] px-4 py-3 text-sm text-[#8a2e22]">
-                  {propertyCoverError}
-                </div>
-              ) : null}
-
-              {propertyCoverMessage ? (
-                <div className="mt-4 rounded-[16px] border border-[#cfe4cf] bg-[#f4fbf4] px-4 py-3 text-sm text-[#2f6b2f]">
-                  {propertyCoverMessage}
-                </div>
-              ) : null}
-
-              <div className="mt-4 overflow-hidden rounded-[26px] border border-[#eadfce] bg-white shadow-sm">
-                {selectedProperty?.cover_photo_url ? (
-                  <div>
-                    <div className="relative bg-[#1f1812]">
-                      <img
-                        src={selectedProperty.cover_photo_url}
-                        alt={selectedProperty.name || "Property cover photo"}
-                        className="max-h-[520px] w-full object-contain"
+                      <input
+                        value={selectedPropertyOwnerEmail}
+                        onChange={(e) => {
+                          setSelectedPropertyOwnerEmail(e.target.value);
+                          setSelectedPropertyOwnerDirty(true);
+                        }}
+                        placeholder="Owner email"
+                        className="w-full rounded-[16px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
                       />
                     </div>
-                    <div className="flex flex-col gap-1 border-t border-[#eadfce] bg-[#fffaf4] px-4 py-3 text-sm text-[#6f6255] sm:flex-row sm:items-center sm:justify-between">
-                      <span className="font-medium text-[#241c15]">
-                        {selectedProperty.name || "Property cover photo"}
-                      </span>
-                      <span className="text-xs text-[#8a7b68]">
-                        Owner portal cover preview
-                      </span>
+
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      <button
+                        type="button"
+                        onClick={saveSelectedPropertyOwner}
+                        disabled={!selectedPropertyId || savingSelectedPropertyOwner}
+                        className="rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {savingSelectedPropertyOwner ? "Saving..." : "Save owner"}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!selectedPropertyId) {
+                            setError("Select a property first.");
+                            return;
+                          }
+
+                          const trimmedEmail = selectedPropertyOwnerEmail.trim().toLowerCase();
+                          const trimmedName = selectedPropertyOwnerName.trim();
+
+                          if (!trimmedEmail) {
+                            setError("Owner email is required before sending an invite.");
+                            return;
+                          }
+
+                          await saveSelectedPropertyOwner();
+                          await inviteOwnerForProperty(
+                            selectedPropertyId,
+                            trimmedEmail,
+                            trimmedName
+                          );
+                        }}
+                        disabled={
+                          !selectedPropertyId ||
+                          savingSelectedPropertyOwner ||
+                          sendingOwnerInviteId === selectedPropertyId
+                        }
+                        className="rounded-full border border-[#d8c7ab] bg-white px-5 py-2.5 text-sm font-medium text-[#5f5245] transition hover:bg-[#fcfaf7] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {sendingOwnerInviteId === selectedPropertyId ? "Sending..." : "Send invite"}
+                      </button>
+
+                      {selectedPropertyOwnerEmail ? (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setSelectedPropertyOwnerName("");
+                            setSelectedPropertyOwnerEmail("");
+                            await saveSelectedPropertyOwner();
+                          }}
+                          disabled={!selectedPropertyId || savingSelectedPropertyOwner}
+                          className="rounded-full border border-[#e7c6c1] bg-white px-5 py-2.5 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff4f2] disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          Remove owner link
+                        </button>
+                      ) : null}
+                    </div>
+
+                    {selectedOwner ? (
+                      <div className="mt-4 rounded-[18px] border border-[#eadfce] bg-white px-4 py-3">
+                        <div className="text-sm font-semibold text-[#241c15]">
+                          Owner property access
+                        </div>
+                        <p className="mt-1 text-xs text-[#8a7b68]">
+                          This owner can switch between every property linked here.
+                        </p>
+
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {selectedOwnerProperties.map((property) => (
+                            <span
+                              key={property.id}
+                              className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#6f6255]"
+                            >
+                              {property.name || property.address || "Unnamed property"}
+                            </span>
+                          ))}
+                        </div>
+
+                        <div className="mt-4 grid gap-2 md:grid-cols-[1fr_auto]">
+                          <select
+                            value={ownerLinkTargetPropertyId}
+                            onChange={(e) => setOwnerLinkTargetPropertyId(e.target.value)}
+                            className="w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none transition focus:border-[#b48d4e]"
+                          >
+                            <option value="">Link this owner to another property</option>
+                            {ownerLinkPropertyOptions.map((property) => (
+                              <option key={property.id} value={property.id}>
+                                {property.name || property.address || property.id}
+                              </option>
+                            ))}
+                          </select>
+
+                          <button
+                            type="button"
+                            onClick={() => void linkSelectedOwnerToProperty()}
+                            disabled={!ownerLinkTargetPropertyId || linkingOwnerProperty}
+                            className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-5 py-2 text-sm font-medium text-[#5f5245] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {linkingOwnerProperty ? "Linking..." : "Link property"}
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] p-5">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <h3 className="text-base font-semibold text-[#241c15]">Property Staffing Defaults</h3>
+                        <p className="mt-1 text-sm text-[#7f7263]">
+                          Edit cleaner units, full-team requirement, and team status visibility.
+                        </p>
+                      </div>
+
+                      <button
+                        className="inline-flex items-center justify-center rounded-full border border-[#efc6c6] bg-[#fff5f5] px-5 py-2.5 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-50"
+                        onClick={() => {
+                          const property = properties.find((p) => p.id === selectedPropertyId);
+                          if (property) void deleteProperty(property);
+                        }}
+                        disabled={deletingPropertyId === selectedPropertyId}
+                      >
+                        {deletingPropertyId === selectedPropertyId ? "Deleting..." : "Delete property"}
+                      </button>
+                    </div>
+
+                    <div className="mt-4 grid gap-4 md:grid-cols-3">
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-[#5f5245]">Cleaner units needed</label>
+                        <select
+                          className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                          value={selectedPropertyUnitsNeeded}
+                          onChange={(e) => {
+                            setSelectedPropertyUnitsNeeded(e.target.value);
+                            setPropertyDefaultsDirty(true);
+                          }}
+                        >
+                          <option value="1">1 cleaner unit</option>
+                          <option value="2">2 cleaner units</option>
+                          <option value="3">3 cleaner units</option>
+                        </select>
+                      </div>
+
+                      <label className="flex items-center gap-2 rounded-[18px] border border-[#eadfce] bg-white px-4 py-3 text-sm text-[#6f6255]">
+                        <input
+                          type="checkbox"
+                          checked={selectedPropertyUnitsStrict}
+                          onChange={(e) => {
+                            setSelectedPropertyUnitsStrict(e.target.checked);
+                            setPropertyDefaultsDirty(true);
+                          }}
+                        />
+                        Property must have full team
+                      </label>
+
+                      <label className="flex items-center gap-2 rounded-[18px] border border-[#eadfce] bg-white px-4 py-3 text-sm text-[#6f6255]">
+                        <input
+                          type="checkbox"
+                          checked={selectedPropertyShowTeamStatus}
+                          onChange={(e) => {
+                            setSelectedPropertyShowTeamStatus(e.target.checked);
+                            setPropertyDefaultsDirty(true);
+                          }}
+                        />
+                        Show team status to cleaners
+                      </label>
+                    </div>
+
+                    <div className="mt-4">
+                      <button
+                        className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60"
+                        onClick={() => void saveSelectedPropertyDefaults()}
+                        disabled={savingSelectedPropertyDefaults}
+                      >
+                        {savingSelectedPropertyDefaults ? "Saving..." : "Save Property Setup"}
+                      </button>
                     </div>
                   </div>
-                ) : (
-                  <div className="flex h-44 items-center justify-center bg-[linear-gradient(135deg,#f8f2e8,#eadfce)] px-6 text-center text-sm text-[#7f7263]">
-                    No cover photo added yet.
-                  </div>
-                )}
-              </div>
-            </div>
+                </div>
 
-            <div className="mt-6 grid gap-6 lg:grid-cols-3">
-              <div className="rounded-[26px] border border-[#eadfce] bg-[#fcfaf7] p-5 lg:col-span-3">
-                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div className="rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] p-5">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="min-w-0">
+                      <h3 className="text-base font-semibold text-[#241c15]">Property cover photo</h3>
+                      <p className="mt-1 text-sm text-[#7f7263]">
+                        Add a photo owners can use to visually switch between properties.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap gap-3">
+                      <label className="inline-flex cursor-pointer items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]">
+                        {uploadingPropertyCover ? "Uploading..." : "Upload cover photo"}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="sr-only"
+                          disabled={uploadingPropertyCover}
+                          onChange={(e) => void uploadSelectedPropertyCoverPhoto(e)}
+                        />
+                      </label>
+
+                      {selectedProperty?.cover_photo_url ? (
+                        <button
+                          type="button"
+                          onClick={() => void removeSelectedPropertyCoverPhoto()}
+                          disabled={uploadingPropertyCover}
+                          className="rounded-full border border-[#e7c6c1] bg-white px-5 py-2.5 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff4f2] disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          Remove photo
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {propertyCoverError ? (
+                    <div className="mt-4 rounded-[16px] border border-[#e7c6c1] bg-[#fff4f2] px-4 py-3 text-sm text-[#8a2e22]">
+                      {propertyCoverError}
+                    </div>
+                  ) : null}
+
+                  {propertyCoverMessage ? (
+                    <div className="mt-4 rounded-[16px] border border-[#cfe4cf] bg-[#f4fbf4] px-4 py-3 text-sm text-[#2f6b2f]">
+                      {propertyCoverMessage}
+                    </div>
+                  ) : null}
+
+                  <div className="mt-4 overflow-hidden rounded-[24px] border border-[#eadfce] bg-white shadow-sm">
+                    {selectedProperty?.cover_photo_url ? (
+                      <div>
+                        <div className="relative bg-[#1f1812]">
+                          <img
+                            src={selectedProperty.cover_photo_url}
+                            alt={selectedProperty.name || "Property cover photo"}
+                            className="h-72 w-full object-cover"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1 border-t border-[#eadfce] bg-[#fffaf4] px-4 py-3 text-sm text-[#6f6255]">
+                          <span className="font-medium text-[#241c15]">
+                            {selectedProperty.name || "Property cover photo"}
+                          </span>
+                          <span className="text-xs text-[#8a7b68]">
+                            Owner portal cover preview
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex h-72 items-center justify-center bg-[linear-gradient(135deg,#f8f2e8,#eadfce)] px-6 text-center text-sm text-[#7f7263]">
+                        No cover photo added yet.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {propertySetupTab === "access" ? (
+              <div className="mt-6 rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] p-5">
+                <h3 className="text-lg font-semibold text-[#241c15]">Access Notes</h3>
+                <p className="mt-1 text-sm text-[#7f7263]">
+                  Keep codes and entry instructions separate from the rest of property setup.
+                </p>
+
+                <div className="mt-4 grid gap-4 lg:grid-cols-2">
                   <div>
-                    <h3 className="text-lg font-semibold">Property Staffing Defaults</h3>
+                    <label className="mb-2 block text-sm font-medium text-[#5f5245]">Door code</label>
+                    <input
+                      className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                      placeholder="Front door / smart lock code"
+                      value={doorCode}
+                      onChange={(e) => {
+                        setDoorCode(e.target.value);
+                        setAccessDirty(true);
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-[#5f5245]">Alarm code</label>
+                    <input
+                      className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                      placeholder="Alarm panel code"
+                      value={alarmCode}
+                      onChange={(e) => {
+                        setAlarmCode(e.target.value);
+                        setAccessDirty(true);
+                      }}
+                    />
                   </div>
                 </div>
-                <button
-                  className="inline-flex items-center justify-center rounded-full border border-[#efc6c6] bg-[#fff5f5] px-5 py-2.5 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-50"
-                  onClick={() => {
-                    const property = properties.find((p) => p.id === selectedPropertyId);
-                    if (property) void deleteProperty(property);
-                  }}
-                  disabled={deletingPropertyId === selectedPropertyId}
-                >
-                  {deletingPropertyId === selectedPropertyId ? "Deleting property..." : "Delete This Property"}
-                </button>
-              </div>
-              <p className="mt-1 text-sm text-[#7f7263]">Edit how many cleaner units this property usually needs, whether the full team must accept, and whether cleaners can see team progress.</p>
-              <div className="mt-4 grid gap-4 md:grid-cols-3">
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-[#5f5245]">Cleaner units needed</label>
-                  <select className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" value={selectedPropertyUnitsNeeded} onChange={(e) => {
-                    setSelectedPropertyUnitsNeeded(e.target.value);
-                    setPropertyDefaultsDirty(true);
-                  }}>
-                    <option value="1">1 cleaner unit</option>
-                    <option value="2">2 cleaner units</option>
-                    <option value="3">3 cleaner units</option>
-                  </select>
-                </div>
-                <label className="flex items-center gap-2 rounded-[18px] border border-[#eadfce] bg-white px-4 py-3 text-sm text-[#6f6255]">
-                  <input type="checkbox" checked={selectedPropertyUnitsStrict} onChange={(e) => {
-                    setSelectedPropertyUnitsStrict(e.target.checked);
-                    setPropertyDefaultsDirty(true);
-                  }} />
-                  Property must have full team
-                </label>
-                <label className="flex items-center gap-2 rounded-[18px] border border-[#eadfce] bg-white px-4 py-3 text-sm text-[#6f6255]">
-                  <input type="checkbox" checked={selectedPropertyShowTeamStatus} onChange={(e) => {
-                    setSelectedPropertyShowTeamStatus(e.target.checked);
-                    setPropertyDefaultsDirty(true);
-                  }} />
-                  Show team status to cleaners
-                </label>
-              </div>
-              <div className="mt-4">
-                <button className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60" onClick={() => void saveSelectedPropertyDefaults()} disabled={savingSelectedPropertyDefaults}>
-                  {savingSelectedPropertyDefaults ? "Saving..." : "Save Property Setup"}
-                </button>
-              </div>
-            </div>
 
-            <div className="rounded-[26px] border border-[#eadfce] bg-[#fcfaf7] p-5">
-              <h3 className="text-lg font-semibold">Access Notes</h3>
-              <div className="mt-4 space-y-3">
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-[#5f5245]">Door code</label>
-                  <input className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" placeholder="Front door / smart lock code" value={doorCode} onChange={(e) => {
-                    setDoorCode(e.target.value);
-                    setAccessDirty(true);
-                  }} />
-                </div>
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-[#5f5245]">Alarm code</label>
-                  <input className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" placeholder="Alarm panel code" value={alarmCode} onChange={(e) => {
-                    setAlarmCode(e.target.value);
-                    setAccessDirty(true);
-                  }} />
-                </div>
-                <div>
+                <div className="mt-4">
                   <label className="mb-2 block text-sm font-medium text-[#5f5245]">Extra access notes</label>
-                  <textarea className="min-h-[120px] w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" placeholder="Entry directions, tricky locks, gate notes, etc." value={accessNotes} onChange={(e) => {
-                    setAccessNotes(e.target.value);
-                    setAccessDirty(true);
-                  }} />
+                  <textarea
+                    className="min-h-[150px] w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                    placeholder="Entry directions, tricky locks, gate notes, etc."
+                    value={accessNotes}
+                    onChange={(e) => {
+                      setAccessNotes(e.target.value);
+                      setAccessDirty(true);
+                    }}
+                  />
                 </div>
-                <button className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]" onClick={() => void saveAccess()}>
+
+                <button
+                  className="mt-4 inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]"
+                  onClick={() => void saveAccess()}
+                >
                   Save Access
                 </button>
               </div>
-            </div>
+            ) : null}
 
-            <div className="rounded-[26px] border border-[#eadfce] bg-[#fcfaf7] p-5">
-              <h3 className="text-lg font-semibold">Booking Calendars</h3>
-              <p className="mt-1 text-sm text-[#7f7263]">
-                Add Airbnb and VRBO iCal feeds for this property. Save them here, then use Sync Now to create future cleaning jobs from checkout dates.
-              </p>
+            {propertySetupTab === "calendars" ? (
+              <div className="mt-6 rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] p-5">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold text-[#241c15]">Booking Calendars</h3>
+                    <p className="mt-1 text-sm text-[#7f7263]">
+                      Add Airbnb and VRBO iCal feeds here, then sync to create future jobs from checkout dates.
+                    </p>
+                  </div>
 
-              <div className="mt-4 space-y-4">
-                <div className="rounded-[18px] border border-[#eadfce] bg-white px-4 py-3 text-sm text-[#6f6255]">
-                  Draft rows: {calendarRowsDraft.length}. Saved rows for this property: {propertyCalendars.filter((calendar) => calendar.property_id === selectedPropertyId).length}.
+                  <div className="rounded-[18px] border border-[#eadfce] bg-white px-4 py-3 text-sm text-[#6f6255]">
+                    Draft rows: {calendarRowsDraft.length}. Saved: {selectedPropertySavedCalendars.length}.
+                  </div>
                 </div>
 
-                {propertyCalendars.filter((calendar) => calendar.property_id === selectedPropertyId).length > 0 ? (
-                  <div className="rounded-[20px] border border-[#eadfce] bg-white p-4">
-                    <div className="mb-3 text-sm font-medium text-[#5f5245]">Currently saved calendars</div>
-                    <div className="space-y-2">
-                      {propertyCalendars
-                        .filter((calendar) => calendar.property_id === selectedPropertyId)
-                        .map((calendar) => (
-                          <div
-                            key={calendar.id}
-                            className="flex flex-wrap items-center justify-between gap-3 rounded-[16px] border border-[#eadfce] bg-[#fcfaf7] px-3 py-2"
-                          >
-                            <div className="min-w-0">
-                              <div className="text-sm font-medium text-[#241c15]">{getCalendarSourceLabel(calendar.source)}</div>
-                              <div className="truncate text-xs text-[#8a7b68]">{calendar.ical_url}</div>
-                            </div>
-                            <div className="text-xs text-[#8a7b68]">
-                              {calendar.is_active === false ? "Inactive" : "Active"}
-                            </div>
+                {selectedPropertySavedCalendars.length > 0 ? (
+                  <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                    {selectedPropertySavedCalendars.map((calendar) => (
+                      <div
+                        key={calendar.id}
+                        className="rounded-[18px] border border-[#eadfce] bg-white px-4 py-3"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-sm font-medium text-[#241c15]">
+                            {getCalendarSourceLabel(calendar.source)}
                           </div>
-                        ))}
-                    </div>
+                          <div className="text-xs text-[#8a7b68]">
+                            {calendar.is_active === false ? "Inactive" : "Active"}
+                          </div>
+                        </div>
+                        <div className="mt-2 break-all text-xs text-[#8a7b68]">{calendar.ical_url}</div>
+                      </div>
+                    ))}
                   </div>
                 ) : null}
 
                 {calendarRowsDraft.length === 0 ? (
-                  <div className="rounded-[18px] border border-dashed border-[#d8c7ab] bg-white px-4 py-4 text-sm text-[#7f7263]">
-                    No calendars added yet.
+                  <div className="mt-4 rounded-[18px] border border-dashed border-[#d8c7ab] bg-white px-4 py-4 text-sm text-[#7f7263]">
+                    No draft calendar rows yet.
                   </div>
-                ) : null}
+                ) : (
+                  <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                    {calendarRowsDraft.map((row, index) => (
+                      <div
+                        key={row.id ?? `draft-${index}`}
+                        className="rounded-[20px] border border-[#eadfce] bg-white p-4"
+                      >
+                        <div className="grid gap-3">
+                          <div>
+                            <label className="mb-2 block text-sm font-medium text-[#5f5245]">
+                              Source
+                            </label>
+                            <select
+                              className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                              value={row.source.trim().toLowerCase()}
+                              onChange={(e) =>
+                                updateCalendarDraftRow(index, "source", e.target.value)
+                              }
+                            >
+                              <option value="">Choose source</option>
+                              {PROPERTY_CALENDAR_SOURCE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
 
-                {calendarRowsDraft.map((row, index) => (
-                  <div
-                    key={row.id ?? `draft-${index}`}
-                    className="rounded-[20px] border border-[#eadfce] bg-white p-4"
-                  >
-                    <div className="grid gap-3">
-                      <div>
-                        <label className="mb-2 block text-sm font-medium text-[#5f5245]">
-                          Source
-                        </label>
-                        <select
-                          className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                          value={row.source.trim().toLowerCase()}
-                          onChange={(e) =>
-                            updateCalendarDraftRow(index, "source", e.target.value)
-                          }
-                        >
-                          <option value="">Choose source</option>
-                          {PROPERTY_CALENDAR_SOURCE_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
+                          <div>
+                            <label className="mb-2 block text-sm font-medium text-[#5f5245]">
+                              iCal URL
+                            </label>
+                            <input
+                              className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                              placeholder="Paste calendar URL"
+                              value={row.ical_url}
+                              onChange={(e) =>
+                                updateCalendarDraftRow(index, "ical_url", e.target.value)
+                              }
+                            />
+                          </div>
+
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <label className="flex items-center gap-2 text-sm text-[#6f6255]">
+                              <input
+                                type="checkbox"
+                                checked={row.is_active}
+                                onChange={(e) =>
+                                  updateCalendarDraftRow(index, "is_active", e.target.checked)
+                                }
+                              />
+                              Active
+                            </label>
+
+                            <button
+                              type="button"
+                              className="rounded-full border border-[#efc6c6] bg-[#fff5f5] px-4 py-2 text-sm text-[#8a2e22] transition hover:bg-[#fff0f0]"
+                              onClick={() => removeCalendarDraftRow(index)}
+                            >
+                              Remove calendar
+                            </button>
+                          </div>
+                        </div>
                       </div>
-
-                      <div>
-                        <label className="mb-2 block text-sm font-medium text-[#5f5245]">
-                          iCal URL
-                        </label>
-                        <input
-                          className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                          placeholder="Paste calendar URL"
-                          value={row.ical_url}
-                          onChange={(e) =>
-                            updateCalendarDraftRow(index, "ical_url", e.target.value)
-                          }
-                        />
-                      </div>
-
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <label className="flex items-center gap-2 text-sm text-[#6f6255]">
-                          <input
-                            type="checkbox"
-                            checked={row.is_active}
-                            onChange={(e) =>
-                              updateCalendarDraftRow(index, "is_active", e.target.checked)
-                            }
-                          />
-                          Active
-                        </label>
-
-                        <button
-                          type="button"
-                          className="rounded-full border border-[#efc6c6] bg-[#fff5f5] px-4 py-2 text-sm text-[#8a2e22] transition hover:bg-[#fff0f0]"
-                          onClick={() => removeCalendarDraftRow(index)}
-                        >
-                          Remove calendar
-                        </button>
-                      </div>
-                    </div>
+                    ))}
                   </div>
-                ))}
+                )}
 
-                <div className="flex flex-wrap gap-3">
+                <div className="mt-4 flex flex-wrap gap-3">
                   <button
                     type="button"
                     className="inline-flex items-center justify-center rounded-full border border-[#241c15] bg-white px-5 py-2.5 text-sm font-medium text-[#241c15] transition hover:bg-[#f7f3ee]"
@@ -6786,16 +6890,24 @@ This removes its linked members and deletes the grounds account.`
                     Add Calendar
                   </button>
 
-                  <button className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60" onClick={() => void saveCalendars()} disabled={savingCalendars}>
+                  <button
+                    className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60"
+                    onClick={() => void saveCalendars()}
+                    disabled={savingCalendars}
+                  >
                     {savingCalendars ? "Saving..." : "Save Calendars"}
                   </button>
 
-                  <button className="inline-flex items-center justify-center rounded-full border border-[#241c15] bg-white px-5 py-2.5 text-sm font-medium text-[#241c15] transition hover:bg-[#f7f3ee] disabled:opacity-60" onClick={() => void syncCalendarsNow()} disabled={syncingCalendarsNow}>
+                  <button
+                    className="inline-flex items-center justify-center rounded-full border border-[#241c15] bg-white px-5 py-2.5 text-sm font-medium text-[#241c15] transition hover:bg-[#f7f3ee] disabled:opacity-60"
+                    onClick={() => void syncCalendarsNow()}
+                    disabled={syncingCalendarsNow}
+                  >
                     {syncingCalendarsNow ? "Syncing..." : "Sync Calendars Now"}
                   </button>
                 </div>
 
-                <div className="rounded-[20px] border border-[#eadfce] bg-white p-4">
+                <div className="mt-5 rounded-[20px] border border-[#eadfce] bg-white p-4">
                   <div className="text-sm font-medium text-[#241c15]">Import booking history</div>
                   <p className="mt-1 text-sm text-[#7f7263]">
                     Backfill older stays when platform iCal feeds do not include enough history.
@@ -6825,66 +6937,84 @@ This removes its linked members and deletes the grounds account.`
                   ) : null}
                 </div>
               </div>
-            </div>
+            ) : null}
 
-            <div className="rounded-[26px] border border-[#eadfce] bg-[#fcfaf7] p-5">
-              <h3 className="text-lg font-semibold">Add SOP Note</h3>
-              <div className="mt-4 space-y-3">
-                <input className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" placeholder="SOP title" value={sopTitle} onChange={(e) => setSopTitle(e.target.value)} />
-                <textarea className="min-h-[120px] w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" placeholder="Optional note or instruction" value={sopContent} onChange={(e) => setSopContent(e.target.value)} />
+            {propertySetupTab === "sops" ? (
+              <div className="mt-6 grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
+                <div className="rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] p-5">
+                  <h3 className="text-lg font-semibold text-[#241c15]">Add SOP Note</h3>
+                  <div className="mt-4 space-y-3">
+                    <input
+                      className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                      placeholder="SOP title"
+                      value={sopTitle}
+                      onChange={(e) => setSopTitle(e.target.value)}
+                    />
+                    <textarea
+                      className="min-h-[120px] w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                      placeholder="Optional note or instruction"
+                      value={sopContent}
+                      onChange={(e) => setSopContent(e.target.value)}
+                    />
 
-                <div className="rounded-[20px] border border-dashed border-[#d8c7ab] bg-white p-4">
-                  <label className="mb-2 block text-sm font-medium text-[#5f5245]">SOP photos</label>
-                  <input type="file" accept="image/*" multiple onChange={handleSopFilesChange} className="block w-full text-sm text-[#6c5f51]" />
-                  <div className="mt-3 text-sm text-[#7f7263]">
-                    {sopFiles.length > 0 ? `${sopFiles.length} image${sopFiles.length === 1 ? "" : "s"} selected` : "No images selected yet."}
+                    <div className="rounded-[20px] border border-dashed border-[#d8c7ab] bg-white p-4">
+                      <label className="mb-2 block text-sm font-medium text-[#5f5245]">SOP photos</label>
+                      <input type="file" accept="image/*" multiple onChange={handleSopFilesChange} className="block w-full text-sm text-[#6c5f51]" />
+                      <div className="mt-3 text-sm text-[#7f7263]">
+                        {sopFiles.length > 0 ? `${sopFiles.length} image${sopFiles.length === 1 ? "" : "s"} selected` : "No images selected yet."}
+                      </div>
+                    </div>
+
+                    <button
+                      className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60"
+                      onClick={() => void addSop()}
+                      disabled={uploadingSop}
+                    >
+                      {uploadingSop ? "Uploading..." : "Add SOP"}
+                    </button>
                   </div>
                 </div>
 
-                <button className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60" onClick={() => void addSop()} disabled={uploadingSop}>
-                  {uploadingSop ? "Uploading..." : "Add SOP"}
-                </button>
+                <div>
+                  <h3 className="mb-3 text-lg font-semibold text-[#241c15]">Existing SOP Notes</h3>
+                  <div className="space-y-4">
+                    {selectedSops.length === 0 ? (
+                      <div className="rounded-[24px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-5 py-6 text-sm text-[#8a7b68]">
+                        No SOP notes yet.
+                      </div>
+                    ) : null}
+
+                    {selectedSops.map((s) => {
+                      const images = sopImagesBySopId[s.id] ?? [];
+                      return (
+                        <div key={s.id} className="rounded-[26px] border border-[#eadfce] bg-white p-4 shadow-sm">
+                          <div className="text-base font-semibold text-[#241c15]">{s.title || "Untitled"}</div>
+                          <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#6f6255]">{s.content || "No details"}</div>
+                          {images.length > 0 ? (
+                            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                              {images.map((image) => (
+                                <a key={image.id} href={image.image_url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] transition hover:shadow-md">
+                                  <img src={image.image_url} alt={image.caption || s.title || "SOP image"} className="h-44 w-full cursor-zoom-in object-cover" />
+                                  {image.caption ? <div className="px-3 py-2 text-sm text-[#6f6255]">{image.caption}</div> : null}
+                                </a>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="mt-4 text-sm text-[#a39584]">No images attached.</div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
-            </div>
+            ) : null}
           </>
         ) : (
           <div className="mt-6 rounded-[24px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-5 py-8 text-sm text-[#8a7b68]">
             Select a property to manage calendars, SOPs, and access details.
           </div>
         )}
-
-        {selectedPropertyId ? (
-          <div className="mt-6">
-            <h3 className="mb-3 text-lg font-semibold">Existing SOP Notes</h3>
-            <div className="space-y-4">
-              {selectedSops.length === 0 ? (
-                <div className="rounded-[24px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-5 py-6 text-sm text-[#8a7b68]">No SOP notes yet.</div>
-              ) : null}
-
-              {selectedSops.map((s) => {
-                const images = sopImagesBySopId[s.id] ?? [];
-                return (
-                  <div key={s.id} className="rounded-[26px] border border-[#eadfce] bg-white p-4 shadow-sm">
-                    <div className="text-base font-semibold text-[#241c15]">{s.title || "Untitled"}</div>
-                    <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#6f6255]">{s.content || "No details"}</div>
-                    {images.length > 0 ? (
-                      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                        {images.map((image) => (
-                          <a key={image.id} href={image.image_url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] transition hover:shadow-md">
-                            <img src={image.image_url} alt={image.caption || s.title || "SOP image"} className="h-48 w-full cursor-zoom-in object-cover" />
-                            {image.caption ? <div className="px-3 py-2 text-sm text-[#6f6255]">{image.caption}</div> : null}
-                          </a>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="mt-4 text-sm text-[#a39584]">No images attached.</div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ) : null}
       </section>
     );
   }
