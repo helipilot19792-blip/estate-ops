@@ -4624,114 +4624,133 @@ This removes its linked members and deletes the grounds account.`
   function renderAddPropertySection() {
     return (
       <section id="maintenance-flags-section" className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-        <h2 className="text-xl font-semibold tracking-tight">Add Property</h2>
-        <p className="mt-1 text-sm text-[#7f7263]">
-          Add a managed property and set default staffing rules.
-        </p>
+        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold tracking-tight">Add Property</h2>
+            <p className="mt-1 text-sm text-[#7f7263]">
+              Add a managed property and set default staffing rules.
+            </p>
+          </div>
+          <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">
+            Fast setup
+          </span>
+        </div>
 
-        <div className="mt-5 space-y-3">
-          <input
-            className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-            placeholder="Property name"
-            value={propertyName}
-            onChange={(e) => setPropertyName(e.target.value)}
-          />
-
-          <div className="grid gap-2">
+        <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.95fr)]">
+          <div className="space-y-3">
             <input
-              className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-              placeholder="Street Address"
-              value={propertyStreet}
-              onChange={(e) => setPropertyStreet(e.target.value)}
+              className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+              placeholder="Property name"
+              value={propertyName}
+              onChange={(e) => setPropertyName(e.target.value)}
             />
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid gap-2 md:grid-cols-[1.3fr_0.7fr]">
               <input
-                className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                placeholder="Street Address"
+                value={propertyStreet}
+                onChange={(e) => setPropertyStreet(e.target.value)}
+              />
+
+              <input
+                className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                placeholder="Zip/Postal Code"
+                value={propertyPostal}
+                onChange={(e) => setPropertyPostal(e.target.value)}
+              />
+            </div>
+
+            <div className="grid gap-2 md:grid-cols-2">
+              <input
+                className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
                 placeholder="City"
                 value={propertyCity}
                 onChange={(e) => setPropertyCity(e.target.value)}
               />
 
               <input
-                className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
                 placeholder="State/Province"
                 value={propertyProvince}
                 onChange={(e) => setPropertyProvince(e.target.value)}
               />
             </div>
 
-            <input
-              className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-              placeholder="Zip/Postal Code"
-              value={propertyPostal}
-              onChange={(e) => setPropertyPostal(e.target.value)}
+            <textarea
+              className="min-h-[108px] w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+              placeholder="Internal notes"
+              value={propertyNotes}
+              onChange={(e) => setPropertyNotes(e.target.value)}
             />
           </div>
 
-          <textarea
-            className="min-h-[110px] w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-            placeholder="Internal notes"
-            value={propertyNotes}
-            onChange={(e) => setPropertyNotes(e.target.value)}
-          />
+          <div className="space-y-3">
+            <div className="rounded-[22px] border border-[#eadfce] bg-[#fffaf4] p-4">
+              <div className="text-sm font-medium text-[#5f5245]">Owner portal access</div>
+              <p className="mt-1 text-xs text-[#8a7b68]">
+                Link the owner now so the property starts in the right portal.
+              </p>
 
-          <div className="rounded-[24px] border border-[#eadfce] bg-[#fffaf4] p-4">
-            <div className="text-sm font-medium text-[#5f5245]">Owner portal access</div>
-            <p className="mt-1 text-xs text-[#8a7b68]">
-              Add the owner now so the property is linked to the correct owner account from the start.
-            </p>
-
-            <div className="mt-3 grid gap-2 md:grid-cols-2">
-              <input
-                className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                placeholder="Owner name"
-                value={propertyOwnerName}
-                onChange={(e) => setPropertyOwnerName(e.target.value)}
-              />
-              <input
-                className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                placeholder="Owner email"
-                value={propertyOwnerEmail}
-                onChange={(e) => setPropertyOwnerEmail(e.target.value)}
-              />
+              <div className="mt-3 space-y-2">
+                <input
+                  className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                  placeholder="Owner name"
+                  value={propertyOwnerName}
+                  onChange={(e) => setPropertyOwnerName(e.target.value)}
+                />
+                <input
+                  className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                  placeholder="Owner email"
+                  value={propertyOwnerEmail}
+                  onChange={(e) => setPropertyOwnerEmail(e.target.value)}
+                />
+              </div>
             </div>
+
+            <div className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+              <div className="text-sm font-medium text-[#5f5245]">Cleaning defaults</div>
+
+              <div className="mt-3 space-y-3">
+                <select
+                  className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                  value={propertyUnitsNeeded}
+                  onChange={(e) => setPropertyUnitsNeeded(e.target.value)}
+                >
+                  <option value="1">Default cleaner units: 1</option>
+                  <option value="2">Default cleaner units: 2</option>
+                  <option value="3">Default cleaner units: 3</option>
+                </select>
+
+                <label className="flex items-start gap-2 text-sm text-[#6f6255]">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={propertyUnitsStrict}
+                    onChange={(e) => setPropertyUnitsStrict(e.target.checked)}
+                  />
+                  <span>Full team required before the job is fully staffed</span>
+                </label>
+
+                <label className="flex items-start gap-2 text-sm text-[#6f6255]">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={propertyShowTeamStatus}
+                    onChange={(e) => setPropertyShowTeamStatus(e.target.checked)}
+                  />
+                  <span>Show team status on cleaner page</span>
+                </label>
+              </div>
+            </div>
+
+            <button
+              className="inline-flex w-full items-center justify-center rounded-full bg-[#241c15] px-5 py-3 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]"
+              onClick={() => void addProperty()}
+            >
+              Add Property
+            </button>
           </div>
-
-          <select
-            className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-            value={propertyUnitsNeeded}
-            onChange={(e) => setPropertyUnitsNeeded(e.target.value)}
-          >
-            <option value="1">Default cleaner units: 1</option>
-            <option value="2">Default cleaner units: 2</option>
-            <option value="3">Default cleaner units: 3</option>
-          </select>
-
-          <label className="flex items-center gap-2 text-sm text-[#6f6255]">
-            <input
-              type="checkbox"
-              checked={propertyUnitsStrict}
-              onChange={(e) => setPropertyUnitsStrict(e.target.checked)}
-            />
-            Full team required before the job is fully staffed
-          </label>
-
-          <label className="flex items-center gap-2 text-sm text-[#6f6255]">
-            <input
-              type="checkbox"
-              checked={propertyShowTeamStatus}
-              onChange={(e) => setPropertyShowTeamStatus(e.target.checked)}
-            />
-            Show team status on cleaner page
-          </label>
-
-          <button
-            className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]"
-            onClick={() => void addProperty()}
-          >
-            Add Property
-          </button>
         </div>
       </section>
     );
@@ -4746,7 +4765,7 @@ This removes its linked members and deletes the grounds account.`
           </span>
         </div>
 
-        <div className="space-y-3">
+        <div className="grid gap-4 xl:grid-cols-2">
           {properties.map((p) => {
             const propertyCalendarCount = propertyCalendars.filter(
               (calendar) => calendar.property_id === p.id
@@ -4773,38 +4792,67 @@ This removes its linked members and deletes the grounds account.`
               });
 
             return (
-              <div key={p.id} className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
-                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                  <div className="min-w-0 flex-1">
-                    <div className="text-base font-semibold">{p.name}</div>
-                    <div className="mt-1 text-sm text-[#6f6255]">{p.address || "No address"}</div>
-                    <div className="mt-2 text-sm text-[#8a7b68]">{p.notes || "No notes"}</div>
+              <div key={p.id} className="rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+                <div className="flex flex-col gap-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-lg font-semibold">{p.name}</div>
+                      <div className="mt-1 text-sm text-[#6f6255]">{p.address || "No address"}</div>
+                      <div className="mt-2 line-clamp-2 text-sm text-[#8a7b68]">{p.notes || "No notes"}</div>
+                    </div>
 
-                    <div className="mt-2 text-xs text-[#8a7b68]">
-                      Default staffing: {p.default_cleaner_units_needed} unit
-                      {p.default_cleaner_units_needed === 1 ? "" : "s"}
+                    <div className="flex w-full flex-wrap gap-2 md:w-auto md:max-w-[220px] md:justify-end">
+                      {owner ? (
+                        <button
+                          className="flex-1 rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm text-[#5f5245] transition hover:bg-[#fffaf4] disabled:opacity-50 md:flex-none"
+                          onClick={() => void inviteOwnerForProperty(p.id, owner.email || "", owner.full_name || "")}
+                          disabled={sendingOwnerInviteId === p.id || !owner.email}
+                        >
+                          {sendingOwnerInviteId === p.id
+                            ? "Sending..."
+                            : owner.invite_sent_at
+                              ? "Resend invite"
+                              : "Send invite"}
+                        </button>
+                      ) : null}
+
+                      <button
+                        className="flex-1 rounded-[14px] border border-[#efc6c6] bg-[#fff5f5] px-3 py-2 text-sm text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-50 md:flex-none"
+                        onClick={() => void deleteProperty(p)}
+                        disabled={deletingPropertyId === p.id}
+                      >
+                        {deletingPropertyId === p.id ? "Deleting..." : "Delete property"}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <span className="rounded-full border border-[#eadfce] bg-white px-3 py-1 text-[#7f7263]">
+                      {propertyCalendarCount} calendar{propertyCalendarCount === 1 ? "" : "s"}
+                    </span>
+                    <span className="rounded-full border border-[#eadfce] bg-white px-3 py-1 text-[#7f7263]">
+                      {p.default_cleaner_units_needed} unit{p.default_cleaner_units_needed === 1 ? "" : "s"}
                       {p.cleaner_units_required_strict ? ", strict" : ", flexible"}
-                    </div>
+                    </span>
+                    <span className="rounded-full border border-[#eadfce] bg-white px-3 py-1 text-[#7f7263]">
+                      Owner {ownerStatus}
+                    </span>
+                  </div>
 
-                    <div className="mt-2 text-xs text-[#8a7b68]">
-                      Calendars configured: {propertyCalendarCount}
-                    </div>
-
-                    <div className="mt-3 rounded-[18px] border border-[#eadfce] bg-white/70 p-3">
-                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8a7b68]">
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    <div className="rounded-[18px] border border-[#eadfce] bg-white/80 p-3">
+                      <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#8a7b68]">
                         Assigned staff
                       </div>
 
-                      <div className="mt-2 space-y-2">
+                      <div className="space-y-2">
                         <div className="rounded-[12px] border border-[#dbe7ff] bg-[#f5f9ff] px-3 py-2">
                           <div className="text-xs font-semibold text-[#214a8a]">Cleaner team</div>
                           <div className="mt-1 text-sm text-[#5f5245]">
                             {assignedCleanerNames.length > 0 ? (
                               assignedCleanerNames.join(", ")
                             ) : (
-                              <span className="text-[#b42318] font-medium">
-                                ⚠ No cleaner team assigned
-                              </span>
+                              <span className="font-medium text-[#b42318]">No cleaner team assigned</span>
                             )}
                           </div>
                         </div>
@@ -4820,8 +4868,8 @@ This removes its linked members and deletes the grounds account.`
                       </div>
                     </div>
 
-                    <div className="mt-3 rounded-[18px] border border-[#eadfce] bg-white/70 p-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="rounded-[18px] border border-[#eadfce] bg-white/80 p-3">
+                      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                         <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8a7b68]">
                           Owner portal
                         </div>
@@ -4829,37 +4877,13 @@ This removes its linked members and deletes the grounds account.`
                           {ownerStatus}
                         </span>
                       </div>
-                      <div className="mt-2 text-sm text-[#5f5245]">
+                      <div className="text-sm text-[#5f5245]">
                         {owner?.full_name || "No owner name added"}
                       </div>
                       <div className="mt-1 text-sm text-[#8a7b68]">
                         {owner?.email || "No owner email linked yet"}
                       </div>
                     </div>
-                  </div>
-
-                  <div className="w-full space-y-2 md:w-[220px]">
-                    {owner ? (
-                      <button
-                        className="w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm text-[#5f5245] transition hover:bg-[#fffaf4] disabled:opacity-50"
-                        onClick={() => void inviteOwnerForProperty(p.id, owner.email || "", owner.full_name || "")}
-                        disabled={sendingOwnerInviteId === p.id || !owner.email}
-                      >
-                        {sendingOwnerInviteId === p.id
-                          ? "Sending..."
-                          : owner.invite_sent_at
-                            ? "Resend invite"
-                            : "Send invite"}
-                      </button>
-                    ) : null}
-
-                    <button
-                      className="w-full rounded-[14px] border border-[#efc6c6] bg-[#fff5f5] px-3 py-2 text-sm text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-50"
-                      onClick={() => void deleteProperty(p)}
-                      disabled={deletingPropertyId === p.id}
-                    >
-                      {deletingPropertyId === p.id ? "Deleting..." : "Delete property"}
-                    </button>
                   </div>
                 </div>
               </div>
