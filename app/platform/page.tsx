@@ -74,6 +74,7 @@ export default function PlatformPage() {
   const [currentProfile, setCurrentProfile] = useState<PlatformProfile | null>(null);
   const [organizations, setOrganizations] = useState<PlatformOrganization[]>([]);
   const [auditLogs, setAuditLogs] = useState<PlatformAuditLog[]>([]);
+  const [auditLogAvailable, setAuditLogAvailable] = useState(true);
   const [error, setError] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [actingOrganizationId, setActingOrganizationId] = useState<string | null>(null);
@@ -107,6 +108,7 @@ export default function PlatformPage() {
     setCurrentProfile(payload.currentProfile || null);
     setOrganizations((payload.organizations || []) as PlatformOrganization[]);
     setAuditLogs((payload.auditLogs || []) as PlatformAuditLog[]);
+    setAuditLogAvailable(payload.auditLogAvailable !== false);
     setLoading(false);
   }
 
@@ -158,6 +160,7 @@ export default function PlatformPage() {
 
       setOrganizations((payload.organizations || []) as PlatformOrganization[]);
       setAuditLogs((payload.auditLogs || []) as PlatformAuditLog[]);
+      setAuditLogAvailable(payload.auditLogAvailable !== false);
       setStatusMessage(message);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Platform action failed.");
@@ -376,7 +379,9 @@ export default function PlatformPage() {
             <div>
               <h2 className="text-xl font-semibold tracking-tight text-[#241c15]">Recent Audit Log</h2>
               <p className="mt-1 text-sm text-[#7f7263]">
-                High-impact platform and admin actions across the SaaS.
+                {auditLogAvailable
+                  ? "High-impact platform and admin actions across the SaaS."
+                  : "Run the audit log SQL migration in Supabase to turn this on."}
               </p>
             </div>
             <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">
@@ -385,6 +390,13 @@ export default function PlatformPage() {
           </div>
 
           <div className="mt-5 space-y-3">
+            {!auditLogAvailable ? (
+              <div className="rounded-[22px] border border-[#ecd7a8] bg-[#fff8e8] px-4 py-5 text-sm text-[#8a6112]">
+                Audit logging is installed in the app, but the database table is missing. Run{" "}
+                <span className="font-mono">supabase/add_audit_logs.sql</span> in Supabase SQL Editor.
+              </div>
+            ) : null}
+
             {auditLogs.length === 0 ? (
               <div className="rounded-[22px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-4 py-5 text-sm text-[#8a7b68]">
                 No audit log entries yet.

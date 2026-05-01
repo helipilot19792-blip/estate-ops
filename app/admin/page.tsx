@@ -311,6 +311,7 @@ type AdminSection =
   | "jobs"
   | "calendar"
   | "maintenance";
+type PropertyEntryMode = "manual" | "airbnb";
 type PropertySetupTab = "overview" | "access" | "calendars" | "sops";
 type MyOrganizationRow = {
   organization_id: string;
@@ -506,6 +507,45 @@ function getPropertyColor(propertyId: string | null) {
   return PROPERTY_CALENDAR_COLORS[hash % PROPERTY_CALENDAR_COLORS.length];
 }
 
+function buildPropertyAddress(parts: Array<string | null | undefined>) {
+  return parts
+    .map((part) => (part || "").trim())
+    .filter(Boolean)
+    .join(", ");
+}
+
+function parseAddressLine(addressLine: string) {
+  const parts = addressLine
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length === 0) {
+    return { street: "", city: "", province: "", postal: "" };
+  }
+
+  const street = parts[0] || "";
+  const city = parts[1] || "";
+  const regionPostal = parts.slice(2).join(" ").trim();
+  const tokens = regionPostal.split(/\s+/).filter(Boolean);
+
+  if (tokens.length <= 1) {
+    return {
+      street,
+      city,
+      province: regionPostal,
+      postal: "",
+    };
+  }
+
+  return {
+    street,
+    city,
+    province: tokens[0] || "",
+    postal: tokens.slice(1).join(" "),
+  };
+}
+
 function createInviteToken() {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
@@ -586,6 +626,7 @@ export default function AdminPage() {
   const [deletingResolvedMaintenanceFlags, setDeletingResolvedMaintenanceFlags] = useState(false);
 
   const [propertyName, setPropertyName] = useState("");
+  const [propertyEntryMode, setPropertyEntryMode] = useState<PropertyEntryMode>("manual");
   const [propertyStreet, setPropertyStreet] = useState("");
   const [propertyCity, setPropertyCity] = useState("");
   const [propertyProvince, setPropertyProvince] = useState("");
@@ -605,6 +646,19 @@ export default function AdminPage() {
   const [propertyUnitsNeeded, setPropertyUnitsNeeded] = useState("1");
   const [propertyUnitsStrict, setPropertyUnitsStrict] = useState(false);
   const [propertyShowTeamStatus, setPropertyShowTeamStatus] = useState(true);
+  const [importingAirbnbProperty, setImportingAirbnbProperty] = useState(false);
+  const [airbnbImportName, setAirbnbImportName] = useState("");
+  const [airbnbImportAddress, setAirbnbImportAddress] = useState("");
+  const [airbnbImportStreet, setAirbnbImportStreet] = useState("");
+  const [airbnbImportCity, setAirbnbImportCity] = useState("");
+  const [airbnbImportProvince, setAirbnbImportProvince] = useState("");
+  const [airbnbImportPostal, setAirbnbImportPostal] = useState("");
+  const [airbnbImportCalendarUrl, setAirbnbImportCalendarUrl] = useState("");
+  const [airbnbImportCoverPhotoUrl, setAirbnbImportCoverPhotoUrl] = useState("");
+  const [airbnbImportListingUrl, setAirbnbImportListingUrl] = useState("");
+  const [airbnbImportOwnerName, setAirbnbImportOwnerName] = useState("");
+  const [airbnbImportOwnerEmail, setAirbnbImportOwnerEmail] = useState("");
+  const [airbnbImportNotes, setAirbnbImportNotes] = useState("");
   const [inviteCleanerName, setInviteCleanerName] = useState("");
   const [inviteCleanerEmail, setInviteCleanerEmail] = useState("");
   const [inviteCleanerPhone, setInviteCleanerPhone] = useState("");
@@ -1455,6 +1509,114 @@ export default function AdminPage() {
     }
   }
 
+  function resetManualPropertyForm() {
+    setPropertyName("");
+    setPropertyStreet("");
+    setPropertyCity("");
+    setPropertyProvince("");
+    setPropertyPostal("");
+    setPropertyNotes("");
+    setPropertyOwnerName("");
+    setPropertyOwnerEmail("");
+    setPropertyUnitsNeeded("1");
+    setPropertyUnitsStrict(false);
+    setPropertyShowTeamStatus(true);
+  }
+
+  function resetAirbnbImportForm() {
+    setAirbnbImportName("");
+    setAirbnbImportAddress("");
+    setAirbnbImportStreet("");
+    setAirbnbImportCity("");
+    setAirbnbImportProvince("");
+    setAirbnbImportPostal("");
+    setAirbnbImportCalendarUrl("");
+    setAirbnbImportCoverPhotoUrl("");
+    setAirbnbImportListingUrl("");
+    setAirbnbImportOwnerName("");
+    setAirbnbImportOwnerEmail("");
+    setAirbnbImportNotes("");
+  }
+
+  function applyAirbnbAddressLine() {
+    const parsed = parseAddressLine(airbnbImportAddress);
+    setAirbnbImportStreet(parsed.street);
+    setAirbnbImportCity(parsed.city);
+    setAirbnbImportProvince(parsed.province);
+    setAirbnbImportPostal(parsed.postal);
+  }
+
+  async function linkOwnerAccountToProperty(propertyId: string, ownerEmailRaw: string, ownerNameRaw: string) {
+    const ownerEmail = ownerEmailRaw.trim().toLowerCase();
+    const ownerName = ownerNameRaw.trim();
+
+    if (!ownerEmail) {
+      return false;
+    }
+
+    let ownerAccountId: string | null = null;
+
+    const existingOwner = ownerAccounts.find(
+      (owner) => owner.email.trim().toLowerCase() === ownerEmail
+    );
+
+    if (existingOwner) {
+      ownerAccountId = existingOwner.id;
+
+      const updates: Record<string, any> = {};
+      if (ownerName && !existingOwner.full_name) {
+        updates.full_name = ownerName;
+      }
+
+      if (Object.keys(updates).length > 0) {
+        const { error: ownerUpdateError } = await supabase
+          .from("owner_accounts")
+          .update(updates)
+          .eq("id", existingOwner.id);
+
+        if (ownerUpdateError) {
+          throw ownerUpdateError;
+        }
+      }
+    } else {
+      const { data: insertedOwner, error: ownerInsertError } = await supabase
+        .from("owner_accounts")
+        .insert({
+          organization_id: currentOrganizationId,
+          email: ownerEmail,
+          full_name: ownerName || null,
+          is_active: true,
+        })
+        .select()
+        .single();
+
+      if (ownerInsertError || !insertedOwner) {
+        throw ownerInsertError || new Error("Could not create owner account.");
+      }
+
+      ownerAccountId = insertedOwner.id;
+    }
+
+    if (ownerAccountId) {
+      const existingAccess = ownerPropertyAccess.find(
+        (row) => row.owner_account_id === ownerAccountId && row.property_id === propertyId
+      );
+
+      if (!existingAccess) {
+        const { error: accessError } = await supabase.from("owner_property_access").insert({
+          owner_account_id: ownerAccountId,
+          property_id: propertyId,
+        });
+
+        if (accessError) {
+          throw accessError;
+        }
+      }
+    }
+
+    return true;
+  }
+
   async function addProperty() {
     if (!propertyName.trim()) {
       setError("Property name is required.");
@@ -1472,7 +1634,12 @@ export default function AdminPage() {
       .insert({
         organization_id: currentOrganizationId,
         name: propertyName.trim(),
-        address: `${propertyStreet}, ${propertyCity}, ${propertyProvince}, ${propertyPostal}`,
+        address: buildPropertyAddress([
+          propertyStreet,
+          propertyCity,
+          propertyProvince,
+          propertyPostal,
+        ]),
         notes: propertyNotes.trim() || null,
         default_cleaner_units_needed: Number(propertyUnitsNeeded),
         cleaner_units_required_strict: propertyUnitsStrict,
@@ -1487,83 +1654,107 @@ export default function AdminPage() {
     }
 
     if (ownerEmail) {
-      let ownerAccountId: string | null = null;
-
-      const existingOwner = ownerAccounts.find(
-        (owner) => owner.email.trim().toLowerCase() === ownerEmail
-      );
-
-      if (existingOwner) {
-        ownerAccountId = existingOwner.id;
-
-        const updates: Record<string, any> = {};
-        if (ownerName && !existingOwner.full_name) {
-          updates.full_name = ownerName;
-        }
-
-        if (Object.keys(updates).length > 0) {
-          const { error: ownerUpdateError } = await supabase
-            .from("owner_accounts")
-            .update(updates)
-            .eq("id", existingOwner.id);
-
-          if (ownerUpdateError) {
-            setError(ownerUpdateError.message);
-            return;
-          }
-        }
-      } else {
-        const { data: insertedOwner, error: ownerInsertError } = await supabase
-          .from("owner_accounts")
-          .insert({
-            organization_id: currentOrganizationId,
-            email: ownerEmail,
-            full_name: ownerName || null,
-            is_active: true,
-          })
-          .select()
-          .single();
-
-        if (ownerInsertError || !insertedOwner) {
-          setError(ownerInsertError?.message || "Could not create owner account.");
-          return;
-        }
-
-        ownerAccountId = insertedOwner.id;
-      }
-
-      if (ownerAccountId) {
-        const existingAccess = ownerPropertyAccess.find(
-          (row) => row.owner_account_id === ownerAccountId && row.property_id === insertedProperty.id
-        );
-
-        if (!existingAccess) {
-          const { error: accessError } = await supabase.from("owner_property_access").insert({
-            owner_account_id: ownerAccountId,
-            property_id: insertedProperty.id,
-          });
-
-          if (accessError) {
-            setError(accessError.message);
-            return;
-          }
-        }
+      try {
+        await linkOwnerAccountToProperty(insertedProperty.id, ownerEmail, ownerName);
+      } catch (err: any) {
+        setError(err?.message || "Could not create owner account.");
+        return;
       }
     }
 
-    setPropertyName("");
-    setPropertyStreet("");
-    setPropertyCity("");
-    setPropertyProvince("");
-    setPropertyPostal("");
-    setPropertyNotes("");
-    setPropertyOwnerName("");
-    setPropertyOwnerEmail("");
-    setPropertyUnitsNeeded("1");
-    setPropertyUnitsStrict(false);
-    setPropertyShowTeamStatus(true);
+    resetManualPropertyForm();
     setActionMessage(ownerEmail ? "Property added and owner linked." : "Property added.");
     await loadData();
+  }
+
+  async function addAirbnbProperty() {
+    if (!airbnbImportName.trim()) {
+      setError("Airbnb listing name is required.");
+      return;
+    }
+
+    if (!airbnbImportStreet.trim() || !airbnbImportCity.trim()) {
+      setError("Street and city are required before importing from Airbnb.");
+      return;
+    }
+
+    if (!airbnbImportCalendarUrl.trim()) {
+      setError("Airbnb iCal URL is required for the import wizard.");
+      return;
+    }
+
+    setError("");
+    setActionMessage("");
+    setImportingAirbnbProperty(true);
+
+    let insertedPropertyId: string | null = null;
+
+    try {
+      const combinedNotes = [
+        airbnbImportNotes.trim(),
+        airbnbImportListingUrl.trim() ? `Airbnb listing: ${airbnbImportListingUrl.trim()}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      const { data: insertedProperty, error: propertyError } = await supabase
+        .from("properties")
+        .insert({
+          organization_id: currentOrganizationId,
+          name: airbnbImportName.trim(),
+          address: buildPropertyAddress([
+            airbnbImportStreet,
+            airbnbImportCity,
+            airbnbImportProvince,
+            airbnbImportPostal,
+          ]),
+          notes: combinedNotes || null,
+          cover_photo_url: airbnbImportCoverPhotoUrl.trim() || null,
+          default_cleaner_units_needed: Number(propertyUnitsNeeded),
+          cleaner_units_required_strict: propertyUnitsStrict,
+          show_team_status_to_cleaners: propertyShowTeamStatus,
+        })
+        .select()
+        .single();
+
+      if (propertyError || !insertedProperty) {
+        throw propertyError || new Error("Could not create Airbnb property.");
+      }
+
+      insertedPropertyId = insertedProperty.id;
+
+      if (airbnbImportOwnerEmail.trim()) {
+        await linkOwnerAccountToProperty(
+          insertedProperty.id,
+          airbnbImportOwnerEmail,
+          airbnbImportOwnerName
+        );
+      }
+
+      const { error: calendarError } = await supabase.from("property_calendars").insert({
+        property_id: insertedProperty.id,
+        source: "airbnb",
+        ical_url: airbnbImportCalendarUrl.trim(),
+        is_active: true,
+      });
+
+      if (calendarError) {
+        throw new Error(`Property created, but the Airbnb calendar could not be attached: ${calendarError.message}`);
+      }
+
+      resetAirbnbImportForm();
+      setSelectedPropertyId(insertedProperty.id);
+      setPropertySetupTab("overview");
+      setActionMessage("Airbnb property imported with owner link and active calendar.");
+      await loadData();
+    } catch (err: any) {
+      if (insertedPropertyId) {
+        await loadData();
+      }
+      setError(err?.message || "Could not import Airbnb property.");
+    } finally {
+      setImportingAirbnbProperty(false);
+    }
   }
   async function createOrganizationInvite(params: {
     email: string;
@@ -4650,7 +4841,7 @@ This removes its linked members and deletes the grounds account.`
           <div>
             <h2 className="text-xl font-semibold tracking-tight">Add Property</h2>
             <p className="mt-1 text-sm text-[#7f7263]">
-              Add a managed property and set default staffing rules.
+              Add a managed property manually or use the Airbnb import wizard to preload the owner, cover photo, and first calendar.
             </p>
           </div>
           <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">
@@ -4658,122 +4849,354 @@ This removes its linked members and deletes the grounds account.`
           </span>
         </div>
 
-        <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.95fr)]">
-          <div className="space-y-3">
-            <input
-              className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-              placeholder="Property name"
-              value={propertyName}
-              onChange={(e) => setPropertyName(e.target.value)}
-            />
-
-            <div className="grid gap-2 md:grid-cols-[1.3fr_0.7fr]">
-              <input
-                className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                placeholder="Street Address"
-                value={propertyStreet}
-                onChange={(e) => setPropertyStreet(e.target.value)}
-              />
-
-              <input
-                className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                placeholder="Zip/Postal Code"
-                value={propertyPostal}
-                onChange={(e) => setPropertyPostal(e.target.value)}
-              />
-            </div>
-
-            <div className="grid gap-2 md:grid-cols-2">
-              <input
-                className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                placeholder="City"
-                value={propertyCity}
-                onChange={(e) => setPropertyCity(e.target.value)}
-              />
-
-              <input
-                className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                placeholder="State/Province"
-                value={propertyProvince}
-                onChange={(e) => setPropertyProvince(e.target.value)}
-              />
-            </div>
-
-            <textarea
-              className="min-h-[108px] w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-              placeholder="Internal notes"
-              value={propertyNotes}
-              onChange={(e) => setPropertyNotes(e.target.value)}
-            />
-          </div>
-
-          <div className="space-y-3">
-            <div className="rounded-[22px] border border-[#eadfce] bg-[#fffaf4] p-4">
-              <div className="text-sm font-medium text-[#5f5245]">Owner portal access</div>
-              <p className="mt-1 text-xs text-[#8a7b68]">
-                Link the owner now so the property starts in the right portal.
-              </p>
-
-              <div className="mt-3 space-y-2">
-                <input
-                  className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                  placeholder="Owner name"
-                  value={propertyOwnerName}
-                  onChange={(e) => setPropertyOwnerName(e.target.value)}
-                />
-                <input
-                  className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                  placeholder="Owner email"
-                  value={propertyOwnerEmail}
-                  onChange={(e) => setPropertyOwnerEmail(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
-              <div className="text-sm font-medium text-[#5f5245]">Cleaning defaults</div>
-
-              <div className="mt-3 space-y-3">
-                <select
-                  className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                  value={propertyUnitsNeeded}
-                  onChange={(e) => setPropertyUnitsNeeded(e.target.value)}
-                >
-                  <option value="1">Default cleaner units: 1</option>
-                  <option value="2">Default cleaner units: 2</option>
-                  <option value="3">Default cleaner units: 3</option>
-                </select>
-
-                <label className="flex items-start gap-2 text-sm text-[#6f6255]">
-                  <input
-                    type="checkbox"
-                    className="mt-1"
-                    checked={propertyUnitsStrict}
-                    onChange={(e) => setPropertyUnitsStrict(e.target.checked)}
-                  />
-                  <span>Full team required before the job is fully staffed</span>
-                </label>
-
-                <label className="flex items-start gap-2 text-sm text-[#6f6255]">
-                  <input
-                    type="checkbox"
-                    className="mt-1"
-                    checked={propertyShowTeamStatus}
-                    onChange={(e) => setPropertyShowTeamStatus(e.target.checked)}
-                  />
-                  <span>Show team status on cleaner page</span>
-                </label>
-              </div>
-            </div>
-
-            <button
-              className="inline-flex w-full items-center justify-center rounded-full bg-[#241c15] px-5 py-3 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]"
-              onClick={() => void addProperty()}
-            >
-              Add Property
-            </button>
-          </div>
+        <div className="mt-5 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setPropertyEntryMode("manual")}
+            className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+              propertyEntryMode === "manual"
+                ? "bg-[#241c15] text-[#f8f2e8]"
+                : "border border-[#d8c7ab] bg-white text-[#5f5245] hover:bg-[#fcfaf7]"
+            }`}
+          >
+            Manual entry
+          </button>
+          <button
+            type="button"
+            onClick={() => setPropertyEntryMode("airbnb")}
+            className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+              propertyEntryMode === "airbnb"
+                ? "bg-[#241c15] text-[#f8f2e8]"
+                : "border border-[#d8c7ab] bg-white text-[#5f5245] hover:bg-[#fcfaf7]"
+            }`}
+          >
+            Airbnb import wizard
+          </button>
         </div>
+
+        {propertyEntryMode === "manual" ? (
+          <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.95fr)]">
+            <div className="space-y-3">
+              <input
+                className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                placeholder="Property name"
+                value={propertyName}
+                onChange={(e) => setPropertyName(e.target.value)}
+              />
+
+              <div className="grid gap-2 md:grid-cols-[1.3fr_0.7fr]">
+                <input
+                  className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                  placeholder="Street Address"
+                  value={propertyStreet}
+                  onChange={(e) => setPropertyStreet(e.target.value)}
+                />
+
+                <input
+                  className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                  placeholder="Zip/Postal Code"
+                  value={propertyPostal}
+                  onChange={(e) => setPropertyPostal(e.target.value)}
+                />
+              </div>
+
+              <div className="grid gap-2 md:grid-cols-2">
+                <input
+                  className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                  placeholder="City"
+                  value={propertyCity}
+                  onChange={(e) => setPropertyCity(e.target.value)}
+                />
+
+                <input
+                  className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                  placeholder="State/Province"
+                  value={propertyProvince}
+                  onChange={(e) => setPropertyProvince(e.target.value)}
+                />
+              </div>
+
+              <textarea
+                className="min-h-[108px] w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                placeholder="Internal notes"
+                value={propertyNotes}
+                onChange={(e) => setPropertyNotes(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-3">
+              <div className="rounded-[22px] border border-[#eadfce] bg-[#fffaf4] p-4">
+                <div className="text-sm font-medium text-[#5f5245]">Owner portal access</div>
+                <p className="mt-1 text-xs text-[#8a7b68]">
+                  Link the owner now so the property starts in the right portal.
+                </p>
+
+                <div className="mt-3 space-y-2">
+                  <input
+                    className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                    placeholder="Owner name"
+                    value={propertyOwnerName}
+                    onChange={(e) => setPropertyOwnerName(e.target.value)}
+                  />
+                  <input
+                    className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                    placeholder="Owner email"
+                    value={propertyOwnerEmail}
+                    onChange={(e) => setPropertyOwnerEmail(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+                <div className="text-sm font-medium text-[#5f5245]">Cleaning defaults</div>
+
+                <div className="mt-3 space-y-3">
+                  <select
+                    className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                    value={propertyUnitsNeeded}
+                    onChange={(e) => setPropertyUnitsNeeded(e.target.value)}
+                  >
+                    <option value="1">Default cleaner units: 1</option>
+                    <option value="2">Default cleaner units: 2</option>
+                    <option value="3">Default cleaner units: 3</option>
+                  </select>
+
+                  <label className="flex items-start gap-2 text-sm text-[#6f6255]">
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={propertyUnitsStrict}
+                      onChange={(e) => setPropertyUnitsStrict(e.target.checked)}
+                    />
+                    <span>Full team required before the job is fully staffed</span>
+                  </label>
+
+                  <label className="flex items-start gap-2 text-sm text-[#6f6255]">
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={propertyShowTeamStatus}
+                      onChange={(e) => setPropertyShowTeamStatus(e.target.checked)}
+                    />
+                    <span>Show team status on cleaner page</span>
+                  </label>
+                </div>
+              </div>
+
+              <button
+                className="inline-flex w-full items-center justify-center rounded-full bg-[#241c15] px-5 py-3 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]"
+                onClick={() => void addProperty()}
+              >
+                Add Property
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-5 space-y-4">
+            <div className="rounded-[22px] border border-[#eadfce] bg-[#fffaf4] p-4">
+              <div className="text-sm font-medium text-[#5f5245]">How it works</div>
+              <div className="mt-2 grid gap-2 md:grid-cols-3">
+                <div className="rounded-[16px] border border-[#eadfce] bg-white px-4 py-3 text-sm text-[#6f6255]">
+                  1. Paste the Airbnb listing title and address.
+                </div>
+                <div className="rounded-[16px] border border-[#eadfce] bg-white px-4 py-3 text-sm text-[#6f6255]">
+                  2. Add the Airbnb iCal export and optional cover photo URL.
+                </div>
+                <div className="rounded-[16px] border border-[#eadfce] bg-white px-4 py-3 text-sm text-[#6f6255]">
+                  3. Link the owner once, then save everything in one pass.
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.95fr)]">
+              <div className="space-y-3">
+                <input
+                  className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                  placeholder="Airbnb listing title"
+                  value={airbnbImportName}
+                  onChange={(e) => setAirbnbImportName(e.target.value)}
+                />
+
+                <div className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                    <div className="flex-1">
+                      <div className="text-sm font-medium text-[#5f5245]">Paste Airbnb address line</div>
+                      <p className="mt-1 text-xs text-[#8a7b68]">
+                        Example: 304 Oakwood ave, Crystal Beach, ON L0S 1B0
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={applyAirbnbAddressLine}
+                      className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-medium text-[#5f5245] transition hover:bg-[#fffaf4]"
+                    >
+                      Autofill address
+                    </button>
+                  </div>
+
+                  <input
+                    className="mt-3 w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                    placeholder="Paste address copied from Airbnb"
+                    value={airbnbImportAddress}
+                    onChange={(e) => setAirbnbImportAddress(e.target.value)}
+                  />
+
+                  <div className="mt-3 grid gap-2 md:grid-cols-[1.3fr_0.7fr]">
+                    <input
+                      className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                      placeholder="Street Address"
+                      value={airbnbImportStreet}
+                      onChange={(e) => setAirbnbImportStreet(e.target.value)}
+                    />
+
+                    <input
+                      className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                      placeholder="Zip/Postal Code"
+                      value={airbnbImportPostal}
+                      onChange={(e) => setAirbnbImportPostal(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="mt-2 grid gap-2 md:grid-cols-2">
+                    <input
+                      className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                      placeholder="City"
+                      value={airbnbImportCity}
+                      onChange={(e) => setAirbnbImportCity(e.target.value)}
+                    />
+
+                    <input
+                      className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                      placeholder="State/Province"
+                      value={airbnbImportProvince}
+                      onChange={(e) => setAirbnbImportProvince(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-2 md:grid-cols-2">
+                  <input
+                    className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                    placeholder="Airbnb iCal export URL"
+                    value={airbnbImportCalendarUrl}
+                    onChange={(e) => setAirbnbImportCalendarUrl(e.target.value)}
+                  />
+
+                  <input
+                    className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                    placeholder="Cover photo URL (optional)"
+                    value={airbnbImportCoverPhotoUrl}
+                    onChange={(e) => setAirbnbImportCoverPhotoUrl(e.target.value)}
+                  />
+                </div>
+
+                <input
+                  className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                  placeholder="Airbnb listing URL (optional)"
+                  value={airbnbImportListingUrl}
+                  onChange={(e) => setAirbnbImportListingUrl(e.target.value)}
+                />
+
+                <textarea
+                  className="min-h-[108px] w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                  placeholder="Internal notes or Airbnb setup reminders"
+                  value={airbnbImportNotes}
+                  onChange={(e) => setAirbnbImportNotes(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-3">
+                <div className="rounded-[22px] border border-[#eadfce] bg-[#fffaf4] p-4">
+                  <div className="text-sm font-medium text-[#5f5245]">Owner portal access</div>
+                  <p className="mt-1 text-xs text-[#8a7b68]">
+                    The owner link is optional, but adding it here finishes the full Airbnb onboarding flow.
+                  </p>
+
+                  <div className="mt-3 space-y-2">
+                    <input
+                      className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                      placeholder="Owner name"
+                      value={airbnbImportOwnerName}
+                      onChange={(e) => setAirbnbImportOwnerName(e.target.value)}
+                    />
+                    <input
+                      className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                      placeholder="Owner email"
+                      value={airbnbImportOwnerEmail}
+                      onChange={(e) => setAirbnbImportOwnerEmail(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+                  <div className="text-sm font-medium text-[#5f5245]">What gets created</div>
+
+                  <div className="mt-3 space-y-3 text-sm text-[#6f6255]">
+                    <div className="rounded-[16px] border border-[#eadfce] bg-white px-4 py-3">
+                      Property with the Airbnb title, address, notes, and optional cover photo.
+                    </div>
+                    <div className="rounded-[16px] border border-[#eadfce] bg-white px-4 py-3">
+                      Active Airbnb calendar feed saved under this property.
+                    </div>
+                    <div className="rounded-[16px] border border-[#eadfce] bg-white px-4 py-3">
+                      Optional owner account + owner portal link if you fill the email.
+                    </div>
+                  </div>
+
+                  <div className="mt-4 space-y-3">
+                    <select
+                      className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                      value={propertyUnitsNeeded}
+                      onChange={(e) => setPropertyUnitsNeeded(e.target.value)}
+                    >
+                      <option value="1">Default cleaner units: 1</option>
+                      <option value="2">Default cleaner units: 2</option>
+                      <option value="3">Default cleaner units: 3</option>
+                    </select>
+
+                    <label className="flex items-start gap-2 text-sm text-[#6f6255]">
+                      <input
+                        type="checkbox"
+                        className="mt-1"
+                        checked={propertyUnitsStrict}
+                        onChange={(e) => setPropertyUnitsStrict(e.target.checked)}
+                      />
+                      <span>Full team required before the job is fully staffed</span>
+                    </label>
+
+                    <label className="flex items-start gap-2 text-sm text-[#6f6255]">
+                      <input
+                        type="checkbox"
+                        className="mt-1"
+                        checked={propertyShowTeamStatus}
+                        onChange={(e) => setPropertyShowTeamStatus(e.target.checked)}
+                      />
+                      <span>Show team status on cleaner page</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    className="inline-flex flex-1 items-center justify-center rounded-full bg-[#241c15] px-5 py-3 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60"
+                    onClick={() => void addAirbnbProperty()}
+                    disabled={importingAirbnbProperty}
+                  >
+                    {importingAirbnbProperty ? "Importing..." : "Import Airbnb Property"}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="inline-flex items-center justify-center rounded-full border border-[#d8c7ab] bg-white px-5 py-3 text-sm font-medium text-[#5f5245] transition hover:bg-[#fcfaf7]"
+                    onClick={resetAirbnbImportForm}
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </section>
     );
   }

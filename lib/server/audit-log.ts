@@ -11,6 +11,15 @@ export type AuditLogEntryInput = {
   metadata?: Record<string, unknown> | null;
 };
 
+export function isMissingAuditLogTableError(error: { code?: string | null; message?: string | null } | null | undefined) {
+  const message = error?.message || "";
+  return (
+    error?.code === "PGRST205" ||
+    message.includes("Could not find the table 'public.audit_logs'") ||
+    message.includes("relation \"public.audit_logs\" does not exist")
+  );
+}
+
 export async function writeAuditLog(
   serviceClient: SupabaseClient,
   entry: AuditLogEntryInput
@@ -27,6 +36,12 @@ export async function writeAuditLog(
   });
 
   if (error) {
+    if (isMissingAuditLogTableError(error)) {
+      return false;
+    }
+
     throw new Error(error.message);
   }
+
+  return true;
 }

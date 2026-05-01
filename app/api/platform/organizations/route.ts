@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { writeAuditLog } from "@/lib/server/audit-log";
+import { isMissingAuditLogTableError, writeAuditLog } from "@/lib/server/audit-log";
 
 export const dynamic = "force-dynamic";
 
@@ -212,10 +212,20 @@ async function loadRecentAuditLogs(serviceClient: ReturnType<typeof getClients>[
     .limit(20);
 
   if (error) {
+    if (isMissingAuditLogTableError(error)) {
+      return {
+        available: false,
+        entries: [] as AuditLogRow[],
+      };
+    }
+
     throw new Error(error.message);
   }
 
-  return (data ?? []) as AuditLogRow[];
+  return {
+    available: true,
+    entries: (data ?? []) as AuditLogRow[],
+  };
 }
 
 export async function GET(req: NextRequest) {
@@ -224,7 +234,7 @@ export async function GET(req: NextRequest) {
     const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
     const { profile, serviceClient } = await requirePlatformAdmin(token);
     const organizations = await loadOrganizationOverview(serviceClient);
-    const auditLogs = await loadRecentAuditLogs(serviceClient);
+    const auditLogState = await loadRecentAuditLogs(serviceClient);
 
     return NextResponse.json({
       ok: true,
@@ -234,7 +244,8 @@ export async function GET(req: NextRequest) {
         full_name: profile.full_name,
       },
       organizations,
-      auditLogs,
+      auditLogs: auditLogState.entries,
+      auditLogAvailable: auditLogState.available,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected server error.";
@@ -331,8 +342,13 @@ export async function POST(req: NextRequest) {
     }
 
     const organizations = await loadOrganizationOverview(serviceClient);
-    const auditLogs = await loadRecentAuditLogs(serviceClient);
-    return NextResponse.json({ ok: true, organizations, auditLogs });
+    const auditLogState = await loadRecentAuditLogs(serviceClient);
+    return NextResponse.json({
+      ok: true,
+      organizations,
+      auditLogs: auditLogState.entries,
+      auditLogAvailable: auditLogState.available,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected server error.";
     const status =
