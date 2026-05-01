@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { writeAuditLog } from "@/lib/server/audit-log";
 
 export async function POST(req: NextRequest) {
   try {
@@ -45,7 +46,7 @@ export async function POST(req: NextRequest) {
 
     const { data: currentProfile, error: currentProfileError } = await service
       .from("profiles")
-      .select("id, role")
+      .select("id, role, email")
       .eq("id", user.id)
       .single();
 
@@ -105,6 +106,19 @@ export async function POST(req: NextRequest) {
         { status: 404 }
       );
     }
+
+    await writeAuditLog(service, {
+      actorProfileId: currentProfile.id,
+      actorEmail: currentProfile.email || user.email || null,
+      actorRole: currentProfile.role,
+      organizationId,
+      actionType: "admin.delete_invite",
+      targetType: "organization_invite",
+      targetId: inviteId,
+      metadata: {
+        status: "deleted_pending_invite",
+      },
+    });
 
     return NextResponse.json({
       success: true,

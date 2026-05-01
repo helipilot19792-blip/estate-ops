@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { writeAuditLog } from "@/lib/server/audit-log";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +39,19 @@ type ProfileRow = {
 type OrganizationLinkedRow = {
   id: string;
   organization_id: string;
+};
+
+type AuditLogRow = {
+  id: string;
+  created_at?: string | null;
+  actor_profile_id?: string | null;
+  actor_email?: string | null;
+  actor_role?: string | null;
+  organization_id?: string | null;
+  action_type: string;
+  target_type?: string | null;
+  target_id?: string | null;
+  metadata?: Record<string, unknown> | null;
 };
 
 function getClients(token?: string | null) {
@@ -190,12 +204,27 @@ async function loadOrganizationOverview(serviceClient: ReturnType<typeof getClie
   return summaries;
 }
 
+async function loadRecentAuditLogs(serviceClient: ReturnType<typeof getClients>["serviceClient"]) {
+  const { data, error } = await serviceClient
+    .from("audit_logs")
+    .select("id,created_at,actor_profile_id,actor_email,actor_role,organization_id,action_type,target_type,target_id,metadata")
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data ?? []) as AuditLogRow[];
+}
+
 export async function GET(req: NextRequest) {
   try {
     const authHeader = req.headers.get("authorization");
     const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
     const { profile, serviceClient } = await requirePlatformAdmin(token);
     const organizations = await loadOrganizationOverview(serviceClient);
+    const auditLogs = await loadRecentAuditLogs(serviceClient);
 
     return NextResponse.json({
       ok: true,
@@ -205,6 +234,7 @@ export async function GET(req: NextRequest) {
         full_name: profile.full_name,
       },
       organizations,
+      auditLogs,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected server error.";
@@ -223,7 +253,7 @@ export async function POST(req: NextRequest) {
   try {
     const authHeader = req.headers.get("authorization");
     const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-    const { serviceClient } = await requirePlatformAdmin(token);
+    const { profile, serviceClient } = await requirePlatformAdmin(token);
     const body = (await req.json().catch(() => null)) as PlatformAction | null;
 
     if (!body?.organizationId) {
@@ -258,6 +288,20 @@ export async function POST(req: NextRequest) {
       if (updateError) {
         return NextResponse.json({ ok: false, error: updateError.message }, { status: 500 });
       }
+
+      await writeAuditLog(serviceClient, {
+        actorProfileId: profile.id,
+        actorEmail: profile.email,
+        actorRole: profile.role,
+        organizationId: body.organizationId,
+        actionType: "platform.extend_trial",
+        targetType: "organization",
+        targetId: body.organizationId,
+        metadata: {
+          days: extraDays,
+          trial_ends_at: nextDate.toISOString(),
+        },
+      });
     } else if (body.type === "set_status") {
       const { error: updateError } = await serviceClient
         .from("organizations")
@@ -269,12 +313,26 @@ export async function POST(req: NextRequest) {
       if (updateError) {
         return NextResponse.json({ ok: false, error: updateError.message }, { status: 500 });
       }
+
+      await writeAuditLog(serviceClient, {
+        actorProfileId: profile.id,
+        actorEmail: profile.email,
+        actorRole: profile.role,
+        organizationId: body.organizationId,
+        actionType: "platform.set_status",
+        targetType: "organization",
+        targetId: body.organizationId,
+        metadata: {
+          status: body.status,
+        },
+      });
     } else {
       return NextResponse.json({ ok: false, error: "Unsupported platform action." }, { status: 400 });
     }
 
     const organizations = await loadOrganizationOverview(serviceClient);
-    return NextResponse.json({ ok: true, organizations });
+    const auditLogs = await loadRecentAuditLogs(serviceClient);
+    return NextResponse.json({ ok: true, organizations, auditLogs });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected server error.";
     const status =

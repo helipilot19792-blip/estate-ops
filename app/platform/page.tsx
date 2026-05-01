@@ -34,6 +34,18 @@ type PlatformProfile = {
   full_name: string | null;
 };
 
+type PlatformAuditLog = {
+  id: string;
+  created_at?: string | null;
+  actor_email?: string | null;
+  actor_role?: string | null;
+  organization_id?: string | null;
+  action_type: string;
+  target_type?: string | null;
+  target_id?: string | null;
+  metadata?: Record<string, unknown> | null;
+};
+
 function getTrialDaysRemaining(trialEndsAt?: string | null) {
   if (!trialEndsAt) return null;
   const end = new Date(trialEndsAt);
@@ -61,6 +73,7 @@ export default function PlatformPage() {
   const [loading, setLoading] = useState(true);
   const [currentProfile, setCurrentProfile] = useState<PlatformProfile | null>(null);
   const [organizations, setOrganizations] = useState<PlatformOrganization[]>([]);
+  const [auditLogs, setAuditLogs] = useState<PlatformAuditLog[]>([]);
   const [error, setError] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [actingOrganizationId, setActingOrganizationId] = useState<string | null>(null);
@@ -93,6 +106,7 @@ export default function PlatformPage() {
 
     setCurrentProfile(payload.currentProfile || null);
     setOrganizations((payload.organizations || []) as PlatformOrganization[]);
+    setAuditLogs((payload.auditLogs || []) as PlatformAuditLog[]);
     setLoading(false);
   }
 
@@ -143,6 +157,7 @@ export default function PlatformPage() {
       }
 
       setOrganizations((payload.organizations || []) as PlatformOrganization[]);
+      setAuditLogs((payload.auditLogs || []) as PlatformAuditLog[]);
       setStatusMessage(message);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Platform action failed.");
@@ -354,6 +369,60 @@ export default function PlatformPage() {
               </div>
             );
           })}
+        </section>
+
+        <section className="mt-8 rounded-[28px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-semibold tracking-tight text-[#241c15]">Recent Audit Log</h2>
+              <p className="mt-1 text-sm text-[#7f7263]">
+                High-impact platform and admin actions across the SaaS.
+              </p>
+            </div>
+            <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">
+              {auditLogs.length}
+            </span>
+          </div>
+
+          <div className="mt-5 space-y-3">
+            {auditLogs.length === 0 ? (
+              <div className="rounded-[22px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-4 py-5 text-sm text-[#8a7b68]">
+                No audit log entries yet.
+              </div>
+            ) : null}
+
+            {auditLogs.map((entry) => {
+              const organization = organizations.find((item) => item.id === entry.organization_id);
+              return (
+                <div
+                  key={entry.id}
+                  className="rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-4"
+                >
+                  <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-[#241c15]">{entry.action_type}</div>
+                      <div className="mt-1 text-sm text-[#6f6255]">
+                        {(entry.actor_email || entry.actor_role || "Unknown actor")} on{" "}
+                        {organization?.name || entry.organization_id || "platform"}
+                      </div>
+                      <div className="mt-1 text-xs text-[#8a7b68]">
+                        Target: {entry.target_type || "n/a"} {entry.target_id ? `| ${entry.target_id}` : ""}
+                      </div>
+                      {entry.metadata && Object.keys(entry.metadata).length > 0 ? (
+                        <div className="mt-2 rounded-[14px] border border-[#eadfce] bg-white px-3 py-2 font-mono text-xs text-[#6f6255]">
+                          {JSON.stringify(entry.metadata)}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="shrink-0 text-xs text-[#8a7b68]">
+                      {entry.created_at ? new Date(entry.created_at).toLocaleString() : "Unknown time"}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </section>
       </div>
     </main>

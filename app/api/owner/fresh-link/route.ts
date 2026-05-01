@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 import { signOwnerEmail, verifyOwnerEmailSignature } from "@/lib/server/owner-link-signature";
+import { writeAuditLog } from "@/lib/server/audit-log";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -91,7 +92,7 @@ export async function POST(request: NextRequest) {
 
     const { data: owner, error: ownerError } = await serviceClient
       .from("owner_accounts")
-      .select("id,email,full_name,is_active,invite_sent_at")
+      .select("id,email,full_name,is_active,invite_sent_at,organization_id")
       .eq("email", ownerEmail)
       .maybeSingle();
 
@@ -181,6 +182,19 @@ export async function POST(request: NextRequest) {
       .from("owner_accounts")
       .update({ invite_sent_at: new Date().toISOString() })
       .eq("id", owner.id);
+
+    await writeAuditLog(serviceClient, {
+      actorProfileId: hasMatchingOwnerSession ? null : null,
+      actorEmail: hasMatchingOwnerSession ? ownerEmail : ownerEmail,
+      actorRole: hasMatchingOwnerSession ? "owner" : "owner_link_request",
+      organizationId: (owner as any).organization_id || null,
+      actionType: "owner.fresh_link_sent",
+      targetType: "owner_account",
+      targetId: owner.id,
+      metadata: {
+        email_id: result.data?.id ?? null,
+      },
+    });
 
     return NextResponse.json({
       success: true,

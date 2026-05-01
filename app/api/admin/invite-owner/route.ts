@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { signOwnerEmail } from "@/lib/server/owner-link-signature";
+import { writeAuditLog } from "@/lib/server/audit-log";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const publicSupabaseKey =
@@ -60,7 +61,7 @@ export async function POST(request: NextRequest) {
 
     const { data: profile, error: profileError } = await adminClient
       .from("profiles")
-      .select("id, role")
+      .select("id, role, email")
       .eq("id", user.id)
       .single();
 
@@ -87,6 +88,37 @@ export async function POST(request: NextRequest) {
 
     const serviceClient = createClient(supabaseUrl, serviceRoleKey);
     const ownerWelcomeUrl = getOwnerWelcomeUrl(ownerEmail);
+    const { data: property, error: propertyError } = await serviceClient
+      .from("properties")
+      .select("id, organization_id, name")
+      .eq("id", propertyId)
+      .maybeSingle();
+
+    if (propertyError) {
+      return NextResponse.json({ error: propertyError.message }, { status: 500 });
+    }
+
+    if (!property?.organization_id) {
+      return NextResponse.json({ error: "Property not found." }, { status: 404 });
+    }
+
+    if (profile.role !== "platform_admin") {
+      const { data: membership, error: membershipError } = await serviceClient
+        .from("organization_members")
+        .select("organization_id, role")
+        .eq("organization_id", property.organization_id)
+        .eq("profile_id", user.id)
+        .eq("role", "admin")
+        .maybeSingle();
+
+      if (membershipError) {
+        return NextResponse.json({ error: membershipError.message }, { status: 500 });
+      }
+
+      if (!membership) {
+        return NextResponse.json({ error: "You do not have access to this property." }, { status: 403 });
+      }
+    }
 
     let ownerAccountId: string | null = null;
 
@@ -208,6 +240,23 @@ export async function POST(request: NextRequest) {
     if (authError) {
       return NextResponse.json({ error: authError.message }, { status: 500 });
     }
+
+    await writeAuditLog(serviceClient, {
+      actorProfileId: profile.id,
+      actorEmail: profile.email || user.email || null,
+      actorRole: profile.role,
+      organizationId: property.organization_id,
+      actionType: "admin.invite_owner",
+      targetType: "owner_account",
+      targetId: ownerAccountId,
+      metadata: {
+        property_id: propertyId,
+        property_name: property.name || null,
+        owner_email: ownerEmail,
+        owner_name: ownerName || null,
+        auth_user_exists: userExists,
+      },
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

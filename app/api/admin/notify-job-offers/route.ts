@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendJobOfferEmailsForSlots, type JobNotificationKind } from "@/lib/server/job-notifications";
+import { writeAuditLog } from "@/lib/server/audit-log";
 
 export async function POST(req: NextRequest) {
   try {
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest) {
 
     const { data: currentProfile, error: currentProfileError } = await service
       .from("profiles")
-      .select("id, role")
+      .select("id, role, email")
       .eq("id", user.id)
       .single();
 
@@ -143,6 +144,27 @@ export async function POST(req: NextRequest) {
     const result = await sendJobOfferEmailsForSlots(kind, slotIds, req.nextUrl.origin, {
       allowedOrganizationIds,
     });
+
+    await Promise.all(
+      organizationIds.map((organizationId) =>
+        writeAuditLog(service, {
+          actorProfileId: currentProfile.id,
+          actorEmail: currentProfile.email || user.email || null,
+          actorRole: currentProfile.role,
+          organizationId,
+          actionType: "admin.send_job_offer_notifications",
+          targetType: `${kind}_job_slots`,
+          targetId: slotIds.join(","),
+          metadata: {
+            kind,
+            slot_count: slotIds.length,
+            sent: result.sent,
+            skipped: result.skipped,
+            error_count: result.errors.length,
+          },
+        })
+      )
+    );
 
     return NextResponse.json({
       success: true,

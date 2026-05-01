@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { writeAuditLog } from "@/lib/server/audit-log";
 
 export const dynamic = "force-dynamic";
 
@@ -394,34 +395,47 @@ export async function POST(request: Request) {
 
     if (propertiesDeleteError) throw propertiesDeleteError;
 
+    const deletedSummary = {
+      property_maintenance_flag_images: deletedFlagImages,
+      property_maintenance_flags: deletedFlags ?? 0,
+      property_calendars: deletedPropertyCalendars,
+      turnover_job_slots: deletedTurnoverSlots,
+      grounds_job_slots: deletedGroundsSlots,
+      turnover_jobs: deletedTurnoverJobs ?? 0,
+      grounds_jobs: deletedGroundsJobs ?? 0,
+      property_access: deletedPropertyAccess,
+      property_cleaner_account_assignments: deletedCleanerAssignments,
+      property_grounds_account_assignments: deletedGroundsAssignments,
+      property_grounds_recurring_tasks: deletedGroundsRecurringTasks,
+      property_grounds_recurring_rules: deletedGroundsRecurringRules,
+      property_sop_images: deletedSopImages,
+      property_sops: deletedSops,
+      owner_property_access: deletedOwnerPropertyAccess,
+      owner_accounts: deletedOwnerAccounts,
+      cleaner_account_members: deletedCleanerAccountMembers,
+      grounds_account_members: deletedGroundsAccountMembers,
+      cleaner_accounts: deletedCleanerAccounts,
+      grounds_accounts: deletedGroundsAccounts,
+      organization_invites: deletedInvites ?? 0,
+      support_tickets: deletedSupportTickets ?? 0,
+      properties: deletedProperties ?? 0,
+    };
+
+    await writeAuditLog(supabase, {
+      actorProfileId: user.id,
+      actorEmail: user.email || null,
+      actorRole: "admin",
+      organizationId,
+      actionType: "admin.reset_organization",
+      targetType: "organization",
+      targetId: organizationId,
+      metadata: deletedSummary,
+    });
+
     return Response.json({
       ok: true,
       message: "Organization data reset completed.",
-      deleted: {
-        property_maintenance_flag_images: deletedFlagImages,
-        property_maintenance_flags: deletedFlags ?? 0,
-        property_calendars: deletedPropertyCalendars,
-        turnover_job_slots: deletedTurnoverSlots,
-        grounds_job_slots: deletedGroundsSlots,
-        turnover_jobs: deletedTurnoverJobs ?? 0,
-        grounds_jobs: deletedGroundsJobs ?? 0,
-        property_access: deletedPropertyAccess,
-        property_cleaner_account_assignments: deletedCleanerAssignments,
-        property_grounds_account_assignments: deletedGroundsAssignments,
-        property_grounds_recurring_tasks: deletedGroundsRecurringTasks,
-        property_grounds_recurring_rules: deletedGroundsRecurringRules,
-        property_sop_images: deletedSopImages,
-        property_sops: deletedSops,
-        owner_property_access: deletedOwnerPropertyAccess,
-        owner_accounts: deletedOwnerAccounts,
-        cleaner_account_members: deletedCleanerAccountMembers,
-        grounds_account_members: deletedGroundsAccountMembers,
-        cleaner_accounts: deletedCleanerAccounts,
-        grounds_accounts: deletedGroundsAccounts,
-        organization_invites: deletedInvites ?? 0,
-        support_tickets: deletedSupportTickets ?? 0,
-        properties: deletedProperties ?? 0,
-      },
+      deleted: deletedSummary,
     });
   } catch (error: any) {
     return Response.json(
