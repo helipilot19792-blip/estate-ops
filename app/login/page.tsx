@@ -239,8 +239,10 @@ export default function LoginPage() {
     setLoadingSignup(true);
 
     try {
+      let createdOrganizationId: string | null = null;
+      let promotedToAdmin = false;
       const { data, error } = await supabase.auth.signUp({
-        email: signupEmail.trim(),
+        email: signupEmail.trim().toLowerCase(),
         password: signupPassword,
         options: {
           emailRedirectTo: `${window.location.origin}/auth/confirm?next=/login`,
@@ -268,6 +270,8 @@ export default function LoginPage() {
           setError(profileError.message);
           return;
         }
+
+        promotedToAdmin = true;
 
         const baseSlug = slugifyCompanyName(companyName);
         const uniqueSlug = `${baseSlug || "company"}-${Date.now().toString().slice(-6)}`;
@@ -299,8 +303,18 @@ export default function LoginPage() {
           } else {
             setError(message);
           }
+
+          if (promotedToAdmin) {
+            await supabase
+              .from("profiles")
+              .update({ role: "pending" })
+              .eq("id", userId);
+          }
+
           return;
         }
+
+        createdOrganizationId = org.id;
 
         const { error: memberError } = await supabase.from("organization_members").insert({
           organization_id: org.id,
@@ -309,6 +323,20 @@ export default function LoginPage() {
         });
 
         if (memberError) {
+          if (createdOrganizationId) {
+            await supabase
+              .from("organizations")
+              .delete()
+              .eq("id", createdOrganizationId);
+          }
+
+          if (promotedToAdmin) {
+            await supabase
+              .from("profiles")
+              .update({ role: "pending" })
+              .eq("id", userId);
+          }
+
           setError(memberError.message);
           return;
         }

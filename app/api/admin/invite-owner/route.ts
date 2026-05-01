@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { signOwnerEmail } from "@/lib/server/owner-link-signature";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const publicSupabaseKey =
@@ -27,6 +28,7 @@ const ownerWelcomeBaseUrl = "https://portal.estateofmindpm.com/owner/welcome";
 function getOwnerWelcomeUrl(ownerEmail: string) {
   const url = new URL(ownerWelcomeBaseUrl);
   url.searchParams.set("owner_email", ownerEmail);
+  url.searchParams.set("sig", signOwnerEmail(ownerEmail));
   return url.toString();
 }
 

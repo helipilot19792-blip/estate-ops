@@ -11,6 +11,7 @@ type Recipient = {
 
 type SlotBundle = {
   slotId: string;
+  organizationId: string;
   kind: JobNotificationKind;
   status: string | null;
   offeredAt: string | null;
@@ -278,7 +279,7 @@ async function loadSlotBundle(
 
     const { data: property, error: propertyError } = await service
       .from("properties")
-      .select("id,name,address")
+      .select("id,organization_id,name,address")
       .eq("id", job.property_id)
       .maybeSingle();
 
@@ -287,6 +288,7 @@ async function loadSlotBundle(
 
     return {
       slotId: slot.id,
+      organizationId: property.organization_id || "",
       kind,
       status: slot.status || null,
       offeredAt: slot.offered_at || null,
@@ -315,7 +317,7 @@ async function loadSlotBundle(
 
   const { data: property, error: propertyError } = await service
     .from("properties")
-    .select("id,name,address")
+    .select("id,organization_id,name,address")
     .eq("id", job.property_id)
     .maybeSingle();
 
@@ -324,6 +326,7 @@ async function loadSlotBundle(
 
   return {
     slotId: slot.id,
+    organizationId: property.organization_id || "",
     kind,
     status: slot.status || null,
     offeredAt: slot.offered_at || null,
@@ -482,7 +485,10 @@ function shouldSendDayOfReminder(bundle: SlotBundle, now = new Date()) {
 export async function sendJobOfferEmailsForSlots(
   kind: JobNotificationKind,
   slotIds: string[],
-  origin: string
+  origin: string,
+  options?: {
+    allowedOrganizationIds?: Set<string> | null;
+  }
 ) {
   const service = getServiceClient();
   const uniqueSlotIds = [...new Set(slotIds.filter(Boolean))];
@@ -497,6 +503,14 @@ export async function sendJobOfferEmailsForSlots(
 
       if (!bundle) {
         skipped += 1;
+        continue;
+      }
+
+      if (
+        options?.allowedOrganizationIds &&
+        !options.allowedOrganizationIds.has(bundle.organizationId)
+      ) {
+        errors.push(`Slot ${slotId} is outside the allowed organization scope.`);
         continue;
       }
 

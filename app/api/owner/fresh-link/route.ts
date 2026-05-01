@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
+import { signOwnerEmail, verifyOwnerEmailSignature } from "@/lib/server/owner-link-signature";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -17,6 +18,7 @@ if (!serviceRoleKey) {
 function getOwnerWelcomeUrl(origin: string, ownerEmail: string) {
   const url = new URL("/owner/welcome", origin);
   url.searchParams.set("owner_email", ownerEmail);
+  url.searchParams.set("sig", signOwnerEmail(ownerEmail));
   return url.toString();
 }
 
@@ -38,12 +40,54 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json().catch(() => null);
     const ownerEmail = String(body?.email || "").trim().toLowerCase();
+    const signature = String(body?.sig || "").trim();
 
     if (!ownerEmail) {
       return NextResponse.json({ error: "Owner email is required." }, { status: 400 });
     }
 
     const serviceClient = createClient(supabaseUrl, serviceRoleKey);
+    const authHeader = request.headers.get("authorization");
+    const accessToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+    let hasMatchingOwnerSession = false;
+
+    if (accessToken) {
+      const anonKey =
+        process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+      if (!anonKey) {
+        return NextResponse.json(
+          { error: "Missing public Supabase key." },
+          { status: 500 }
+        );
+      }
+
+      const authClient = createClient(supabaseUrl, anonKey, {
+        auth: { autoRefreshToken: false, persistSession: false },
+        global: {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        },
+      });
+
+      const {
+        data: { user },
+      } = await authClient.auth.getUser();
+
+      hasMatchingOwnerSession = (user?.email || "").trim().toLowerCase() === ownerEmail;
+    }
+
+    if (!verifyOwnerEmailSignature(ownerEmail, signature) && !hasMatchingOwnerSession) {
+      return NextResponse.json(
+        {
+          error:
+            "This owner link is missing required verification details. Please use the newest owner invite, or resend the owner invite from admin.",
+        },
+        { status: 403 }
+      );
+    }
 
     const { data: owner, error: ownerError } = await serviceClient
       .from("owner_accounts")

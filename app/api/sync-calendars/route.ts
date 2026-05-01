@@ -33,6 +33,11 @@ type ParsedEvent = {
   checkoutDate: string | null;
 };
 
+type SyncAuthContext = {
+  mode: "cron" | "user";
+  organizationIds: string[] | null;
+};
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -47,6 +52,95 @@ if (!serviceRoleKey) {
 const supabase = createClient(supabaseUrl, serviceRoleKey, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
+
+async function requireSyncAccess(request: Request, organizationId?: string | null): Promise<SyncAuthContext> {
+  const authHeader = request.headers.get("authorization");
+  const expected = process.env.CRON_SECRET;
+
+  if (expected && authHeader === `Bearer ${expected}`) {
+    return {
+      mode: "cron",
+      organizationIds: organizationId ? [organizationId] : null,
+    };
+  }
+
+  const accessToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  if (!accessToken) {
+    throw new Error("Missing access token.");
+  }
+
+  const anonKey =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!anonKey) {
+    throw new Error("Missing public Supabase key.");
+  }
+
+  const authClient = createClient(supabaseUrl!, anonKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+    global: {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  });
+
+  const {
+    data: { user },
+    error: userError,
+  } = await authClient.auth.getUser();
+
+  if (userError || !user) {
+    throw new Error("Not authenticated.");
+  }
+
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("id, role")
+    .eq("id", user.id)
+    .single();
+
+  if (
+    profileError ||
+    !profile ||
+    (profile.role !== "admin" && profile.role !== "platform_admin")
+  ) {
+    throw new Error("Admin access required.");
+  }
+
+  if (!organizationId) {
+    throw new Error("organizationId is required.");
+  }
+
+  if (profile.role === "platform_admin") {
+    return {
+      mode: "user",
+      organizationIds: [organizationId],
+    };
+  }
+
+  const { data: memberships, error: membershipError } = await supabase
+    .from("organization_members")
+    .select("organization_id, role")
+    .eq("profile_id", user.id)
+    .eq("organization_id", organizationId)
+    .eq("role", "admin")
+    .limit(1);
+
+  if (membershipError) {
+    throw new Error(membershipError.message);
+  }
+
+  if (!(memberships ?? []).length) {
+    throw new Error("You do not have admin access to this organization.");
+  }
+
+  return {
+    mode: "user",
+    organizationIds: [organizationId],
+  };
+}
 
 function unfoldIcsLines(icsText: string): string[] {
   const rawLines = icsText.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
@@ -187,20 +281,40 @@ function isRealBookingEvent(summary: string, source: string): boolean {
   return true;
 }
 
-async function loadCalendars() {
-  const { data, error } = await supabase
+async function loadCalendars(propertyIds?: string[]) {
+  if (propertyIds && propertyIds.length === 0) {
+    return [] as PropertyCalendarRow[];
+  }
+
+  let query = supabase
     .from("property_calendars")
     .select("id, property_id, source, ical_url, is_active")
     .eq("is_active", true);
+
+  if (propertyIds?.length === 1) {
+    query = query.eq("property_id", propertyIds[0]);
+  } else if (propertyIds && propertyIds.length > 1) {
+    query = query.in("property_id", propertyIds);
+  }
+
+  const { data, error } = await query;
 
   if (error) throw error;
   return (data ?? []) as PropertyCalendarRow[];
 }
 
-async function loadPropertiesMap() {
- const { data, error } = await supabase
-  .from("properties")
-  .select("id, organization_id, name, address");
+async function loadPropertiesMap(organizationIds?: string[] | null) {
+  let query = supabase
+    .from("properties")
+    .select("id, organization_id, name, address");
+
+  if (organizationIds?.length === 1) {
+    query = query.eq("organization_id", organizationIds[0]);
+  } else if (organizationIds && organizationIds.length > 1) {
+    query = query.in("organization_id", organizationIds);
+  }
+
+  const { data, error } = await query;
 
   if (error) throw error;
 
@@ -304,10 +418,13 @@ async function deleteStaleUpcomingBookingEvents(
   return staleIds.length;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const calendars = await loadCalendars();
-    const propertiesMap = await loadPropertiesMap();
+    const url = new URL(request.url);
+    const organizationId = url.searchParams.get("organizationId")?.trim() || "";
+    const auth = await requireSyncAccess(request, organizationId || null);
+    const propertiesMap = await loadPropertiesMap(auth.organizationIds);
+    const calendars = await loadCalendars([...propertiesMap.keys()]);
 
     const preview: Array<{
       property_id: string;
@@ -348,22 +465,28 @@ export async function GET() {
         ok: false,
         error: error?.message || "Unknown error",
       },
-      { status: 500 }
+      {
+        status:
+          error?.message === "Missing access token." || error?.message === "Not authenticated."
+            ? 401
+            : error?.message === "Admin access required." ||
+                error?.message === "organizationId is required." ||
+                error?.message === "You do not have admin access to this organization."
+              ? 403
+              : 500,
+      }
     );
   }
 }
 
 export async function POST(request: Request) {
-  const authHeader = request.headers.get("authorization");
-  const expected = process.env.CRON_SECRET;
-
-  if (expected && authHeader !== `Bearer ${expected}`) {
-    return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-  }
-
   try {
-    const calendars = await loadCalendars();
-    const propertiesMap = await loadPropertiesMap();
+    const body = await request.json().catch(() => null);
+    const organizationId =
+      typeof body?.organizationId === "string" ? body.organizationId.trim() : "";
+    const auth = await requireSyncAccess(request, organizationId || null);
+    const propertiesMap = await loadPropertiesMap(auth.organizationIds);
+    const calendars = await loadCalendars([...propertiesMap.keys()]);
 
     const results: Array<{
       property_id: string;
@@ -560,7 +683,16 @@ if (!property?.organization_id) {
         ok: false,
         error: error?.message || "Unknown error",
       },
-      { status: 500 }
+      {
+        status:
+          error?.message === "Missing access token." || error?.message === "Not authenticated."
+            ? 401
+            : error?.message === "Admin access required." ||
+                error?.message === "organizationId is required." ||
+                error?.message === "You do not have admin access to this organization."
+              ? 403
+              : 500,
+      }
     );
   }
 }

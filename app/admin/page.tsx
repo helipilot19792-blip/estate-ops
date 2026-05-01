@@ -2180,8 +2180,27 @@ export default function AdminPage() {
     setSyncingCalendarsNow(true);
 
     try {
+      if (!currentOrganizationId) {
+        throw new Error("No organization selected for calendar sync.");
+      }
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("You must be signed in as an admin to sync calendars.");
+      }
+
       const response = await fetch("/api/sync-calendars", {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          organizationId: currentOrganizationId,
+        }),
       });
 
       let payload: any = null;

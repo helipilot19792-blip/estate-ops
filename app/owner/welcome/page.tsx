@@ -362,6 +362,10 @@ async function handleSignOut() {
 
 async function handleFreshLoginLink() {
   const loginEmail = expectedOwnerEmail || ownerAccount?.email || signedInEmail || "";
+  const loginSig =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("sig")?.trim() || ""
+      : "";
 
   if (!loginEmail) {
     router.replace("/owner/login");
@@ -371,14 +375,23 @@ async function handleFreshLoginLink() {
   setRequestingFreshLink(true);
   setError("");
   setStatusMessage("");
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
 
   const response = await fetch("/api/owner/fresh-link", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      ...(session?.access_token
+        ? {
+            Authorization: `Bearer ${session.access_token}`,
+          }
+        : {}),
     },
     body: JSON.stringify({
       email: loginEmail,
+      sig: loginSig,
     }),
   });
 

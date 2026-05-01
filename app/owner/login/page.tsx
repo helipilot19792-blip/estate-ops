@@ -33,7 +33,7 @@ export default function OwnerLoginPage() {
       }
 
       if (mounted && messageFromQuery === "password_set") {
-        setStatusMessage("Password saved. Please log in with your email && password.");
+        setStatusMessage("Password saved. Please log in with your email and password.");
       }
 
       const {
@@ -63,7 +63,7 @@ export default function OwnerLoginPage() {
 
   async function handlePasswordLogin() {
     if (!email.trim() || !password.trim()) {
-      setError("Enter your email && password.");
+      setError("Enter your email and password.");
       return;
     }
 
@@ -141,7 +141,7 @@ export default function OwnerLoginPage() {
             Owner Login
           </h1>
           <p className="mt-3 text-base leading-relaxed text-[#e6d8bf]">
-            Sign in with your email && password. You can also request a fresh login link if needed.
+            Sign in with your email and password. You can also request a fresh login link if needed.
           </p>
         </section>
 
