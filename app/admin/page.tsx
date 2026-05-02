@@ -354,6 +354,15 @@ type InvoiceSettingsRow = {
   auto_add_grounds: boolean | null;
   payment_instructions: string | null;
 };
+type PropertyInvoiceRateRow = {
+  id?: string;
+  organization_id: string;
+  property_id: string;
+  turnover_rate: number | null;
+  grounds_rate: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
 type OwnerInvoiceLineItem = {
   id: string;
   description: string;
@@ -657,6 +666,7 @@ export default function AdminPage() {
   const [maintenanceFlagImages, setMaintenanceFlagImages] = useState<MaintenanceFlagImageRow[]>([]);
   const [organizationInvites, setOrganizationInvites] = useState<OrganizationInviteRow[]>([]);
   const [invoiceSettings, setInvoiceSettings] = useState<InvoiceSettingsRow | null>(null);
+  const [propertyInvoiceRates, setPropertyInvoiceRates] = useState<PropertyInvoiceRateRow[]>([]);
   const [ownerInvoices, setOwnerInvoices] = useState<OwnerInvoiceRow[]>([]);
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
 
@@ -700,8 +710,7 @@ export default function AdminPage() {
   const [invoiceLogoUrl, setInvoiceLogoUrl] = useState("");
   const [invoiceHeaderText, setInvoiceHeaderText] = useState("");
   const [invoicePaymentInstructions, setInvoicePaymentInstructions] = useState("");
-  const [invoiceDefaultTurnoverRate, setInvoiceDefaultTurnoverRate] = useState("0");
-  const [invoiceDefaultGroundsRate, setInvoiceDefaultGroundsRate] = useState("0");
+  const [propertyInvoiceRateDrafts, setPropertyInvoiceRateDrafts] = useState<Record<string, { turnover: string; grounds: string }>>({});
   const [invoiceAutoTurnover, setInvoiceAutoTurnover] = useState(true);
   const [invoiceAutoGrounds, setInvoiceAutoGrounds] = useState(true);
   const [invoiceLineItems, setInvoiceLineItems] = useState<OwnerInvoiceLineItem[]>([
@@ -1052,11 +1061,26 @@ export default function AdminPage() {
         "Thank you for trusting us with your property operations."
     );
     setInvoicePaymentInstructions(invoiceSettings?.payment_instructions || "");
-    setInvoiceDefaultTurnoverRate(String(invoiceSettings?.default_turnover_rate ?? 0));
-    setInvoiceDefaultGroundsRate(String(invoiceSettings?.default_grounds_rate ?? 0));
     setInvoiceAutoTurnover(invoiceSettings?.auto_add_turnover ?? true);
     setInvoiceAutoGrounds(invoiceSettings?.auto_add_grounds ?? true);
   }, [invoiceSettings, currentOrganizationBilling]);
+
+  useEffect(() => {
+    const ratesByPropertyId = new Map(propertyInvoiceRates.map((rate) => [rate.property_id, rate]));
+    setPropertyInvoiceRateDrafts((current) => {
+      const next: Record<string, { turnover: string; grounds: string }> = {};
+
+      for (const property of properties) {
+        const existing = ratesByPropertyId.get(property.id);
+        next[property.id] = current[property.id] || {
+          turnover: String(existing?.turnover_rate ?? invoiceSettings?.default_turnover_rate ?? 0),
+          grounds: String(existing?.grounds_rate ?? invoiceSettings?.default_grounds_rate ?? 0),
+        };
+      }
+
+      return next;
+    });
+  }, [properties, propertyInvoiceRates, invoiceSettings]);
 
   useEffect(() => {
     if (!selectedPropertyId) {
@@ -1200,6 +1224,7 @@ export default function AdminPage() {
       maintenanceFlagImagesRes,
       organizationInvitesRes,
       invoiceSettingsRes,
+      propertyInvoiceRatesRes,
       ownerInvoicesRes,
     ] = await Promise.all([
       supabase
@@ -1290,6 +1315,11 @@ export default function AdminPage() {
         .eq("organization_id", currentOrganizationId)
         .maybeSingle(),
       supabase
+        .from("property_invoice_rates")
+        .select("*")
+        .eq("organization_id", currentOrganizationId)
+        .order("created_at", { ascending: false }),
+      supabase
         .from("owner_invoices")
         .select("*")
         .eq("organization_id", currentOrganizationId)
@@ -1322,11 +1352,16 @@ export default function AdminPage() {
       maintenanceFlagImagesRes,
       organizationInvitesRes,
       invoiceSettingsRes,
+      propertyInvoiceRatesRes,
       ownerInvoicesRes,
     ];
 
     for (const response of responses) {
-      if (response.error && response !== invoiceSettingsRes) {
+      if (
+        response.error &&
+        response !== invoiceSettingsRes &&
+        response !== propertyInvoiceRatesRes
+      ) {
         setError(response.error.message);
         return;
       }
@@ -1373,6 +1408,9 @@ export default function AdminPage() {
     setMaintenanceFlagImages((maintenanceFlagImagesRes.data ?? []) as MaintenanceFlagImageRow[]);
     setOrganizationInvites((organizationInvitesRes.data ?? []) as OrganizationInviteRow[]);
     setInvoiceSettings((invoiceSettingsRes.data ?? null) as InvoiceSettingsRow | null);
+    setPropertyInvoiceRates(
+      propertyInvoiceRatesRes.error ? [] : ((propertyInvoiceRatesRes.data ?? []) as PropertyInvoiceRateRow[])
+    );
     setOwnerInvoices((ownerInvoicesRes.data ?? []) as OwnerInvoiceRow[]);
 
     setReassignSelections((prev) => {
@@ -4956,6 +4994,31 @@ This removes its linked members and deletes the grounds account.`
     return items.reduce((sum, item) => sum + getLineItemTotal(item), 0);
   }
 
+  function getPropertyInvoiceRate(propertyId: string) {
+    const draft = propertyInvoiceRateDrafts[propertyId];
+    const saved = propertyInvoiceRates.find((rate) => rate.property_id === propertyId);
+
+    return {
+      turnover: Number(draft?.turnover ?? saved?.turnover_rate ?? invoiceSettings?.default_turnover_rate ?? 0),
+      grounds: Number(draft?.grounds ?? saved?.grounds_rate ?? invoiceSettings?.default_grounds_rate ?? 0),
+    };
+  }
+
+  function updatePropertyInvoiceRateDraft(
+    propertyId: string,
+    field: "turnover" | "grounds",
+    value: string
+  ) {
+    setPropertyInvoiceRateDrafts((drafts) => ({
+      ...drafts,
+      [propertyId]: {
+        turnover: drafts[propertyId]?.turnover ?? "0",
+        grounds: drafts[propertyId]?.grounds ?? "0",
+        [field]: value,
+      },
+    }));
+  }
+
   function escapeCsvCell(value: string | number | null | undefined) {
     const text = String(value ?? "");
     if (/[",\n\r]/.test(text)) {
@@ -5053,8 +5116,7 @@ This removes its linked members and deletes the grounds account.`
       return;
     }
 
-    const turnoverRate = Number(invoiceDefaultTurnoverRate || 0);
-    const groundsRate = Number(invoiceDefaultGroundsRate || 0);
+    const { turnover: turnoverRate, grounds: groundsRate } = getPropertyInvoiceRate(invoicePropertyId);
     const generated: OwnerInvoiceLineItem[] = [];
 
     if (invoiceAutoTurnover && turnoverRate > 0) {
@@ -5111,8 +5173,6 @@ This removes its linked members and deletes the grounds account.`
         company_name: invoiceCompanyName.trim() || null,
         logo_url: invoiceLogoUrl.trim() || null,
         header_text: invoiceHeaderText.trim() || null,
-        default_turnover_rate: Number(invoiceDefaultTurnoverRate || 0),
-        default_grounds_rate: Number(invoiceDefaultGroundsRate || 0),
         auto_add_turnover: invoiceAutoTurnover,
         auto_add_grounds: invoiceAutoGrounds,
         payment_instructions: invoicePaymentInstructions.trim() || null,
@@ -5120,6 +5180,22 @@ This removes its linked members and deletes the grounds account.`
       });
 
       if (error) throw error;
+
+      const rateRows = properties.map((property) => ({
+        organization_id: currentOrganizationId,
+        property_id: property.id,
+        turnover_rate: Number(propertyInvoiceRateDrafts[property.id]?.turnover || 0),
+        grounds_rate: Number(propertyInvoiceRateDrafts[property.id]?.grounds || 0),
+        updated_at: new Date().toISOString(),
+      }));
+
+      if (rateRows.length > 0) {
+        const { error: rateError } = await supabase
+          .from("property_invoice_rates")
+          .upsert(rateRows, { onConflict: "property_id" });
+
+        if (rateError) throw rateError;
+      }
 
       setActionMessage("Invoice defaults saved.");
       await loadData();
@@ -5301,30 +5377,49 @@ This removes its linked members and deletes the grounds account.`
             </div>
 
             <div className="rounded-[24px] border border-[#eadfce] bg-white p-4">
-              <h3 className="text-base font-semibold text-[#241c15]">Job defaults</h3>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <label className="text-sm font-medium text-[#5f5245]">
-                  Turnover rate
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    className="mt-2 w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                    value={invoiceDefaultTurnoverRate}
-                    onChange={(e) => setInvoiceDefaultTurnoverRate(e.target.value)}
-                  />
-                </label>
-                <label className="text-sm font-medium text-[#5f5245]">
-                  Grounds rate
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    className="mt-2 w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                    value={invoiceDefaultGroundsRate}
-                    onChange={(e) => setInvoiceDefaultGroundsRate(e.target.value)}
-                  />
-                </label>
+              <h3 className="text-base font-semibold text-[#241c15]">Property rates</h3>
+              <div className="mt-4 max-h-[280px] space-y-3 overflow-y-auto pr-1">
+                {properties.length === 0 ? (
+                  <div className="rounded-[18px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] p-4 text-sm text-[#7f7263]">
+                    Add properties before setting invoice rates.
+                  </div>
+                ) : (
+                  properties.map((property) => {
+                    const draft = propertyInvoiceRateDrafts[property.id] || { turnover: "0", grounds: "0" };
+
+                    return (
+                      <div key={property.id} className="rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] p-3">
+                        <div className="text-sm font-semibold text-[#241c15]">
+                          {property.name || property.address || "Unnamed property"}
+                        </div>
+                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                          <label className="text-xs font-medium text-[#5f5245]">
+                            Turnover rate
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                              value={draft.turnover}
+                              onChange={(e) => updatePropertyInvoiceRateDraft(property.id, "turnover", e.target.value)}
+                            />
+                          </label>
+                          <label className="text-xs font-medium text-[#5f5245]">
+                            Grounds rate
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                              value={draft.grounds}
+                              onChange={(e) => updatePropertyInvoiceRateDraft(property.id, "grounds", e.target.value)}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
               <div className="mt-4 grid gap-2 text-sm text-[#5f5245]">
                 <label className="flex items-center gap-2">

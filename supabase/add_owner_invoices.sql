@@ -12,6 +12,17 @@ create table if not exists public.organization_invoice_settings (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.property_invoice_rates (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  property_id uuid not null references public.properties(id) on delete cascade,
+  turnover_rate numeric(10, 2) not null default 0,
+  grounds_rate numeric(10, 2) not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint property_invoice_rates_unique_property unique (property_id)
+);
+
 create table if not exists public.owner_invoices (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -49,7 +60,24 @@ create index if not exists owner_invoices_property_idx
   on public.owner_invoices (property_id);
 
 alter table public.organization_invoice_settings enable row level security;
+alter table public.property_invoice_rates enable row level security;
 alter table public.owner_invoices enable row level security;
+
+insert into public.property_invoice_rates (
+  organization_id,
+  property_id,
+  turnover_rate,
+  grounds_rate
+)
+select
+  properties.organization_id,
+  properties.id,
+  coalesce(organization_invoice_settings.default_turnover_rate, 0),
+  coalesce(organization_invoice_settings.default_grounds_rate, 0)
+from public.properties
+left join public.organization_invoice_settings
+  on organization_invoice_settings.organization_id = properties.organization_id
+on conflict (property_id) do nothing;
 
 drop policy if exists "Admins can manage invoice settings" on public.organization_invoice_settings;
 create policy "Admins can manage invoice settings"
@@ -76,6 +104,39 @@ with check (
     left join public.organization_members
       on organization_members.profile_id = profiles.id
       and organization_members.organization_id = organization_invoice_settings.organization_id
+    where profiles.id = auth.uid()
+      and (
+        profiles.role = 'platform_admin'
+        or organization_members.role = 'admin'
+      )
+  )
+);
+
+drop policy if exists "Admins can manage property invoice rates" on public.property_invoice_rates;
+create policy "Admins can manage property invoice rates"
+on public.property_invoice_rates
+for all
+using (
+  exists (
+    select 1
+    from public.profiles
+    left join public.organization_members
+      on organization_members.profile_id = profiles.id
+      and organization_members.organization_id = property_invoice_rates.organization_id
+    where profiles.id = auth.uid()
+      and (
+        profiles.role = 'platform_admin'
+        or organization_members.role = 'admin'
+      )
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.profiles
+    left join public.organization_members
+      on organization_members.profile_id = profiles.id
+      and organization_members.organization_id = property_invoice_rates.organization_id
     where profiles.id = auth.uid()
       and (
         profiles.role = 'platform_admin'
