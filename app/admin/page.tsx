@@ -352,8 +352,6 @@ type InvoiceSettingsRow = {
   header_text: string | null;
   default_turnover_rate: number | null;
   default_grounds_rate: number | null;
-  tax_label?: string | null;
-  tax_rate?: number | null;
   tax_lines?: OwnerInvoiceTaxLine[] | null;
   auto_add_turnover: boolean | null;
   auto_add_grounds: boolean | null;
@@ -397,8 +395,6 @@ type OwnerInvoiceRow = {
   header_text: string | null;
   notes: string | null;
   payment_instructions: string | null;
-  tax_label?: string | null;
-  tax_rate?: number | null;
   tax_lines?: OwnerInvoiceTaxLine[] | null;
   line_items: OwnerInvoiceLineItem[];
   subtotal: number;
@@ -456,11 +452,7 @@ function formatCurrency(value: number | null | undefined) {
   }).format(Number(value || 0));
 }
 
-function normalizeTaxLines(
-  lines: OwnerInvoiceTaxLine[] | null | undefined,
-  fallbackLabel?: string | null,
-  fallbackRate?: number | string | null
-) {
+function normalizeTaxLines(lines: OwnerInvoiceTaxLine[] | null | undefined) {
   const normalized = (Array.isArray(lines) ? lines : [])
     .map((line, index) => ({
       id: line.id || `tax-${index + 1}`,
@@ -474,8 +466,8 @@ function normalizeTaxLines(
   return [
     {
       id: "tax-1",
-      label: fallbackLabel || "Tax",
-      rate: String(fallbackRate ?? 0),
+      label: "Tax",
+      rate: "0",
     },
   ];
 }
@@ -1122,11 +1114,7 @@ export default function AdminPage() {
         "Thank you for trusting us with your property operations."
     );
     setInvoicePaymentInstructions(invoiceSettings?.payment_instructions || "");
-    setInvoiceTaxLines(normalizeTaxLines(
-      invoiceSettings?.tax_lines,
-      invoiceSettings?.tax_label,
-      invoiceSettings?.tax_rate
-    ));
+    setInvoiceTaxLines(normalizeTaxLines(invoiceSettings?.tax_lines));
     setInvoiceAutoTurnover(invoiceSettings?.auto_add_turnover ?? true);
     setInvoiceAutoGrounds(invoiceSettings?.auto_add_grounds ?? true);
   }, [invoiceSettings, currentOrganizationBilling, invoiceSettingsDirty]);
@@ -5187,9 +5175,9 @@ This removes its linked members and deletes the grounds account.`
           quantity,
           rate.toFixed(2),
           (quantity * rate).toFixed(2),
-          invoice.tax_label || "",
-          Number(invoice.tax_rate || 0).toFixed(3),
-          normalizeTaxLines(invoice.tax_lines, invoice.tax_label, invoice.tax_rate)
+          normalizeTaxLines(invoice.tax_lines)[0]?.label || "",
+          Number(normalizeTaxLines(invoice.tax_lines)[0]?.rate || 0).toFixed(3),
+          normalizeTaxLines(invoice.tax_lines)
             .map((line) => `${line.label} ${line.rate}%`)
             .join("; "),
           Number(invoice.tax_total || 0).toFixed(2),
@@ -5455,7 +5443,6 @@ This removes its linked members and deletes the grounds account.`
 
     try {
       const savedTaxLines = getInvoiceTaxLinesForSubtotal(0).map(({ id, label, rate }) => ({ id, label, rate }));
-      const primaryTaxLine = savedTaxLines[0] || { label: "Tax", rate: 0 };
       const { error } = await supabase.from("organization_invoice_settings").upsert({
         organization_id: currentOrganizationId,
         company_name: invoiceCompanyName.trim() || null,
@@ -5463,8 +5450,6 @@ This removes its linked members and deletes the grounds account.`
         from_email: invoiceFromEmail.trim().toLowerCase() || null,
         reply_to_email: invoiceReplyToEmail.trim().toLowerCase() || null,
         header_text: invoiceHeaderText.trim() || null,
-        tax_label: primaryTaxLine.label || null,
-        tax_rate: Number(primaryTaxLine.rate || 0),
         tax_lines: savedTaxLines,
         auto_add_turnover: invoiceAutoTurnover,
         auto_add_grounds: invoiceAutoGrounds,
@@ -5569,7 +5554,6 @@ This removes its linked members and deletes the grounds account.`
     const taxLines = getInvoiceTaxLinesForSubtotal(subtotal);
     const taxTotal = taxLines.reduce((sum, line) => sum + line.amount, 0);
     const total = subtotal + taxTotal;
-    const primaryTaxLine = taxLines[0] || { label: "Tax", rate: 0 };
     const invoiceNumber = `INV-${Date.now().toString().slice(-8)}`;
 
     setCreatingInvoice(true);
@@ -5592,8 +5576,6 @@ This removes its linked members and deletes the grounds account.`
           from_email: invoiceFromEmail.trim().toLowerCase() || null,
           reply_to_email: invoiceReplyToEmail.trim().toLowerCase() || null,
           header_text: invoiceHeaderText.trim() || null,
-          tax_label: primaryTaxLine.label || null,
-          tax_rate: Number(primaryTaxLine.rate || 0),
           tax_lines: taxLines,
           notes: invoiceNotes.trim() || null,
           payment_instructions: invoicePaymentInstructions.trim() || null,

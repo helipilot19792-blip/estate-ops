@@ -70,7 +70,7 @@ function normalizeTaxLines(invoice: any): InvoiceTaxLine[] {
       const rate = Math.max(Number(line?.rate || 0), 0);
       return {
         id: String(line?.id || `tax-${index + 1}`),
-        label: rawLabel || invoice.tax_label || "Tax",
+        label: rawLabel || "Tax",
         rate,
         amount: typeof line?.amount === "number"
           ? Number(line.amount)
@@ -83,15 +83,7 @@ function normalizeTaxLines(invoice: any): InvoiceTaxLine[] {
 
   if (normalized.length > 0) return normalized;
 
-  const rate = Math.max(Number(invoice.tax_rate || 0), 0);
-  return rate > 0
-    ? [{
-        id: "tax-1",
-        label: invoice.tax_label || "Tax",
-        rate,
-        amount: Number(invoice.tax_total || Math.round(subtotal * (rate / 100) * 100) / 100),
-      }]
-    : [];
+  return [];
 }
 
 export async function POST(request: NextRequest) {

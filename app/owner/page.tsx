@@ -99,8 +99,6 @@ type OwnerInvoice = {
   header_text: string | null;
   notes: string | null;
   payment_instructions: string | null;
-  tax_label?: string | null;
-  tax_rate?: number | null;
   tax_lines?: Array<{ id?: string; label: string; rate: number; amount?: number }> | null;
   line_items: OwnerInvoiceLineItem[];
   subtotal: number;
@@ -279,7 +277,7 @@ function getOwnerInvoiceTaxLines(invoice: OwnerInvoice) {
       const rate = Math.max(Number(line.rate || 0), 0);
       return {
         id: line.id || `tax-${index + 1}`,
-        label: rawLabel || invoice.tax_label || "Tax",
+        label: rawLabel || "Tax",
         rate,
         amount: typeof line.amount === "number"
           ? Number(line.amount)
@@ -292,10 +290,7 @@ function getOwnerInvoiceTaxLines(invoice: OwnerInvoice) {
 
   if (normalized.length > 0) return normalized;
 
-  const rate = Math.max(Number(invoice.tax_rate || 0), 0);
-  return rate > 0
-    ? [{ id: "tax-1", label: invoice.tax_label || "Tax", rate, amount: Number(invoice.tax_total || 0) }]
-    : [];
+  return [];
 }
 
 function getDaysInMonth(monthKey: string) {
@@ -928,7 +923,7 @@ export default function OwnerPage() {
         .order("created_at", { ascending: false }),
       supabase
         .from("owner_invoices")
-        .select("id,owner_account_id,property_id,invoice_number,status,issue_date,due_date,company_name,logo_url,header_text,notes,payment_instructions,tax_label,tax_rate,tax_lines,line_items,subtotal,tax_total,total,sent_at")
+        .select("id,owner_account_id,property_id,invoice_number,status,issue_date,due_date,company_name,logo_url,header_text,notes,payment_instructions,tax_lines,line_items,subtotal,tax_total,total,sent_at")
         .eq("owner_account_id", ownerRes.id)
         .in("status", ["sent", "paid"])
         .order("issue_date", { ascending: false }),
