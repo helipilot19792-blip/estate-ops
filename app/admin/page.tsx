@@ -700,6 +700,7 @@ export default function AdminPage() {
   const [deletingResolvedMaintenanceFlags, setDeletingResolvedMaintenanceFlags] = useState(false);
   const [savingInvoiceSettings, setSavingInvoiceSettings] = useState(false);
   const [creatingInvoice, setCreatingInvoice] = useState(false);
+  const [previewingInvoicePdf, setPreviewingInvoicePdf] = useState(false);
   const [sendingInvoiceId, setSendingInvoiceId] = useState<string | null>(null);
   const [invoiceOwnerId, setInvoiceOwnerId] = useState("");
   const [invoicePropertyId, setInvoicePropertyId] = useState("");
@@ -710,6 +711,7 @@ export default function AdminPage() {
   const [invoiceLogoUrl, setInvoiceLogoUrl] = useState("");
   const [invoiceHeaderText, setInvoiceHeaderText] = useState("");
   const [invoicePaymentInstructions, setInvoicePaymentInstructions] = useState("");
+  const [invoiceCcEmails, setInvoiceCcEmails] = useState("");
   const [propertyInvoiceRateDrafts, setPropertyInvoiceRateDrafts] = useState<Record<string, { turnover: string; grounds: string }>>({});
   const [invoiceAutoTurnover, setInvoiceAutoTurnover] = useState(true);
   const [invoiceAutoGrounds, setInvoiceAutoGrounds] = useState(true);
@@ -5091,6 +5093,30 @@ This removes its linked members and deletes the grounds account.`
     );
   }
 
+  function getValidInvoiceLineItems() {
+    return invoiceLineItems
+      .map((item) => ({
+        ...item,
+        description: item.description.trim(),
+        quantity: Number(item.quantity || 0),
+        rate: Number(item.rate || 0),
+      }))
+      .filter((item) => item.description && item.quantity > 0);
+  }
+
+  function getInvoiceRecipientContext() {
+    const owner = ownerAccounts.find((account) => account.id === invoiceOwnerId) || null;
+    const property = properties.find((item) => item.id === invoicePropertyId) || null;
+
+    return {
+      owner,
+      property,
+      ownerName: owner?.full_name || owner?.email || "Owner",
+      ownerEmail: owner?.email || "",
+      propertyName: property?.name || property?.address || "All linked properties",
+    };
+  }
+
   function addInvoiceLineItem() {
     setInvoiceLineItems((items) => [
       ...items,
@@ -5213,14 +5239,7 @@ This removes its linked members and deletes the grounds account.`
       return;
     }
 
-    const validLineItems = invoiceLineItems
-      .map((item) => ({
-        ...item,
-        description: item.description.trim(),
-        quantity: Number(item.quantity || 0),
-        rate: Number(item.rate || 0),
-      }))
-      .filter((item) => item.description && item.quantity > 0);
+    const validLineItems = getValidInvoiceLineItems();
 
     if (validLineItems.length === 0) {
       setError("Add at least one invoice line item.");
@@ -5264,7 +5283,7 @@ This removes its linked members and deletes the grounds account.`
       if (error) throw error;
 
       if (status === "sent" && data?.id) {
-        await sendOwnerInvoiceEmail(data.id);
+        await sendOwnerInvoiceEmail(data.id, invoiceCcEmails);
       }
 
       setActionMessage(status === "sent" ? "Invoice created and sent to owner." : "Invoice draft created.");
@@ -5278,7 +5297,7 @@ This removes its linked members and deletes the grounds account.`
     }
   }
 
-  async function sendOwnerInvoiceEmail(invoiceId: string) {
+  async function sendOwnerInvoiceEmail(invoiceId: string, ccEmails = "") {
     const {
       data: { session },
       error: sessionError,
@@ -5294,12 +5313,72 @@ This removes its linked members and deletes the grounds account.`
         "Content-Type": "application/json",
         Authorization: `Bearer ${session.access_token}`,
       },
-      body: JSON.stringify({ invoiceId }),
+      body: JSON.stringify({ invoiceId, ccEmails }),
     });
 
     const result = await response.json().catch(() => null);
     if (!response.ok) {
       throw new Error(result?.error || "Could not send invoice email.");
+    }
+  }
+
+  async function previewInvoicePdf() {
+    const validLineItems = getValidInvoiceLineItems();
+
+    if (validLineItems.length === 0) {
+      setError("Add at least one invoice line item before previewing the PDF.");
+      return;
+    }
+
+    setError("");
+    setPreviewingInvoicePdf(true);
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        throw new Error("Could not verify your admin session.");
+      }
+
+      const context = getInvoiceRecipientContext();
+      const response = await fetch("/api/admin/preview-owner-invoice", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          invoiceNumber: "PREVIEW",
+          companyName: invoiceCompanyName.trim() || "Property invoice",
+          ownerName: context.ownerName,
+          ownerEmail: context.ownerEmail,
+          propertyName: context.propertyName,
+          issueDate: invoiceIssueDate || getTodayYmd(),
+          dueDate: invoiceDueDate || null,
+          headerText: invoiceHeaderText.trim() || null,
+          notes: invoiceNotes.trim() || null,
+          paymentInstructions: invoicePaymentInstructions.trim() || null,
+          total: getInvoiceLineItemsTotal(validLineItems),
+          lineItems: validLineItems,
+        }),
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || "Could not generate invoice PDF preview.");
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank", "noopener,noreferrer");
+      window.setTimeout(() => URL.revokeObjectURL(url), 30000);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Could not preview invoice PDF."));
+    } finally {
+      setPreviewingInvoicePdf(false);
     }
   }
 
@@ -5309,7 +5388,7 @@ This removes its linked members and deletes the grounds account.`
     setActionMessage("");
 
     try {
-      await sendOwnerInvoiceEmail(invoiceId);
+      await sendOwnerInvoiceEmail(invoiceId, invoiceCcEmails);
       setActionMessage("Invoice sent to owner.");
       await loadData();
     } catch (err: unknown) {
@@ -5487,6 +5566,12 @@ This removes its linked members and deletes the grounds account.`
                   value={invoiceDueDate}
                   onChange={(e) => setInvoiceDueDate(e.target.value)}
                 />
+                <input
+                  className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e] md:col-span-2"
+                  placeholder="CC email addresses, separated by commas"
+                  value={invoiceCcEmails}
+                  onChange={(e) => setInvoiceCcEmails(e.target.value)}
+                />
               </div>
 
               <div className="mt-4 flex flex-wrap gap-2">
@@ -5581,6 +5666,14 @@ This removes its linked members and deletes the grounds account.`
                   className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2.5 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#fcfaf7] disabled:opacity-60"
                 >
                   Save draft
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void previewInvoicePdf()}
+                  disabled={previewingInvoicePdf}
+                  className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2.5 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#fcfaf7] disabled:opacity-60"
+                >
+                  {previewingInvoicePdf ? "Opening..." : "Preview PDF"}
                 </button>
                 <button
                   type="button"
