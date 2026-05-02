@@ -54,6 +54,46 @@ type InvoiceLineItem = {
   receipt_names?: string[] | null;
 };
 
+type InvoiceTaxLine = {
+  id: string;
+  label: string;
+  rate: number;
+  amount: number;
+};
+
+function normalizeTaxLines(invoice: any): InvoiceTaxLine[] {
+  const subtotal = Number(invoice.subtotal || 0);
+  const rows = Array.isArray(invoice.tax_lines) ? invoice.tax_lines : [];
+  const normalized = rows
+    .map((line: any, index: number) => {
+      const rawLabel = String(line?.label || "").trim();
+      const rate = Math.max(Number(line?.rate || 0), 0);
+      return {
+        id: String(line?.id || `tax-${index + 1}`),
+        label: rawLabel || invoice.tax_label || "Tax",
+        rate,
+        amount: typeof line?.amount === "number"
+          ? Number(line.amount)
+          : Math.round(subtotal * (rate / 100) * 100) / 100,
+        hasValue: !!rawLabel || rate > 0,
+      };
+    })
+    .filter((line: InvoiceTaxLine & { hasValue: boolean }) => line.hasValue)
+    .map(({ hasValue: _hasValue, ...line }: InvoiceTaxLine & { hasValue: boolean }) => line);
+
+  if (normalized.length > 0) return normalized;
+
+  const rate = Math.max(Number(invoice.tax_rate || 0), 0);
+  return rate > 0
+    ? [{
+        id: "tax-1",
+        label: invoice.tax_label || "Tax",
+        rate,
+        amount: Number(invoice.tax_total || Math.round(subtotal * (rate / 100) * 100) / 100),
+      }]
+    : [];
+}
+
 export async function POST(request: NextRequest) {
   try {
     if (!supabaseUrl || !publicSupabaseKey || !serviceRoleKey) {
@@ -175,6 +215,7 @@ export async function POST(request: NextRequest) {
     const lineItems = Array.isArray(invoice.line_items)
       ? (invoice.line_items as InvoiceLineItem[])
       : [];
+    const taxLines = normalizeTaxLines(invoice);
     const rows = lineItems
       .map((item) => {
         const quantity = Number(item.quantity || 0);
@@ -226,13 +267,11 @@ export async function POST(request: NextRequest) {
           <div style="display:flex;justify-content:space-between;padding:4px 0;">
             <span>Subtotal</span><span>${formatCurrency(invoice.subtotal)}</span>
           </div>
-          ${
-            Number(invoice.tax_total || 0) > 0 || Number(invoice.tax_rate || 0) > 0
-              ? `<div style="display:flex;justify-content:space-between;padding:4px 0;">
-                  <span>${escapeHtml(invoice.tax_label || "Tax")} (${Number(invoice.tax_rate || 0)}%)</span><span>${formatCurrency(invoice.tax_total)}</span>
-                </div>`
-              : ""
-          }
+          ${taxLines
+            .map((line: InvoiceTaxLine) => `<div style="display:flex;justify-content:space-between;padding:4px 0;">
+              <span>${escapeHtml(line.label)} (${line.rate}%)</span><span>${formatCurrency(line.amount)}</span>
+            </div>`)
+            .join("")}
           <div style="display:flex;justify-content:space-between;padding:8px 0 0;font-size:20px;font-weight:700;">
             <span>Total</span><span>${formatCurrency(invoice.total)}</span>
           </div>
@@ -256,8 +295,7 @@ export async function POST(request: NextRequest) {
       notes: invoice.notes || null,
       paymentInstructions: invoice.payment_instructions || null,
       subtotal: Number(invoice.subtotal || 0),
-      taxLabel: invoice.tax_label || "Tax",
-      taxRate: Number(invoice.tax_rate || 0),
+      taxLines,
       taxTotal: Number(invoice.tax_total || 0),
       total: Number(invoice.total || 0),
       lineItems,

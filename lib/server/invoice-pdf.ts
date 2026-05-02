@@ -22,8 +22,7 @@ export type InvoicePdfInput = {
   notes: string | null;
   paymentInstructions: string | null;
   subtotal: number;
-  taxLabel: string | null;
-  taxRate: number;
+  taxLines: Array<{ id?: string; label: string; rate: number; amount: number }>;
   taxTotal: number;
   total: number;
   lineItems: InvoicePdfLineItem[];
@@ -163,8 +162,10 @@ export async function createInvoicePdfBuffer(input: InvoicePdfInput) {
 
   y -= 10;
   drawText(`Subtotal: ${formatCurrency(input.subtotal)}`, 390, 11, { gap: 18 });
-  if (input.taxTotal > 0 || input.taxRate > 0) {
-    drawText(`${input.taxLabel || "Tax"} (${input.taxRate}%): ${formatCurrency(input.taxTotal)}`, 390, 11, { gap: 18 });
+  for (const taxLine of input.taxLines) {
+    if (taxLine.amount > 0 || taxLine.rate > 0) {
+      drawText(`${taxLine.label || "Tax"} (${taxLine.rate}%): ${formatCurrency(taxLine.amount)}`, 390, 11, { gap: 18 });
+    }
   }
   drawText(`Total: ${formatCurrency(input.total)}`, 390, 14, { bold: true, gap: 24 });
 

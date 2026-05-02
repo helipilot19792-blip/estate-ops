@@ -9,6 +9,7 @@ create table if not exists public.organization_invoice_settings (
   default_grounds_rate numeric(10, 2) not null default 0,
   tax_label text,
   tax_rate numeric(7, 3) not null default 0,
+  tax_lines jsonb not null default '[]'::jsonb,
   auto_add_turnover boolean not null default true,
   auto_add_grounds boolean not null default true,
   payment_instructions text,
@@ -51,6 +52,7 @@ create table if not exists public.owner_invoices (
   subtotal numeric(10, 2) not null default 0,
   tax_label text,
   tax_rate numeric(7, 3) not null default 0,
+  tax_lines jsonb not null default '[]'::jsonb,
   tax_total numeric(10, 2) not null default 0,
   total numeric(10, 2) not null default 0,
   sent_at timestamptz,
@@ -59,6 +61,7 @@ create table if not exists public.owner_invoices (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint owner_invoices_status_check check (status in ('draft', 'sent', 'paid', 'void')),
+  constraint owner_invoices_tax_lines_array check (jsonb_typeof(tax_lines) = 'array'),
   constraint owner_invoices_line_items_array check (jsonb_typeof(line_items) = 'array')
 );
 
@@ -66,13 +69,15 @@ alter table public.organization_invoice_settings
   add column if not exists from_email text,
   add column if not exists reply_to_email text,
   add column if not exists tax_label text,
-  add column if not exists tax_rate numeric(7, 3) not null default 0;
+  add column if not exists tax_rate numeric(7, 3) not null default 0,
+  add column if not exists tax_lines jsonb not null default '[]'::jsonb;
 
 alter table public.owner_invoices
   add column if not exists from_email text,
   add column if not exists reply_to_email text,
   add column if not exists tax_label text,
-  add column if not exists tax_rate numeric(7, 3) not null default 0;
+  add column if not exists tax_rate numeric(7, 3) not null default 0,
+  add column if not exists tax_lines jsonb not null default '[]'::jsonb;
 
 create unique index if not exists owner_invoices_org_invoice_number_idx
   on public.owner_invoices (organization_id, invoice_number);

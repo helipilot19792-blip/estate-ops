@@ -12,6 +12,33 @@ function getLineItemTotal(item: InvoicePdfLineItem) {
   return Number(item.quantity || 0) * Number(item.rate || 0);
 }
 
+function normalizeTaxLines(value: unknown, subtotal: number, fallbackRate: number) {
+  const rows = Array.isArray(value) ? value : [];
+  const normalized = rows
+    .map((line: any, index) => {
+      const rawLabel = String(line?.label || "").trim();
+      const rate = Math.max(Number(line?.rate || 0), 0);
+      return {
+        id: String(line?.id || `tax-${index + 1}`),
+        label: rawLabel || "Tax",
+        rate,
+        amount: typeof line?.amount === "number"
+          ? Number(line.amount)
+          : Math.round(subtotal * (rate / 100) * 100) / 100,
+        hasValue: !!rawLabel || rate > 0,
+      };
+    })
+    .filter((line) => line.hasValue)
+    .map(({ hasValue, ...line }) => line);
+
+  if (normalized.length > 0) return normalized;
+
+  const rate = Math.max(fallbackRate, 0);
+  return rate > 0
+    ? [{ id: "tax-1", label: "Tax", rate, amount: Math.round(subtotal * (rate / 100) * 100) / 100 }]
+    : [];
+}
+
 export async function POST(request: NextRequest) {
   try {
     if (!supabaseUrl || !publicSupabaseKey) {
@@ -61,10 +88,11 @@ export async function POST(request: NextRequest) {
         ? Number(body.subtotal)
         : lineItems.reduce((sum, item) => sum + getLineItemTotal(item), 0);
     const taxRate = Math.max(Number(body?.taxRate || 0), 0);
+    const taxLines = normalizeTaxLines(body?.taxLines, subtotal, taxRate);
     const taxTotal =
       typeof body?.taxTotal === "number"
         ? Number(body.taxTotal)
-        : Math.round(subtotal * (taxRate / 100) * 100) / 100;
+        : taxLines.reduce((sum, line) => sum + line.amount, 0);
     const total =
       typeof body?.total === "number"
         ? Number(body.total)
@@ -83,8 +111,7 @@ export async function POST(request: NextRequest) {
       notes: body?.notes ? String(body.notes) : null,
       paymentInstructions: body?.paymentInstructions ? String(body.paymentInstructions) : null,
       subtotal,
-      taxLabel: body?.taxLabel ? String(body.taxLabel) : "Tax",
-      taxRate,
+      taxLines,
       taxTotal,
       total,
       lineItems,

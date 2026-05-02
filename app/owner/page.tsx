@@ -101,6 +101,7 @@ type OwnerInvoice = {
   payment_instructions: string | null;
   tax_label?: string | null;
   tax_rate?: number | null;
+  tax_lines?: Array<{ id?: string; label: string; rate: number; amount?: number }> | null;
   line_items: OwnerInvoiceLineItem[];
   subtotal: number;
   tax_total: number;
@@ -267,6 +268,34 @@ function formatCurrency(value: number | null | undefined) {
     style: "currency",
     currency: "USD",
   }).format(Number(value || 0));
+}
+
+function getOwnerInvoiceTaxLines(invoice: OwnerInvoice) {
+  const subtotal = Number(invoice.subtotal || 0);
+  const lines = Array.isArray(invoice.tax_lines) ? invoice.tax_lines : [];
+  const normalized = lines
+    .map((line, index) => {
+      const rawLabel = String(line.label || "").trim();
+      const rate = Math.max(Number(line.rate || 0), 0);
+      return {
+        id: line.id || `tax-${index + 1}`,
+        label: rawLabel || invoice.tax_label || "Tax",
+        rate,
+        amount: typeof line.amount === "number"
+          ? Number(line.amount)
+          : Math.round(subtotal * (rate / 100) * 100) / 100,
+        hasValue: !!rawLabel || rate > 0,
+      };
+    })
+    .filter((line) => line.hasValue)
+    .map(({ hasValue, ...line }) => line);
+
+  if (normalized.length > 0) return normalized;
+
+  const rate = Math.max(Number(invoice.tax_rate || 0), 0);
+  return rate > 0
+    ? [{ id: "tax-1", label: invoice.tax_label || "Tax", rate, amount: Number(invoice.tax_total || 0) }]
+    : [];
 }
 
 function getDaysInMonth(monthKey: string) {
@@ -899,7 +928,7 @@ export default function OwnerPage() {
         .order("created_at", { ascending: false }),
       supabase
         .from("owner_invoices")
-        .select("id,owner_account_id,property_id,invoice_number,status,issue_date,due_date,company_name,logo_url,header_text,notes,payment_instructions,tax_label,tax_rate,line_items,subtotal,tax_total,total,sent_at")
+        .select("id,owner_account_id,property_id,invoice_number,status,issue_date,due_date,company_name,logo_url,header_text,notes,payment_instructions,tax_label,tax_rate,tax_lines,line_items,subtotal,tax_total,total,sent_at")
         .eq("owner_account_id", ownerRes.id)
         .in("status", ["sent", "paid"])
         .order("issue_date", { ascending: false }),
@@ -1970,6 +1999,7 @@ export default function OwnerPage() {
                 propertyOwnerInvoices.map((invoice) => {
                   const invoiceProperty = properties.find((property) => property.id === invoice.property_id);
                   const lineItems = Array.isArray(invoice.line_items) ? invoice.line_items : [];
+                  const taxLines = getOwnerInvoiceTaxLines(invoice);
 
                   return (
                     <div key={invoice.id} className="overflow-hidden rounded-[24px] border border-white/8 bg-white/[0.02]">
@@ -2036,12 +2066,12 @@ export default function OwnerPage() {
                             <span>Subtotal</span>
                             <span>{formatCurrency(invoice.subtotal)}</span>
                           </div>
-                          {Number(invoice.tax_total || 0) > 0 || Number(invoice.tax_rate || 0) > 0 ? (
+                          {taxLines.map((taxLine) => (
                             <div className="flex justify-between">
-                              <span>{invoice.tax_label || "Tax"} ({Number(invoice.tax_rate || 0)}%)</span>
-                              <span>{formatCurrency(invoice.tax_total)}</span>
+                              <span>{taxLine.label} ({taxLine.rate}%)</span>
+                              <span>{formatCurrency(taxLine.amount)}</span>
                             </div>
-                          ) : null}
+                          ))}
                           <div className="flex justify-between border-t border-white/8 pt-2 text-base font-semibold text-[#f7f1e8]">
                             <span>Total</span>
                             <span>{formatCurrency(invoice.total)}</span>
