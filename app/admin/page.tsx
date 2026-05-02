@@ -703,6 +703,7 @@ export default function AdminPage() {
   const [maintenanceHistoryExpanded, setMaintenanceHistoryExpanded] = useState(false);
   const [deletingResolvedMaintenanceFlags, setDeletingResolvedMaintenanceFlags] = useState(false);
   const [savingInvoiceSettings, setSavingInvoiceSettings] = useState(false);
+  const [savingPropertyRateId, setSavingPropertyRateId] = useState<string | null>(null);
   const [creatingInvoice, setCreatingInvoice] = useState(false);
   const [previewingInvoicePdf, setPreviewingInvoicePdf] = useState(false);
   const [uploadingInvoiceLogo, setUploadingInvoiceLogo] = useState(false);
@@ -5031,6 +5032,23 @@ This removes its linked members and deletes the grounds account.`
     }));
   }
 
+  function getSavedPropertyInvoiceRate(propertyId: string) {
+    const saved = propertyInvoiceRates.find((rate) => rate.property_id === propertyId);
+
+    return {
+      turnover: Number(saved?.turnover_rate ?? invoiceSettings?.default_turnover_rate ?? 0),
+      grounds: Number(saved?.grounds_rate ?? invoiceSettings?.default_grounds_rate ?? 0),
+    };
+  }
+
+  function hasUnsavedPropertyInvoiceRate(propertyId: string) {
+    const draft = propertyInvoiceRateDrafts[propertyId];
+    if (!draft) return false;
+
+    const saved = getSavedPropertyInvoiceRate(propertyId);
+    return Number(draft.turnover || 0) !== saved.turnover || Number(draft.grounds || 0) !== saved.grounds;
+  }
+
   function escapeCsvCell(value: string | number | null | undefined) {
     const text = String(value ?? "");
     if (/[",\n\r]/.test(text)) {
@@ -5353,6 +5371,53 @@ This removes its linked members and deletes the grounds account.`
     }
   }
 
+  async function savePropertyInvoiceRate(propertyId: string) {
+    if (!currentOrganizationId) return;
+
+    const property = properties.find((item) => item.id === propertyId);
+    if (!property) {
+      setError("Property not found.");
+      return;
+    }
+
+    const draft = propertyInvoiceRateDrafts[propertyId] || { turnover: "0", grounds: "0" };
+
+    setSavingPropertyRateId(propertyId);
+    setError("");
+    setActionMessage("");
+
+    try {
+      const payload = {
+        organization_id: currentOrganizationId,
+        property_id: propertyId,
+        turnover_rate: Number(draft.turnover || 0),
+        grounds_rate: Number(draft.grounds || 0),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from("property_invoice_rates")
+        .upsert(payload, { onConflict: "property_id" })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setPropertyInvoiceRates((rates) => {
+        const nextRate = data as PropertyInvoiceRateRow;
+        const existing = rates.some((rate) => rate.property_id === propertyId);
+        return existing
+          ? rates.map((rate) => (rate.property_id === propertyId ? nextRate : rate))
+          : [nextRate, ...rates];
+      });
+      setActionMessage(`Saved invoice rates for ${property.name || property.address || "property"}.`);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Could not save property invoice rates."));
+    } finally {
+      setSavingPropertyRateId(null);
+    }
+  }
+
   async function createOwnerInvoice(status: "draft" | "sent" = "draft") {
     if (!currentOrganizationId) return;
     if (!invoiceOwnerId) {
@@ -5610,11 +5675,32 @@ This removes its linked members and deletes the grounds account.`
                 ) : (
                   properties.map((property) => {
                     const draft = propertyInvoiceRateDrafts[property.id] || { turnover: "0", grounds: "0" };
+                    const saved = getSavedPropertyInvoiceRate(property.id);
+                    const hasUnsavedChanges = hasUnsavedPropertyInvoiceRate(property.id);
 
                     return (
                       <div key={property.id} className="rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] p-3">
-                        <div className="text-sm font-semibold text-[#241c15]">
-                          {property.name || property.address || "Unnamed property"}
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <div className="text-sm font-semibold text-[#241c15]">
+                              {property.name || property.address || "Unnamed property"}
+                            </div>
+                            <div className="mt-1 text-xs text-[#7f7263]">
+                              Saved: turnover {formatCurrency(saved.turnover)} | grounds {formatCurrency(saved.grounds)}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void savePropertyInvoiceRate(property.id)}
+                            disabled={savingPropertyRateId === property.id || !hasUnsavedChanges}
+                            className="rounded-full bg-[#241c15] px-3 py-1.5 text-xs font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {savingPropertyRateId === property.id
+                              ? "Saving..."
+                              : hasUnsavedChanges
+                                ? "Save rates"
+                                : "Saved"}
+                          </button>
                         </div>
                         <div className="mt-3 grid gap-3 sm:grid-cols-2">
                           <label className="text-xs font-medium text-[#5f5245]">
