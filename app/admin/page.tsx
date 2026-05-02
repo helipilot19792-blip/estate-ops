@@ -347,6 +347,8 @@ type InvoiceSettingsRow = {
   organization_id: string;
   company_name: string | null;
   logo_url: string | null;
+  from_email: string | null;
+  reply_to_email: string | null;
   header_text: string | null;
   default_turnover_rate: number | null;
   default_grounds_rate: number | null;
@@ -713,6 +715,8 @@ export default function AdminPage() {
   const [invoiceNotes, setInvoiceNotes] = useState("");
   const [invoiceCompanyName, setInvoiceCompanyName] = useState("");
   const [invoiceLogoUrl, setInvoiceLogoUrl] = useState("");
+  const [invoiceFromEmail, setInvoiceFromEmail] = useState("");
+  const [invoiceReplyToEmail, setInvoiceReplyToEmail] = useState("");
   const [invoiceHeaderText, setInvoiceHeaderText] = useState("");
   const [invoicePaymentInstructions, setInvoicePaymentInstructions] = useState("");
   const [invoiceCcEmails, setInvoiceCcEmails] = useState("");
@@ -1062,6 +1066,8 @@ export default function AdminPage() {
   useEffect(() => {
     setInvoiceCompanyName(invoiceSettings?.company_name || currentOrganizationBilling?.name || "");
     setInvoiceLogoUrl(invoiceSettings?.logo_url || "");
+    setInvoiceFromEmail(invoiceSettings?.from_email || "");
+    setInvoiceReplyToEmail(invoiceSettings?.reply_to_email || "");
     setInvoiceHeaderText(
       invoiceSettings?.header_text ||
         "Thank you for trusting us with your property operations."
@@ -5311,6 +5317,8 @@ This removes its linked members and deletes the grounds account.`
         organization_id: currentOrganizationId,
         company_name: invoiceCompanyName.trim() || null,
         logo_url: invoiceLogoUrl.trim() || null,
+        from_email: invoiceFromEmail.trim().toLowerCase() || null,
+        reply_to_email: invoiceReplyToEmail.trim().toLowerCase() || null,
         header_text: invoiceHeaderText.trim() || null,
         auto_add_turnover: invoiceAutoTurnover,
         auto_add_grounds: invoiceAutoGrounds,
@@ -5379,6 +5387,8 @@ This removes its linked members and deletes the grounds account.`
           due_date: invoiceDueDate || null,
           company_name: invoiceCompanyName.trim() || null,
           logo_url: invoiceLogoUrl.trim() || null,
+          from_email: invoiceFromEmail.trim().toLowerCase() || null,
+          reply_to_email: invoiceReplyToEmail.trim().toLowerCase() || null,
           header_text: invoiceHeaderText.trim() || null,
           notes: invoiceNotes.trim() || null,
           payment_instructions: invoicePaymentInstructions.trim() || null,
@@ -5552,6 +5562,18 @@ This removes its linked members and deletes the grounds account.`
                   placeholder="Logo URL"
                   value={invoiceLogoUrl}
                   onChange={(e) => setInvoiceLogoUrl(e.target.value)}
+                />
+                <input
+                  className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                  placeholder="From email (must be verified in Resend)"
+                  value={invoiceFromEmail}
+                  onChange={(e) => setInvoiceFromEmail(e.target.value)}
+                />
+                <input
+                  className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                  placeholder="Reply-to email"
+                  value={invoiceReplyToEmail}
+                  onChange={(e) => setInvoiceReplyToEmail(e.target.value)}
                 />
                 <label className="inline-flex cursor-pointer items-center justify-center rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#f7f1e8]">
                   {uploadingInvoiceLogo ? "Uploading logo..." : "Upload logo"}

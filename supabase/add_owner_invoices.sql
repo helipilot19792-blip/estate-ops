@@ -2,6 +2,8 @@ create table if not exists public.organization_invoice_settings (
   organization_id uuid primary key references public.organizations(id) on delete cascade,
   company_name text,
   logo_url text,
+  from_email text,
+  reply_to_email text,
   header_text text,
   default_turnover_rate numeric(10, 2) not null default 0,
   default_grounds_rate numeric(10, 2) not null default 0,
@@ -38,6 +40,8 @@ create table if not exists public.owner_invoices (
   due_date date,
   company_name text,
   logo_url text,
+  from_email text,
+  reply_to_email text,
   header_text text,
   notes text,
   payment_instructions text,
@@ -53,6 +57,14 @@ create table if not exists public.owner_invoices (
   constraint owner_invoices_status_check check (status in ('draft', 'sent', 'paid', 'void')),
   constraint owner_invoices_line_items_array check (jsonb_typeof(line_items) = 'array')
 );
+
+alter table public.organization_invoice_settings
+  add column if not exists from_email text,
+  add column if not exists reply_to_email text;
+
+alter table public.owner_invoices
+  add column if not exists from_email text,
+  add column if not exists reply_to_email text;
 
 create unique index if not exists owner_invoices_org_invoice_number_idx
   on public.owner_invoices (organization_id, invoice_number);

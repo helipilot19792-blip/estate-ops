@@ -39,6 +39,12 @@ function parseEmailList(value: unknown) {
     .filter((item) => item.includes("@"));
 }
 
+function formatSender(fromEmail: string, companyName: string | null | undefined) {
+  const email = fromEmail.trim();
+  const name = String(companyName || "Property invoice").replace(/"/g, "");
+  return name ? `${name} <${email}>` : email;
+}
+
 type InvoiceLineItem = {
   description?: string | null;
   category?: string | null;
@@ -151,6 +157,21 @@ export async function POST(request: NextRequest) {
           .maybeSingle()
       : { data: null };
 
+    const { data: settings } = await service
+      .from("organization_invoice_settings")
+      .select("from_email, reply_to_email")
+      .eq("organization_id", invoice.organization_id)
+      .maybeSingle();
+
+    const fromEmail =
+      String(invoice.from_email || settings?.from_email || process.env.INVITE_FROM_EMAIL || "").trim();
+    const replyToEmail =
+      String(invoice.reply_to_email || settings?.reply_to_email || fromEmail || "").trim();
+
+    if (!fromEmail) {
+      return NextResponse.json({ error: "Invoice sender email is not configured." }, { status: 500 });
+    }
+
     const lineItems = Array.isArray(invoice.line_items)
       ? (invoice.line_items as InvoiceLineItem[])
       : [];
@@ -233,9 +254,10 @@ export async function POST(request: NextRequest) {
 
     const resend = new Resend(process.env.RESEND_API_KEY);
     const result = await resend.emails.send({
-      from: process.env.INVITE_FROM_EMAIL,
+      from: formatSender(fromEmail, invoice.company_name),
       to: owner.email,
       cc: ccEmails.length > 0 ? ccEmails : undefined,
+      replyTo: replyToEmail || undefined,
       subject: `Invoice ${invoice.invoice_number} from ${invoice.company_name || "your property manager"}`,
       html,
       attachments: [
