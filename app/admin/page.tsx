@@ -446,7 +446,12 @@ function formatCurrency(value: number | null | undefined) {
 }
 
 function getErrorMessage(error: unknown, fallback: string) {
-  return error instanceof Error ? error.message : fallback;
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === "object" && "message" in error) {
+    const message = String((error as { message?: unknown }).message || "").trim();
+    if (message) return message;
+  }
+  return fallback;
 }
 
 function getTodayYmd() {
@@ -5395,16 +5400,14 @@ This removes its linked members and deletes the grounds account.`
         updated_at: new Date().toISOString(),
       };
 
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from("property_invoice_rates")
-        .upsert(payload, { onConflict: "property_id" })
-        .select()
-        .single();
+        .upsert(payload, { onConflict: "property_id" });
 
       if (error) throw error;
 
       setPropertyInvoiceRates((rates) => {
-        const nextRate = data as PropertyInvoiceRateRow;
+        const nextRate = payload as PropertyInvoiceRateRow;
         const existing = rates.some((rate) => rate.property_id === propertyId);
         return existing
           ? rates.map((rate) => (rate.property_id === propertyId ? nextRate : rate))
