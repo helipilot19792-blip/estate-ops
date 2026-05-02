@@ -222,7 +222,21 @@ export async function POST(request: NextRequest) {
           </thead>
           <tbody>${rows}</tbody>
         </table>
-        <div style="text-align:right;font-size:20px;font-weight:700;">Total ${formatCurrency(invoice.total)}</div>
+        <div style="margin-left:auto;width:280px;font-size:14px;">
+          <div style="display:flex;justify-content:space-between;padding:4px 0;">
+            <span>Subtotal</span><span>${formatCurrency(invoice.subtotal)}</span>
+          </div>
+          ${
+            Number(invoice.tax_total || 0) > 0 || Number(invoice.tax_rate || 0) > 0
+              ? `<div style="display:flex;justify-content:space-between;padding:4px 0;">
+                  <span>${escapeHtml(invoice.tax_label || "Tax")} (${Number(invoice.tax_rate || 0)}%)</span><span>${formatCurrency(invoice.tax_total)}</span>
+                </div>`
+              : ""
+          }
+          <div style="display:flex;justify-content:space-between;padding:8px 0 0;font-size:20px;font-weight:700;">
+            <span>Total</span><span>${formatCurrency(invoice.total)}</span>
+          </div>
+        </div>
         ${invoice.notes ? `<p style="margin-top:18px;color:#5f5245;">${escapeHtml(invoice.notes)}</p>` : ""}
         ${invoice.payment_instructions ? `<p style="margin-top:18px;"><strong>Payment:</strong> ${escapeHtml(invoice.payment_instructions)}</p>` : ""}
         <p style="margin-top:22px;font-size:12px;color:#8a7b68;">You can also view this invoice inside your owner portal.</p>
@@ -240,6 +254,10 @@ export async function POST(request: NextRequest) {
       headerText: invoice.header_text || null,
       notes: invoice.notes || null,
       paymentInstructions: invoice.payment_instructions || null,
+      subtotal: Number(invoice.subtotal || 0),
+      taxLabel: invoice.tax_label || "Tax",
+      taxRate: Number(invoice.tax_rate || 0),
+      taxTotal: Number(invoice.tax_total || 0),
       total: Number(invoice.total || 0),
       lineItems,
     });

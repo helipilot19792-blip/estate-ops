@@ -18,6 +18,10 @@ export type InvoicePdfInput = {
   headerText: string | null;
   notes: string | null;
   paymentInstructions: string | null;
+  subtotal: number;
+  taxLabel: string | null;
+  taxRate: number;
+  taxTotal: number;
   total: number;
   lineItems: InvoicePdfLineItem[];
 };
@@ -112,6 +116,10 @@ export function createInvoicePdfBuffer(input: InvoicePdfInput) {
   }
 
   y -= 10;
+  pushLine(`Subtotal: ${formatCurrency(input.subtotal)}`, 11, 390, 18);
+  if (input.taxTotal > 0 || input.taxRate > 0) {
+    pushLine(`${input.taxLabel || "Tax"} (${input.taxRate}%): ${formatCurrency(input.taxTotal)}`, 11, 390, 18);
+  }
   pushLine(`Total: ${formatCurrency(input.total)}`, 14, 390, 24);
 
   if (input.notes) {

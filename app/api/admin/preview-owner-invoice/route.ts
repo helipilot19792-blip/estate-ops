@@ -56,10 +56,19 @@ export async function POST(request: NextRequest) {
     const lineItems = Array.isArray(body?.lineItems)
       ? (body.lineItems as InvoicePdfLineItem[])
       : [];
+    const subtotal =
+      typeof body?.subtotal === "number"
+        ? Number(body.subtotal)
+        : lineItems.reduce((sum, item) => sum + getLineItemTotal(item), 0);
+    const taxRate = Math.max(Number(body?.taxRate || 0), 0);
+    const taxTotal =
+      typeof body?.taxTotal === "number"
+        ? Number(body.taxTotal)
+        : Math.round(subtotal * (taxRate / 100) * 100) / 100;
     const total =
       typeof body?.total === "number"
         ? Number(body.total)
-        : lineItems.reduce((sum, item) => sum + getLineItemTotal(item), 0);
+        : subtotal + taxTotal;
 
     const pdfBuffer = createInvoicePdfBuffer({
       invoiceNumber: String(body?.invoiceNumber || "PREVIEW"),
@@ -72,6 +81,10 @@ export async function POST(request: NextRequest) {
       headerText: body?.headerText ? String(body.headerText) : null,
       notes: body?.notes ? String(body.notes) : null,
       paymentInstructions: body?.paymentInstructions ? String(body.paymentInstructions) : null,
+      subtotal,
+      taxLabel: body?.taxLabel ? String(body.taxLabel) : "Tax",
+      taxRate,
+      taxTotal,
       total,
       lineItems,
     });

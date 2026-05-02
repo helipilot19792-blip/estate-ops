@@ -7,6 +7,8 @@ create table if not exists public.organization_invoice_settings (
   header_text text,
   default_turnover_rate numeric(10, 2) not null default 0,
   default_grounds_rate numeric(10, 2) not null default 0,
+  tax_label text,
+  tax_rate numeric(7, 3) not null default 0,
   auto_add_turnover boolean not null default true,
   auto_add_grounds boolean not null default true,
   payment_instructions text,
@@ -47,6 +49,8 @@ create table if not exists public.owner_invoices (
   payment_instructions text,
   line_items jsonb not null default '[]'::jsonb,
   subtotal numeric(10, 2) not null default 0,
+  tax_label text,
+  tax_rate numeric(7, 3) not null default 0,
   tax_total numeric(10, 2) not null default 0,
   total numeric(10, 2) not null default 0,
   sent_at timestamptz,
@@ -60,11 +64,15 @@ create table if not exists public.owner_invoices (
 
 alter table public.organization_invoice_settings
   add column if not exists from_email text,
-  add column if not exists reply_to_email text;
+  add column if not exists reply_to_email text,
+  add column if not exists tax_label text,
+  add column if not exists tax_rate numeric(7, 3) not null default 0;
 
 alter table public.owner_invoices
   add column if not exists from_email text,
-  add column if not exists reply_to_email text;
+  add column if not exists reply_to_email text,
+  add column if not exists tax_label text,
+  add column if not exists tax_rate numeric(7, 3) not null default 0;
 
 create unique index if not exists owner_invoices_org_invoice_number_idx
   on public.owner_invoices (organization_id, invoice_number);

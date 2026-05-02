@@ -99,6 +99,8 @@ type OwnerInvoice = {
   header_text: string | null;
   notes: string | null;
   payment_instructions: string | null;
+  tax_label?: string | null;
+  tax_rate?: number | null;
   line_items: OwnerInvoiceLineItem[];
   subtotal: number;
   tax_total: number;
@@ -897,7 +899,7 @@ export default function OwnerPage() {
         .order("created_at", { ascending: false }),
       supabase
         .from("owner_invoices")
-        .select("id,owner_account_id,property_id,invoice_number,status,issue_date,due_date,company_name,logo_url,header_text,notes,payment_instructions,line_items,subtotal,tax_total,total,sent_at")
+        .select("id,owner_account_id,property_id,invoice_number,status,issue_date,due_date,company_name,logo_url,header_text,notes,payment_instructions,tax_label,tax_rate,line_items,subtotal,tax_total,total,sent_at")
         .eq("owner_account_id", ownerRes.id)
         .in("status", ["sent", "paid"])
         .order("issue_date", { ascending: false }),
@@ -2026,6 +2028,25 @@ export default function OwnerPage() {
                             </div>
                           );
                         })}
+                      </div>
+
+                      <div className="border-t border-white/8 px-5 py-4 text-sm text-[#e6d8bf]">
+                        <div className="ml-auto max-w-xs space-y-2">
+                          <div className="flex justify-between">
+                            <span>Subtotal</span>
+                            <span>{formatCurrency(invoice.subtotal)}</span>
+                          </div>
+                          {Number(invoice.tax_total || 0) > 0 || Number(invoice.tax_rate || 0) > 0 ? (
+                            <div className="flex justify-between">
+                              <span>{invoice.tax_label || "Tax"} ({Number(invoice.tax_rate || 0)}%)</span>
+                              <span>{formatCurrency(invoice.tax_total)}</span>
+                            </div>
+                          ) : null}
+                          <div className="flex justify-between border-t border-white/8 pt-2 text-base font-semibold text-[#f7f1e8]">
+                            <span>Total</span>
+                            <span>{formatCurrency(invoice.total)}</span>
+                          </div>
+                        </div>
                       </div>
 
                       {(invoice.notes || invoice.payment_instructions) ? (
