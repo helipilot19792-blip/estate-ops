@@ -4913,6 +4913,12 @@ This removes its linked members and deletes the grounds account.`
     return ownerAccounts.find((owner) => owner.id === accessRow.owner_account_id) || null;
   }
 
+  function getInvoiceOwnerId() {
+    if (invoiceOwnerId) return invoiceOwnerId;
+    if (!invoicePropertyId) return "";
+    return getOwnerForProperty(invoicePropertyId)?.id || "";
+  }
+
   function getPropertiesForOwner(ownerAccountId: string) {
     const linkedPropertyIds = new Set(
       ownerPropertyAccess
@@ -5350,8 +5356,8 @@ This removes its linked members and deletes the grounds account.`
   }
 
   function getInvoiceRecipientContext() {
-    const owner = ownerAccounts.find((account) => account.id === invoiceOwnerId) || null;
     const property = properties.find((item) => item.id === invoicePropertyId) || null;
+    const owner = ownerAccounts.find((account) => account.id === getInvoiceOwnerId()) || null;
 
     return {
       owner,
@@ -5538,7 +5544,9 @@ This removes its linked members and deletes the grounds account.`
 
   async function createOwnerInvoice(status: "draft" | "sent" = "draft") {
     if (!currentOrganizationId) return;
-    if (!invoiceOwnerId) {
+    const effectiveOwnerId = getInvoiceOwnerId();
+
+    if (!effectiveOwnerId) {
       setError("Choose an owner for this invoice.");
       return;
     }
@@ -5565,7 +5573,7 @@ This removes its linked members and deletes the grounds account.`
         .from("owner_invoices")
         .insert({
           organization_id: currentOrganizationId,
-          owner_account_id: invoiceOwnerId,
+          owner_account_id: effectiveOwnerId,
           property_id: invoicePropertyId || null,
           invoice_number: invoiceNumber,
           status,
@@ -5717,8 +5725,7 @@ This removes its linked members and deletes the grounds account.`
   }
 
   function renderInvoicesSection() {
-    const selectedOwner = ownerAccounts.find((owner) => owner.id === invoiceOwnerId) || null;
-    const ownerProperties = selectedOwner ? getPropertiesForOwner(selectedOwner.id) : [];
+    const ownerProperties = invoiceOwnerId ? getPropertiesForOwner(invoiceOwnerId) : properties;
     const invoiceSubtotal = getInvoiceLineItemsTotal(invoiceLineItems);
     const invoiceTaxLinesWithAmounts = getInvoiceTaxLinesForSubtotal(invoiceSubtotal);
     const invoiceTaxTotal = invoiceTaxLinesWithAmounts.reduce((sum, line) => sum + line.amount, 0);
@@ -5995,33 +6002,35 @@ This removes its linked members and deletes the grounds account.`
               <div className="grid gap-3 md:grid-cols-2">
                 <select
                   className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                  value={invoiceOwnerId}
+                  value={invoicePropertyId}
+                  onChange={(e) => {
+                    const propertyId = e.target.value;
+                    const linkedOwner = propertyId ? getOwnerForProperty(propertyId) : null;
+                    setInvoiceDraftDirty(true);
+                    setInvoicePropertyId(propertyId);
+                    setInvoiceOwnerId(linkedOwner?.id || "");
+                  }}
+                >
+                  <option value="">Choose property</option>
+                  {ownerProperties.map((property) => (
+                    <option key={property.id} value={property.id}>
+                      {property.name || property.address || "Unnamed property"}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                  value={getInvoiceOwnerId()}
                   onChange={(e) => {
                     setInvoiceDraftDirty(true);
                     setInvoiceOwnerId(e.target.value);
                     setInvoicePropertyId("");
                   }}
                 >
-                  <option value="">Choose owner</option>
+                  <option value="">Owner auto-selected</option>
                   {ownerAccounts.map((owner) => (
                     <option key={owner.id} value={owner.id}>
                       {owner.full_name || owner.email}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                  value={invoicePropertyId}
-                  onChange={(e) => {
-                    setInvoiceDraftDirty(true);
-                    setInvoicePropertyId(e.target.value);
-                  }}
-                  disabled={!selectedOwner}
-                >
-                  <option value="">All owner properties</option>
-                  {ownerProperties.map((property) => (
-                    <option key={property.id} value={property.id}>
-                      {property.name || property.address || "Unnamed property"}
                     </option>
                   ))}
                 </select>
