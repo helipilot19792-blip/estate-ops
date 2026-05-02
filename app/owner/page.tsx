@@ -76,6 +76,34 @@ type GroundsRecurringRule = {
   active: boolean;
 };
 
+type OwnerInvoiceLineItem = {
+  id: string;
+  description: string;
+  category?: string;
+  quantity: number;
+  rate: number;
+};
+
+type OwnerInvoice = {
+  id: string;
+  owner_account_id: string;
+  property_id: string | null;
+  invoice_number: string;
+  status: "sent" | "paid";
+  issue_date: string;
+  due_date: string | null;
+  company_name: string | null;
+  logo_url: string | null;
+  header_text: string | null;
+  notes: string | null;
+  payment_instructions: string | null;
+  line_items: OwnerInvoiceLineItem[];
+  subtotal: number;
+  tax_total: number;
+  total: number;
+  sent_at?: string | null;
+};
+
 type MaintenanceFlagImage = {
   id: string;
   flag_id: string;
@@ -106,7 +134,7 @@ type TimelineItem = {
   tone?: "gold" | "emerald" | "sky" | "rose";
 };
 
-type OwnerTab = "overview" | "insights";
+type OwnerTab = "overview" | "insights" | "invoices";
 
 type BookingInsight = {
   id: string;
@@ -228,6 +256,13 @@ function getMonthLabel(monthKey: string) {
   return new Date(year, month - 1, 1).toLocaleDateString(undefined, {
     month: "short",
   });
+}
+
+function formatCurrency(value: number | null | undefined) {
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+  }).format(Number(value || 0));
 }
 
 function getDaysInMonth(monthKey: string) {
@@ -735,6 +770,7 @@ export default function OwnerPage() {
   const [bookingEvents, setBookingEvents] = useState<BookingEvent[]>([]);
   const [groundsJobs, setGroundsJobs] = useState<GroundsJob[]>([]);
   const [groundsRecurringRules, setGroundsRecurringRules] = useState<GroundsRecurringRule[]>([]);
+  const [ownerInvoices, setOwnerInvoices] = useState<OwnerInvoice[]>([]);
   const [flags, setFlags] = useState<MaintenanceFlag[]>([]);
   const [flagImages, setFlagImages] = useState<MaintenanceFlagImage[]>([]);
   const [reportOpen, setReportOpen] = useState(false);
@@ -810,6 +846,7 @@ export default function OwnerPage() {
       setBookingEvents([]);
       setGroundsJobs([]);
       setGroundsRecurringRules([]);
+      setOwnerInvoices([]);
       setFlags([]);
       setFlagImages([]);
       setLoading(false);
@@ -822,6 +859,7 @@ export default function OwnerPage() {
       bookingEventsRes,
       groundsRes,
       groundsRecurringRulesRes,
+      ownerInvoicesRes,
       flagsRes,
       flagImagesRes,
     ] = await Promise.all([
@@ -851,6 +889,12 @@ export default function OwnerPage() {
         .in("property_id", propertyIds)
         .order("created_at", { ascending: false }),
       supabase
+        .from("owner_invoices")
+        .select("id,owner_account_id,property_id,invoice_number,status,issue_date,due_date,company_name,logo_url,header_text,notes,payment_instructions,line_items,subtotal,tax_total,total,sent_at")
+        .eq("owner_account_id", ownerRes.id)
+        .in("status", ["sent", "paid"])
+        .order("issue_date", { ascending: false }),
+      supabase
         .from("property_maintenance_flags")
         .select("id,property_id,source,category,urgency,status,notes,created_at,flagged_at,resolved_at")
         .in("property_id", propertyIds)
@@ -867,6 +911,7 @@ export default function OwnerPage() {
       bookingEventsRes,
       groundsRes,
       groundsRecurringRulesRes,
+      ownerInvoicesRes,
       flagsRes,
       flagImagesRes,
     ]) {
@@ -891,6 +936,7 @@ export default function OwnerPage() {
     setBookingEvents(bookingEventsRes.error ? [] : ((bookingEventsRes.data ?? []) as BookingEvent[]));
     setGroundsJobs((groundsRes.data ?? []) as GroundsJob[]);
     setGroundsRecurringRules((groundsRecurringRulesRes.data ?? []) as GroundsRecurringRule[]);
+    setOwnerInvoices((ownerInvoicesRes.data ?? []) as OwnerInvoice[]);
     setFlags((flagsRes.data ?? []) as MaintenanceFlag[]);
     setFlagImages((flagImagesRes.data ?? []) as MaintenanceFlagImage[]);
     setSelectedPropertyId((currentPropertyId) => {
@@ -951,6 +997,13 @@ export default function OwnerPage() {
     if (!selectedProperty) return [];
     return groundsRecurringRules.filter((rule) => rule.property_id === selectedProperty.id && rule.active);
   }, [selectedProperty, groundsRecurringRules]);
+
+  const propertyOwnerInvoices = useMemo(() => {
+    if (!selectedProperty) return ownerInvoices;
+    return ownerInvoices.filter(
+      (invoice) => !invoice.property_id || invoice.property_id === selectedProperty.id
+    );
+  }, [selectedProperty, ownerInvoices]);
 
   const propertyFlags = useMemo(() => {
     if (!selectedProperty) return [];
@@ -1370,10 +1423,11 @@ export default function OwnerPage() {
         </section>
 
         <section className="rounded-[26px] border border-white/8 bg-[#15110d] p-2">
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid gap-2 lg:grid-cols-3">
             {[
               { key: "overview" as OwnerTab, label: "Overview", subtext: "Operations and upcoming activity" },
               { key: "insights" as OwnerTab, label: "Booking Insights", subtext: "Occupancy trends and booking history" },
+              { key: "invoices" as OwnerTab, label: "Invoices", subtext: "Statements and property charges" },
             ].map((tab) => {
               const isActive = activeOwnerTab === tab.key;
 
@@ -1596,7 +1650,7 @@ export default function OwnerPage() {
           </div>
         </section>
           </>
-        ) : (
+        ) : activeOwnerTab === "insights" ? (
           <>
             <section className="overflow-hidden rounded-[32px] border border-white/8 bg-[radial-gradient(circle_at_top_left,rgba(176,139,71,0.22),transparent_30%),linear-gradient(180deg,#18130f_0%,#100d0a_100%)] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.26)] sm:p-6">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -1852,6 +1906,90 @@ export default function OwnerPage() {
               </div>
             </section>
           </>
+        ) : (
+          <section className="rounded-[30px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">
+                  Owner Invoices
+                </div>
+                <h2 className="mt-2 text-xl font-semibold text-[#f7f1e8]">
+                  Statements for {selectedProperty.name || "this property"}
+                </h2>
+              </div>
+              <div className="rounded-full border border-[#b08b47]/30 bg-[#b08b47]/10 px-4 py-2 text-sm font-semibold text-[#f1d9a5]">
+                {propertyOwnerInvoices.length} invoice{propertyOwnerInvoices.length === 1 ? "" : "s"}
+              </div>
+            </div>
+
+            <div className="mt-5 space-y-4">
+              {propertyOwnerInvoices.length > 0 ? (
+                propertyOwnerInvoices.map((invoice) => {
+                  const invoiceProperty = properties.find((property) => property.id === invoice.property_id);
+                  const lineItems = Array.isArray(invoice.line_items) ? invoice.line_items : [];
+
+                  return (
+                    <div key={invoice.id} className="overflow-hidden rounded-[24px] border border-white/8 bg-white/[0.02]">
+                      <div className="border-b border-white/8 px-5 py-4">
+                        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                          <div>
+                            {invoice.logo_url ? (
+                              <img src={invoice.logo_url} alt="" className="mb-3 max-h-14 max-w-[180px] object-contain" />
+                            ) : null}
+                            <div className="text-lg font-semibold text-[#f7f1e8]">
+                              {invoice.company_name || "Property invoice"}
+                            </div>
+                            <div className="mt-1 text-sm text-[#ccb99a]">
+                              {invoice.invoice_number} · {invoiceProperty?.name || invoiceProperty?.address || "All linked properties"}
+                            </div>
+                          </div>
+                          <div className="text-left md:text-right">
+                            <div className="text-2xl font-semibold text-[#f7f1e8]">{formatCurrency(invoice.total)}</div>
+                            <div className="mt-1 text-sm text-[#e6d8bf]">
+                              {invoice.status === "paid" ? "Paid" : "Due"} {invoice.due_date ? formatDateLabel(invoice.due_date) : "on receipt"}
+                            </div>
+                          </div>
+                        </div>
+                        {invoice.header_text ? (
+                          <p className="mt-4 text-sm leading-6 text-[#e6d8bf]">{invoice.header_text}</p>
+                        ) : null}
+                      </div>
+
+                      <div className="divide-y divide-white/8">
+                        {lineItems.map((item, index) => {
+                          const quantity = Number(item.quantity || 0);
+                          const rate = Number(item.rate || 0);
+                          return (
+                            <div key={item.id || `${invoice.id}-${index}`} className="grid gap-2 px-5 py-3 text-sm md:grid-cols-[1fr_90px_110px_120px] md:items-center">
+                              <div className="font-medium text-[#f7f1e8]">{item.description}</div>
+                              <div className="text-[#ccb99a] md:text-right">Qty {quantity}</div>
+                              <div className="text-[#ccb99a] md:text-right">{formatCurrency(rate)}</div>
+                              <div className="font-semibold text-[#f7f1e8] md:text-right">{formatCurrency(quantity * rate)}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {(invoice.notes || invoice.payment_instructions) ? (
+                        <div className="border-t border-white/8 px-5 py-4 text-sm leading-6 text-[#e6d8bf]">
+                          {invoice.notes ? <p>{invoice.notes}</p> : null}
+                          {invoice.payment_instructions ? (
+                            <p className="mt-2">
+                              <span className="font-semibold text-[#f7f1e8]">Payment:</span> {invoice.payment_instructions}
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="rounded-2xl border border-white/7 bg-white/[0.02] px-4 py-5 text-sm text-[#e6d8bf]">
+                  No invoices have been sent for this property yet.
+                </div>
+              )}
+            </div>
+          </section>
         )}
       </div>
 

@@ -310,7 +310,8 @@ type AdminSection =
   | "assignments"
   | "jobs"
   | "calendar"
-  | "maintenance";
+  | "maintenance"
+  | "invoices";
 type PropertyEntryMode = "manual" | "airbnb";
 type PropertySetupTab = "overview" | "access" | "calendars" | "sops";
 type MyOrganizationRow = {
@@ -340,6 +341,46 @@ type OrganizationInviteRow = {
   token: string;
   sent_at?: string | null;
   expires_at?: string | null;
+  created_at?: string | null;
+};
+type InvoiceSettingsRow = {
+  organization_id: string;
+  company_name: string | null;
+  logo_url: string | null;
+  header_text: string | null;
+  default_turnover_rate: number | null;
+  default_grounds_rate: number | null;
+  auto_add_turnover: boolean | null;
+  auto_add_grounds: boolean | null;
+  payment_instructions: string | null;
+};
+type OwnerInvoiceLineItem = {
+  id: string;
+  description: string;
+  category: "turnover" | "grounds" | "expense" | "other";
+  quantity: number;
+  rate: number;
+  source_id?: string | null;
+};
+type OwnerInvoiceRow = {
+  id: string;
+  organization_id: string;
+  owner_account_id: string;
+  property_id: string | null;
+  invoice_number: string;
+  status: "draft" | "sent" | "paid" | "void";
+  issue_date: string;
+  due_date: string | null;
+  company_name: string | null;
+  logo_url: string | null;
+  header_text: string | null;
+  notes: string | null;
+  payment_instructions: string | null;
+  line_items: OwnerInvoiceLineItem[];
+  subtotal: number;
+  tax_total: number;
+  total: number;
+  sent_at?: string | null;
   created_at?: string | null;
 };
 function getMonthGrid(baseDate: Date) {
@@ -382,6 +423,27 @@ function formatDateLabel(dateString: string | null) {
     day: "numeric",
     year: "numeric",
   });
+}
+
+function formatCurrency(value: number | null | undefined) {
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+  }).format(Number(value || 0));
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
+function getTodayYmd() {
+  return toYmd(new Date());
+}
+
+function getDefaultDueDateYmd() {
+  const due = new Date();
+  due.setDate(due.getDate() + 14);
+  return toYmd(due);
 }
 
 function getTrialDaysRemaining(trialEndsAt?: string | null, now = new Date()) {
@@ -594,6 +656,8 @@ export default function AdminPage() {
   const [maintenanceFlags, setMaintenanceFlags] = useState<MaintenanceFlagRow[]>([]);
   const [maintenanceFlagImages, setMaintenanceFlagImages] = useState<MaintenanceFlagImageRow[]>([]);
   const [organizationInvites, setOrganizationInvites] = useState<OrganizationInviteRow[]>([]);
+  const [invoiceSettings, setInvoiceSettings] = useState<InvoiceSettingsRow | null>(null);
+  const [ownerInvoices, setOwnerInvoices] = useState<OwnerInvoiceRow[]>([]);
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
 
   const [error, setError] = useState("");
@@ -624,6 +688,25 @@ export default function AdminPage() {
   const [deletingMaintenanceFlagId, setDeletingMaintenanceFlagId] = useState<string | null>(null);
   const [maintenanceHistoryExpanded, setMaintenanceHistoryExpanded] = useState(false);
   const [deletingResolvedMaintenanceFlags, setDeletingResolvedMaintenanceFlags] = useState(false);
+  const [savingInvoiceSettings, setSavingInvoiceSettings] = useState(false);
+  const [creatingInvoice, setCreatingInvoice] = useState(false);
+  const [sendingInvoiceId, setSendingInvoiceId] = useState<string | null>(null);
+  const [invoiceOwnerId, setInvoiceOwnerId] = useState("");
+  const [invoicePropertyId, setInvoicePropertyId] = useState("");
+  const [invoiceIssueDate, setInvoiceIssueDate] = useState(() => getTodayYmd());
+  const [invoiceDueDate, setInvoiceDueDate] = useState(() => getDefaultDueDateYmd());
+  const [invoiceNotes, setInvoiceNotes] = useState("");
+  const [invoiceCompanyName, setInvoiceCompanyName] = useState("");
+  const [invoiceLogoUrl, setInvoiceLogoUrl] = useState("");
+  const [invoiceHeaderText, setInvoiceHeaderText] = useState("");
+  const [invoicePaymentInstructions, setInvoicePaymentInstructions] = useState("");
+  const [invoiceDefaultTurnoverRate, setInvoiceDefaultTurnoverRate] = useState("0");
+  const [invoiceDefaultGroundsRate, setInvoiceDefaultGroundsRate] = useState("0");
+  const [invoiceAutoTurnover, setInvoiceAutoTurnover] = useState(true);
+  const [invoiceAutoGrounds, setInvoiceAutoGrounds] = useState(true);
+  const [invoiceLineItems, setInvoiceLineItems] = useState<OwnerInvoiceLineItem[]>([
+    { id: "custom-1", description: "", category: "expense", quantity: 1, rate: 0 },
+  ]);
 
   const [propertyName, setPropertyName] = useState("");
   const [propertyEntryMode, setPropertyEntryMode] = useState<PropertyEntryMode>("manual");
@@ -962,6 +1045,20 @@ export default function AdminPage() {
   }, [selectedPropertyId]);
 
   useEffect(() => {
+    setInvoiceCompanyName(invoiceSettings?.company_name || currentOrganizationBilling?.name || "");
+    setInvoiceLogoUrl(invoiceSettings?.logo_url || "");
+    setInvoiceHeaderText(
+      invoiceSettings?.header_text ||
+        "Thank you for trusting us with your property operations."
+    );
+    setInvoicePaymentInstructions(invoiceSettings?.payment_instructions || "");
+    setInvoiceDefaultTurnoverRate(String(invoiceSettings?.default_turnover_rate ?? 0));
+    setInvoiceDefaultGroundsRate(String(invoiceSettings?.default_grounds_rate ?? 0));
+    setInvoiceAutoTurnover(invoiceSettings?.auto_add_turnover ?? true);
+    setInvoiceAutoGrounds(invoiceSettings?.auto_add_grounds ?? true);
+  }, [invoiceSettings, currentOrganizationBilling]);
+
+  useEffect(() => {
     if (!selectedPropertyId) {
       setDoorCode("");
       setAlarmCode("");
@@ -1102,6 +1199,8 @@ export default function AdminPage() {
       maintenanceFlagsRes,
       maintenanceFlagImagesRes,
       organizationInvitesRes,
+      invoiceSettingsRes,
+      ownerInvoicesRes,
     ] = await Promise.all([
       supabase
         .from("properties")
@@ -1185,6 +1284,16 @@ export default function AdminPage() {
         .in("role", ["cleaner", "grounds"])
         .in("status", ["pending", "sent"])
         .order("created_at", { ascending: false }),
+      supabase
+        .from("organization_invoice_settings")
+        .select("*")
+        .eq("organization_id", currentOrganizationId)
+        .maybeSingle(),
+      supabase
+        .from("owner_invoices")
+        .select("*")
+        .eq("organization_id", currentOrganizationId)
+        .order("created_at", { ascending: false }),
     ]);
 
     const responses = [
@@ -1212,10 +1321,12 @@ export default function AdminPage() {
       maintenanceFlagsRes,
       maintenanceFlagImagesRes,
       organizationInvitesRes,
+      invoiceSettingsRes,
+      ownerInvoicesRes,
     ];
 
     for (const response of responses) {
-      if (response.error) {
+      if (response.error && response !== invoiceSettingsRes) {
         setError(response.error.message);
         return;
       }
@@ -1261,6 +1372,8 @@ export default function AdminPage() {
     setMaintenanceFlags((maintenanceFlagsRes.data ?? []) as MaintenanceFlagRow[]);
     setMaintenanceFlagImages((maintenanceFlagImagesRes.data ?? []) as MaintenanceFlagImageRow[]);
     setOrganizationInvites((organizationInvitesRes.data ?? []) as OrganizationInviteRow[]);
+    setInvoiceSettings((invoiceSettingsRes.data ?? null) as InvoiceSettingsRow | null);
+    setOwnerInvoices((ownerInvoicesRes.data ?? []) as OwnerInvoiceRow[]);
 
     setReassignSelections((prev) => {
       const next = { ...prev };
@@ -4325,6 +4438,7 @@ This removes its linked members and deletes the grounds account.`
     { key: "calendar", label: "Calendar" },
     { key: "assignments", label: "Assignments" },
     { key: "jobs", label: "Jobs" },
+    { key: "invoices", label: "Invoices" },
     { key: "properties", label: "Properties" },
     { key: "cleanerAccounts", label: "Cleaner Accounts" },
     { key: "groundsAccounts", label: "Grounds Accounts" },
@@ -4832,6 +4946,610 @@ This removes its linked members and deletes the grounds account.`
     } finally {
       setLinkingOwnerProperty(false);
     }
+  }
+
+  function getLineItemTotal(item: OwnerInvoiceLineItem) {
+    return Number(item.quantity || 0) * Number(item.rate || 0);
+  }
+
+  function getInvoiceLineItemsTotal(items: OwnerInvoiceLineItem[]) {
+    return items.reduce((sum, item) => sum + getLineItemTotal(item), 0);
+  }
+
+  function escapeCsvCell(value: string | number | null | undefined) {
+    const text = String(value ?? "");
+    if (/[",\n\r]/.test(text)) {
+      return `"${text.replace(/"/g, '""')}"`;
+    }
+    return text;
+  }
+
+  function downloadInvoiceCsv(
+    invoice: OwnerInvoiceRow,
+    owner: OwnerAccountRow | null | undefined,
+    property: Property | null | undefined
+  ) {
+    const rows = [
+      [
+        "InvoiceNo",
+        "Customer",
+        "CustomerEmail",
+        "InvoiceDate",
+        "DueDate",
+        "Status",
+        "Property",
+        "Category",
+        "ProductService",
+        "Description",
+        "Qty",
+        "Rate",
+        "Amount",
+      ],
+      ...invoice.line_items.map((item) => {
+        const quantity = Number(item.quantity || 0);
+        const rate = Number(item.rate || 0);
+        return [
+          invoice.invoice_number,
+          owner?.full_name || owner?.email || "",
+          owner?.email || "",
+          invoice.issue_date,
+          invoice.due_date || "",
+          invoice.status,
+          property?.name || property?.address || "All properties",
+          item.category || "other",
+          item.category === "turnover"
+            ? "Turnover Cleaning"
+            : item.category === "grounds"
+              ? "Grounds Service"
+              : "Property Expense",
+          item.description,
+          quantity,
+          rate.toFixed(2),
+          (quantity * rate).toFixed(2),
+        ];
+      }),
+    ];
+
+    const csv = rows.map((row) => row.map(escapeCsvCell).join(",")).join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${invoice.invoice_number}-quickbooks.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function updateInvoiceLineItem(id: string, updates: Partial<OwnerInvoiceLineItem>) {
+    setInvoiceLineItems((items) =>
+      items.map((item) => (item.id === id ? { ...item, ...updates } : item))
+    );
+  }
+
+  function addInvoiceLineItem() {
+    setInvoiceLineItems((items) => [
+      ...items,
+      {
+        id: `custom-${Date.now()}`,
+        description: "",
+        category: "expense",
+        quantity: 1,
+        rate: 0,
+      },
+    ]);
+  }
+
+  function removeInvoiceLineItem(id: string) {
+    setInvoiceLineItems((items) =>
+      items.length === 1 ? items : items.filter((item) => item.id !== id)
+    );
+  }
+
+  function autoPopulateInvoiceItems() {
+    if (!invoicePropertyId) {
+      setError("Choose a property before auto-populating invoice items.");
+      return;
+    }
+
+    const turnoverRate = Number(invoiceDefaultTurnoverRate || 0);
+    const groundsRate = Number(invoiceDefaultGroundsRate || 0);
+    const generated: OwnerInvoiceLineItem[] = [];
+
+    if (invoiceAutoTurnover && turnoverRate > 0) {
+      for (const job of jobs.filter((item) => item.property_id === invoicePropertyId)) {
+        generated.push({
+          id: `turnover-${job.id}`,
+          description: `Turnover cleaning - ${formatDateLabel(job.scheduled_for || job.created_at?.slice(0, 10) || null)}`,
+          category: "turnover",
+          quantity: Number(job.cleaner_units_needed || 1),
+          rate: turnoverRate,
+          source_id: job.id,
+        });
+      }
+    }
+
+    if (invoiceAutoGrounds && groundsRate > 0) {
+      for (const job of groundsJobs.filter((item) => item.property_id === invoicePropertyId)) {
+        generated.push({
+          id: `grounds-${job.id}`,
+          description: `${job.job_type || "Grounds service"} - ${formatDateLabel(job.scheduled_for || job.created_at?.slice(0, 10) || null)}`,
+          category: "grounds",
+          quantity: Number(job.grounds_units_needed || 1),
+          rate: groundsRate,
+          source_id: job.id,
+        });
+      }
+    }
+
+    setInvoiceLineItems((items) => {
+      const customItems = items.filter((item) => !item.source_id && item.description.trim());
+      return generated.length > 0
+        ? [...generated, ...customItems]
+        : customItems.length > 0
+          ? customItems
+          : [{ id: "custom-1", description: "", category: "expense", quantity: 1, rate: 0 }];
+    });
+    setActionMessage(
+      generated.length > 0
+        ? `Added ${generated.length} job line item${generated.length === 1 ? "" : "s"} from this property.`
+        : "No matching jobs found for this property and rate setup."
+    );
+  }
+
+  async function saveInvoiceSettings() {
+    if (!currentOrganizationId) return;
+
+    setSavingInvoiceSettings(true);
+    setError("");
+    setActionMessage("");
+
+    try {
+      const { error } = await supabase.from("organization_invoice_settings").upsert({
+        organization_id: currentOrganizationId,
+        company_name: invoiceCompanyName.trim() || null,
+        logo_url: invoiceLogoUrl.trim() || null,
+        header_text: invoiceHeaderText.trim() || null,
+        default_turnover_rate: Number(invoiceDefaultTurnoverRate || 0),
+        default_grounds_rate: Number(invoiceDefaultGroundsRate || 0),
+        auto_add_turnover: invoiceAutoTurnover,
+        auto_add_grounds: invoiceAutoGrounds,
+        payment_instructions: invoicePaymentInstructions.trim() || null,
+        updated_at: new Date().toISOString(),
+      });
+
+      if (error) throw error;
+
+      setActionMessage("Invoice defaults saved.");
+      await loadData();
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Could not save invoice defaults."));
+    } finally {
+      setSavingInvoiceSettings(false);
+    }
+  }
+
+  async function createOwnerInvoice(status: "draft" | "sent" = "draft") {
+    if (!currentOrganizationId) return;
+    if (!invoiceOwnerId) {
+      setError("Choose an owner for this invoice.");
+      return;
+    }
+
+    const validLineItems = invoiceLineItems
+      .map((item) => ({
+        ...item,
+        description: item.description.trim(),
+        quantity: Number(item.quantity || 0),
+        rate: Number(item.rate || 0),
+      }))
+      .filter((item) => item.description && item.quantity > 0);
+
+    if (validLineItems.length === 0) {
+      setError("Add at least one invoice line item.");
+      return;
+    }
+
+    const subtotal = getInvoiceLineItemsTotal(validLineItems);
+    const invoiceNumber = `INV-${Date.now().toString().slice(-8)}`;
+
+    setCreatingInvoice(true);
+    setError("");
+    setActionMessage("");
+
+    try {
+      const { data, error } = await supabase
+        .from("owner_invoices")
+        .insert({
+          organization_id: currentOrganizationId,
+          owner_account_id: invoiceOwnerId,
+          property_id: invoicePropertyId || null,
+          invoice_number: invoiceNumber,
+          status,
+          issue_date: invoiceIssueDate || getTodayYmd(),
+          due_date: invoiceDueDate || null,
+          company_name: invoiceCompanyName.trim() || null,
+          logo_url: invoiceLogoUrl.trim() || null,
+          header_text: invoiceHeaderText.trim() || null,
+          notes: invoiceNotes.trim() || null,
+          payment_instructions: invoicePaymentInstructions.trim() || null,
+          line_items: validLineItems,
+          subtotal,
+          tax_total: 0,
+          total: subtotal,
+          sent_at: status === "sent" ? new Date().toISOString() : null,
+          sent_by_profile_id: status === "sent" ? currentAdminUserId : null,
+          created_by_profile_id: currentAdminUserId,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      if (status === "sent" && data?.id) {
+        await sendOwnerInvoiceEmail(data.id);
+      }
+
+      setActionMessage(status === "sent" ? "Invoice created and sent to owner." : "Invoice draft created.");
+      setInvoiceNotes("");
+      setInvoiceLineItems([{ id: "custom-1", description: "", category: "expense", quantity: 1, rate: 0 }]);
+      await loadData();
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Could not create invoice."));
+    } finally {
+      setCreatingInvoice(false);
+    }
+  }
+
+  async function sendOwnerInvoiceEmail(invoiceId: string) {
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (sessionError || !session?.access_token) {
+      throw new Error("Could not verify your admin session.");
+    }
+
+    const response = await fetch("/api/admin/send-owner-invoice", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ invoiceId }),
+    });
+
+    const result = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(result?.error || "Could not send invoice email.");
+    }
+  }
+
+  async function sendExistingOwnerInvoice(invoiceId: string) {
+    setSendingInvoiceId(invoiceId);
+    setError("");
+    setActionMessage("");
+
+    try {
+      await sendOwnerInvoiceEmail(invoiceId);
+      setActionMessage("Invoice sent to owner.");
+      await loadData();
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Could not send invoice."));
+    } finally {
+      setSendingInvoiceId(null);
+    }
+  }
+
+  function renderInvoicesSection() {
+    const selectedOwner = ownerAccounts.find((owner) => owner.id === invoiceOwnerId) || null;
+    const ownerProperties = selectedOwner ? getPropertiesForOwner(selectedOwner.id) : [];
+    const invoiceTotal = getInvoiceLineItemsTotal(invoiceLineItems);
+
+    return (
+      <div className="space-y-6">
+        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8a7b68]">Owner billing</p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#241c15]">Create owner invoices</h2>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-[#7f7263]">
+                Set your invoice branding, auto-fill job charges from turnover and grounds work, then add custom expenses like supplies.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void saveInvoiceSettings()}
+              disabled={savingInvoiceSettings}
+              className="rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60"
+            >
+              {savingInvoiceSettings ? "Saving..." : "Save defaults"}
+            </button>
+          </div>
+
+          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            <div className="rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+              <h3 className="text-base font-semibold text-[#241c15]">Branding and header</h3>
+              <div className="mt-4 grid gap-3">
+                <input
+                  className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                  placeholder="Company name"
+                  value={invoiceCompanyName}
+                  onChange={(e) => setInvoiceCompanyName(e.target.value)}
+                />
+                <input
+                  className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                  placeholder="Logo URL"
+                  value={invoiceLogoUrl}
+                  onChange={(e) => setInvoiceLogoUrl(e.target.value)}
+                />
+                <textarea
+                  className="min-h-[96px] rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                  placeholder="Custom invoice header"
+                  value={invoiceHeaderText}
+                  onChange={(e) => setInvoiceHeaderText(e.target.value)}
+                />
+                <textarea
+                  className="min-h-[80px] rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                  placeholder="Payment instructions"
+                  value={invoicePaymentInstructions}
+                  onChange={(e) => setInvoicePaymentInstructions(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="rounded-[24px] border border-[#eadfce] bg-white p-4">
+              <h3 className="text-base font-semibold text-[#241c15]">Job defaults</h3>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <label className="text-sm font-medium text-[#5f5245]">
+                  Turnover rate
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="mt-2 w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                    value={invoiceDefaultTurnoverRate}
+                    onChange={(e) => setInvoiceDefaultTurnoverRate(e.target.value)}
+                  />
+                </label>
+                <label className="text-sm font-medium text-[#5f5245]">
+                  Grounds rate
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="mt-2 w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                    value={invoiceDefaultGroundsRate}
+                    onChange={(e) => setInvoiceDefaultGroundsRate(e.target.value)}
+                  />
+                </label>
+              </div>
+              <div className="mt-4 grid gap-2 text-sm text-[#5f5245]">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={invoiceAutoTurnover}
+                    onChange={(e) => setInvoiceAutoTurnover(e.target.checked)}
+                  />
+                  Auto-populate turnover jobs
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={invoiceAutoGrounds}
+                    onChange={(e) => setInvoiceAutoGrounds(e.target.checked)}
+                  />
+                  Auto-populate grounds jobs
+                </label>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
+            <div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <select
+                  className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                  value={invoiceOwnerId}
+                  onChange={(e) => {
+                    setInvoiceOwnerId(e.target.value);
+                    setInvoicePropertyId("");
+                  }}
+                >
+                  <option value="">Choose owner</option>
+                  {ownerAccounts.map((owner) => (
+                    <option key={owner.id} value={owner.id}>
+                      {owner.full_name || owner.email}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                  value={invoicePropertyId}
+                  onChange={(e) => setInvoicePropertyId(e.target.value)}
+                  disabled={!selectedOwner}
+                >
+                  <option value="">All owner properties</option>
+                  {ownerProperties.map((property) => (
+                    <option key={property.id} value={property.id}>
+                      {property.name || property.address || "Unnamed property"}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="date"
+                  className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                  value={invoiceIssueDate}
+                  onChange={(e) => setInvoiceIssueDate(e.target.value)}
+                />
+                <input
+                  type="date"
+                  className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                  value={invoiceDueDate}
+                  onChange={(e) => setInvoiceDueDate(e.target.value)}
+                />
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={autoPopulateInvoiceItems}
+                  className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#f7f1e8]"
+                >
+                  Auto-populate from jobs
+                </button>
+                <button
+                  type="button"
+                  onClick={addInvoiceLineItem}
+                  className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#fcfaf7]"
+                >
+                  Add custom expense
+                </button>
+              </div>
+
+              <div className="mt-4 space-y-3">
+                {invoiceLineItems.map((item) => (
+                  <div key={item.id} className="grid gap-2 rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] p-3 md:grid-cols-[1fr_130px_110px_110px_auto] md:items-center">
+                    <input
+                      className="rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                      placeholder="Description"
+                      value={item.description}
+                      onChange={(e) => updateInvoiceLineItem(item.id, { description: e.target.value })}
+                    />
+                    <select
+                      className="rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                      value={item.category}
+                      onChange={(e) => updateInvoiceLineItem(item.id, { category: e.target.value as OwnerInvoiceLineItem["category"] })}
+                    >
+                      <option value="turnover">Turnover</option>
+                      <option value="grounds">Grounds</option>
+                      <option value="expense">Expense</option>
+                      <option value="other">Other</option>
+                    </select>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                      value={item.quantity}
+                      onChange={(e) => updateInvoiceLineItem(item.id, { quantity: Number(e.target.value || 0) })}
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                      value={item.rate}
+                      onChange={(e) => updateInvoiceLineItem(item.id, { rate: Number(e.target.value || 0) })}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeInvoiceLineItem(item.id)}
+                      className="rounded-full border border-[#efc6c6] bg-[#fff5f5] px-3 py-2 text-sm text-[#8a2e22]"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <textarea
+                className="mt-4 min-h-[90px] w-full rounded-[20px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                placeholder="Invoice notes"
+                value={invoiceNotes}
+                onChange={(e) => setInvoiceNotes(e.target.value)}
+              />
+            </div>
+
+            <aside className="rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[#8a7b68]">Preview</div>
+              <div className="mt-3 rounded-[18px] border border-[#eadfce] bg-white p-4">
+                {invoiceLogoUrl ? (
+                  <img src={invoiceLogoUrl} alt="" className="mb-3 max-h-16 max-w-[180px] object-contain" />
+                ) : null}
+                <div className="text-lg font-semibold text-[#241c15]">{invoiceCompanyName || "Company name"}</div>
+                <p className="mt-2 text-sm leading-6 text-[#6f6255]">{invoiceHeaderText || "Invoice header"}</p>
+                <div className="mt-4 border-t border-[#eadfce] pt-3 text-sm text-[#5f5245]">
+                  <div className="flex justify-between"><span>Subtotal</span><span>{formatCurrency(invoiceTotal)}</span></div>
+                  <div className="mt-2 flex justify-between text-lg font-semibold text-[#241c15]"><span>Total</span><span>{formatCurrency(invoiceTotal)}</span></div>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-2">
+                <button
+                  type="button"
+                  onClick={() => void createOwnerInvoice("draft")}
+                  disabled={creatingInvoice}
+                  className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2.5 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#fcfaf7] disabled:opacity-60"
+                >
+                  Save draft
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void createOwnerInvoice("sent")}
+                  disabled={creatingInvoice}
+                  className="rounded-full bg-[#241c15] px-4 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60"
+                >
+                  {creatingInvoice ? "Working..." : "Create and send PDF"}
+                </button>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <h3 className="text-lg font-semibold text-[#241c15]">Invoice history</h3>
+          <div className="mt-4 space-y-3">
+            {ownerInvoices.length === 0 ? (
+              <div className="rounded-[20px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] p-4 text-sm text-[#7f7263]">
+                No owner invoices yet.
+              </div>
+            ) : (
+              ownerInvoices.map((invoice) => {
+                const owner = ownerAccounts.find((item) => item.id === invoice.owner_account_id);
+                const property = properties.find((item) => item.id === invoice.property_id);
+                return (
+                  <div key={invoice.id} className="rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold text-[#241c15]">{invoice.invoice_number}</span>
+                          <span className="rounded-full border border-[#d8c7ab] bg-white px-2.5 py-0.5 text-xs text-[#6f6255]">{invoice.status}</span>
+                        </div>
+                        <div className="mt-1 text-sm text-[#6f6255]">
+                          {owner?.full_name || owner?.email || "Owner"} | {property?.name || property?.address || "All properties"}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <div className="text-lg font-semibold text-[#241c15]">{formatCurrency(invoice.total)}</div>
+                        <button
+                          type="button"
+                          onClick={() => downloadInvoiceCsv(invoice, owner, property)}
+                          className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-medium text-[#5f4c3b] hover:bg-[#f7f1e8]"
+                        >
+                          CSV
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void sendExistingOwnerInvoice(invoice.id)}
+                          disabled={sendingInvoiceId === invoice.id}
+                          className="rounded-full bg-[#241c15] px-4 py-2 text-sm font-medium text-[#f8f2e8] disabled:opacity-60"
+                        >
+                          {sendingInvoiceId === invoice.id ? "Sending..." : invoice.status === "draft" ? "Send PDF" : "Resend PDF"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </section>
+      </div>
+    );
   }
 
   function renderAddPropertySection() {
@@ -8019,6 +8737,8 @@ This removes its linked members and deletes the grounds account.`
         return renderCalendarSection();
       case "maintenance":
         return renderMaintenanceSection();
+      case "invoices":
+        return renderInvoicesSection();
       default:
         return renderUsersSection();
     }
@@ -8106,13 +8826,14 @@ This removes its linked members and deletes the grounds account.`
             </div>
           </div>
 
-          <div className="grid gap-3 border-t border-[#efe6dc] bg-[#fbf8f4] px-6 py-4 md:grid-cols-7 md:px-8">
+          <div className="grid gap-3 border-t border-[#efe6dc] bg-[#fbf8f4] px-6 py-4 md:grid-cols-4 lg:grid-cols-8 md:px-8">
             {[
               { label: "Properties", value: properties.length },
               { label: "Cleaner Accounts", value: cleanerAccounts.length },
               { label: "Grounds Accounts", value: groundsAccounts.length },
               { label: "Assignments", value: assignments.length + groundsAssignments.length },
               { label: "Jobs", value: jobs.length + groundsJobs.length },
+              { label: "Invoices", value: ownerInvoices.length },
               { label: "Users", value: profiles.length },
               { label: "Flags", value: maintenanceFlags.length },
             ].map((item) => (
