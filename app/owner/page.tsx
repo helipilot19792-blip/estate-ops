@@ -105,6 +105,7 @@ type OwnerInvoice = {
   tax_total: number;
   total: number;
   sent_at?: string | null;
+  owner_viewed_at?: string | null;
 };
 
 type MaintenanceFlagImage = {
@@ -923,7 +924,7 @@ export default function OwnerPage() {
         .order("created_at", { ascending: false }),
       supabase
         .from("owner_invoices")
-        .select("id,owner_account_id,property_id,invoice_number,status,issue_date,due_date,company_name,logo_url,header_text,notes,payment_instructions,tax_lines,line_items,subtotal,tax_total,total,sent_at")
+        .select("id,owner_account_id,property_id,invoice_number,status,issue_date,due_date,company_name,logo_url,header_text,notes,payment_instructions,tax_lines,line_items,subtotal,tax_total,total,sent_at,owner_viewed_at")
         .eq("owner_account_id", ownerRes.id)
         .in("status", ["sent", "paid"])
         .order("issue_date", { ascending: false }),
@@ -1037,11 +1038,56 @@ export default function OwnerPage() {
       (invoice) => !invoice.property_id || invoice.property_id === selectedProperty.id
     );
   }, [selectedProperty, ownerInvoices]);
+  const unreadOwnerInvoices = useMemo(
+    () => ownerInvoices.filter((invoice) => !invoice.owner_viewed_at),
+    [ownerInvoices]
+  );
+  const unreadPropertyOwnerInvoices = useMemo(
+    () => propertyOwnerInvoices.filter((invoice) => !invoice.owner_viewed_at),
+    [propertyOwnerInvoices]
+  );
 
   const propertyFlags = useMemo(() => {
     if (!selectedProperty) return [];
     return flags.filter((flag) => flag.property_id === selectedProperty.id);
   }, [selectedProperty, flags]);
+
+  useEffect(() => {
+    if (activeOwnerTab !== "invoices" || unreadPropertyOwnerInvoices.length === 0) return;
+
+    const invoiceIds = unreadPropertyOwnerInvoices.map((invoice) => invoice.id);
+
+    setOwnerInvoices((invoices) =>
+      invoices.map((invoice) =>
+        invoiceIds.includes(invoice.id)
+          ? { ...invoice, owner_viewed_at: invoice.owner_viewed_at || new Date().toISOString() }
+          : invoice
+      )
+    );
+
+    async function markInvoicesRead() {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) return;
+
+      const response = await fetch("/api/owner/mark-invoices-read", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ invoiceIds }),
+      });
+
+      if (!response.ok) {
+        await loadData();
+      }
+    }
+
+    void markInvoicesRead();
+  }, [activeOwnerTab, unreadPropertyOwnerInvoices]);
 
   const openFlags = useMemo(() => propertyFlags.filter((flag) => !isResolved(flag)), [propertyFlags]);
 
@@ -1497,18 +1543,28 @@ export default function OwnerPage() {
               { key: "invoices" as OwnerTab, label: "Invoices", subtext: "Statements and property charges" },
             ].map((tab) => {
               const isActive = activeOwnerTab === tab.key;
+              const unreadCount = tab.key === "invoices" ? unreadOwnerInvoices.length : 0;
 
               return (
                 <button
                   key={tab.key}
                   type="button"
                   onClick={() => setActiveOwnerTab(tab.key)}
-                  className={`rounded-[22px] px-5 py-4 text-left transition ${isActive
+                  className={`relative rounded-[22px] px-5 py-4 text-left transition ${isActive
                     ? "bg-[linear-gradient(135deg,#b08b47,#e3c177)] text-[#17120d] shadow-[0_16px_40px_rgba(176,139,71,0.22)]"
-                    : "bg-white/[0.03] text-[#f7f1e8] hover:bg-white/[0.06]"
+                    : unreadCount > 0
+                      ? "border border-[#e3c177]/60 bg-[#b08b47]/18 text-[#f7f1e8] shadow-[0_0_0_1px_rgba(227,193,119,0.18)] hover:bg-[#b08b47]/24"
+                      : "bg-white/[0.03] text-[#f7f1e8] hover:bg-white/[0.06]"
                     }`}
                 >
-                  <div className="text-sm font-semibold">{tab.label}</div>
+                  <div className="flex items-center gap-2 text-sm font-semibold">
+                    <span>{tab.label}</span>
+                    {unreadCount > 0 ? (
+                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${isActive ? "bg-[#17120d]/12 text-[#17120d]" : "bg-[#e3c177] text-[#17120d]"}`}>
+                        {unreadCount} unread
+                      </span>
+                    ) : null}
+                  </div>
                   <div className={`mt-1 text-xs ${isActive ? "text-[#382511]" : "text-[#ccb99a]"}`}>
                     {tab.subtext}
                   </div>
@@ -1985,7 +2041,9 @@ export default function OwnerPage() {
                 </h2>
               </div>
               <div className="rounded-full border border-[#b08b47]/30 bg-[#b08b47]/10 px-4 py-2 text-sm font-semibold text-[#f1d9a5]">
-                {propertyOwnerInvoices.length} invoice{propertyOwnerInvoices.length === 1 ? "" : "s"}
+                {unreadPropertyOwnerInvoices.length > 0
+                  ? `${unreadPropertyOwnerInvoices.length} unread`
+                  : `${propertyOwnerInvoices.length} invoice${propertyOwnerInvoices.length === 1 ? "" : "s"}`}
               </div>
             </div>
 
@@ -1997,7 +2055,7 @@ export default function OwnerPage() {
                   const taxLines = getOwnerInvoiceTaxLines(invoice);
 
                   return (
-                    <div key={invoice.id} className="overflow-hidden rounded-[24px] border border-white/8 bg-white/[0.02]">
+                    <div key={invoice.id} className={`overflow-hidden rounded-[24px] border ${invoice.owner_viewed_at ? "border-white/8 bg-white/[0.02]" : "border-[#e3c177]/55 bg-[#b08b47]/10 shadow-[0_0_0_1px_rgba(227,193,119,0.16)]"}`}>
                       <div className="border-b border-white/8 px-5 py-4">
                         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                           <div>
@@ -2006,6 +2064,11 @@ export default function OwnerPage() {
                             ) : null}
                             <div className="text-lg font-semibold text-[#f7f1e8]">
                               {invoice.company_name || "Property invoice"}
+                              {!invoice.owner_viewed_at ? (
+                                <span className="ml-2 rounded-full bg-[#e3c177] px-2 py-0.5 align-middle text-[11px] font-bold uppercase tracking-[0.08em] text-[#17120d]">
+                                  New
+                                </span>
+                              ) : null}
                             </div>
                             <div className="mt-1 text-sm text-[#ccb99a]">
                               {invoice.invoice_number} · {invoiceProperty?.name || invoiceProperty?.address || "All linked properties"}
