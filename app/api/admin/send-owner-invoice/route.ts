@@ -208,6 +208,7 @@ export async function POST(request: NextRequest) {
       ? (invoice.line_items as InvoiceLineItem[])
       : [];
     const taxLines = normalizeTaxLines(invoice);
+    const ownerPortalUrl = `${request.nextUrl.origin}/owner?tab=invoices`;
     const rows = lineItems
       .map((item) => {
         const quantity = Number(item.quantity || 0);
@@ -270,7 +271,17 @@ export async function POST(request: NextRequest) {
         </div>
         ${invoice.notes ? `<p style="margin-top:18px;color:#5f5245;">${escapeHtml(invoice.notes)}</p>` : ""}
         ${invoice.payment_instructions ? `<p style="margin-top:18px;"><strong>Payment:</strong> ${escapeHtml(invoice.payment_instructions)}</p>` : ""}
-        <p style="margin-top:22px;font-size:12px;color:#8a7b68;">You can also view this invoice inside your owner portal.</p>
+        <div style="margin-top:22px;padding:16px;border:1px solid #eadfce;border-radius:14px;background:#fcfaf7;">
+          <p style="margin:0 0 12px;color:#5f5245;">
+            Log in to your owner portal to view invoice history and download invoice files, including PDF, CSV, and JSON exports.
+          </p>
+          <a href="${escapeHtml(ownerPortalUrl)}" style="display:inline-block;padding:10px 16px;background:#241c15;color:#ffffff;border-radius:999px;text-decoration:none;font-weight:700;">
+            Open owner portal
+          </a>
+          <p style="margin:12px 0 0;font-size:12px;color:#8a7b68;word-break:break-all;">
+            ${escapeHtml(ownerPortalUrl)}
+          </p>
+        </div>
       </div>
     `;
 

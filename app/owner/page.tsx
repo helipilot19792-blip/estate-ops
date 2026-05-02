@@ -1104,8 +1104,28 @@ export default function OwnerPage() {
     void loadData();
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    const tabFromUrl = params.get("tab");
+    if (tabFromUrl === "overview" || tabFromUrl === "insights" || tabFromUrl === "invoices") {
+      setActiveOwnerTab(tabFromUrl);
+    }
+  }, []);
+
   const selectedProperty =
     properties.find((property) => property.id === selectedPropertyId) || properties[0] || null;
+
+  function handleOwnerTabChange(tab: OwnerTab) {
+    setActiveOwnerTab(tab);
+
+    if (typeof window === "undefined") return;
+
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", tab);
+    window.history.replaceState(null, "", url.toString());
+  }
 
   function handleOwnerPropertyChange(propertyId: string) {
     setSelectedPropertyId(propertyId);
@@ -1658,7 +1678,7 @@ export default function OwnerPage() {
                 <button
                   key={tab.key}
                   type="button"
-                  onClick={() => setActiveOwnerTab(tab.key)}
+                  onClick={() => handleOwnerTabChange(tab.key)}
                   className={`relative rounded-[22px] px-5 py-4 text-left transition ${isActive
                     ? "bg-[linear-gradient(135deg,#b08b47,#e3c177)] text-[#17120d] shadow-[0_16px_40px_rgba(176,139,71,0.22)]"
                     : unreadCount > 0
