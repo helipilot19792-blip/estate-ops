@@ -21,6 +21,15 @@ export default function OwnerLoginPage() {
   const [error, setError] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
 
+  async function handleSwitchAccount() {
+    setCheckingSession(true);
+    await supabase.auth.signOut();
+    setEmail("");
+    setPassword("");
+    setStatusMessage("Signed out. Enter the owner email you want to use.");
+    setCheckingSession(false);
+  }
+
   useEffect(() => {
     let mounted = true;
 
@@ -43,6 +52,16 @@ export default function OwnerLoginPage() {
       if (!mounted) return;
 
       if (session?.user) {
+        const switchAccount = getQueryParam("switch");
+        if (switchAccount === "1") {
+          await supabase.auth.signOut();
+          if (mounted) {
+            setStatusMessage("Signed out. Enter the owner email you want to use.");
+            setCheckingSession(false);
+          }
+          return;
+        }
+
         router.replace("/owner");
         return;
       }
@@ -156,6 +175,17 @@ export default function OwnerLoginPage() {
             {statusMessage}
           </div>
         ) : null}
+
+        <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3 text-sm text-[#e6d8bf]">
+          Already stuck in the wrong owner session?{" "}
+          <button
+            type="button"
+            onClick={() => void handleSwitchAccount()}
+            className="font-semibold text-[#e7c98a] underline"
+          >
+            Sign out and switch account
+          </button>
+        </div>
 
        <section className="owner-card rounded-[28px] border border-white/8 p-5 sm:p-6">
   <form

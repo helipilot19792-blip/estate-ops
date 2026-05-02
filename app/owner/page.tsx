@@ -780,6 +780,11 @@ export default function OwnerPage() {
   const [selectedPropertyId, setSelectedPropertyId] = useState("");
   const [activeOwnerTab, setActiveOwnerTab] = useState<OwnerTab>("overview");
 
+  async function signOutOwner() {
+    await supabase.auth.signOut();
+    window.location.href = "/owner/login";
+  }
+
   const flagImagesByFlagId = useMemo(() => {
     const map = new Map<string, MaintenanceFlagImage[]>();
     for (const image of flagImages) {
@@ -1315,8 +1320,32 @@ export default function OwnerPage() {
   if (error) {
     return (
     <main className="owner-shell min-h-screen bg-[#0f0d0a] px-4 py-10 text-[#f7f1e8]">
-        <div className="mx-auto max-w-6xl rounded-[32px] border border-red-500/20 bg-red-950/20 p-8">
-          {error}
+        <div className="mx-auto max-w-2xl rounded-[32px] border border-red-500/20 bg-red-950/20 p-8">
+          <div className="text-[11px] uppercase tracking-[0.22em] text-red-200">
+            Owner access
+          </div>
+          <h1 className="mt-3 text-2xl font-semibold text-[#f7f1e8]">
+            We could not open this owner portal.
+          </h1>
+          <p className="mt-3 text-sm leading-6 text-red-100">
+            {error}
+          </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => void signOutOwner()}
+              className="rounded-full bg-[#b08b47] px-5 py-2.5 text-sm font-semibold text-[#17120d] transition hover:brightness-110"
+            >
+              Sign out and use a different email
+            </button>
+            <button
+              type="button"
+              onClick={() => void loadData()}
+              className="rounded-full border border-white/12 px-5 py-2.5 text-sm font-semibold text-[#f7f1e8] transition hover:bg-white/[0.05]"
+            >
+              Try again
+            </button>
+          </div>
         </div>
       </main>
     );
@@ -1325,8 +1354,18 @@ export default function OwnerPage() {
   if (!selectedProperty) {
     return (
     <main className="owner-shell min-h-screen bg-[#0f0d0a] px-4 py-10 text-[#f7f1e8]">
-        <div className="mx-auto max-w-6xl rounded-[32px] border border-white/8 bg-[#15110d] p-8">
-          No property found yet.
+        <div className="mx-auto max-w-2xl rounded-[32px] border border-white/8 bg-[#15110d] p-8">
+          <h1 className="text-2xl font-semibold text-[#f7f1e8]">No property found yet.</h1>
+          <p className="mt-3 text-sm leading-6 text-[#e6d8bf]">
+            This owner account is active, but no properties are linked to it yet.
+          </p>
+          <button
+            type="button"
+            onClick={() => void signOutOwner()}
+            className="mt-6 rounded-full bg-[#b08b47] px-5 py-2.5 text-sm font-semibold text-[#17120d] transition hover:brightness-110"
+          >
+            Sign out and use a different email
+          </button>
         </div>
       </main>
     );
