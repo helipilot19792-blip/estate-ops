@@ -371,8 +371,8 @@ type OwnerInvoiceLineItem = {
   id: string;
   description: string;
   category: "turnover" | "grounds" | "expense" | "other";
-  quantity: number;
-  rate: number;
+  quantity: number | string;
+  rate: number | string;
   source_id?: string | null;
   receipt_urls?: string[];
   receipt_names?: string[];
@@ -6022,7 +6022,7 @@ This removes its linked members and deletes the grounds account.`
                           step="0.01"
                           className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
                           value={item.quantity}
-                          onChange={(e) => updateInvoiceLineItem(item.id, { quantity: Number(e.target.value || 0) })}
+                          onChange={(e) => updateInvoiceLineItem(item.id, { quantity: e.target.value })}
                         />
                       </label>
                       <label className="text-xs font-medium text-[#5f5245]">
@@ -6033,7 +6033,7 @@ This removes its linked members and deletes the grounds account.`
                           step="0.01"
                           className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
                           value={item.rate}
-                          onChange={(e) => updateInvoiceLineItem(item.id, { rate: Number(e.target.value || 0) })}
+                          onChange={(e) => updateInvoiceLineItem(item.id, { rate: e.target.value })}
                         />
                       </label>
                       <button
@@ -6046,7 +6046,7 @@ This removes its linked members and deletes the grounds account.`
                     </div>
                     <div className="mt-3 flex flex-wrap items-center gap-2">
                       <span className="rounded-full border border-[#eadfce] bg-white px-3 py-1.5 text-xs font-semibold text-[#5f4c3b]">
-                        Line total: {formatCurrency(item.quantity * item.rate)}
+                        Line total: {formatCurrency(getLineItemTotal(item))}
                       </span>
                       <label className="inline-flex cursor-pointer items-center rounded-full border border-[#d8c7ab] bg-white px-3 py-1.5 text-xs font-medium text-[#5f4c3b] hover:bg-[#f7f1e8]">
                         {uploadingReceiptLineItemId === item.id ? "Uploading..." : "Attach receipt"}
