@@ -727,6 +727,9 @@ export default function AdminPage() {
   const [invoicePaymentInstructions, setInvoicePaymentInstructions] = useState("");
   const [invoiceCcEmails, setInvoiceCcEmails] = useState("");
   const [propertyInvoiceRateDrafts, setPropertyInvoiceRateDrafts] = useState<Record<string, { turnover: string; grounds: string }>>({});
+  const [invoiceSettingsDirty, setInvoiceSettingsDirty] = useState(false);
+  const [invoiceDraftDirty, setInvoiceDraftDirty] = useState(false);
+  const [dirtyPropertyInvoiceRateIds, setDirtyPropertyInvoiceRateIds] = useState<Set<string>>(() => new Set());
   const [invoiceAutoTurnover, setInvoiceAutoTurnover] = useState(true);
   const [invoiceAutoGrounds, setInvoiceAutoGrounds] = useState(true);
   const [invoiceLineItems, setInvoiceLineItems] = useState<OwnerInvoiceLineItem[]>([
@@ -930,6 +933,15 @@ export default function AdminPage() {
     trialDaysRemaining !== null &&
     trialDaysRemaining >= 0 &&
     trialDaysRemaining <= 7;
+  const propertyInvoiceRatesDirty = dirtyPropertyInvoiceRateIds.size > 0;
+  const adminDraftDirty =
+    selectedPropertyOwnerDirty ||
+    accessDirty ||
+    calendarDraftDirty ||
+    propertyDefaultsDirty ||
+    invoiceSettingsDirty ||
+    invoiceDraftDirty ||
+    propertyInvoiceRatesDirty;
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(new Date()), 1000);
@@ -1039,24 +1051,15 @@ export default function AdminPage() {
     if (
       checkingAuth ||
       !currentOrganizationId ||
-      selectedPropertyOwnerDirty ||
-      accessDirty ||
-      calendarDraftDirty ||
-      propertyDefaultsDirty
+      adminDraftDirty
     ) {
       return;
     }
 
+    // Polling must never rehydrate editable form state while the user has unsaved drafts.
     const interval = window.setInterval(() => void loadData(), 15000);
     return () => window.clearInterval(interval);
-  }, [
-    checkingAuth,
-    currentOrganizationId,
-    selectedPropertyOwnerDirty,
-    accessDirty,
-    calendarDraftDirty,
-    propertyDefaultsDirty,
-  ]);
+  }, [checkingAuth, currentOrganizationId, adminDraftDirty]);
 
   useEffect(() => {
     setSelectedPropertyOwnerDirty(false);
@@ -1070,6 +1073,8 @@ export default function AdminPage() {
   }, [selectedPropertyId]);
 
   useEffect(() => {
+    if (invoiceSettingsDirty) return;
+
     setInvoiceCompanyName(invoiceSettings?.company_name || currentOrganizationBilling?.name || "");
     setInvoiceLogoUrl(invoiceSettings?.logo_url || "");
     setInvoiceFromEmail(invoiceSettings?.from_email || "");
@@ -1081,7 +1086,7 @@ export default function AdminPage() {
     setInvoicePaymentInstructions(invoiceSettings?.payment_instructions || "");
     setInvoiceAutoTurnover(invoiceSettings?.auto_add_turnover ?? true);
     setInvoiceAutoGrounds(invoiceSettings?.auto_add_grounds ?? true);
-  }, [invoiceSettings, currentOrganizationBilling]);
+  }, [invoiceSettings, currentOrganizationBilling, invoiceSettingsDirty]);
 
   useEffect(() => {
     const ratesByPropertyId = new Map(propertyInvoiceRates.map((rate) => [rate.property_id, rate]));
@@ -1090,7 +1095,9 @@ export default function AdminPage() {
 
       for (const property of properties) {
         const existing = ratesByPropertyId.get(property.id);
-        next[property.id] = current[property.id] || {
+        next[property.id] = dirtyPropertyInvoiceRateIds.has(property.id) && current[property.id]
+          ? current[property.id]
+          : {
           turnover: String(existing?.turnover_rate ?? invoiceSettings?.default_turnover_rate ?? 0),
           grounds: String(existing?.grounds_rate ?? invoiceSettings?.default_grounds_rate ?? 0),
         };
@@ -1098,7 +1105,7 @@ export default function AdminPage() {
 
       return next;
     });
-  }, [properties, propertyInvoiceRates, invoiceSettings]);
+  }, [properties, propertyInvoiceRates, invoiceSettings, dirtyPropertyInvoiceRateIds]);
 
   useEffect(() => {
     if (!selectedPropertyId) {
@@ -5027,6 +5034,11 @@ This removes its linked members and deletes the grounds account.`
     field: "turnover" | "grounds",
     value: string
   ) {
+    setDirtyPropertyInvoiceRateIds((ids) => {
+      const next = new Set(ids);
+      next.add(propertyId);
+      return next;
+    });
     setPropertyInvoiceRateDrafts((drafts) => ({
       ...drafts,
       [propertyId]: {
@@ -5123,6 +5135,7 @@ This removes its linked members and deletes the grounds account.`
   }
 
   function updateInvoiceLineItem(id: string, updates: Partial<OwnerInvoiceLineItem>) {
+    setInvoiceDraftDirty(true);
     setInvoiceLineItems((items) =>
       items.map((item) => (item.id === id ? { ...item, ...updates } : item))
     );
@@ -5161,6 +5174,7 @@ This removes its linked members and deletes the grounds account.`
       } = supabase.storage.from("invoice-assets").getPublicUrl(filePath);
 
       setInvoiceLogoUrl(publicUrl);
+      setInvoiceSettingsDirty(true);
       setActionMessage("Invoice logo uploaded. Save defaults to keep it.");
     } catch (err: unknown) {
       setError(getErrorMessage(err, "Could not upload invoice logo. Make sure the invoice-assets storage bucket exists."));
@@ -5212,6 +5226,7 @@ This removes its linked members and deletes the grounds account.`
             : item
         )
       );
+      setInvoiceDraftDirty(true);
       setActionMessage(`${uploaded.length} receipt${uploaded.length === 1 ? "" : "s"} attached.`);
     } catch (err: unknown) {
       setError(getErrorMessage(err, "Could not upload receipt. Make sure the invoice-assets storage bucket exists."));
@@ -5221,6 +5236,7 @@ This removes its linked members and deletes the grounds account.`
   }
 
   function removeInvoiceReceipt(lineItemId: string, receiptIndex: number) {
+    setInvoiceDraftDirty(true);
     setInvoiceLineItems((items) =>
       items.map((item) => {
         if (item.id !== lineItemId) return item;
@@ -5260,6 +5276,7 @@ This removes its linked members and deletes the grounds account.`
   }
 
   function addInvoiceLineItem() {
+    setInvoiceDraftDirty(true);
     setInvoiceLineItems((items) => [
       ...items,
       {
@@ -5273,6 +5290,7 @@ This removes its linked members and deletes the grounds account.`
   }
 
   function removeInvoiceLineItem(id: string) {
+    setInvoiceDraftDirty(true);
     setInvoiceLineItems((items) =>
       items.length === 1 ? items : items.filter((item) => item.id !== id)
     );
@@ -5321,6 +5339,7 @@ This removes its linked members and deletes the grounds account.`
           ? customItems
           : [{ id: "custom-1", description: "", category: "expense", quantity: 1, rate: 0 }];
     });
+    setInvoiceDraftDirty(true);
     setActionMessage(
       generated.length > 0
         ? `Added ${generated.length} job line item${generated.length === 1 ? "" : "s"} from this property.`
@@ -5367,6 +5386,8 @@ This removes its linked members and deletes the grounds account.`
         if (rateError) throw rateError;
       }
 
+      setInvoiceSettingsDirty(false);
+      setDirtyPropertyInvoiceRateIds(new Set());
       setActionMessage("Invoice defaults saved.");
       await loadData();
     } catch (err: unknown) {
@@ -5412,6 +5433,11 @@ This removes its linked members and deletes the grounds account.`
         return existing
           ? rates.map((rate) => (rate.property_id === propertyId ? nextRate : rate))
           : [nextRate, ...rates];
+      });
+      setDirtyPropertyInvoiceRateIds((ids) => {
+        const next = new Set(ids);
+        next.delete(propertyId);
+        return next;
       });
       setActionMessage(`Saved invoice rates for ${property.name || property.address || "property"}.`);
     } catch (err: unknown) {
@@ -5480,6 +5506,7 @@ This removes its linked members and deletes the grounds account.`
       setActionMessage(status === "sent" ? "Invoice created and sent to owner." : "Invoice draft created.");
       setInvoiceNotes("");
       setInvoiceLineItems([{ id: "custom-1", description: "", category: "expense", quantity: 1, rate: 0 }]);
+      setInvoiceDraftDirty(false);
       await loadData();
     } catch (err: unknown) {
       setError(getErrorMessage(err, "Could not create invoice."));
@@ -5623,7 +5650,10 @@ This removes its linked members and deletes the grounds account.`
                   className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
                   placeholder="Company name"
                   value={invoiceCompanyName}
-                  onChange={(e) => setInvoiceCompanyName(e.target.value)}
+                  onChange={(e) => {
+                    setInvoiceSettingsDirty(true);
+                    setInvoiceCompanyName(e.target.value);
+                  }}
                 />
                 {invoiceLogoUrl ? (
                   <div className="rounded-[18px] border border-[#d9ccbb] bg-white p-3">
@@ -5654,7 +5684,10 @@ This removes its linked members and deletes the grounds account.`
                         </label>
                         <button
                           type="button"
-                          onClick={() => setInvoiceLogoUrl("")}
+                          onClick={() => {
+                            setInvoiceSettingsDirty(true);
+                            setInvoiceLogoUrl("");
+                          }}
                           className="rounded-full border border-[#efc6c6] bg-[#fff5f5] px-3 py-1.5 text-xs font-medium text-[#8a2e22]"
                         >
                           Remove
@@ -5678,25 +5711,37 @@ This removes its linked members and deletes the grounds account.`
                   className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
                   placeholder="From email (must be verified in Resend)"
                   value={invoiceFromEmail}
-                  onChange={(e) => setInvoiceFromEmail(e.target.value)}
+                  onChange={(e) => {
+                    setInvoiceSettingsDirty(true);
+                    setInvoiceFromEmail(e.target.value);
+                  }}
                 />
                 <input
                   className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
                   placeholder="Reply-to email"
                   value={invoiceReplyToEmail}
-                  onChange={(e) => setInvoiceReplyToEmail(e.target.value)}
+                  onChange={(e) => {
+                    setInvoiceSettingsDirty(true);
+                    setInvoiceReplyToEmail(e.target.value);
+                  }}
                 />
                 <textarea
                   className="min-h-[96px] rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
                   placeholder="Custom invoice header"
                   value={invoiceHeaderText}
-                  onChange={(e) => setInvoiceHeaderText(e.target.value)}
+                  onChange={(e) => {
+                    setInvoiceSettingsDirty(true);
+                    setInvoiceHeaderText(e.target.value);
+                  }}
                 />
                 <textarea
                   className="min-h-[80px] rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
                   placeholder="Payment instructions"
                   value={invoicePaymentInstructions}
-                  onChange={(e) => setInvoicePaymentInstructions(e.target.value)}
+                  onChange={(e) => {
+                    setInvoiceSettingsDirty(true);
+                    setInvoicePaymentInstructions(e.target.value);
+                  }}
                 />
               </div>
             </div>
@@ -5772,7 +5817,10 @@ This removes its linked members and deletes the grounds account.`
                   <input
                     type="checkbox"
                     checked={invoiceAutoTurnover}
-                    onChange={(e) => setInvoiceAutoTurnover(e.target.checked)}
+                    onChange={(e) => {
+                      setInvoiceSettingsDirty(true);
+                      setInvoiceAutoTurnover(e.target.checked);
+                    }}
                   />
                   Auto-populate turnover jobs
                 </label>
@@ -5780,7 +5828,10 @@ This removes its linked members and deletes the grounds account.`
                   <input
                     type="checkbox"
                     checked={invoiceAutoGrounds}
-                    onChange={(e) => setInvoiceAutoGrounds(e.target.checked)}
+                    onChange={(e) => {
+                      setInvoiceSettingsDirty(true);
+                      setInvoiceAutoGrounds(e.target.checked);
+                    }}
                   />
                   Auto-populate grounds jobs
                 </label>
@@ -5797,6 +5848,7 @@ This removes its linked members and deletes the grounds account.`
                   className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
                   value={invoiceOwnerId}
                   onChange={(e) => {
+                    setInvoiceDraftDirty(true);
                     setInvoiceOwnerId(e.target.value);
                     setInvoicePropertyId("");
                   }}
@@ -5811,7 +5863,10 @@ This removes its linked members and deletes the grounds account.`
                 <select
                   className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
                   value={invoicePropertyId}
-                  onChange={(e) => setInvoicePropertyId(e.target.value)}
+                  onChange={(e) => {
+                    setInvoiceDraftDirty(true);
+                    setInvoicePropertyId(e.target.value);
+                  }}
                   disabled={!selectedOwner}
                 >
                   <option value="">All owner properties</option>
@@ -5825,19 +5880,28 @@ This removes its linked members and deletes the grounds account.`
                   type="date"
                   className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
                   value={invoiceIssueDate}
-                  onChange={(e) => setInvoiceIssueDate(e.target.value)}
+                  onChange={(e) => {
+                    setInvoiceDraftDirty(true);
+                    setInvoiceIssueDate(e.target.value);
+                  }}
                 />
                 <input
                   type="date"
                   className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
                   value={invoiceDueDate}
-                  onChange={(e) => setInvoiceDueDate(e.target.value)}
+                  onChange={(e) => {
+                    setInvoiceDraftDirty(true);
+                    setInvoiceDueDate(e.target.value);
+                  }}
                 />
                 <input
                   className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e] md:col-span-2"
                   placeholder="CC email addresses, separated by commas"
                   value={invoiceCcEmails}
-                  onChange={(e) => setInvoiceCcEmails(e.target.value)}
+                  onChange={(e) => {
+                    setInvoiceDraftDirty(true);
+                    setInvoiceCcEmails(e.target.value);
+                  }}
                 />
               </div>
 
@@ -5952,7 +6016,10 @@ This removes its linked members and deletes the grounds account.`
                 className="mt-4 min-h-[90px] w-full rounded-[20px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
                 placeholder="Invoice notes"
                 value={invoiceNotes}
-                onChange={(e) => setInvoiceNotes(e.target.value)}
+                onChange={(e) => {
+                  setInvoiceDraftDirty(true);
+                  setInvoiceNotes(e.target.value);
+                }}
               />
             </div>
 
