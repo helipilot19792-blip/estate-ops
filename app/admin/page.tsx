@@ -5861,39 +5861,51 @@ This removes its linked members and deletes the grounds account.`
               <div className="mt-4 space-y-3">
                 {invoiceLineItems.map((item) => (
                   <div key={item.id} className="rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] p-3">
-                    <div className="grid gap-2 md:grid-cols-[1fr_130px_110px_110px_auto] md:items-center">
-                      <input
-                        className="rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
-                        placeholder="Description"
-                        value={item.description}
-                        onChange={(e) => updateInvoiceLineItem(item.id, { description: e.target.value })}
-                      />
-                      <select
-                        className="rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
-                        value={item.category}
-                        onChange={(e) => updateInvoiceLineItem(item.id, { category: e.target.value as OwnerInvoiceLineItem["category"] })}
-                      >
-                        <option value="turnover">Turnover</option>
-                        <option value="grounds">Grounds</option>
-                        <option value="expense">Expense</option>
-                        <option value="other">Other</option>
-                      </select>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        className="rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
-                        value={item.quantity}
-                        onChange={(e) => updateInvoiceLineItem(item.id, { quantity: Number(e.target.value || 0) })}
-                      />
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        className="rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
-                        value={item.rate}
-                        onChange={(e) => updateInvoiceLineItem(item.id, { rate: Number(e.target.value || 0) })}
-                      />
+                    <div className="grid gap-2 md:grid-cols-[1fr_130px_110px_120px_auto] md:items-end">
+                      <label className="text-xs font-medium text-[#5f5245]">
+                        Description
+                        <input
+                          className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                          placeholder="Line item description"
+                          value={item.description}
+                          onChange={(e) => updateInvoiceLineItem(item.id, { description: e.target.value })}
+                        />
+                      </label>
+                      <label className="text-xs font-medium text-[#5f5245]">
+                        Category
+                        <select
+                          className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                          value={item.category}
+                          onChange={(e) => updateInvoiceLineItem(item.id, { category: e.target.value as OwnerInvoiceLineItem["category"] })}
+                        >
+                          <option value="turnover">Turnover</option>
+                          <option value="grounds">Grounds</option>
+                          <option value="expense">Expense</option>
+                          <option value="other">Other</option>
+                        </select>
+                      </label>
+                      <label className="text-xs font-medium text-[#5f5245]">
+                        Quantity
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                          value={item.quantity}
+                          onChange={(e) => updateInvoiceLineItem(item.id, { quantity: Number(e.target.value || 0) })}
+                        />
+                      </label>
+                      <label className="text-xs font-medium text-[#5f5245]">
+                        Rate
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                          value={item.rate}
+                          onChange={(e) => updateInvoiceLineItem(item.id, { rate: Number(e.target.value || 0) })}
+                        />
+                      </label>
                       <button
                         type="button"
                         onClick={() => removeInvoiceLineItem(item.id)}
@@ -5903,6 +5915,9 @@ This removes its linked members and deletes the grounds account.`
                       </button>
                     </div>
                     <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <span className="rounded-full border border-[#eadfce] bg-white px-3 py-1.5 text-xs font-semibold text-[#5f4c3b]">
+                        Line total: {formatCurrency(item.quantity * item.rate)}
+                      </span>
                       <label className="inline-flex cursor-pointer items-center rounded-full border border-[#d8c7ab] bg-white px-3 py-1.5 text-xs font-medium text-[#5f4c3b] hover:bg-[#f7f1e8]">
                         {uploadingReceiptLineItemId === item.id ? "Uploading..." : "Attach receipt"}
                         <input
