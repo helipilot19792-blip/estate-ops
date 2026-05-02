@@ -1,3 +1,5 @@
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+
 export type InvoicePdfLineItem = {
   description?: string | null;
   category?: string | null;
@@ -10,6 +12,7 @@ export type InvoicePdfLineItem = {
 export type InvoicePdfInput = {
   invoiceNumber: string;
   companyName: string;
+  logoUrl: string | null;
   ownerName: string;
   ownerEmail: string;
   propertyName: string;
@@ -33,10 +36,6 @@ function formatCurrency(value: number | null | undefined) {
   }).format(Number(value || 0));
 }
 
-function escapePdfText(value: string) {
-  return value.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
-}
-
 function wrapPdfText(value: string, maxLength = 86) {
   const words = value.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
   const lines: string[] = [];
@@ -57,113 +56,127 @@ function wrapPdfText(value: string, maxLength = 86) {
   return lines.length > 0 ? lines : [""];
 }
 
-function buildPdfContentLine(text: string, x: number, y: number, size = 10) {
-  return `BT /F1 ${size} Tf ${x} ${y} Td (${escapePdfText(text)}) Tj ET`;
+async function fetchLogoBytes(logoUrl: string | null) {
+  if (!logoUrl) return null;
+
+  try {
+    const response = await fetch(logoUrl);
+    if (!response.ok) return null;
+
+    const contentType = response.headers.get("content-type") || "";
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    return { bytes, contentType };
+  } catch {
+    return null;
+  }
 }
 
-export function createInvoicePdfBuffer(input: InvoicePdfInput) {
-  const pages: string[] = [];
-  let y = 760;
-  let lines: string[] = [];
+export async function createInvoicePdfBuffer(input: InvoicePdfInput) {
+  const pdfDoc = await PDFDocument.create();
+  const regularFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  let page = pdfDoc.addPage([612, 792]);
+  let y = 744;
 
-  function pushLine(text: string, size = 10, x = 50, gap = 16) {
-    if (y < 60) {
-      pages.push(lines.join("\n"));
-      lines = [];
-      y = 760;
-    }
+  const ink = rgb(0.14, 0.11, 0.08);
+  const muted = rgb(0.38, 0.32, 0.26);
 
-    lines.push(buildPdfContentLine(text, x, y, size));
-    y -= gap;
+  function addPageIfNeeded(gap = 24) {
+    if (y > 56 + gap) return;
+    page = pdfDoc.addPage([612, 792]);
+    y = 744;
   }
 
-  pushLine(input.companyName, 18, 50, 24);
-  pushLine(`Invoice ${input.invoiceNumber}`, 14, 50, 22);
-  pushLine(`Owner: ${input.ownerName} <${input.ownerEmail}>`, 10);
-  pushLine(`Property: ${input.propertyName}`, 10);
-  pushLine(`Issue date: ${input.issueDate}`, 10);
-  if (input.dueDate) pushLine(`Due date: ${input.dueDate}`, 10);
+  function drawText(text: string, x: number, size = 10, options?: { bold?: boolean; color?: ReturnType<typeof rgb>; gap?: number }) {
+    addPageIfNeeded(options?.gap ?? 16);
+    page.drawText(text, {
+      x,
+      y,
+      size,
+      font: options?.bold ? boldFont : regularFont,
+      color: options?.color || ink,
+    });
+    y -= options?.gap ?? size + 6;
+  }
+
+  const logo = await fetchLogoBytes(input.logoUrl);
+  if (logo) {
+    try {
+      const image = logo.contentType.includes("png")
+        ? await pdfDoc.embedPng(logo.bytes)
+        : await pdfDoc.embedJpg(logo.bytes);
+      const scaled = image.scale(Math.min(160 / image.width, 70 / image.height, 1));
+      page.drawImage(image, {
+        x: 50,
+        y: y - scaled.height,
+        width: scaled.width,
+        height: scaled.height,
+      });
+      y -= scaled.height + 20;
+    } catch {
+      // Keep the PDF usable even if an uploaded logo has an unsupported encoding.
+    }
+  }
+
+  drawText(input.companyName, 50, 18, { bold: true, gap: 24 });
+  drawText(`Invoice ${input.invoiceNumber}`, 50, 14, { bold: true, gap: 22 });
+  drawText(`Owner: ${input.ownerName} <${input.ownerEmail}>`, 50, 10, { color: muted });
+  drawText(`Property: ${input.propertyName}`, 50, 10, { color: muted });
+  drawText(`Issue date: ${input.issueDate}`, 50, 10, { color: muted });
+  if (input.dueDate) drawText(`Due date: ${input.dueDate}`, 50, 10, { color: muted });
 
   if (input.headerText) {
     y -= 8;
-    for (const line of wrapPdfText(input.headerText)) pushLine(line, 10);
+    for (const line of wrapPdfText(input.headerText)) drawText(line, 50, 10, { color: muted });
   }
 
   y -= 12;
-  pushLine("Description", 11, 50, 14);
-  pushLine("Qty        Rate          Amount", 11, 390, 18);
+  drawText("Description", 50, 11, { bold: true, gap: 0 });
+  page.drawText("Qty", { x: 370, y, size: 11, font: boldFont, color: ink });
+  page.drawText("Rate", { x: 420, y, size: 11, font: boldFont, color: ink });
+  page.drawText("Amount", { x: 500, y, size: 11, font: boldFont, color: ink });
+  y -= 20;
 
   for (const item of input.lineItems) {
+    addPageIfNeeded(58);
     const quantity = Number(item.quantity || 0);
     const rate = Number(item.rate || 0);
     const amount = quantity * rate;
     const description = String(item.description || "Invoice item");
-    const descriptionLines = wrapPdfText(description, 54);
+    const descriptionLines = wrapPdfText(description, 48);
 
-    pushLine(descriptionLines[0] || description, 10, 50, 14);
-    pushLine(`${quantity}        ${formatCurrency(rate)}        ${formatCurrency(amount)}`, 10, 390, 16);
+    page.drawText(descriptionLines[0] || description, { x: 50, y, size: 10, font: regularFont, color: ink });
+    page.drawText(String(quantity), { x: 370, y, size: 10, font: regularFont, color: ink });
+    page.drawText(formatCurrency(rate), { x: 420, y, size: 10, font: regularFont, color: ink });
+    page.drawText(formatCurrency(amount), { x: 500, y, size: 10, font: regularFont, color: ink });
+    y -= 16;
 
-    for (const extraLine of descriptionLines.slice(1)) {
-      pushLine(extraLine, 9, 62, 13);
-    }
+    for (const extraLine of descriptionLines.slice(1)) drawText(extraLine, 62, 9, { color: muted, gap: 13 });
 
     (item.receipt_urls || []).forEach((url, index) => {
       const label = item.receipt_names?.[index] || `Receipt ${index + 1}`;
-      for (const line of wrapPdfText(`${label}: ${url}`, 70)) {
-        pushLine(line, 8, 62, 12);
+      for (const line of wrapPdfText(`${label}: ${url}`, 74)) {
+        drawText(line, 62, 8, { color: muted, gap: 12 });
       }
     });
   }
 
   y -= 10;
-  pushLine(`Subtotal: ${formatCurrency(input.subtotal)}`, 11, 390, 18);
+  drawText(`Subtotal: ${formatCurrency(input.subtotal)}`, 390, 11, { gap: 18 });
   if (input.taxTotal > 0 || input.taxRate > 0) {
-    pushLine(`${input.taxLabel || "Tax"} (${input.taxRate}%): ${formatCurrency(input.taxTotal)}`, 11, 390, 18);
+    drawText(`${input.taxLabel || "Tax"} (${input.taxRate}%): ${formatCurrency(input.taxTotal)}`, 390, 11, { gap: 18 });
   }
-  pushLine(`Total: ${formatCurrency(input.total)}`, 14, 390, 24);
+  drawText(`Total: ${formatCurrency(input.total)}`, 390, 14, { bold: true, gap: 24 });
 
   if (input.notes) {
-    pushLine("Notes", 11, 50, 16);
-    for (const line of wrapPdfText(input.notes)) pushLine(line, 10);
+    drawText("Notes", 50, 11, { bold: true, gap: 16 });
+    for (const line of wrapPdfText(input.notes)) drawText(line, 50, 10, { color: muted });
   }
 
   if (input.paymentInstructions) {
-    pushLine("Payment", 11, 50, 16);
-    for (const line of wrapPdfText(input.paymentInstructions)) pushLine(line, 10);
+    drawText("Payment", 50, 11, { bold: true, gap: 16 });
+    for (const line of wrapPdfText(input.paymentInstructions)) drawText(line, 50, 10, { color: muted });
   }
 
-  pages.push(lines.join("\n"));
-
-  const objects: string[] = [];
-  const pageRefs: number[] = [];
-  objects.push("<< /Type /Catalog /Pages 2 0 R >>");
-  objects.push("");
-  objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
-
-  for (const content of pages) {
-    const pageObjectNumber = objects.length + 1;
-    const contentObjectNumber = pageObjectNumber + 1;
-    pageRefs.push(pageObjectNumber);
-    objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents ${contentObjectNumber} 0 R >>`);
-    objects.push(`<< /Length ${Buffer.byteLength(content, "utf8")} >>\nstream\n${content}\nendstream`);
-  }
-
-  objects[1] = `<< /Type /Pages /Kids [${pageRefs.map((ref) => `${ref} 0 R`).join(" ")}] /Count ${pageRefs.length} >>`;
-
-  let pdf = "%PDF-1.4\n";
-  const offsets = [0];
-
-  objects.forEach((object, index) => {
-    offsets.push(Buffer.byteLength(pdf, "utf8"));
-    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
-  });
-
-  const xrefOffset = Buffer.byteLength(pdf, "utf8");
-  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
-  for (const offset of offsets.slice(1)) {
-    pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
-  }
-  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
-
-  return Buffer.from(pdf, "utf8");
+  return Buffer.from(await pdfDoc.save());
 }

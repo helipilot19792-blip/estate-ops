@@ -5600,6 +5600,7 @@ This removes its linked members and deletes the grounds account.`
         body: JSON.stringify({
           invoiceNumber: "PREVIEW",
           companyName: invoiceCompanyName.trim() || "Property invoice",
+          logoUrl: invoiceLogoUrl.trim() || null,
           ownerName: context.ownerName,
           ownerEmail: context.ownerEmail,
           propertyName: context.propertyName,

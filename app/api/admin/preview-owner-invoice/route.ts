@@ -70,9 +70,10 @@ export async function POST(request: NextRequest) {
         ? Number(body.total)
         : subtotal + taxTotal;
 
-    const pdfBuffer = createInvoicePdfBuffer({
+    const pdfBuffer = await createInvoicePdfBuffer({
       invoiceNumber: String(body?.invoiceNumber || "PREVIEW"),
       companyName: String(body?.companyName || "Property invoice"),
+      logoUrl: body?.logoUrl ? String(body.logoUrl) : null,
       ownerName: String(body?.ownerName || "Owner"),
       ownerEmail: String(body?.ownerEmail || ""),
       propertyName: String(body?.propertyName || "All linked properties"),

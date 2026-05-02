@@ -243,9 +243,10 @@ export async function POST(request: NextRequest) {
       </div>
     `;
 
-    const pdfBuffer = createInvoicePdfBuffer({
+    const pdfBuffer = await createInvoicePdfBuffer({
       invoiceNumber: invoice.invoice_number,
       companyName: invoice.company_name || "Property invoice",
+      logoUrl: invoice.logo_url || null,
       ownerName: owner.full_name || owner.email,
       ownerEmail: owner.email,
       propertyName: property?.name || property?.address || "All linked properties",
