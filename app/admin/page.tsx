@@ -5625,12 +5625,55 @@ This removes its linked members and deletes the grounds account.`
                   value={invoiceCompanyName}
                   onChange={(e) => setInvoiceCompanyName(e.target.value)}
                 />
-                <input
-                  className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                  placeholder="Logo URL"
-                  value={invoiceLogoUrl}
-                  onChange={(e) => setInvoiceLogoUrl(e.target.value)}
-                />
+                {invoiceLogoUrl ? (
+                  <div className="rounded-[18px] border border-[#d9ccbb] bg-white p-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-16 w-28 items-center justify-center overflow-hidden rounded-[14px] border border-[#eadfce] bg-[#fcfaf7]">
+                          <img
+                            src={invoiceLogoUrl}
+                            alt="Invoice logo preview"
+                            className="max-h-full max-w-full object-contain"
+                          />
+                        </div>
+                        <div>
+                          <div className="text-sm font-semibold text-[#241c15]">Logo uploaded</div>
+                          <div className="mt-1 text-xs text-[#7f7263]">This logo will appear on invoice emails and previews.</div>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <label className="inline-flex cursor-pointer items-center justify-center rounded-full border border-[#d8c7ab] bg-white px-3 py-1.5 text-xs font-medium text-[#5f4c3b] transition hover:bg-[#f7f1e8]">
+                          Replace
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            disabled={uploadingInvoiceLogo}
+                            onChange={(e) => void uploadInvoiceLogo(e)}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setInvoiceLogoUrl("")}
+                          className="rounded-full border border-[#efc6c6] bg-[#fff5f5] px-3 py-1.5 text-xs font-medium text-[#8a2e22]"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <label className="inline-flex cursor-pointer items-center justify-center rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#f7f1e8]">
+                    {uploadingInvoiceLogo ? "Uploading logo..." : "Upload logo"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      disabled={uploadingInvoiceLogo}
+                      onChange={(e) => void uploadInvoiceLogo(e)}
+                    />
+                  </label>
+                )}
                 <input
                   className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
                   placeholder="From email (must be verified in Resend)"
@@ -5643,16 +5686,6 @@ This removes its linked members and deletes the grounds account.`
                   value={invoiceReplyToEmail}
                   onChange={(e) => setInvoiceReplyToEmail(e.target.value)}
                 />
-                <label className="inline-flex cursor-pointer items-center justify-center rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#f7f1e8]">
-                  {uploadingInvoiceLogo ? "Uploading logo..." : "Upload logo"}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    disabled={uploadingInvoiceLogo}
-                    onChange={(e) => void uploadInvoiceLogo(e)}
-                  />
-                </label>
                 <textarea
                   className="min-h-[96px] rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
                   placeholder="Custom invoice header"
