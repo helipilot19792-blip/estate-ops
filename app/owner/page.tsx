@@ -804,12 +804,121 @@ export default function OwnerPage() {
   const [flagImages, setFlagImages] = useState<MaintenanceFlagImage[]>([]);
   const [reportOpen, setReportOpen] = useState(false);
   const [reportSuccess, setReportSuccess] = useState("");
+  const [downloadingInvoiceId, setDownloadingInvoiceId] = useState<string | null>(null);
   const [selectedPropertyId, setSelectedPropertyId] = useState("");
   const [activeOwnerTab, setActiveOwnerTab] = useState<OwnerTab>("overview");
 
   async function signOutOwner() {
     await supabase.auth.signOut();
     window.location.href = "/owner/login";
+  }
+
+  function escapeCsvCell(value: string | number | null | undefined) {
+    const text = String(value ?? "");
+    if (/[",\n\r]/.test(text)) {
+      return `"${text.replace(/"/g, '""')}"`;
+    }
+    return text;
+  }
+
+  function downloadBlob(filename: string, blob: Blob) {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  async function downloadOwnerInvoicePdf(invoice: OwnerInvoice) {
+    setDownloadingInvoiceId(invoice.id);
+    setError("");
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("Could not verify your owner session.");
+      }
+
+      const response = await fetch("/api/owner/invoice-pdf", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ invoiceId: invoice.id }),
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || "Could not download invoice PDF.");
+      }
+
+      downloadBlob(`${invoice.invoice_number}.pdf`, await response.blob());
+    } catch (downloadError) {
+      setError(downloadError instanceof Error ? downloadError.message : "Could not download invoice PDF.");
+    } finally {
+      setDownloadingInvoiceId(null);
+    }
+  }
+
+  function downloadOwnerInvoiceCsv(invoice: OwnerInvoice, property: Property | null | undefined) {
+    const rows = [
+      [
+        "InvoiceNo",
+        "InvoiceDate",
+        "DueDate",
+        "Status",
+        "Property",
+        "Description",
+        "Qty",
+        "Rate",
+        "Amount",
+        "TaxLines",
+        "TaxTotal",
+        "Total",
+        "ReceiptUrls",
+      ],
+      ...invoice.line_items.map((item) => {
+        const quantity = Number(item.quantity || 0);
+        const rate = Number(item.rate || 0);
+        return [
+          invoice.invoice_number,
+          invoice.issue_date,
+          invoice.due_date || "",
+          invoice.status,
+          property?.name || property?.address || "All linked properties",
+          item.description,
+          quantity,
+          rate.toFixed(2),
+          (quantity * rate).toFixed(2),
+          getOwnerInvoiceTaxLines(invoice).map((line) => `${line.label} ${line.rate}% ${formatCurrency(line.amount)}`).join("; "),
+          Number(invoice.tax_total || 0).toFixed(2),
+          Number(invoice.total || 0).toFixed(2),
+          (item.receipt_urls || []).join(" "),
+        ];
+      }),
+    ];
+
+    const csv = rows.map((row) => row.map(escapeCsvCell).join(",")).join("\r\n");
+    downloadBlob(`${invoice.invoice_number}.csv`, new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  }
+
+  function downloadOwnerInvoiceJson(invoice: OwnerInvoice, property: Property | null | undefined) {
+    const payload = {
+      ...invoice,
+      property: property ? { id: property.id, name: property.name, address: property.address } : null,
+    };
+
+    downloadBlob(
+      `${invoice.invoice_number}.json`,
+      new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" })
+    );
   }
 
   const flagImagesByFlagId = useMemo(() => {
@@ -2078,6 +2187,30 @@ export default function OwnerPage() {
                             <div className="text-2xl font-semibold text-[#f7f1e8]">{formatCurrency(invoice.total)}</div>
                             <div className="mt-1 text-sm text-[#e6d8bf]">
                               {invoice.status === "paid" ? "Paid" : "Due"} {invoice.due_date ? formatDateLabel(invoice.due_date) : "on receipt"}
+                            </div>
+                            <div className="mt-3 flex flex-wrap gap-2 md:justify-end">
+                              <button
+                                type="button"
+                                onClick={() => void downloadOwnerInvoicePdf(invoice)}
+                                disabled={downloadingInvoiceId === invoice.id}
+                                className="rounded-full border border-[#b08b47]/35 bg-[#b08b47]/10 px-3 py-1.5 text-xs font-semibold text-[#f1d9a5] transition hover:bg-[#b08b47]/18 disabled:opacity-60"
+                              >
+                                {downloadingInvoiceId === invoice.id ? "Downloading..." : "PDF"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => downloadOwnerInvoiceCsv(invoice, invoiceProperty)}
+                                className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-semibold text-[#f7f1e8] transition hover:bg-white/[0.06]"
+                              >
+                                CSV
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => downloadOwnerInvoiceJson(invoice, invoiceProperty)}
+                                className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-semibold text-[#f7f1e8] transition hover:bg-white/[0.06]"
+                              >
+                                JSON
+                              </button>
                             </div>
                           </div>
                         </div>
