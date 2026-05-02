@@ -12,6 +12,10 @@ create table if not exists public.organization_invoice_settings (
   updated_at timestamptz not null default now()
 );
 
+insert into storage.buckets (id, name, public)
+values ('invoice-assets', 'invoice-assets', true)
+on conflict (id) do update set public = true;
+
 create table if not exists public.property_invoice_rates (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -62,6 +66,64 @@ create index if not exists owner_invoices_property_idx
 alter table public.organization_invoice_settings enable row level security;
 alter table public.property_invoice_rates enable row level security;
 alter table public.owner_invoices enable row level security;
+
+drop policy if exists "Admins can upload invoice assets" on storage.objects;
+create policy "Admins can upload invoice assets"
+on storage.objects
+for insert
+with check (
+  bucket_id = 'invoice-assets'
+  and exists (
+    select 1
+    from public.profiles
+    left join public.organization_members
+      on organization_members.profile_id = profiles.id
+    where profiles.id = auth.uid()
+      and (
+        profiles.role = 'platform_admin'
+        or organization_members.role = 'admin'
+      )
+  )
+);
+
+drop policy if exists "Admins can update invoice assets" on storage.objects;
+create policy "Admins can update invoice assets"
+on storage.objects
+for update
+using (
+  bucket_id = 'invoice-assets'
+  and exists (
+    select 1
+    from public.profiles
+    left join public.organization_members
+      on organization_members.profile_id = profiles.id
+    where profiles.id = auth.uid()
+      and (
+        profiles.role = 'platform_admin'
+        or organization_members.role = 'admin'
+      )
+  )
+)
+with check (bucket_id = 'invoice-assets');
+
+drop policy if exists "Admins can read invoice assets" on storage.objects;
+create policy "Admins can read invoice assets"
+on storage.objects
+for select
+using (
+  bucket_id = 'invoice-assets'
+  and exists (
+    select 1
+    from public.profiles
+    left join public.organization_members
+      on organization_members.profile_id = profiles.id
+    where profiles.id = auth.uid()
+      and (
+        profiles.role = 'platform_admin'
+        or organization_members.role = 'admin'
+      )
+  )
+);
 
 insert into public.property_invoice_rates (
   organization_id,

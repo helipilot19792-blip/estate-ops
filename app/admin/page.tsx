@@ -370,6 +370,8 @@ type OwnerInvoiceLineItem = {
   quantity: number;
   rate: number;
   source_id?: string | null;
+  receipt_urls?: string[];
+  receipt_names?: string[];
 };
 type OwnerInvoiceRow = {
   id: string;
@@ -701,6 +703,8 @@ export default function AdminPage() {
   const [savingInvoiceSettings, setSavingInvoiceSettings] = useState(false);
   const [creatingInvoice, setCreatingInvoice] = useState(false);
   const [previewingInvoicePdf, setPreviewingInvoicePdf] = useState(false);
+  const [uploadingInvoiceLogo, setUploadingInvoiceLogo] = useState(false);
+  const [uploadingReceiptLineItemId, setUploadingReceiptLineItemId] = useState<string | null>(null);
   const [sendingInvoiceId, setSendingInvoiceId] = useState<string | null>(null);
   const [invoiceOwnerId, setInvoiceOwnerId] = useState("");
   const [invoicePropertyId, setInvoicePropertyId] = useState("");
@@ -5049,6 +5053,7 @@ This removes its linked members and deletes the grounds account.`
         "Qty",
         "Rate",
         "Amount",
+        "ReceiptUrls",
       ],
       ...invoice.line_items.map((item) => {
         const quantity = Number(item.quantity || 0);
@@ -5071,6 +5076,7 @@ This removes its linked members and deletes the grounds account.`
           quantity,
           rate.toFixed(2),
           (quantity * rate).toFixed(2),
+          (item.receipt_urls || []).join(" "),
         ];
       }),
     ];
@@ -5093,6 +5099,111 @@ This removes its linked members and deletes the grounds account.`
     );
   }
 
+  async function uploadInvoiceLogo(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] || null;
+    e.target.value = "";
+
+    if (!file) return;
+    if (!currentOrganizationId) {
+      setError("Choose an organization before uploading a logo.");
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      setError("Please choose an image file for the invoice logo.");
+      return;
+    }
+
+    setUploadingInvoiceLogo(true);
+    setError("");
+    setActionMessage("");
+
+    try {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const filePath = `${currentOrganizationId}/logos/${Date.now()}-${safeName}`;
+      const { error: uploadError } = await supabase.storage
+        .from("invoice-assets")
+        .upload(filePath, file, { cacheControl: "3600", upsert: false });
+
+      if (uploadError) throw uploadError;
+
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("invoice-assets").getPublicUrl(filePath);
+
+      setInvoiceLogoUrl(publicUrl);
+      setActionMessage("Invoice logo uploaded. Save defaults to keep it.");
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Could not upload invoice logo. Make sure the invoice-assets storage bucket exists."));
+    } finally {
+      setUploadingInvoiceLogo(false);
+    }
+  }
+
+  async function uploadInvoiceReceipts(lineItemId: string, files: FileList | null) {
+    if (!files?.length) return;
+    if (!currentOrganizationId) {
+      setError("Choose an organization before uploading receipts.");
+      return;
+    }
+
+    setUploadingReceiptLineItemId(lineItemId);
+    setError("");
+    setActionMessage("");
+
+    try {
+      const uploaded: Array<{ url: string; name: string }> = [];
+
+      for (let i = 0; i < files.length; i += 1) {
+        const file = files[i];
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const filePath = `${currentOrganizationId}/receipts/${lineItemId}/${Date.now()}-${i}-${safeName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from("invoice-assets")
+          .upload(filePath, file, { cacheControl: "3600", upsert: false });
+
+        if (uploadError) throw uploadError;
+
+        const {
+          data: { publicUrl },
+        } = supabase.storage.from("invoice-assets").getPublicUrl(filePath);
+
+        uploaded.push({ url: publicUrl, name: file.name });
+      }
+
+      setInvoiceLineItems((items) =>
+        items.map((item) =>
+          item.id === lineItemId
+            ? {
+                ...item,
+                receipt_urls: [...(item.receipt_urls || []), ...uploaded.map((receipt) => receipt.url)],
+                receipt_names: [...(item.receipt_names || []), ...uploaded.map((receipt) => receipt.name)],
+              }
+            : item
+        )
+      );
+      setActionMessage(`${uploaded.length} receipt${uploaded.length === 1 ? "" : "s"} attached.`);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Could not upload receipt. Make sure the invoice-assets storage bucket exists."));
+    } finally {
+      setUploadingReceiptLineItemId(null);
+    }
+  }
+
+  function removeInvoiceReceipt(lineItemId: string, receiptIndex: number) {
+    setInvoiceLineItems((items) =>
+      items.map((item) => {
+        if (item.id !== lineItemId) return item;
+        return {
+          ...item,
+          receipt_urls: (item.receipt_urls || []).filter((_, index) => index !== receiptIndex),
+          receipt_names: (item.receipt_names || []).filter((_, index) => index !== receiptIndex),
+        };
+      })
+    );
+  }
+
   function getValidInvoiceLineItems() {
     return invoiceLineItems
       .map((item) => ({
@@ -5100,6 +5211,8 @@ This removes its linked members and deletes the grounds account.`
         description: item.description.trim(),
         quantity: Number(item.quantity || 0),
         rate: Number(item.rate || 0),
+        receipt_urls: item.receipt_urls || [],
+        receipt_names: item.receipt_names || [],
       }))
       .filter((item) => item.description && item.quantity > 0);
   }
@@ -5440,6 +5553,16 @@ This removes its linked members and deletes the grounds account.`
                   value={invoiceLogoUrl}
                   onChange={(e) => setInvoiceLogoUrl(e.target.value)}
                 />
+                <label className="inline-flex cursor-pointer items-center justify-center rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#f7f1e8]">
+                  {uploadingInvoiceLogo ? "Uploading logo..." : "Upload logo"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={uploadingInvoiceLogo}
+                    onChange={(e) => void uploadInvoiceLogo(e)}
+                  />
+                </label>
                 <textarea
                   className="min-h-[96px] rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
                   placeholder="Custom invoice header"
@@ -5593,46 +5716,75 @@ This removes its linked members and deletes the grounds account.`
 
               <div className="mt-4 space-y-3">
                 {invoiceLineItems.map((item) => (
-                  <div key={item.id} className="grid gap-2 rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] p-3 md:grid-cols-[1fr_130px_110px_110px_auto] md:items-center">
-                    <input
-                      className="rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
-                      placeholder="Description"
-                      value={item.description}
-                      onChange={(e) => updateInvoiceLineItem(item.id, { description: e.target.value })}
-                    />
-                    <select
-                      className="rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
-                      value={item.category}
-                      onChange={(e) => updateInvoiceLineItem(item.id, { category: e.target.value as OwnerInvoiceLineItem["category"] })}
-                    >
-                      <option value="turnover">Turnover</option>
-                      <option value="grounds">Grounds</option>
-                      <option value="expense">Expense</option>
-                      <option value="other">Other</option>
-                    </select>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      className="rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
-                      value={item.quantity}
-                      onChange={(e) => updateInvoiceLineItem(item.id, { quantity: Number(e.target.value || 0) })}
-                    />
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      className="rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
-                      value={item.rate}
-                      onChange={(e) => updateInvoiceLineItem(item.id, { rate: Number(e.target.value || 0) })}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeInvoiceLineItem(item.id)}
-                      className="rounded-full border border-[#efc6c6] bg-[#fff5f5] px-3 py-2 text-sm text-[#8a2e22]"
-                    >
-                      Remove
-                    </button>
+                  <div key={item.id} className="rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] p-3">
+                    <div className="grid gap-2 md:grid-cols-[1fr_130px_110px_110px_auto] md:items-center">
+                      <input
+                        className="rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                        placeholder="Description"
+                        value={item.description}
+                        onChange={(e) => updateInvoiceLineItem(item.id, { description: e.target.value })}
+                      />
+                      <select
+                        className="rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                        value={item.category}
+                        onChange={(e) => updateInvoiceLineItem(item.id, { category: e.target.value as OwnerInvoiceLineItem["category"] })}
+                      >
+                        <option value="turnover">Turnover</option>
+                        <option value="grounds">Grounds</option>
+                        <option value="expense">Expense</option>
+                        <option value="other">Other</option>
+                      </select>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        className="rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                        value={item.quantity}
+                        onChange={(e) => updateInvoiceLineItem(item.id, { quantity: Number(e.target.value || 0) })}
+                      />
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        className="rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                        value={item.rate}
+                        onChange={(e) => updateInvoiceLineItem(item.id, { rate: Number(e.target.value || 0) })}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeInvoiceLineItem(item.id)}
+                        className="rounded-full border border-[#efc6c6] bg-[#fff5f5] px-3 py-2 text-sm text-[#8a2e22]"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <label className="inline-flex cursor-pointer items-center rounded-full border border-[#d8c7ab] bg-white px-3 py-1.5 text-xs font-medium text-[#5f4c3b] hover:bg-[#f7f1e8]">
+                        {uploadingReceiptLineItemId === item.id ? "Uploading..." : "Attach receipt"}
+                        <input
+                          type="file"
+                          multiple
+                          accept="image/*,.pdf"
+                          className="hidden"
+                          disabled={uploadingReceiptLineItemId === item.id}
+                          onChange={(e) => void uploadInvoiceReceipts(item.id, e.target.files)}
+                        />
+                      </label>
+                      {(item.receipt_urls || []).map((url, receiptIndex) => (
+                        <span key={`${url}-${receiptIndex}`} className="inline-flex items-center gap-2 rounded-full border border-[#d8c7ab] bg-white px-3 py-1.5 text-xs text-[#5f4c3b]">
+                          <a href={url} target="_blank" rel="noreferrer" className="underline">
+                            {item.receipt_names?.[receiptIndex] || `Receipt ${receiptIndex + 1}`}
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => removeInvoiceReceipt(item.id, receiptIndex)}
+                            className="font-semibold text-[#8a2e22]"
+                          >
+                            x
+                          </button>
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 ))}
               </div>

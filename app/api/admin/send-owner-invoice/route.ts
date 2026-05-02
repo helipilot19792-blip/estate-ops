@@ -44,6 +44,8 @@ type InvoiceLineItem = {
   category?: string | null;
   quantity?: number | string | null;
   rate?: number | string | null;
+  receipt_urls?: string[] | null;
+  receipt_names?: string[] | null;
 };
 
 export async function POST(request: NextRequest) {
@@ -156,9 +158,18 @@ export async function POST(request: NextRequest) {
       .map((item) => {
         const quantity = Number(item.quantity || 0);
         const rate = Number(item.rate || 0);
+        const receiptLinks = (item.receipt_urls || [])
+          .map((url, index) => {
+            const label = item.receipt_names?.[index] || `Receipt ${index + 1}`;
+            return `<a href="${escapeHtml(url)}" style="color:#7d581b;">${escapeHtml(label)}</a>`;
+          })
+          .join("<br />");
         return `
           <tr>
-            <td style="padding:10px;border-bottom:1px solid #eadfce;">${escapeHtml(item.description)}</td>
+            <td style="padding:10px;border-bottom:1px solid #eadfce;">
+              ${escapeHtml(item.description)}
+              ${receiptLinks ? `<div style="margin-top:6px;font-size:12px;">${receiptLinks}</div>` : ""}
+            </td>
             <td style="padding:10px;border-bottom:1px solid #eadfce;text-align:right;">${quantity}</td>
             <td style="padding:10px;border-bottom:1px solid #eadfce;text-align:right;">${formatCurrency(rate)}</td>
             <td style="padding:10px;border-bottom:1px solid #eadfce;text-align:right;">${formatCurrency(quantity * rate)}</td>
@@ -211,6 +222,14 @@ export async function POST(request: NextRequest) {
       total: Number(invoice.total || 0),
       lineItems,
     });
+    const receiptAttachments = lineItems.flatMap((item, itemIndex) =>
+      (item.receipt_urls || []).map((url, receiptIndex) => ({
+        filename:
+          item.receipt_names?.[receiptIndex]?.replace(/[^a-zA-Z0-9._-]/g, "_") ||
+          `receipt-${itemIndex + 1}-${receiptIndex + 1}`,
+        path: url,
+      }))
+    );
 
     const resend = new Resend(process.env.RESEND_API_KEY);
     const result = await resend.emails.send({
@@ -225,6 +244,7 @@ export async function POST(request: NextRequest) {
           content: pdfBuffer,
           contentType: "application/pdf",
         },
+        ...receiptAttachments,
       ],
     });
 

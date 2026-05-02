@@ -3,6 +3,8 @@ export type InvoicePdfLineItem = {
   category?: string | null;
   quantity?: number | string | null;
   rate?: number | string | null;
+  receipt_urls?: string[] | null;
+  receipt_names?: string[] | null;
 };
 
 export type InvoicePdfInput = {
@@ -100,6 +102,13 @@ export function createInvoicePdfBuffer(input: InvoicePdfInput) {
     for (const extraLine of descriptionLines.slice(1)) {
       pushLine(extraLine, 9, 62, 13);
     }
+
+    (item.receipt_urls || []).forEach((url, index) => {
+      const label = item.receipt_names?.[index] || `Receipt ${index + 1}`;
+      for (const line of wrapPdfText(`${label}: ${url}`, 70)) {
+        pushLine(line, 8, 62, 12);
+      }
+    });
   }
 
   y -= 10;

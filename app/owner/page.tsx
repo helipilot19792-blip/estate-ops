@@ -82,6 +82,8 @@ type OwnerInvoiceLineItem = {
   category?: string;
   quantity: number;
   rate: number;
+  receipt_urls?: string[];
+  receipt_names?: string[];
 };
 
 type OwnerInvoice = {
@@ -1961,7 +1963,24 @@ export default function OwnerPage() {
                           const rate = Number(item.rate || 0);
                           return (
                             <div key={item.id || `${invoice.id}-${index}`} className="grid gap-2 px-5 py-3 text-sm md:grid-cols-[1fr_90px_110px_120px] md:items-center">
-                              <div className="font-medium text-[#f7f1e8]">{item.description}</div>
+                              <div className="font-medium text-[#f7f1e8]">
+                                {item.description}
+                                {(item.receipt_urls || []).length > 0 ? (
+                                  <div className="mt-2 flex flex-wrap gap-2">
+                                    {(item.receipt_urls || []).map((url, receiptIndex) => (
+                                      <a
+                                        key={`${url}-${receiptIndex}`}
+                                        href={url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="rounded-full border border-[#b08b47]/25 bg-[#b08b47]/10 px-3 py-1 text-xs font-semibold text-[#f1d9a5]"
+                                      >
+                                        {item.receipt_names?.[receiptIndex] || `Receipt ${receiptIndex + 1}`}
+                                      </a>
+                                    ))}
+                                  </div>
+                                ) : null}
+                              </div>
                               <div className="text-[#ccb99a] md:text-right">Qty {quantity}</div>
                               <div className="text-[#ccb99a] md:text-right">{formatCurrency(rate)}</div>
                               <div className="font-semibold text-[#f7f1e8] md:text-right">{formatCurrency(quantity * rate)}</div>
