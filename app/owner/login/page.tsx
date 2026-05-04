@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
@@ -248,6 +249,21 @@ export default function OwnerLoginPage() {
     </div>
   </form>
 </section>
+        <div className="text-center text-xs leading-6 text-[#ccb99a]">
+          By using the owner portal, you agree to the{" "}
+          <Link href="/terms" className="font-semibold text-[#e7c98a] underline">
+            Terms
+          </Link>
+          ,{" "}
+          <Link href="/privacy" className="font-semibold text-[#e7c98a] underline">
+            Privacy Policy
+          </Link>
+          , and{" "}
+          <Link href="/cookies" className="font-semibold text-[#e7c98a] underline">
+            Cookie Notice
+          </Link>
+          .
+        </div>
       </div>
     </main>
   );

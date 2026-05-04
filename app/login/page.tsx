@@ -98,6 +98,7 @@ export default function LoginPage() {
   const [signupPassword, setSignupPassword] = useState("");
   const [signupConfirmPassword, setSignupConfirmPassword] = useState("");
   const [companyName, setCompanyName] = useState("");
+  const [signupAcceptedTerms, setSignupAcceptedTerms] = useState(false);
 
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [showSignupPassword, setShowSignupPassword] = useState(false);
@@ -233,6 +234,11 @@ export default function LoginPage() {
 
     if (signupPassword !== signupConfirmPassword) {
       setError("Passwords do not match.");
+      return;
+    }
+
+    if (!signupAcceptedTerms) {
+      setError("Please accept the testing terms and privacy policy before creating an account.");
       return;
     }
 
@@ -664,6 +670,30 @@ export default function LoginPage() {
                         </button>
                       </div>
 
+                      <label className="md:col-span-2 flex gap-3 rounded-[20px] border border-[#e7ddd0] bg-[#fcfaf7] px-4 py-3 text-sm leading-6 text-[#5f5245]">
+                        <input
+                          type="checkbox"
+                          checked={signupAcceptedTerms}
+                          onChange={(e) => setSignupAcceptedTerms(e.target.checked)}
+                          className="mt-1 h-4 w-4 accent-[#b48d4e]"
+                        />
+                        <span>
+                          I understand Gulera OS is in testing and agree to the{" "}
+                          <Link href="/terms" className="font-semibold text-[#7d581b] underline">
+                            Terms
+                          </Link>
+                          ,{" "}
+                          <Link href="/privacy" className="font-semibold text-[#7d581b] underline">
+                            Privacy Policy
+                          </Link>
+                          , and{" "}
+                          <Link href="/cookies" className="font-semibold text-[#7d581b] underline">
+                            Cookie Notice
+                          </Link>
+                          .
+                        </span>
+                      </label>
+
                       <div className="md:col-span-2 mt-1">
                         <button
                           type="submit"
@@ -676,7 +706,20 @@ export default function LoginPage() {
                     </form>
 
                     <p className="mt-4 text-xs leading-6 text-[#8a7b68]">
-                      This creates the first admin account for a new company workspace.
+                      This creates the first admin account for a new company workspace. Legal text is
+                      available anytime:{" "}
+                      <Link href="/terms" className="font-semibold underline">
+                        Terms
+                      </Link>
+                      ,{" "}
+                      <Link href="/privacy" className="font-semibold underline">
+                        Privacy
+                      </Link>
+                      ,{" "}
+                      <Link href="/cookies" className="font-semibold underline">
+                        Cookies
+                      </Link>
+                      .
                     </p>
                   </section>
                 ) : null}

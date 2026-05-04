@@ -72,6 +72,7 @@ function InvitePageContent() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
   const [loadingSignup, setLoadingSignup] = useState(false);
@@ -371,6 +372,11 @@ function InvitePageContent() {
       return;
     }
 
+    if (!acceptedTerms) {
+      setError("Please accept the testing terms and privacy policy before creating an account.");
+      return;
+    }
+
     setLoadingSignup(true);
 
     try {
@@ -544,6 +550,30 @@ function InvitePageContent() {
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                     />
+
+                    <label className="flex gap-3 rounded-[20px] border border-[#e7ddd0] bg-[#fcfaf7] px-4 py-3 text-sm leading-6 text-[#5f5245]">
+                      <input
+                        type="checkbox"
+                        checked={acceptedTerms}
+                        onChange={(e) => setAcceptedTerms(e.target.checked)}
+                        className="mt-1 h-4 w-4 accent-[#b48d4e]"
+                      />
+                      <span>
+                        I understand Gulera OS is in testing and agree to the{" "}
+                        <Link href="/terms" className="font-semibold text-[#7d581b] underline">
+                          Terms
+                        </Link>
+                        ,{" "}
+                        <Link href="/privacy" className="font-semibold text-[#7d581b] underline">
+                          Privacy Policy
+                        </Link>
+                        , and{" "}
+                        <Link href="/cookies" className="font-semibold text-[#7d581b] underline">
+                          Cookie Notice
+                        </Link>
+                        .
+                      </span>
+                    </label>
 
                     <div className="pt-2">
                       <button

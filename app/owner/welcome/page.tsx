@@ -2,6 +2,7 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
@@ -69,6 +70,7 @@ export default function OwnerWelcomePage() {
   const [properties, setProperties] = useState<PropertyRow[]>([]);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -316,6 +318,11 @@ export default function OwnerWelcomePage() {
       return;
     }
 
+    if (!acceptedTerms) {
+      setError("Please accept the testing terms and privacy policy before setting a password.");
+      return;
+    }
+
     setSavingPassword(true);
     setError("");
     setStatusMessage("");
@@ -346,6 +353,11 @@ export default function OwnerWelcomePage() {
 
     if (!ownerMatched) {
       setError("We could not match this session to an owner account yet.");
+      return;
+    }
+
+    if (!acceptedTerms) {
+      setError("Please accept the testing terms and privacy policy before continuing.");
       return;
     }
 
@@ -527,6 +539,30 @@ async function handleFreshLoginLink() {
               </div>
             </div>
           </div>
+
+          <label className="mt-5 flex gap-3 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3 text-sm leading-6 text-[#e6d8bf]">
+            <input
+              type="checkbox"
+              checked={acceptedTerms}
+              onChange={(e) => setAcceptedTerms(e.target.checked)}
+              className="mt-1 h-4 w-4 accent-[#b08b47]"
+            />
+            <span>
+              I understand Gulera OS is in testing and agree to the{" "}
+              <Link href="/terms" className="font-semibold text-[#e7c98a] underline">
+                Terms
+              </Link>
+              ,{" "}
+              <Link href="/privacy" className="font-semibold text-[#e7c98a] underline">
+                Privacy Policy
+              </Link>
+              , and{" "}
+              <Link href="/cookies" className="font-semibold text-[#e7c98a] underline">
+                Cookie Notice
+              </Link>
+              .
+            </span>
+          </label>
 
           <div className="mt-5 flex flex-wrap gap-3">
             <button
