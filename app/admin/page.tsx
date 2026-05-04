@@ -362,6 +362,7 @@ type OwnerInvoiceTaxLine = {
   id: string;
   label: string;
   rate: number | string;
+  enabled?: boolean;
 };
 type PropertyInvoiceRateRow = {
   id?: string;
@@ -463,6 +464,7 @@ function normalizeTaxLines(lines: OwnerInvoiceTaxLine[] | null | undefined) {
       id: line.id || `tax-${index + 1}`,
       label: String(line.label || "").trim(),
       rate: String(line.rate ?? ""),
+      enabled: line.enabled !== false,
     }))
     .filter((line) => line.label || Number(line.rate || 0) > 0);
 
@@ -473,6 +475,7 @@ function normalizeTaxLines(lines: OwnerInvoiceTaxLine[] | null | undefined) {
       id: "tax-1",
       label: "Tax",
       rate: "0",
+      enabled: true,
     },
   ];
 }
@@ -774,7 +777,7 @@ export default function AdminPage() {
   const [externalInvoiceNumber, setExternalInvoiceNumber] = useState("");
   const [externalInvoiceAmount, setExternalInvoiceAmount] = useState("");
   const [invoiceTaxLines, setInvoiceTaxLines] = useState<OwnerInvoiceTaxLine[]>([
-    { id: "tax-1", label: "Tax", rate: "0" },
+    { id: "tax-1", label: "Tax", rate: "0", enabled: true },
   ]);
   const [invoiceCcEmails, setInvoiceCcEmails] = useState("");
   const [propertyInvoiceRateDrafts, setPropertyInvoiceRateDrafts] = useState<Record<string, { turnover: string; grounds: string }>>({});
@@ -5164,6 +5167,7 @@ This removes its linked members and deletes the grounds account.`
 
   function getInvoiceTaxLinesForSubtotal(subtotal: number) {
     return invoiceTaxLines
+      .filter((line) => line.enabled !== false)
       .map((line) => {
         const rawLabel = line.label.trim();
         const rate = Math.max(Number(line.rate || 0), 0);
@@ -5329,14 +5333,14 @@ This removes its linked members and deletes the grounds account.`
     setInvoiceSettingsDirty(true);
     setInvoiceTaxLines((lines) => [
       ...lines,
-      { id: `tax-${Date.now()}`, label: "", rate: "" },
+      { id: `tax-${Date.now()}`, label: "", rate: "", enabled: true },
     ]);
   }
 
   function removeInvoiceTaxLine(id: string) {
     setInvoiceSettingsDirty(true);
     setInvoiceTaxLines((lines) =>
-      lines.length === 1 ? [{ id: "tax-1", label: "Tax", rate: "0" }] : lines.filter((line) => line.id !== id)
+      lines.length === 1 ? [{ id: "tax-1", label: "Tax", rate: "0", enabled: true }] : lines.filter((line) => line.id !== id)
     );
   }
 
@@ -5600,7 +5604,14 @@ This removes its linked members and deletes the grounds account.`
     setActionMessage("");
 
     try {
-      const savedTaxLines = getInvoiceTaxLinesForSubtotal(0).map(({ id, label, rate }) => ({ id, label, rate }));
+      const savedTaxLines = invoiceTaxLines
+        .map((line) => ({
+          id: line.id,
+          label: line.label.trim(),
+          rate: Number(line.rate || 0),
+          enabled: line.enabled !== false,
+        }))
+        .filter((line) => line.label || line.rate > 0);
       const { error } = await supabase.from("organization_invoice_settings").upsert({
         organization_id: currentOrganizationId,
         company_name: invoiceCompanyName.trim() || null,
@@ -6147,7 +6158,20 @@ This removes its linked members and deletes the grounds account.`
                   </div>
                   <div className="mt-3 space-y-2">
                     {invoiceTaxLines.map((taxLine) => (
-                      <div key={taxLine.id} className="grid gap-2 sm:grid-cols-[1fr_120px_auto] sm:items-end">
+                      <div key={taxLine.id} className={`grid gap-2 rounded-[16px] border p-2 sm:grid-cols-[110px_1fr_120px_auto] sm:items-end ${
+                        taxLine.enabled === false
+                          ? "border-[#eadfce] bg-[#f7f3ee] opacity-70"
+                          : "border-[#eadfce] bg-[#fcfaf7]"
+                      }`}>
+                        <label className="flex items-center gap-2 rounded-[14px] bg-white px-3 py-2 text-xs font-semibold text-[#5f5245] sm:mb-0.5">
+                          <input
+                            type="checkbox"
+                            checked={taxLine.enabled !== false}
+                            onChange={(e) => updateInvoiceTaxLine(taxLine.id, { enabled: e.target.checked })}
+                            className="h-4 w-4 accent-[#b48d4e]"
+                          />
+                          Apply
+                        </label>
                         <label className="text-xs font-medium text-[#5f5245]">
                           Tax label
                           <input
