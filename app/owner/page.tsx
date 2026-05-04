@@ -2225,33 +2225,38 @@ export default function OwnerPage() {
                             <div className="mt-1 text-sm text-[#e6d8bf]">
                               {invoice.status === "paid" ? "Paid" : "Due"} {invoice.due_date ? formatDateLabel(invoice.due_date) : "on receipt"}
                             </div>
-                            <div className="mt-3 flex flex-wrap gap-2 md:justify-end">
-                              <button
-                                type="button"
-                                onClick={() => void downloadOwnerInvoicePdf(invoice)}
-                                disabled={downloadingInvoiceId === invoice.id}
-                                className="rounded-full border border-[#b08b47]/35 bg-[#b08b47]/10 px-3 py-1.5 text-xs font-semibold text-[#f1d9a5] transition hover:bg-[#b08b47]/18 disabled:opacity-60"
-                              >
-                                {downloadingInvoiceId === invoice.id
-                                  ? "Downloading..."
-                                  : invoice.invoice_source === "uploaded"
-                                    ? "File"
-                                    : "PDF"}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => downloadOwnerInvoiceCsv(invoice, invoiceProperty)}
-                                className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-semibold text-[#f7f1e8] transition hover:bg-white/[0.06]"
-                              >
-                                CSV
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => downloadOwnerInvoiceJson(invoice, invoiceProperty)}
-                                className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-semibold text-[#f7f1e8] transition hover:bg-white/[0.06]"
-                              >
-                                JSON
-                              </button>
+                            <div className="mt-3 md:text-right">
+                              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#ccb99a]">
+                                Download as:
+                              </div>
+                              <div className="mt-2 flex flex-wrap gap-2 md:justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() => void downloadOwnerInvoicePdf(invoice)}
+                                  disabled={downloadingInvoiceId === invoice.id}
+                                  className="rounded-full border border-[#b08b47]/35 bg-[#b08b47]/10 px-3 py-1.5 text-xs font-semibold text-[#f1d9a5] transition hover:bg-[#b08b47]/18 disabled:opacity-60"
+                                >
+                                  {downloadingInvoiceId === invoice.id
+                                    ? "Downloading..."
+                                    : invoice.invoice_source === "uploaded"
+                                      ? "File"
+                                      : "PDF"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => downloadOwnerInvoiceCsv(invoice, invoiceProperty)}
+                                  className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-semibold text-[#f7f1e8] transition hover:bg-white/[0.06]"
+                                >
+                                  CSV
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => downloadOwnerInvoiceJson(invoice, invoiceProperty)}
+                                  className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-semibold text-[#f7f1e8] transition hover:bg-white/[0.06]"
+                                >
+                                  JSON
+                                </button>
+                              </div>
                             </div>
                           </div>
                         </div>
