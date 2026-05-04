@@ -7354,19 +7354,25 @@ This removes its linked members and deletes the grounds account.`
   function renderAssignmentsSection() {
     return (
       <div className="space-y-6">
-        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-          <h2 className="text-xl font-semibold tracking-tight">Assign Cleaner to Property</h2>
-          <p className="mt-1 text-sm text-[#7f7263]">
+        <section className="rounded-[30px] border border-[#b8d8ea] bg-[#f4fbff] p-5 shadow-[0_18px_45px_rgba(37,99,135,0.08)]">
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#26708f]">Cleaning</div>
+              <h2 className="mt-1 text-xl font-semibold tracking-tight text-[#12394a]">Assign Cleaner to Property</h2>
+            </div>
+            <span className="rounded-full border border-[#b8d8ea] bg-white px-3 py-1 text-xs font-semibold text-[#26708f]">Turnovers</span>
+          </div>
+          <p className="mt-1 text-sm text-[#4f6e7c]">
             Choose an approved cleaner and assign them as primary or backup. If they are not linked to a cleaner account yet, the system will create that link automatically.
           </p>
 
           <div className="mt-5 space-y-3">
-            <select className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" value={assignmentPropertyId} onChange={(e) => setAssignmentPropertyId(e.target.value)}>
+            <select className="w-full rounded-[20px] border border-[#b8d8ea] bg-white px-4 py-3 text-sm outline-none focus:border-[#26708f]" value={assignmentPropertyId} onChange={(e) => setAssignmentPropertyId(e.target.value)}>
               <option value="">Select property</option>
               {properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
 
-            <select className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" value={assignmentCleanerProfileId} onChange={(e) => setAssignmentCleanerProfileId(e.target.value)}>
+            <select className="w-full rounded-[20px] border border-[#b8d8ea] bg-white px-4 py-3 text-sm outline-none focus:border-[#26708f]" value={assignmentCleanerProfileId} onChange={(e) => setAssignmentCleanerProfileId(e.target.value)}>
               <option value="">Select cleaner</option>
               {eligibleCleanerProfiles.map((profile) => (
                 <option key={profile.id} value={profile.id}>
@@ -7375,22 +7381,22 @@ This removes its linked members and deletes the grounds account.`
               ))}
             </select>
 
-            <select className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" value={assignmentPriority} onChange={(e) => setAssignmentPriority(e.target.value)}>
+            <select className="w-full rounded-[20px] border border-[#b8d8ea] bg-white px-4 py-3 text-sm outline-none focus:border-[#26708f]" value={assignmentPriority} onChange={(e) => setAssignmentPriority(e.target.value)}>
               <option value="1">Primary</option>
               <option value="2">Backup</option>
               <option value="3">Second Backup</option>
             </select>
 
-            <button className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]" onClick={() => void addAssignment()}>
+            <button className="inline-flex items-center justify-center rounded-full bg-[#17637f] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#124d63]" onClick={() => void addAssignment()}>
               Save Assignment
             </button>
           </div>
         </section>
 
-        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+        <section className="rounded-[30px] border border-[#b8d8ea] bg-[#f8fcff] p-5 shadow-[0_18px_45px_rgba(37,99,135,0.05)]">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-xl font-semibold tracking-tight">Assignments</h2>
-            <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">{assignments.length}</span>
+            <h2 className="text-xl font-semibold tracking-tight text-[#12394a]">Cleaner Assignments</h2>
+            <span className="rounded-full border border-[#b8d8ea] bg-white px-3 py-1 text-xs font-medium text-[#26708f]">{assignments.length}</span>
           </div>
           <div className="space-y-3">
             {assignments.map((a) => {
@@ -7400,11 +7406,11 @@ This removes its linked members and deletes the grounds account.`
                 : getCleanerAccountName(a.cleaner_account_id);
 
               return (
-                <div key={a.id} className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
-                  <div className="text-base font-semibold">{getPropertyName(a.property_id)}</div>
-                  <div className="mt-1 text-sm text-[#6f6255]">{memberLabel}</div>
-                  <div className="mt-1 text-xs text-[#8a7b68]">Cleaner account: {getCleanerAccountName(a.cleaner_account_id)}</div>
-                  <div className="mt-2 inline-flex rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-medium text-[#7f7263]">
+                <div key={a.id} className="rounded-[22px] border border-[#b8d8ea] bg-white p-4 shadow-sm">
+                  <div className="text-base font-semibold text-[#12394a]">{getPropertyName(a.property_id)}</div>
+                  <div className="mt-1 text-sm text-[#4f6e7c]">{memberLabel}</div>
+                  <div className="mt-1 text-xs text-[#6a8793]">Cleaner account: {getCleanerAccountName(a.cleaner_account_id)}</div>
+                  <div className="mt-2 inline-flex rounded-full border border-[#b8d8ea] bg-[#eef8fd] px-3 py-1 text-xs font-medium text-[#26708f]">
                     {getPriorityLabel(a.priority)}
                   </div>
                 </div>
@@ -7413,19 +7419,25 @@ This removes its linked members and deletes the grounds account.`
           </div>
         </section>
 
-        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-          <h2 className="text-xl font-semibold tracking-tight">Assign Grounds to Property</h2>
-          <p className="mt-1 text-sm text-[#7f7263]">
+        <section className="rounded-[30px] border border-[#bddbbd] bg-[#f5fff4] p-5 shadow-[0_18px_45px_rgba(68,126,72,0.08)]">
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#3f7b45]">Grounds</div>
+              <h2 className="mt-1 text-xl font-semibold tracking-tight text-[#1f4b24]">Assign Grounds to Property</h2>
+            </div>
+            <span className="rounded-full border border-[#bddbbd] bg-white px-3 py-1 text-xs font-semibold text-[#3f7b45]">Exterior work</span>
+          </div>
+          <p className="mt-1 text-sm text-[#557257]">
             Choose a grounds-capable user and assign them as primary or backup for grounds work. If they are not linked to a grounds account yet, the system will create that link automatically.
           </p>
 
           <div className="mt-5 space-y-3">
-            <select className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" value={groundsAssignmentPropertyId} onChange={(e) => setGroundsAssignmentPropertyId(e.target.value)}>
+            <select className="w-full rounded-[20px] border border-[#bddbbd] bg-white px-4 py-3 text-sm outline-none focus:border-[#3f7b45]" value={groundsAssignmentPropertyId} onChange={(e) => setGroundsAssignmentPropertyId(e.target.value)}>
               <option value="">Select property</option>
               {properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
 
-            <select className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" value={groundsAssignmentProfileId} onChange={(e) => setGroundsAssignmentProfileId(e.target.value)}>
+            <select className="w-full rounded-[20px] border border-[#bddbbd] bg-white px-4 py-3 text-sm outline-none focus:border-[#3f7b45]" value={groundsAssignmentProfileId} onChange={(e) => setGroundsAssignmentProfileId(e.target.value)}>
               <option value="">Select grounds user</option>
               {eligibleGroundsProfiles.map((profile) => (
                 <option key={profile.id} value={profile.id}>
@@ -7434,22 +7446,22 @@ This removes its linked members and deletes the grounds account.`
               ))}
             </select>
 
-            <select className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" value={groundsAssignmentPriority} onChange={(e) => setGroundsAssignmentPriority(e.target.value)}>
+            <select className="w-full rounded-[20px] border border-[#bddbbd] bg-white px-4 py-3 text-sm outline-none focus:border-[#3f7b45]" value={groundsAssignmentPriority} onChange={(e) => setGroundsAssignmentPriority(e.target.value)}>
               <option value="1">Primary</option>
               <option value="2">Backup</option>
               <option value="3">Second Backup</option>
             </select>
 
-            <button className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]" onClick={() => void addGroundsAssignment()}>
+            <button className="inline-flex items-center justify-center rounded-full bg-[#2f6f36] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#24562a]" onClick={() => void addGroundsAssignment()}>
               Save Grounds Assignment
             </button>
           </div>
         </section>
 
-        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+        <section className="rounded-[30px] border border-[#bddbbd] bg-[#f8fff7] p-5 shadow-[0_18px_45px_rgba(68,126,72,0.05)]">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-xl font-semibold tracking-tight">Grounds Assignments</h2>
-            <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">{groundsAssignments.length}</span>
+            <h2 className="text-xl font-semibold tracking-tight text-[#1f4b24]">Grounds Assignments</h2>
+            <span className="rounded-full border border-[#bddbbd] bg-white px-3 py-1 text-xs font-medium text-[#3f7b45]">{groundsAssignments.length}</span>
           </div>
           <div className="space-y-3">
             {groundsAssignments.map((a) => {
@@ -7457,11 +7469,11 @@ This removes its linked members and deletes the grounds account.`
               const memberLabel = members.length ? members.map((m) => m.full_name || m.email || m.id).join(", ") : getGroundsAccountName(a.grounds_account_id);
 
               return (
-                <div key={a.id} className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
-                  <div className="text-base font-semibold">{getPropertyName(a.property_id)}</div>
-                  <div className="mt-1 text-sm text-[#6f6255]">{memberLabel}</div>
-                  <div className="mt-1 text-xs text-[#8a7b68]">Grounds account: {getGroundsAccountName(a.grounds_account_id)}</div>
-                  <div className="mt-2 inline-flex rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-medium text-[#7f7263]">
+                <div key={a.id} className="rounded-[22px] border border-[#bddbbd] bg-white p-4 shadow-sm">
+                  <div className="text-base font-semibold text-[#1f4b24]">{getPropertyName(a.property_id)}</div>
+                  <div className="mt-1 text-sm text-[#557257]">{memberLabel}</div>
+                  <div className="mt-1 text-xs text-[#6f8a71]">Grounds account: {getGroundsAccountName(a.grounds_account_id)}</div>
+                  <div className="mt-2 inline-flex rounded-full border border-[#bddbbd] bg-[#eff9ee] px-3 py-1 text-xs font-medium text-[#3f7b45]">
                     {getPriorityLabel(a.priority)}
                   </div>
                 </div>
