@@ -208,6 +208,7 @@ export async function POST(request: NextRequest) {
       ? (invoice.line_items as InvoiceLineItem[])
       : [];
     const taxLines = normalizeTaxLines(invoice);
+    const isUploadedInvoice = invoice.invoice_source === "uploaded" && !!invoice.uploaded_invoice_url;
     const ownerPortalUrl = `${request.nextUrl.origin}/owner?tab=invoices`;
     const rows = lineItems
       .map((item) => {
@@ -245,7 +246,8 @@ export async function POST(request: NextRequest) {
           <div><strong>Issue date:</strong> ${escapeHtml(invoice.issue_date)}</div>
           ${invoice.due_date ? `<div><strong>Due date:</strong> ${escapeHtml(invoice.due_date)}</div>` : ""}
         </div>
-        <table style="width:100%;border-collapse:collapse;margin:0 0 18px;">
+        ${isUploadedInvoice ? `<p style="margin:0 0 18px;color:#5f5245;">The original uploaded invoice is attached to this email.</p>` : ""}
+        ${lineItems.length > 0 ? `<table style="width:100%;border-collapse:collapse;margin:0 0 18px;">
           <thead>
             <tr style="background:#f7f3ee;">
               <th style="padding:10px;text-align:left;">Description</th>
@@ -255,7 +257,7 @@ export async function POST(request: NextRequest) {
             </tr>
           </thead>
           <tbody>${rows}</tbody>
-        </table>
+        </table>` : ""}
         <div style="margin-left:auto;width:280px;font-size:14px;">
           <div style="display:flex;justify-content:space-between;padding:4px 0;">
             <span>Subtotal</span><span>${formatCurrency(invoice.subtotal)}</span>
@@ -285,24 +287,26 @@ export async function POST(request: NextRequest) {
       </div>
     `;
 
-    const pdfBuffer = await createInvoicePdfBuffer({
-      invoiceNumber: invoice.invoice_number,
-      companyName: invoice.company_name || "Property invoice",
-      logoUrl: invoice.logo_url || null,
-      ownerName: owner.full_name || owner.email,
-      ownerEmail: owner.email,
-      propertyName: property?.name || property?.address || "All linked properties",
-      issueDate: invoice.issue_date,
-      dueDate: invoice.due_date || null,
-      headerText: invoice.header_text || null,
-      notes: invoice.notes || null,
-      paymentInstructions: invoice.payment_instructions || null,
-      subtotal: Number(invoice.subtotal || 0),
-      taxLines,
-      taxTotal: Number(invoice.tax_total || 0),
-      total: Number(invoice.total || 0),
-      lineItems,
-    });
+    const pdfBuffer = isUploadedInvoice
+      ? null
+      : await createInvoicePdfBuffer({
+          invoiceNumber: invoice.invoice_number,
+          companyName: invoice.company_name || "Property invoice",
+          logoUrl: invoice.logo_url || null,
+          ownerName: owner.full_name || owner.email,
+          ownerEmail: owner.email,
+          propertyName: property?.name || property?.address || "All linked properties",
+          issueDate: invoice.issue_date,
+          dueDate: invoice.due_date || null,
+          headerText: invoice.header_text || null,
+          notes: invoice.notes || null,
+          paymentInstructions: invoice.payment_instructions || null,
+          subtotal: Number(invoice.subtotal || 0),
+          taxLines,
+          taxTotal: Number(invoice.tax_total || 0),
+          total: Number(invoice.total || 0),
+          lineItems,
+        });
     const receiptAttachments = lineItems.flatMap((item, itemIndex) =>
       (item.receipt_urls || []).map((url, receiptIndex) => ({
         filename:
@@ -321,11 +325,17 @@ export async function POST(request: NextRequest) {
       subject: `Invoice ${invoice.invoice_number} from ${invoice.company_name || "your property manager"}`,
       html,
       attachments: [
-        {
-          filename: `${invoice.invoice_number}.pdf`,
-          content: pdfBuffer,
-          contentType: "application/pdf",
-        },
+        isUploadedInvoice
+          ? {
+              filename: invoice.uploaded_invoice_name || `${invoice.invoice_number}.pdf`,
+              path: invoice.uploaded_invoice_url,
+              contentType: invoice.uploaded_invoice_content_type || "application/pdf",
+            }
+          : {
+              filename: `${invoice.invoice_number}.pdf`,
+              content: pdfBuffer!,
+              contentType: "application/pdf",
+            },
         ...receiptAttachments,
       ],
     });

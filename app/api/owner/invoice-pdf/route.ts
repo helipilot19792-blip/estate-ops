@@ -105,6 +105,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invoice not found." }, { status: 404 });
     }
 
+    if (invoice.invoice_source === "uploaded" && invoice.uploaded_invoice_url) {
+      const uploadedResponse = await fetch(invoice.uploaded_invoice_url, { cache: "no-store" });
+      if (!uploadedResponse.ok) {
+        return NextResponse.json({ error: "Uploaded invoice file could not be downloaded." }, { status: 502 });
+      }
+
+      const bytes = await uploadedResponse.arrayBuffer();
+      return new NextResponse(bytes, {
+        headers: {
+          "Content-Type": invoice.uploaded_invoice_content_type || uploadedResponse.headers.get("content-type") || "application/pdf",
+          "Content-Disposition": `attachment; filename="${invoice.uploaded_invoice_name || `${invoice.invoice_number}.pdf`}"`,
+        },
+      });
+    }
+
     const { data: property } = invoice.property_id
       ? await service
           .from("properties")

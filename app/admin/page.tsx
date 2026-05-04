@@ -340,6 +340,7 @@ type OrganizationInviteRow = {
   status: string | null;
   token: string;
   sent_at?: string | null;
+  accepted_at?: string | null;
   expires_at?: string | null;
   created_at?: string | null;
 };
@@ -397,6 +398,10 @@ type OwnerInvoiceRow = {
   payment_instructions: string | null;
   tax_lines?: OwnerInvoiceTaxLine[] | null;
   line_items: OwnerInvoiceLineItem[];
+  invoice_source?: "generated" | "uploaded" | null;
+  uploaded_invoice_url?: string | null;
+  uploaded_invoice_name?: string | null;
+  uploaded_invoice_content_type?: string | null;
   subtotal: number;
   tax_total: number;
   total: number;
@@ -749,6 +754,7 @@ export default function AdminPage() {
   const [previewingInvoicePdf, setPreviewingInvoicePdf] = useState(false);
   const [uploadingInvoiceLogo, setUploadingInvoiceLogo] = useState(false);
   const [uploadingReceiptLineItemId, setUploadingReceiptLineItemId] = useState<string | null>(null);
+  const [uploadingExternalInvoice, setUploadingExternalInvoice] = useState(false);
   const [sendingInvoiceId, setSendingInvoiceId] = useState<string | null>(null);
   const [invoiceOwnerId, setInvoiceOwnerId] = useState("");
   const [invoicePropertyId, setInvoicePropertyId] = useState("");
@@ -761,6 +767,11 @@ export default function AdminPage() {
   const [invoiceReplyToEmail, setInvoiceReplyToEmail] = useState("");
   const [invoiceHeaderText, setInvoiceHeaderText] = useState("");
   const [invoicePaymentInstructions, setInvoicePaymentInstructions] = useState("");
+  const [externalInvoiceUrl, setExternalInvoiceUrl] = useState("");
+  const [externalInvoiceName, setExternalInvoiceName] = useState("");
+  const [externalInvoiceContentType, setExternalInvoiceContentType] = useState("");
+  const [externalInvoiceNumber, setExternalInvoiceNumber] = useState("");
+  const [externalInvoiceAmount, setExternalInvoiceAmount] = useState("");
   const [invoiceTaxLines, setInvoiceTaxLines] = useState<OwnerInvoiceTaxLine[]>([
     { id: "tax-1", label: "Tax", rate: "0" },
   ]);
@@ -4483,13 +4494,45 @@ This removes its linked members and deletes the grounds account.`
     [filteredMaintenanceFlags]
   );
 
+  const recentlyAcceptedInvites = useMemo(() => {
+    const cutoffMs = Date.now() - 14 * 24 * 60 * 60 * 1000;
+    const acceptedTeamInvites = organizationInvites
+      .filter((invite) => invite.accepted_at && new Date(invite.accepted_at).getTime() >= cutoffMs)
+      .map((invite) => ({
+        id: invite.id,
+        label: `${invite.full_name || invite.email} accepted ${invite.role} invite`,
+        acceptedAt: invite.accepted_at || "",
+      }));
+
+    const acceptedOwnerInvites = ownerAccounts
+      .filter((owner) => owner.invite_accepted_at && new Date(owner.invite_accepted_at).getTime() >= cutoffMs)
+      .map((owner) => ({
+        id: owner.id,
+        label: `${owner.full_name || owner.email} accepted owner invite`,
+        acceptedAt: owner.invite_accepted_at || "",
+      }));
+
+    return [...acceptedTeamInvites, ...acceptedOwnerInvites].sort((a, b) =>
+      b.acceptedAt.localeCompare(a.acceptedAt)
+    );
+  }, [organizationInvites, ownerAccounts]);
+
   const operationsAlerts = useMemo(() => {
     const alerts: Array<{
       key: string;
       label: string;
-      tone: "amber" | "red";
+      tone: "amber" | "red" | "green";
       onClick: () => void;
     }> = [];
+
+    if (recentlyAcceptedInvites.length > 0) {
+      alerts.push({
+        key: "accepted-invites",
+        label: `${recentlyAcceptedInvites.length} recent accepted invite${recentlyAcceptedInvites.length === 1 ? "" : "s"}`,
+        tone: "green",
+        onClick: () => setActiveSection("users"),
+      });
+    }
 
     if (waitingJobs.length > 0) {
       alerts.push({
@@ -4547,7 +4590,7 @@ This removes its linked members and deletes the grounds account.`
     }
 
     return alerts;
-  }, [waitingJobs.length, overdueWaitingJobs.length, strandedJobs.length, maintenanceFlagCounts.open, maintenanceFlagCounts.urgent]);
+  }, [recentlyAcceptedInvites.length, waitingJobs.length, overdueWaitingJobs.length, strandedJobs.length, maintenanceFlagCounts.open, maintenanceFlagCounts.urgent]);
 
   function selectAdminCalendarDate(dateYmd: string) {
     setAdminSelectedDate(dateYmd);
@@ -4838,6 +4881,19 @@ This removes its linked members and deletes the grounds account.`
           <div className="mt-3 rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3 text-sm text-[#6f6255]">
             <span className="font-semibold text-[#241c15]">How access works:</span> Users are linked to Cleaner and/or Grounds teams. Properties are assigned to those teams.
           </div>
+          {recentlyAcceptedInvites.length > 0 ? (
+            <div className="mt-3 rounded-[18px] border border-[#bbdfc0] bg-[#f0fbf2] px-4 py-3">
+              <div className="text-sm font-semibold text-[#236b30]">Recently accepted invites</div>
+              <div className="mt-2 grid gap-2 md:grid-cols-2">
+                {recentlyAcceptedInvites.slice(0, 6).map((invite) => (
+                  <div key={invite.id} className="rounded-[14px] border border-[#bbdfc0] bg-white px-3 py-2 text-sm text-[#2f5f36]">
+                    <div className="font-medium">{invite.label}</div>
+                    <div className="mt-1 text-xs text-[#5f7f63]">{formatDateTime(invite.acceptedAt)}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
         <div className="space-y-3">
           {profiles.map((profile) => {
@@ -5377,6 +5433,52 @@ This removes its linked members and deletes the grounds account.`
     }
   }
 
+  async function uploadExternalInvoiceFile(files: FileList | null) {
+    const file = files?.[0];
+    if (!file) return;
+
+    if (!currentOrganizationId) {
+      setError("Choose an organization before uploading an invoice.");
+      return;
+    }
+
+    const allowedTypes = ["application/pdf", "image/png", "image/jpeg", "image/webp"];
+    if (!allowedTypes.includes(file.type)) {
+      setError("Upload a PDF or image invoice file.");
+      return;
+    }
+
+    setUploadingExternalInvoice(true);
+    setError("");
+    setActionMessage("");
+
+    try {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const filePath = `${currentOrganizationId}/uploaded-invoices/${Date.now()}-${safeName}`;
+      const { error: uploadError } = await supabase.storage
+        .from("invoice-assets")
+        .upload(filePath, file, { cacheControl: "3600", upsert: false });
+
+      if (uploadError) throw uploadError;
+
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("invoice-assets").getPublicUrl(filePath);
+
+      setExternalInvoiceUrl(publicUrl);
+      setExternalInvoiceName(file.name);
+      setExternalInvoiceContentType(file.type || "application/octet-stream");
+      if (!externalInvoiceNumber.trim()) {
+        setExternalInvoiceNumber(file.name.replace(/\.[^.]+$/, "").slice(0, 40));
+      }
+      setActionMessage("Uploaded invoice attached. Review the details, then save or send it.");
+    } catch (err) {
+      setError(getErrorMessage(err, "Could not upload invoice. Make sure the invoice-assets storage bucket exists."));
+    } finally {
+      setUploadingExternalInvoice(false);
+    }
+  }
+
   function removeInvoiceReceipt(lineItemId: string, receiptIndex: number) {
     setInvoiceDraftDirty(true);
     setInvoiceLineItems((items) =>
@@ -5660,6 +5762,101 @@ This removes its linked members and deletes the grounds account.`
       await loadData();
     } catch (err: unknown) {
       setError(getErrorMessage(err, "Could not create invoice."));
+    } finally {
+      setCreatingInvoice(false);
+    }
+  }
+
+  async function createUploadedOwnerInvoice(status: "draft" | "sent" = "draft") {
+    if (!currentOrganizationId) return;
+    const effectiveOwnerId = getInvoiceOwnerId();
+    const amount = Number(externalInvoiceAmount || 0);
+
+    if (!effectiveOwnerId) {
+      setError("Choose an owner for this uploaded invoice.");
+      return;
+    }
+
+    if (!externalInvoiceUrl) {
+      setError("Upload an invoice file before saving.");
+      return;
+    }
+
+    if (amount < 0 || Number.isNaN(amount)) {
+      setError("Enter a valid invoice amount.");
+      return;
+    }
+
+    const invoiceNumber = externalInvoiceNumber.trim() || `UPL-${Date.now().toString().slice(-8)}`;
+
+    setCreatingInvoice(true);
+    setError("");
+    setActionMessage("");
+
+    try {
+      const uploadedLineItems: OwnerInvoiceLineItem[] =
+        amount > 0
+          ? [
+              {
+                id: "uploaded-invoice",
+                description: externalInvoiceName || "Uploaded invoice",
+                category: "other",
+                quantity: 1,
+                rate: amount,
+              },
+            ]
+          : [];
+
+      const { data, error } = await supabase
+        .from("owner_invoices")
+        .insert({
+          organization_id: currentOrganizationId,
+          owner_account_id: effectiveOwnerId,
+          property_id: invoicePropertyId || null,
+          invoice_number: invoiceNumber,
+          status,
+          issue_date: invoiceIssueDate || getTodayYmd(),
+          due_date: invoiceDueDate || null,
+          company_name: invoiceCompanyName.trim() || null,
+          logo_url: invoiceLogoUrl.trim() || null,
+          from_email: invoiceFromEmail.trim().toLowerCase() || null,
+          reply_to_email: invoiceReplyToEmail.trim().toLowerCase() || null,
+          header_text: invoiceHeaderText.trim() || null,
+          notes: invoiceNotes.trim() || null,
+          payment_instructions: invoicePaymentInstructions.trim() || null,
+          line_items: uploadedLineItems,
+          subtotal: amount,
+          tax_lines: [],
+          tax_total: 0,
+          total: amount,
+          invoice_source: "uploaded",
+          uploaded_invoice_url: externalInvoiceUrl,
+          uploaded_invoice_name: externalInvoiceName || `${invoiceNumber}.pdf`,
+          uploaded_invoice_content_type: externalInvoiceContentType || "application/pdf",
+          sent_at: status === "sent" ? new Date().toISOString() : null,
+          sent_by_profile_id: status === "sent" ? currentAdminUserId : null,
+          created_by_profile_id: currentAdminUserId,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      if (status === "sent" && data?.id) {
+        await sendOwnerInvoiceEmail(data.id, invoiceCcEmails);
+      }
+
+      setExternalInvoiceUrl("");
+      setExternalInvoiceName("");
+      setExternalInvoiceContentType("");
+      setExternalInvoiceNumber("");
+      setExternalInvoiceAmount("");
+      setInvoiceNotes("");
+      setInvoiceDraftDirty(false);
+      setActionMessage(status === "sent" ? "Uploaded invoice saved and emailed." : "Uploaded invoice saved as draft.");
+      await loadData();
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Could not save uploaded invoice."));
     } finally {
       setCreatingInvoice(false);
     }
@@ -6045,6 +6242,105 @@ This removes its linked members and deletes the grounds account.`
           </div>
         </section>
 
+        <section className="rounded-[30px] border border-[#d4c2ea] bg-[#fbf8ff] p-5 shadow-[0_18px_45px_rgba(91,62,126,0.06)]">
+          <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#6f4b9a]">Uploaded invoices</p>
+              <h3 className="mt-2 text-xl font-semibold tracking-tight text-[#241c15]">Send an existing invoice file</h3>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-[#6f6255]">
+                Upload a PDF or image invoice from another system, then save or email it through the same owner invoice history.
+              </p>
+            </div>
+            <span className="rounded-full border border-[#d4c2ea] bg-white px-3 py-1 text-xs font-semibold text-[#6f4b9a]">
+              Uses selected owner/property above
+            </span>
+          </div>
+
+          <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_280px]">
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="md:col-span-2 flex min-h-[120px] cursor-pointer flex-col items-center justify-center rounded-[22px] border border-dashed border-[#bda4dd] bg-white px-4 py-6 text-center transition hover:bg-[#f6efff]">
+                <span className="text-sm font-semibold text-[#241c15]">
+                  {uploadingExternalInvoice
+                    ? "Uploading invoice..."
+                    : externalInvoiceName
+                      ? externalInvoiceName
+                      : "Upload invoice PDF or image"}
+                </span>
+                <span className="mt-1 text-xs text-[#7f7263]">
+                  This file becomes the invoice attachment owners receive and download.
+                </span>
+                <input
+                  type="file"
+                  accept="application/pdf,image/*"
+                  className="hidden"
+                  disabled={uploadingExternalInvoice}
+                  onChange={(e) => void uploadExternalInvoiceFile(e.target.files)}
+                />
+              </label>
+
+              <input
+                className="rounded-[18px] border border-[#d4c2ea] bg-white px-4 py-3 text-sm outline-none focus:border-[#6f4b9a]"
+                placeholder="Invoice number (optional)"
+                value={externalInvoiceNumber}
+                onChange={(e) => setExternalInvoiceNumber(e.target.value)}
+              />
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                className="rounded-[18px] border border-[#d4c2ea] bg-white px-4 py-3 text-sm outline-none focus:border-[#6f4b9a]"
+                placeholder="Invoice amount"
+                value={externalInvoiceAmount}
+                onChange={(e) => setExternalInvoiceAmount(e.target.value)}
+              />
+
+              {externalInvoiceUrl ? (
+                <div className="md:col-span-2 flex flex-wrap items-center gap-2 rounded-[18px] border border-[#d4c2ea] bg-white px-4 py-3 text-sm text-[#5f5245]">
+                  <a href={externalInvoiceUrl} target="_blank" rel="noreferrer" className="font-semibold text-[#6f4b9a] underline">
+                    Preview uploaded invoice
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setExternalInvoiceUrl("");
+                      setExternalInvoiceName("");
+                      setExternalInvoiceContentType("");
+                    }}
+                    className="rounded-full border border-[#efc6c6] bg-[#fff5f5] px-3 py-1 text-xs font-medium text-[#8a2e22]"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="rounded-[22px] border border-[#d4c2ea] bg-white p-4">
+              <div className="text-sm font-semibold text-[#241c15]">How it will send</div>
+              <p className="mt-2 text-sm leading-6 text-[#6f6255]">
+                The email uses your invoice branding and owner portal link. The uploaded file is attached as the invoice document.
+              </p>
+              <div className="mt-4 grid gap-2">
+                <button
+                  type="button"
+                  onClick={() => void createUploadedOwnerInvoice("draft")}
+                  disabled={creatingInvoice || uploadingExternalInvoice}
+                  className="rounded-full border border-[#d4c2ea] bg-white px-4 py-2.5 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#f6efff] disabled:opacity-60"
+                >
+                  Save uploaded draft
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void createUploadedOwnerInvoice("sent")}
+                  disabled={creatingInvoice || uploadingExternalInvoice}
+                  className="rounded-full bg-[#5f3f86] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#4b316b] disabled:opacity-60"
+                >
+                  Save and email uploaded invoice
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
           <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
             <div>
@@ -6299,6 +6595,11 @@ This removes its linked members and deletes the grounds account.`
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="font-semibold text-[#241c15]">{invoice.invoice_number}</span>
                           <span className="rounded-full border border-[#d8c7ab] bg-white px-2.5 py-0.5 text-xs text-[#6f6255]">{invoice.status}</span>
+                          {invoice.invoice_source === "uploaded" ? (
+                            <span className="rounded-full border border-[#d4c2ea] bg-white px-2.5 py-0.5 text-xs font-semibold text-[#6f4b9a]">
+                              uploaded file
+                            </span>
+                          ) : null}
                         </div>
                         <div className="mt-1 text-sm text-[#6f6255]">
                           {owner?.full_name || owner?.email || "Owner"} | {property?.name || property?.address || "All properties"}
@@ -6313,13 +6614,31 @@ This removes its linked members and deletes the grounds account.`
                         >
                           CSV
                         </button>
+                        {invoice.uploaded_invoice_url ? (
+                          <a
+                            href={invoice.uploaded_invoice_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rounded-full border border-[#d4c2ea] bg-white px-4 py-2 text-sm font-medium text-[#6f4b9a] hover:bg-[#f6efff]"
+                          >
+                            File
+                          </a>
+                        ) : null}
                         <button
                           type="button"
                           onClick={() => void sendExistingOwnerInvoice(invoice.id)}
                           disabled={sendingInvoiceId === invoice.id}
                           className="rounded-full bg-[#241c15] px-4 py-2 text-sm font-medium text-[#f8f2e8] disabled:opacity-60"
                         >
-                          {sendingInvoiceId === invoice.id ? "Sending..." : invoice.status === "draft" ? "Send PDF" : "Resend PDF"}
+                          {sendingInvoiceId === invoice.id
+                            ? "Sending..."
+                            : invoice.invoice_source === "uploaded"
+                              ? invoice.status === "draft"
+                                ? "Send file"
+                                : "Resend file"
+                              : invoice.status === "draft"
+                                ? "Send PDF"
+                                : "Resend PDF"}
                         </button>
                       </div>
                     </div>
@@ -9721,6 +10040,8 @@ This removes its linked members and deletes the grounds account.`
                       ? "animate-pulse border-[#b91c1c] bg-[#dc2626] text-white shadow-[0_8px_22px_rgba(185,28,28,0.28)] hover:bg-[#b91c1c]"
                       : alert.tone === "red"
                         ? "border-[#fecaca] bg-[#fff1f2] text-[#991b1b] hover:bg-[#ffe4e6]"
+                        : alert.tone === "green"
+                          ? "border-[#bbdfc0] bg-[#f0fbf2] text-[#236b30] hover:bg-[#e4f7e8]"
                         : "border-[#ecd7a8] bg-[#fff8e8] text-[#8a6112] hover:bg-[#fff2cf]"
                       }`}
                   >

@@ -101,6 +101,10 @@ type OwnerInvoice = {
   payment_instructions: string | null;
   tax_lines?: Array<{ id?: string; label: string; rate: number; amount?: number }> | null;
   line_items: OwnerInvoiceLineItem[];
+  invoice_source?: "generated" | "uploaded" | null;
+  uploaded_invoice_url?: string | null;
+  uploaded_invoice_name?: string | null;
+  uploaded_invoice_content_type?: string | null;
   subtotal: number;
   tax_total: number;
   total: number;
@@ -2198,6 +2202,11 @@ export default function OwnerPage() {
                                   New
                                 </span>
                               ) : null}
+                              {invoice.invoice_source === "uploaded" ? (
+                                <span className="ml-2 rounded-full border border-[#e3c177]/30 bg-[#e3c177]/10 px-2 py-0.5 align-middle text-[11px] font-bold uppercase tracking-[0.08em] text-[#f1d9a5]">
+                                  Uploaded
+                                </span>
+                              ) : null}
                             </div>
                             <div className="mt-1 text-sm text-[#ccb99a]">
                               {invoice.invoice_number} · {invoiceProperty?.name || invoiceProperty?.address || "All linked properties"}
@@ -2215,7 +2224,11 @@ export default function OwnerPage() {
                                 disabled={downloadingInvoiceId === invoice.id}
                                 className="rounded-full border border-[#b08b47]/35 bg-[#b08b47]/10 px-3 py-1.5 text-xs font-semibold text-[#f1d9a5] transition hover:bg-[#b08b47]/18 disabled:opacity-60"
                               >
-                                {downloadingInvoiceId === invoice.id ? "Downloading..." : "PDF"}
+                                {downloadingInvoiceId === invoice.id
+                                  ? "Downloading..."
+                                  : invoice.invoice_source === "uploaded"
+                                    ? "File"
+                                    : "PDF"}
                               </button>
                               <button
                                 type="button"
@@ -2239,6 +2252,13 @@ export default function OwnerPage() {
                         ) : null}
                       </div>
 
+                      {invoice.invoice_source === "uploaded" && invoice.uploaded_invoice_name ? (
+                        <div className="border-b border-white/8 px-5 py-4 text-sm leading-6 text-[#e6d8bf]">
+                          Original invoice file: <span className="font-semibold text-[#f7f1e8]">{invoice.uploaded_invoice_name}</span>
+                        </div>
+                      ) : null}
+
+                      {lineItems.length > 0 ? (
                       <div className="divide-y divide-white/8">
                         {lineItems.map((item, index) => {
                           const quantity = Number(item.quantity || 0);
@@ -2270,6 +2290,7 @@ export default function OwnerPage() {
                           );
                         })}
                       </div>
+                      ) : null}
 
                       <div className="border-t border-white/8 px-5 py-4 text-sm text-[#e6d8bf]">
                         <div className="ml-auto max-w-xs space-y-2">
