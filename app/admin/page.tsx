@@ -653,6 +653,15 @@ function parseAddressLine(addressLine: string) {
   };
 }
 
+function normalizeIcalUrl(rawValue: string) {
+  const trimmed = rawValue.trim();
+  if (!trimmed) return "";
+  if (trimmed.toLowerCase().startsWith("webcal://")) {
+    return `https://${trimmed.slice("webcal://".length)}`;
+  }
+  return trimmed;
+}
+
 function createInviteToken() {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
@@ -1890,8 +1899,19 @@ export default function AdminPage() {
       return;
     }
 
+    const normalizedCalendarUrl = normalizeIcalUrl(airbnbImportCalendarUrl);
+    try {
+      const parsedUrl = new URL(normalizedCalendarUrl);
+      if (!["http:", "https:"].includes(parsedUrl.protocol)) {
+        throw new Error("Unsupported calendar URL.");
+      }
+    } catch {
+      setError("Enter a valid Airbnb iCal export URL. It should start with https:// or webcal://.");
+      return;
+    }
+
     setError("");
-    setActionMessage("");
+    setActionMessage("Creating the property, attaching Airbnb iCal, then syncing bookings automatically.");
     setImportingAirbnbProperty(true);
 
     let insertedPropertyId: string | null = null;
@@ -1941,7 +1961,7 @@ export default function AdminPage() {
       const { error: calendarError } = await supabase.from("property_calendars").insert({
         property_id: insertedProperty.id,
         source: "airbnb",
-        ical_url: airbnbImportCalendarUrl.trim(),
+        ical_url: normalizedCalendarUrl,
         is_active: true,
       });
 
@@ -1949,10 +1969,38 @@ export default function AdminPage() {
         throw new Error(`Property created, but the Airbnb calendar could not be attached: ${calendarError.message}`);
       }
 
-      resetAirbnbImportForm();
       setSelectedPropertyId(insertedProperty.id);
       setPropertySetupTab("overview");
-      setActionMessage("Airbnb property imported with owner link and active calendar.");
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("Property created, but the calendar could not sync because your admin session was not ready.");
+      }
+
+      const syncResponse = await fetch("/api/sync-calendars", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          organizationId: currentOrganizationId,
+          propertyId: insertedProperty.id,
+        }),
+      });
+
+      const syncPayload = await syncResponse.json().catch(() => null);
+      if (!syncResponse.ok) {
+        throw new Error(
+          `Property and Airbnb calendar were saved, but automatic sync failed: ${syncPayload?.error || syncPayload?.message || "Calendar sync failed."}`
+        );
+      }
+
+      resetAirbnbImportForm();
+      setActionMessage(`Airbnb property imported and synced automatically. ${getCalendarSyncMessage(syncPayload)}`);
       await loadData();
     } catch (err: any) {
       if (insertedPropertyId) {
@@ -2572,7 +2620,7 @@ export default function AdminPage() {
     }, 150);
   }
 
-  async function syncCalendarsNow() {
+  async function syncCalendarsNow(propertyId?: string) {
     setError("");
     setActionMessage("");
     setSyncingCalendarsNow(true);
@@ -2598,6 +2646,7 @@ export default function AdminPage() {
         },
         body: JSON.stringify({
           organizationId: currentOrganizationId,
+          ...(propertyId ? { propertyId } : {}),
         }),
       });
 
@@ -6291,7 +6340,7 @@ This removes its linked members and deletes the grounds account.`
           <div>
             <h2 className="text-xl font-semibold tracking-tight">Add Property</h2>
             <p className="mt-1 text-sm text-[#7f7263]">
-              Add a managed property manually or use the Airbnb import wizard to preload the owner, cover photo, and first calendar.
+              Add a managed property manually or connect an Airbnb iCal feed to import bookings and create turnover jobs automatically.
             </p>
           </div>
           <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">
@@ -6320,7 +6369,7 @@ This removes its linked members and deletes the grounds account.`
                 : "border border-[#d8c7ab] bg-white text-[#5f5245] hover:bg-[#fcfaf7]"
             }`}
           >
-            Airbnb import wizard
+            Airbnb calendar import
           </button>
         </div>
 
@@ -6444,18 +6493,22 @@ This removes its linked members and deletes the grounds account.`
         ) : (
           <div className="mt-5 space-y-4">
             <div className="rounded-[22px] border border-[#eadfce] bg-[#fffaf4] p-4">
-              <div className="text-sm font-medium text-[#5f5245]">How it works</div>
+              <div className="text-sm font-medium text-[#5f5245]">What is automatic</div>
               <div className="mt-2 grid gap-2 md:grid-cols-3">
                 <div className="rounded-[16px] border border-[#eadfce] bg-white px-4 py-3 text-sm text-[#6f6255]">
-                  1. Paste the Airbnb listing title and address.
+                  1. Paste the Airbnb iCal export URL from the listing calendar.
                 </div>
                 <div className="rounded-[16px] border border-[#eadfce] bg-white px-4 py-3 text-sm text-[#6f6255]">
-                  2. Add the Airbnb iCal export and optional cover photo URL.
+                  2. Gulera OS creates the property and saves the active Airbnb feed.
                 </div>
                 <div className="rounded-[16px] border border-[#eadfce] bg-white px-4 py-3 text-sm text-[#6f6255]">
-                  3. Link the owner once, then save everything in one pass.
+                  3. It immediately syncs booking dates, invoice history events, and future turnover jobs.
                 </div>
               </div>
+              <p className="mt-3 text-xs leading-6 text-[#8a7b68]">
+                Airbnb does not expose full listing/owner data through a public one-click import here,
+                so the listing name, address, owner, and photo still need to be entered or pasted once.
+              </p>
             </div>
 
             <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.95fr)]">
@@ -6527,9 +6580,9 @@ This removes its linked members and deletes the grounds account.`
                 <div className="grid gap-2 md:grid-cols-2">
                   <input
                     className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                    placeholder="Airbnb iCal export URL"
+                    placeholder="Airbnb iCal export URL (https://... or webcal://...)"
                     value={airbnbImportCalendarUrl}
-                    onChange={(e) => setAirbnbImportCalendarUrl(e.target.value)}
+                    onChange={(e) => setAirbnbImportCalendarUrl(normalizeIcalUrl(e.target.value))}
                   />
 
                   <input
@@ -6586,10 +6639,13 @@ This removes its linked members and deletes the grounds account.`
                       Property with the Airbnb title, address, notes, and optional cover photo.
                     </div>
                     <div className="rounded-[16px] border border-[#eadfce] bg-white px-4 py-3">
-                      Active Airbnb calendar feed saved under this property.
+                      Active Airbnb calendar feed saved and synced immediately.
                     </div>
                     <div className="rounded-[16px] border border-[#eadfce] bg-white px-4 py-3">
-                      Optional owner account + owner portal link if you fill the email.
+                      Booking events and future turnover jobs from the Airbnb iCal feed.
+                    </div>
+                    <div className="rounded-[16px] border border-[#eadfce] bg-white px-4 py-3">
+                      Optional owner account and owner portal link if you fill the email.
                     </div>
                   </div>
 
@@ -6632,7 +6688,7 @@ This removes its linked members and deletes the grounds account.`
                     onClick={() => void addAirbnbProperty()}
                     disabled={importingAirbnbProperty}
                   >
-                    {importingAirbnbProperty ? "Importing..." : "Import Airbnb Property"}
+                    {importingAirbnbProperty ? "Importing and syncing..." : "Import and Sync Airbnb"}
                   </button>
 
                   <button

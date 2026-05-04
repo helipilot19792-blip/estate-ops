@@ -471,7 +471,8 @@ export async function GET(request: Request) {
             ? 401
             : error?.message === "Admin access required." ||
                 error?.message === "organizationId is required." ||
-                error?.message === "You do not have admin access to this organization."
+                error?.message === "You do not have admin access to this organization." ||
+                error?.message === "You do not have access to sync this property."
               ? 403
               : 500,
       }
@@ -484,9 +485,16 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => null);
     const organizationId =
       typeof body?.organizationId === "string" ? body.organizationId.trim() : "";
+    const propertyId =
+      typeof body?.propertyId === "string" ? body.propertyId.trim() : "";
     const auth = await requireSyncAccess(request, organizationId || null);
     const propertiesMap = await loadPropertiesMap(auth.organizationIds);
-    const calendars = await loadCalendars([...propertiesMap.keys()]);
+
+    if (propertyId && !propertiesMap.has(propertyId)) {
+      throw new Error("You do not have access to sync this property.");
+    }
+
+    const calendars = await loadCalendars(propertyId ? [propertyId] : [...propertiesMap.keys()]);
 
     const results: Array<{
       property_id: string;
