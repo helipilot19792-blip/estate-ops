@@ -163,6 +163,16 @@ body {
     background: rgba(185, 28, 28, 0.07) !important;
   }
 
+  .owner-shell .text-white,
+  .owner-shell .text-\[\#ead7b8\],
+  .owner-shell .text-\[\#f2e5d0\] {
+    color: var(--owner-text) !important;
+  }
+
+  .owner-shell .bg-white\/8 {
+    background: rgba(117, 87, 44, 0.14) !important;
+  }
+
   .owner-shell .hover\:bg-white\/\[0\.05\]:hover,
   .owner-shell .hover\:bg-white\/\[0\.06\]:hover {
     background: rgba(255, 255, 255, 0.92) !important;
