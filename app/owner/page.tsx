@@ -2186,9 +2186,17 @@ export default function OwnerPage() {
                   const invoiceProperty = properties.find((property) => property.id === invoice.property_id);
                   const lineItems = Array.isArray(invoice.line_items) ? invoice.line_items : [];
                   const taxLines = getOwnerInvoiceTaxLines(invoice);
+                  const isPaidInvoice = invoice.status === "paid";
 
                   return (
-                    <div key={invoice.id} className={`overflow-hidden rounded-[24px] border ${invoice.owner_viewed_at ? "border-white/8 bg-white/[0.02]" : "border-[#e3c177]/55 bg-[#b08b47]/10 shadow-[0_0_0_1px_rgba(227,193,119,0.16)]"}`}>
+                    <div
+                      key={invoice.id}
+                      className={`overflow-hidden rounded-[24px] border ${
+                        isPaidInvoice
+                          ? "border-emerald-400/45 bg-emerald-950/20 shadow-[0_0_0_1px_rgba(16,185,129,0.14)]"
+                          : "border-red-400/45 bg-red-950/20 shadow-[0_0_0_1px_rgba(248,113,113,0.14)]"
+                      } ${!invoice.owner_viewed_at ? "ring-1 ring-[#e3c177]/35" : ""}`}
+                    >
                       <div className="border-b border-white/8 px-5 py-4">
                         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                           <div>

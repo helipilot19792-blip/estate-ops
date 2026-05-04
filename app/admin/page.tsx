@@ -6647,18 +6647,28 @@ This removes its linked members and deletes the grounds account.`
               ownerInvoices.map((invoice) => {
                 const owner = ownerAccounts.find((item) => item.id === invoice.owner_account_id);
                 const property = properties.find((item) => item.id === invoice.property_id);
+                const isPaidInvoice = invoice.status === "paid";
                 return (
-                  <div key={invoice.id} className="rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+                  <div
+                    key={invoice.id}
+                    className={`rounded-[20px] border p-4 shadow-sm ${
+                      isPaidInvoice
+                        ? "border-[#9bd4a3] bg-[#edf9ef] shadow-[0_16px_34px_rgba(35,107,48,0.08)]"
+                        : "border-[#f0b8b8] bg-[#fff1f1] shadow-[0_16px_34px_rgba(153,27,27,0.08)]"
+                    }`}
+                  >
                     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-semibold text-[#241c15]">{invoice.invoice_number}</span>
+                          <span className={`font-semibold ${isPaidInvoice ? "text-[#123f1b]" : "text-[#7f1d1d]"}`}>
+                            {invoice.invoice_number}
+                          </span>
                           <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
-                            invoice.status === "paid"
+                            isPaidInvoice
                               ? "border-[#bbdfc0] bg-[#f0fbf2] text-[#236b30]"
-                              : "border-[#d8c7ab] bg-white text-[#6f6255]"
+                              : "border-[#fecaca] bg-white text-[#991b1b]"
                           }`}>
-                            {invoice.status === "paid" ? "paid" : invoice.status}
+                            {isPaidInvoice ? "paid" : invoice.status}
                           </span>
                           {invoice.invoice_source === "uploaded" ? (
                             <span className="rounded-full border border-[#d4c2ea] bg-white px-2.5 py-0.5 text-xs font-semibold text-[#6f4b9a]">
@@ -6666,12 +6676,14 @@ This removes its linked members and deletes the grounds account.`
                             </span>
                           ) : null}
                         </div>
-                        <div className="mt-1 text-sm text-[#6f6255]">
+                        <div className={`mt-1 text-sm ${isPaidInvoice ? "text-[#2f5f36]" : "text-[#7f4242]"}`}>
                           {owner?.full_name || owner?.email || "Owner"} | {property?.name || property?.address || "All properties"}
                         </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-3">
-                        <div className="text-lg font-semibold text-[#241c15]">{formatCurrency(invoice.total)}</div>
+                        <div className={`text-lg font-semibold ${isPaidInvoice ? "text-[#123f1b]" : "text-[#7f1d1d]"}`}>
+                          {formatCurrency(invoice.total)}
+                        </div>
                         <button
                           type="button"
                           onClick={() => downloadInvoiceCsv(invoice, owner, property)}
