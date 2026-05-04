@@ -756,6 +756,7 @@ export default function AdminPage() {
   const [uploadingReceiptLineItemId, setUploadingReceiptLineItemId] = useState<string | null>(null);
   const [uploadingExternalInvoice, setUploadingExternalInvoice] = useState(false);
   const [sendingInvoiceId, setSendingInvoiceId] = useState<string | null>(null);
+  const [updatingInvoiceStatusId, setUpdatingInvoiceStatusId] = useState<string | null>(null);
   const [invoiceOwnerId, setInvoiceOwnerId] = useState("");
   const [invoicePropertyId, setInvoicePropertyId] = useState("");
   const [invoiceIssueDate, setInvoiceIssueDate] = useState(() => getTodayYmd());
@@ -5970,6 +5971,40 @@ This removes its linked members and deletes the grounds account.`
     }
   }
 
+  async function updateOwnerInvoiceStatus(invoice: OwnerInvoiceRow, status: OwnerInvoiceRow["status"]) {
+    setUpdatingInvoiceStatusId(invoice.id);
+    setError("");
+    setActionMessage("");
+
+    try {
+      const updates: Record<string, unknown> = {
+        status,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (status === "sent" && !invoice.sent_at) {
+        updates.sent_at = new Date().toISOString();
+      }
+
+      const { error } = await supabase
+        .from("owner_invoices")
+        .update(updates)
+        .eq("id", invoice.id)
+        .eq("organization_id", currentOrganizationId);
+
+      if (error) throw error;
+
+      setOwnerInvoices((invoices) =>
+        invoices.map((item) => (item.id === invoice.id ? { ...item, status } : item))
+      );
+      setActionMessage(status === "paid" ? "Invoice marked as paid." : "Invoice marked as unpaid.");
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Could not update invoice status."));
+    } finally {
+      setUpdatingInvoiceStatusId(null);
+    }
+  }
+
   function renderInvoicesSection() {
     const ownerProperties = invoiceOwnerId ? getPropertiesForOwner(invoiceOwnerId) : properties;
     const invoiceSubtotal = getInvoiceLineItemsTotal(invoiceLineItems);
@@ -6594,7 +6629,13 @@ This removes its linked members and deletes the grounds account.`
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="font-semibold text-[#241c15]">{invoice.invoice_number}</span>
-                          <span className="rounded-full border border-[#d8c7ab] bg-white px-2.5 py-0.5 text-xs text-[#6f6255]">{invoice.status}</span>
+                          <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
+                            invoice.status === "paid"
+                              ? "border-[#bbdfc0] bg-[#f0fbf2] text-[#236b30]"
+                              : "border-[#d8c7ab] bg-white text-[#6f6255]"
+                          }`}>
+                            {invoice.status === "paid" ? "paid" : invoice.status}
+                          </span>
                           {invoice.invoice_source === "uploaded" ? (
                             <span className="rounded-full border border-[#d4c2ea] bg-white px-2.5 py-0.5 text-xs font-semibold text-[#6f4b9a]">
                               uploaded file
@@ -6624,6 +6665,22 @@ This removes its linked members and deletes the grounds account.`
                             File
                           </a>
                         ) : null}
+                        <button
+                          type="button"
+                          onClick={() => void updateOwnerInvoiceStatus(invoice, invoice.status === "paid" ? "sent" : "paid")}
+                          disabled={updatingInvoiceStatusId === invoice.id}
+                          className={`rounded-full border px-4 py-2 text-sm font-medium disabled:opacity-60 ${
+                            invoice.status === "paid"
+                              ? "border-[#d8c7ab] bg-white text-[#5f4c3b] hover:bg-[#f7f1e8]"
+                              : "border-[#bbdfc0] bg-[#f0fbf2] text-[#236b30] hover:bg-[#e4f7e8]"
+                          }`}
+                        >
+                          {updatingInvoiceStatusId === invoice.id
+                            ? "Updating..."
+                            : invoice.status === "paid"
+                              ? "Mark unpaid"
+                              : "Mark paid"}
+                        </button>
                         <button
                           type="button"
                           onClick={() => void sendExistingOwnerInvoice(invoice.id)}
