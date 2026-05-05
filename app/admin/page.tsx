@@ -11354,7 +11354,18 @@ This removes its linked members and deletes the grounds account.`
 
   return (
     <main className="min-h-screen bg-[#f7f3ee] text-[#241c15]">
-      <div className="mx-auto max-w-7xl p-4 pb-[45vh] md:p-6 md:pb-[45vh]">
+      <div className="mx-auto grid max-w-7xl gap-6 p-4 pb-[45vh] md:p-6 md:pb-[45vh] lg:grid-cols-[270px_minmax(0,1fr)] lg:items-start">
+        <aside className="hidden lg:sticky lg:top-6 lg:block">
+          <div className="rounded-[30px] border border-[#e7ddd0] bg-[#fbf8f4] p-4 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+            <div className="mb-5 rounded-[22px] border border-[#eadfce] bg-white px-4 py-4">
+              <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8a7b68]">Admin</div>
+              <div className="mt-1 text-xl font-semibold tracking-tight text-[#241c15]">Workspace</div>
+            </div>
+            {renderAdminNavigation()}
+          </div>
+        </aside>
+
+        <div className="min-w-0">
         <div className="mb-6 overflow-hidden rounded-[34px] border border-[#e7ddd0] bg-white shadow-[0_30px_70px_rgba(0,0,0,0.08)]">
           <div className="bg-[linear-gradient(135deg,#1f1812_0%,#2a2119_55%,#3a2c1d_100%)] px-6 py-8 text-white md:px-8 md:py-10">
             <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
@@ -11639,20 +11650,7 @@ This removes its linked members and deletes the grounds account.`
           </div>
         ) : null}
 
-        <div className="grid gap-6 lg:grid-cols-[270px_minmax(0,1fr)] lg:items-start">
-          <aside className="hidden lg:sticky lg:top-6 lg:block">
-            <div className="rounded-[30px] border border-[#e7ddd0] bg-[#fbf8f4] p-4 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-              <div className="mb-5 rounded-[22px] border border-[#eadfce] bg-white px-4 py-4">
-                <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8a7b68]">Admin</div>
-                <div className="mt-1 text-xl font-semibold tracking-tight text-[#241c15]">Workspace</div>
-              </div>
-              {renderAdminNavigation()}
-            </div>
-          </aside>
-
-          <div className="min-w-0">
-            {renderActiveSection()}
-          </div>
+        {renderActiveSection()}
         </div>
       </div>
 
