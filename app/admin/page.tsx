@@ -4870,6 +4870,13 @@ This removes its linked members and deletes the grounds account.`
           activeClass: "border-[#99f6e4] bg-[#ecfdf5] text-[#0f766e]",
         },
         {
+          key: "chat",
+          label: "Chat",
+          hint: "In-app messages",
+          accent: "bg-[#06b6d4]",
+          activeClass: "border-[#a5f3fc] bg-[#ecfeff] text-[#0e7490]",
+        },
+        {
           key: "jobs",
           label: "Jobs",
           hint: "Cleaning and grounds work",
@@ -4946,18 +4953,6 @@ This removes its linked members and deletes the grounds account.`
           hint: "Admin access",
           accent: "bg-[#6366f1]",
           activeClass: "border-[#c7d2fe] bg-[#eef2ff] text-[#4338ca]",
-        },
-      ],
-    },
-    {
-      label: "Communication",
-      items: [
-        {
-          key: "chat",
-          label: "Chat",
-          hint: "In-app messages",
-          accent: "bg-[#06b6d4]",
-          activeClass: "border-[#a5f3fc] bg-[#ecfeff] text-[#0e7490]",
         },
       ],
     },
