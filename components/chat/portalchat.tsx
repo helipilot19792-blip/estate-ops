@@ -111,7 +111,7 @@ export default function PortalChat({
   const [selectedConversationId, setSelectedConversationId] = useState("");
   const [replyBody, setReplyBody] = useState("");
   const [realtimeReady, setRealtimeReady] = useState(false);
-  const threadEndRef = useRef<HTMLDivElement | null>(null);
+  const chatThreadScrollRef = useRef<HTMLDivElement | null>(null);
 
   const participantType = participant?.type || "";
   const participantProfileId = participant?.type === "profile" ? participant.profileId : "";
@@ -379,7 +379,9 @@ export default function PortalChat({
   }, [onUnreadCountChange, unreadCount]);
 
   useEffect(() => {
-    threadEndRef.current?.scrollIntoView({ block: "end" });
+    const thread = chatThreadScrollRef.current;
+    if (!thread) return;
+    thread.scrollTop = thread.scrollHeight;
   }, [activeConversationId, selectedMessages.length]);
 
   function getOtherParticipants(conversation: ChatConversationRow) {
@@ -588,46 +590,40 @@ export default function PortalChat({
                   .at(-1);
 
                 return (
-                  <button
+                  <div
                     key={conversation.id}
-                    type="button"
-                    onClick={() => setSelectedConversationId(conversation.id)}
-                    className={`w-full rounded-[18px] border px-3 py-3 text-left transition ${
+                    className={`rounded-[18px] border transition ${
                       selected
                         ? "border-[#e3c177]/70 bg-[#e3c177]/16 text-[#fff8e8]"
                         : "border-white/8 bg-black/15 text-[#f7f1e8] hover:bg-white/[0.05]"
                     }`}
                   >
-                    <div className="truncate text-sm font-semibold">{getConversationTitle(conversation)}</div>
-                    <div className="mt-1 text-xs font-medium text-[#f1d9a5]">
-                      With: {otherSummary}
-                    </div>
-                    <div className="mt-1 line-clamp-2 text-xs text-[#ccb99a]">
-                      {lastMessage?.body || "No replies yet"}
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedConversationId(conversation.id)}
+                      className="block w-full px-3 pt-3 text-left"
+                    >
+                      <div className="truncate text-sm font-semibold">{getConversationTitle(conversation)}</div>
+                      <div className="mt-1 text-xs font-medium text-[#f1d9a5]">
+                        With: {otherSummary}
+                      </div>
+                      <div className="mt-1 line-clamp-2 text-xs text-[#ccb99a]">
+                        {lastMessage?.body || "No replies yet"}
+                      </div>
+                    </button>
                     <div className="mt-2 flex items-center justify-between gap-2">
-                      <span className="text-[11px] uppercase tracking-[0.14em] text-[#e7c98a]">
+                      <span className="px-3 pb-3 text-[11px] uppercase tracking-[0.14em] text-[#e7c98a]">
                         {formatChatDate(conversation.last_message_at || conversation.updated_at || conversation.created_at) || "New"}
                       </span>
-                      <span
-                        role="button"
-                        tabIndex={0}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void hideConversationForMe(conversation);
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key !== "Enter" && event.key !== " ") return;
-                          event.preventDefault();
-                          event.stopPropagation();
-                          void hideConversationForMe(conversation);
-                        }}
-                        className="rounded-full border border-red-300/30 bg-red-950/20 px-2 py-1 text-[11px] font-semibold text-red-100"
+                      <button
+                        type="button"
+                        onClick={() => void hideConversationForMe(conversation)}
+                        className="mb-3 mr-3 rounded-full border border-red-300/30 bg-red-950/20 px-2 py-1 text-[11px] font-semibold text-red-100 transition hover:bg-red-950/30"
                       >
                         Delete
-                      </span>
+                      </button>
                     </div>
-                  </button>
+                  </div>
                 );
               })
             ) : (
@@ -651,7 +647,7 @@ export default function PortalChat({
                 </div>
               </div>
 
-              <div className="mt-4 max-h-[380px] space-y-3 overflow-y-auto pr-1">
+              <div ref={chatThreadScrollRef} className="mt-4 max-h-[380px] space-y-3 overflow-y-auto pr-1">
                 {selectedMessages.length > 0 ? (
                   selectedMessages.map((message) => {
                     const isMine = message.sender_profile_id === ownProfileId;
@@ -685,7 +681,6 @@ export default function PortalChat({
                     No chat replies yet.
                   </div>
                 )}
-                <div ref={threadEndRef} />
               </div>
 
               <div className="mt-4 grid gap-3">

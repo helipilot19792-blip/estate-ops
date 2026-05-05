@@ -52,6 +52,16 @@ using (
     )
   )
   and public.is_chat_participant(chat_hidden_items.conversation_id)
+  and (
+    chat_hidden_items.message_id is null
+    or exists (
+      select 1
+      from public.chat_messages
+      where chat_messages.id = chat_hidden_items.message_id
+        and chat_messages.conversation_id = chat_hidden_items.conversation_id
+        and chat_messages.organization_id = chat_hidden_items.organization_id
+    )
+  )
 )
 with check (
   (
@@ -64,4 +74,14 @@ with check (
     )
   )
   and public.is_chat_participant(chat_hidden_items.conversation_id)
+  and (
+    chat_hidden_items.message_id is null
+    or exists (
+      select 1
+      from public.chat_messages
+      where chat_messages.id = chat_hidden_items.message_id
+        and chat_messages.conversation_id = chat_hidden_items.conversation_id
+        and chat_messages.organization_id = chat_hidden_items.organization_id
+    )
+  )
 );

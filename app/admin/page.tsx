@@ -5592,11 +5592,9 @@ This removes its linked members and deletes the grounds account.`
                         .at(-1);
 
                       return (
-                        <button
+                        <div
                           key={conversation.id}
-                          type="button"
-                          onClick={() => setSelectedChatConversationId(conversation.id)}
-                          className={`w-full rounded-[18px] border px-3 py-3 text-left transition ${
+                          className={`rounded-[18px] border transition ${
                             selected
                               ? "border-[#241c15] bg-[#241c15] text-[#f8f2e8]"
                               : conversationUnreadCount > 0
@@ -5604,43 +5602,39 @@ This removes its linked members and deletes the grounds account.`
                               : "border-[#eadfce] bg-[#fcfaf7] text-[#241c15] hover:bg-white"
                           }`}
                         >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="text-sm font-semibold">{getChatConversationTitle(conversation)}</div>
-                            {conversationUnreadCount > 0 ? (
-                              <span
-                                className={`rounded-full px-2 py-1 text-[11px] font-bold leading-none ${
-                                  selected ? "bg-[#f8f2e8] text-[#241c15]" : "bg-[#0891b2] text-white"
-                                }`}
-                              >
-                                {conversationUnreadCount > 99 ? "99+" : conversationUnreadCount} new
-                              </span>
-                            ) : null}
-                          </div>
-                          <div className={`mt-1 text-xs font-medium ${selected ? "text-[#f5e9d8]" : "text-[#5f5144]"}`}>
-                            With: {recipientSummary}
-                          </div>
-                          <div className={`mt-1 line-clamp-2 text-xs ${selected ? "text-[#eadfce]" : "text-[#7f7263]"}`}>
-                            {lastMessage?.body || "No chat yet"}
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedChatConversationId(conversation.id)}
+                            className="block w-full px-3 pt-3 text-left"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="text-sm font-semibold">{getChatConversationTitle(conversation)}</div>
+                              {conversationUnreadCount > 0 ? (
+                                <span
+                                  className={`rounded-full px-2 py-1 text-[11px] font-bold leading-none ${
+                                    selected ? "bg-[#f8f2e8] text-[#241c15]" : "bg-[#0891b2] text-white"
+                                  }`}
+                                >
+                                  {conversationUnreadCount > 99 ? "99+" : conversationUnreadCount} new
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className={`mt-1 text-xs font-medium ${selected ? "text-[#f5e9d8]" : "text-[#5f5144]"}`}>
+                              With: {recipientSummary}
+                            </div>
+                            <div className={`mt-1 line-clamp-2 text-xs ${selected ? "text-[#eadfce]" : "text-[#7f7263]"}`}>
+                              {lastMessage?.body || "No chat yet"}
+                            </div>
+                          </button>
                           <div className="mt-2 flex items-center justify-between gap-2">
-                            <span className={`text-[11px] ${selected ? "text-[#d8c7ab]" : "text-[#8a7b68]"}`}>
+                            <span className={`px-3 pb-3 text-[11px] ${selected ? "text-[#d8c7ab]" : "text-[#8a7b68]"}`}>
                               {conversation.last_message_at || conversation.updated_at || conversation.created_at
                                 ? formatDateTime(conversation.last_message_at || conversation.updated_at || conversation.created_at || "")
                                 : "New"}
                             </span>
-                            <span
-                              role="button"
-                              tabIndex={0}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                void hideChatConversationForMe(conversation);
-                              }}
-                              onKeyDown={(event) => {
-                                if (event.key !== "Enter" && event.key !== " ") return;
-                                event.preventDefault();
-                                event.stopPropagation();
-                                void hideChatConversationForMe(conversation);
-                              }}
+                            <button
+                              type="button"
+                              onClick={() => void hideChatConversationForMe(conversation)}
                               className={`rounded-full border px-2 py-1 text-[11px] font-semibold ${
                                 selected
                                   ? "border-[#f8f2e8]/30 text-[#f8f2e8]"
@@ -5648,9 +5642,9 @@ This removes its linked members and deletes the grounds account.`
                               }`}
                             >
                               Delete
-                            </span>
+                            </button>
                           </div>
-                        </button>
+                        </div>
                       );
                     })
                   ) : (

@@ -23,6 +23,12 @@ using (
       and owner_accounts.profile_id = auth.uid()
       and owner_accounts.is_active = true
   )
+  and exists (
+    select 1
+    from public.owner_invoices
+    where owner_invoices.id = owner_invoice_hidden_items.invoice_id
+      and owner_invoices.owner_account_id = owner_invoice_hidden_items.owner_account_id
+  )
 )
 with check (
   exists (
@@ -31,5 +37,11 @@ with check (
     where owner_accounts.id = owner_invoice_hidden_items.owner_account_id
       and owner_accounts.profile_id = auth.uid()
       and owner_accounts.is_active = true
+  )
+  and exists (
+    select 1
+    from public.owner_invoices
+    where owner_invoices.id = owner_invoice_hidden_items.invoice_id
+      and owner_invoices.owner_account_id = owner_invoice_hidden_items.owner_account_id
   )
 );
