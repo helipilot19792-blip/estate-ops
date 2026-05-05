@@ -10370,7 +10370,7 @@ This removes its linked members and deletes the grounds account.`
 
   return (
     <main className="min-h-screen bg-[#f7f3ee] text-[#241c15]">
-      <div className="mx-auto max-w-7xl p-4 md:p-6">
+      <div className="mx-auto max-w-7xl p-4 pb-[45vh] md:p-6 md:pb-[45vh]">
         <div className="mb-6 overflow-hidden rounded-[34px] border border-[#e7ddd0] bg-white shadow-[0_30px_70px_rgba(0,0,0,0.08)]">
           <div className="bg-[linear-gradient(135deg,#1f1812_0%,#2a2119_55%,#3a2c1d_100%)] px-6 py-8 text-white md:px-8 md:py-10">
             <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
