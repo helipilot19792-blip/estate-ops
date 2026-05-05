@@ -925,6 +925,7 @@ export default function AdminPage() {
   const [jobPropertyId, setJobPropertyId] = useState("");
   const [jobScheduledFor, setJobScheduledFor] = useState("");
   const [showSupport, setShowSupport] = useState(false);
+  const [showAdminNav, setShowAdminNav] = useState(false);
   const [supportSubject, setSupportSubject] = useState("");
   const [supportMessage, setSupportMessage] = useState("");
   const [sendingSupport, setSendingSupport] = useState(false);
@@ -4839,19 +4840,125 @@ This removes its linked members and deletes the grounds account.`
     return job.status || "Open";
   }
 
-  const menuItems: Array<{ key: AdminSection; label: string }> = [
-    { key: "home", label: "Home" },
-    { key: "calendar", label: "Calendar" },
-    { key: "assignments", label: "Assignments" },
-    { key: "jobs", label: "Jobs" },
-    { key: "invoices", label: "Invoices" },
-    { key: "properties", label: "Properties" },
-    { key: "cleanerAccounts", label: "Cleaner Accounts" },
-    { key: "groundsAccounts", label: "Grounds Accounts" },
-    { key: "invites", label: "Invites" },
-    { key: "chat", label: "Chat" },
-    { key: "users", label: "Users" },
-    { key: "maintenance", label: "Maintenance Flags" },
+  const menuGroups: Array<{
+    label: string;
+    items: Array<{
+      key: AdminSection;
+      label: string;
+      hint: string;
+      accent: string;
+      activeClass: string;
+    }>;
+  }> = [
+    {
+      label: "Operations",
+      items: [
+        {
+          key: "home",
+          label: "Home",
+          hint: "Daily snapshot",
+          accent: "bg-[#3b82f6]",
+          activeClass: "border-[#bfdbfe] bg-[#eff6ff] text-[#1d4ed8]",
+        },
+        {
+          key: "calendar",
+          label: "Calendar",
+          hint: "Bookings and schedules",
+          accent: "bg-[#14b8a6]",
+          activeClass: "border-[#99f6e4] bg-[#ecfdf5] text-[#0f766e]",
+        },
+        {
+          key: "jobs",
+          label: "Jobs",
+          hint: "Cleaning and grounds work",
+          accent: "bg-[#22c55e]",
+          activeClass: "border-[#bbf7d0] bg-[#f0fdf4] text-[#15803d]",
+        },
+        {
+          key: "maintenance",
+          label: "Maintenance Flags",
+          hint: "Open issues",
+          accent: "bg-[#ef4444]",
+          activeClass: "border-[#fecaca] bg-[#fff1f2] text-[#b91c1c]",
+        },
+      ],
+    },
+    {
+      label: "Billing",
+      items: [
+        {
+          key: "invoices",
+          label: "Invoices",
+          hint: "Owner billing",
+          accent: "bg-[#f59e0b]",
+          activeClass: "border-[#fde68a] bg-[#fffbeb] text-[#b45309]",
+        },
+      ],
+    },
+    {
+      label: "Properties",
+      items: [
+        {
+          key: "properties",
+          label: "Properties",
+          hint: "Listings and setup",
+          accent: "bg-[#0ea5e9]",
+          activeClass: "border-[#bae6fd] bg-[#f0f9ff] text-[#0369a1]",
+        },
+        {
+          key: "assignments",
+          label: "Assignments",
+          hint: "Cleaner and grounds coverage",
+          accent: "bg-[#84cc16]",
+          activeClass: "border-[#d9f99d] bg-[#f7fee7] text-[#4d7c0f]",
+        },
+      ],
+    },
+    {
+      label: "People",
+      items: [
+        {
+          key: "cleanerAccounts",
+          label: "Cleaner Accounts",
+          hint: "Cleaner profiles",
+          accent: "bg-[#10b981]",
+          activeClass: "border-[#a7f3d0] bg-[#ecfdf5] text-[#047857]",
+        },
+        {
+          key: "groundsAccounts",
+          label: "Grounds Accounts",
+          hint: "Grounds profiles",
+          accent: "bg-[#0f766e]",
+          activeClass: "border-[#99f6e4] bg-[#f0fdfa] text-[#115e59]",
+        },
+        {
+          key: "invites",
+          label: "Invites",
+          hint: "Invitation status",
+          accent: "bg-[#8b5cf6]",
+          activeClass: "border-[#ddd6fe] bg-[#f5f3ff] text-[#6d28d9]",
+        },
+        {
+          key: "users",
+          label: "Users",
+          hint: "Admin access",
+          accent: "bg-[#6366f1]",
+          activeClass: "border-[#c7d2fe] bg-[#eef2ff] text-[#4338ca]",
+        },
+      ],
+    },
+    {
+      label: "Communication",
+      items: [
+        {
+          key: "chat",
+          label: "Chat",
+          hint: "In-app messages",
+          accent: "bg-[#06b6d4]",
+          activeClass: "border-[#a5f3fc] bg-[#ecfeff] text-[#0e7490]",
+        },
+      ],
+    },
   ];
 
   const unreadChatCount = useMemo(() => {
@@ -4877,6 +4984,76 @@ This removes its linked members and deletes the grounds account.`
       );
     }, 0);
   }, [chatConversations, chatMessages, chatParticipants, currentAdminUserId]);
+
+  function getAdminMenuBadge(section: AdminSection) {
+    if (section === "chat" && unreadChatCount > 0) return unreadChatCount > 99 ? "99+" : String(unreadChatCount);
+    if (section === "jobs" && strandedJobs.length > 0) return String(strandedJobs.length);
+    if (section === "maintenance" && maintenanceFlagCounts.urgent > 0) return String(maintenanceFlagCounts.urgent);
+    if (section === "invites" && recentlyAcceptedInvites.length > 0) return String(recentlyAcceptedInvites.length);
+    if (section === "invoices" && ownerInvoices.length > 0) return String(ownerInvoices.length);
+    return "";
+  }
+
+  function selectAdminSection(section: AdminSection) {
+    setActiveSection(section);
+    setShowAdminNav(false);
+  }
+
+  function renderAdminNavigation() {
+    return (
+      <nav className="space-y-5" aria-label="Admin sections">
+        {menuGroups.map((group) => (
+          <div key={group.label}>
+            <div className="px-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-[#9a8b78]">
+              {group.label}
+            </div>
+            <div className="mt-2 space-y-1.5">
+              {group.items.map((item) => {
+                const active = activeSection === item.key;
+                const badge = getAdminMenuBadge(item.key);
+
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => selectAdminSection(item.key)}
+                    className={`group flex w-full items-center gap-3 rounded-[18px] border px-3 py-3 text-left transition ${
+                      active
+                        ? `${item.activeClass} shadow-[0_12px_24px_rgba(36,28,21,0.08)]`
+                        : item.key === "chat" && unreadChatCount > 0
+                          ? "border-[#a5f3fc] bg-[#ecfeff] text-[#0e7490] hover:bg-white"
+                          : "border-transparent bg-transparent text-[#5f5245] hover:border-[#eadfce] hover:bg-white"
+                    }`}
+                  >
+                    <span className={`h-9 w-1.5 rounded-full ${item.accent}`} aria-hidden="true" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-semibold leading-5">{item.label}</span>
+                      <span className={`mt-0.5 block text-xs leading-4 ${active ? "opacity-75" : "text-[#8a7b68]"}`}>
+                        {item.hint}
+                      </span>
+                    </span>
+                    {badge ? (
+                      <span
+                        className={`min-w-6 rounded-full px-2 py-1 text-center text-xs font-bold leading-none ${
+                          item.key === "maintenance" || item.key === "jobs"
+                            ? "bg-[#dc2626] text-white"
+                            : active
+                              ? "bg-white/80 text-current"
+                              : "bg-[#241c15] text-[#f8f2e8]"
+                        }`}
+                      >
+                        {badge}
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </nav>
+    );
+  }
 
   function renderHomeSection() {
     return (
@@ -11411,35 +11588,62 @@ This removes its linked members and deletes the grounds account.`
           </div>
         </div>
 
-        <div className="mb-6 rounded-[30px] border border-[#e7ddd0] bg-white p-3 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-          <div className="flex flex-wrap gap-2">
-            {menuItems.map((item) => (
-              <button
-                key={item.key}
-                onClick={() => setActiveSection(item.key)}
-                className={`relative inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition ${activeSection === item.key
-                  ? "bg-[#241c15] text-[#f8f2e8]"
-                  : item.key === "chat" && unreadChatCount > 0
-                    ? "border border-[#b48d4e] bg-[#fff8e8] text-[#241c15] shadow-[0_0_0_1px_rgba(180,141,78,0.18)] hover:bg-white"
-                    : "border border-[#d8c7ab] bg-[#fcfaf7] text-[#6f6255] hover:bg-white"
-                  }`}
-              >
-                <span>{item.label}</span>
-                {item.key === "chat" && unreadChatCount > 0 ? (
-                  <span
-                    className={`min-w-5 rounded-full px-1.5 py-0.5 text-center text-[11px] font-bold leading-none ${
-                      activeSection === "chat" ? "bg-[#f8f2e8] text-[#241c15]" : "bg-[#d3322b] text-white"
-                    }`}
-                  >
-                    {unreadChatCount > 99 ? "99+" : unreadChatCount}
-                  </span>
-                ) : null}
-              </button>
-            ))}
-          </div>
+        <div className="mb-4 rounded-[24px] border border-[#e7ddd0] bg-white p-3 shadow-[0_18px_45px_rgba(0,0,0,0.05)] lg:hidden">
+          <button
+            type="button"
+            onClick={() => setShowAdminNav(true)}
+            className="flex w-full items-center justify-between rounded-[18px] border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-3 text-left text-sm font-semibold text-[#241c15]"
+          >
+            <span>
+              Menu
+              <span className="ml-2 text-xs font-medium text-[#8a7b68]">
+                {menuGroups.flatMap((group) => group.items).find((item) => item.key === activeSection)?.label}
+              </span>
+            </span>
+            <span className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs text-[#6f6255]">
+              Open
+            </span>
+          </button>
         </div>
 
-        {renderActiveSection()}
+        {showAdminNav ? (
+          <div className="fixed inset-0 z-50 bg-[#241c15]/35 p-4 backdrop-blur-sm lg:hidden">
+            <div className="ml-auto flex h-full max-w-sm flex-col rounded-[28px] border border-[#e7ddd0] bg-[#fbf8f4] p-4 shadow-[0_30px_70px_rgba(0,0,0,0.22)]">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8a7b68]">Admin</div>
+                  <div className="mt-1 text-xl font-semibold text-[#241c15]">Navigation</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAdminNav(false)}
+                  className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-semibold text-[#6f6255]"
+                >
+                  Close
+                </button>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+                {renderAdminNavigation()}
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        <div className="grid gap-6 lg:grid-cols-[270px_minmax(0,1fr)] lg:items-start">
+          <aside className="hidden lg:sticky lg:top-6 lg:block">
+            <div className="rounded-[30px] border border-[#e7ddd0] bg-[#fbf8f4] p-4 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+              <div className="mb-5 rounded-[22px] border border-[#eadfce] bg-white px-4 py-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8a7b68]">Admin</div>
+                <div className="mt-1 text-xl font-semibold tracking-tight text-[#241c15]">Workspace</div>
+              </div>
+              {renderAdminNavigation()}
+            </div>
+          </aside>
+
+          <div className="min-w-0">
+            {renderActiveSection()}
+          </div>
+        </div>
       </div>
 
       {error || actionMessage ? (
