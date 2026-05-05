@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
@@ -809,6 +809,7 @@ export default function AdminPage() {
   const [chatMessageBody, setChatMessageBody] = useState("");
   const [chatReplyBody, setChatReplyBody] = useState("");
   const [chatRealtimeReady, setChatRealtimeReady] = useState(false);
+  const chatThreadEndRef = useRef<HTMLDivElement | null>(null);
   const [invoiceOwnerId, setInvoiceOwnerId] = useState("");
   const [invoicePropertyId, setInvoicePropertyId] = useState("");
   const [invoiceIssueDate, setInvoiceIssueDate] = useState(() => getTodayYmd());
@@ -1656,6 +1657,11 @@ export default function AdminPage() {
     if (!conversationId) return;
     void markChatConversationRead(conversationId);
   }, [activeSection, selectedChatConversationId, chatConversations, chatMessages.length]);
+
+  useEffect(() => {
+    if (activeSection !== "chat") return;
+    chatThreadEndRef.current?.scrollIntoView({ block: "end" });
+  }, [activeSection, selectedChatConversationId, chatMessages.length]);
 
   function handleSopFilesChange(e: ChangeEvent<HTMLInputElement>) {
     setSopFiles(Array.from(e.target.files ?? []));
@@ -5351,6 +5357,7 @@ This removes its linked members and deletes the grounds account.`
                         No chat replies in this conversation yet.
                       </div>
                     )}
+                    <div ref={chatThreadEndRef} />
                   </div>
 
                   <div className="mt-4 grid gap-3">

@@ -120,10 +120,19 @@ $$;
 grant execute on function public.mark_chat_conversation_read(uuid) to authenticated;
 
 alter table public.chat_messages replica identity full;
+alter table public.chat_participants replica identity full;
 
 do $$
 begin
   alter publication supabase_realtime add table public.chat_messages;
+exception
+  when duplicate_object then null;
+end;
+$$;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.chat_participants;
 exception
   when duplicate_object then null;
 end;

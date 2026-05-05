@@ -145,6 +145,21 @@ type TimelineItem = {
 
 type OwnerTab = "overview" | "insights" | "invoices" | "chat";
 
+type OwnerChatParticipantRow = {
+  id: string;
+  conversation_id: string;
+  participant_owner_account_id?: string | null;
+  participant_profile_id?: string | null;
+  last_read_at?: string | null;
+};
+
+type OwnerChatMessageRow = {
+  id: string;
+  conversation_id: string;
+  sender_profile_id?: string | null;
+  created_at?: string | null;
+};
+
 type BookingInsight = {
   id: string;
   sourceLabel: string | null;
@@ -812,6 +827,9 @@ export default function OwnerPage() {
   const [downloadingInvoiceId, setDownloadingInvoiceId] = useState<string | null>(null);
   const [selectedPropertyId, setSelectedPropertyId] = useState("");
   const [activeOwnerTab, setActiveOwnerTab] = useState<OwnerTab>("overview");
+  const [ownerChatParticipants, setOwnerChatParticipants] = useState<OwnerChatParticipantRow[]>([]);
+  const [ownerChatMessages, setOwnerChatMessages] = useState<OwnerChatMessageRow[]>([]);
+  const [ownerChatUnreadCount, setOwnerChatUnreadCount] = useState(0);
 
   async function signOutOwner() {
     await supabase.auth.signOut();
@@ -971,6 +989,7 @@ export default function OwnerPage() {
     }
 
     setOwnerAccount(ownerRes);
+    void loadOwnerChatBadge(ownerRes);
 
     const { data: accessRows, error: accessError } = (await supabase
       .from("owner_property_access")
@@ -1105,9 +1124,83 @@ export default function OwnerPage() {
     setLoading(false);
   }
 
+  async function loadOwnerChatBadge(owner: OwnerAccountRow) {
+    const { data: participantRows, error: participantError } = await supabase
+      .from("chat_participants")
+      .select("id,conversation_id,participant_owner_account_id,participant_profile_id,last_read_at")
+      .eq("participant_owner_account_id", owner.id);
+
+    if (participantError) {
+      console.warn("Could not load owner chat badge", participantError);
+      return;
+    }
+
+    const loadedParticipants = (participantRows ?? []) as OwnerChatParticipantRow[];
+    setOwnerChatParticipants(loadedParticipants);
+
+    const conversationIds = loadedParticipants.map((row) => row.conversation_id).filter(Boolean);
+    if (conversationIds.length === 0) {
+      setOwnerChatMessages([]);
+      setOwnerChatUnreadCount(0);
+      return;
+    }
+
+    const { data: messageRows, error: messageError } = await supabase
+      .from("chat_messages")
+      .select("id,conversation_id,sender_profile_id,created_at")
+      .in("conversation_id", conversationIds);
+
+    if (messageError) {
+      console.warn("Could not load owner chat unread messages", messageError);
+      return;
+    }
+
+    setOwnerChatMessages((messageRows ?? []) as OwnerChatMessageRow[]);
+  }
+
   useEffect(() => {
     void loadData();
   }, []);
+
+  useEffect(() => {
+    if (!ownerAccount) return;
+
+    const channel = supabase
+      .channel(`owner-chat-badge-${ownerAccount.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "chat_participants",
+          filter: `participant_owner_account_id=eq.${ownerAccount.id}`,
+        },
+        () => {
+          void loadOwnerChatBadge(ownerAccount);
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "chat_messages",
+        },
+        (payload) => {
+          const incoming = payload.new as OwnerChatMessageRow;
+          const conversationIds = new Set(ownerChatParticipants.map((row) => row.conversation_id));
+          if (!conversationIds.has(incoming.conversation_id)) return;
+          setOwnerChatMessages((messages) =>
+            messages.some((message) => message.id === incoming.id) ? messages : [...messages, incoming]
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [ownerAccount, ownerChatParticipants]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1118,6 +1211,31 @@ export default function OwnerPage() {
       setActiveOwnerTab(tabFromUrl);
     }
   }, []);
+
+  useEffect(() => {
+    if (!ownerAccount) {
+      setOwnerChatUnreadCount(0);
+      return;
+    }
+
+    const profileId = ownerAccount.profile_id || "";
+    const unread = ownerChatParticipants.reduce((total, participant) => {
+      const lastReadAt = participant.last_read_at ? new Date(participant.last_read_at).getTime() : 0;
+      if (Number.isNaN(lastReadAt)) return total;
+
+      return (
+        total +
+        ownerChatMessages.filter((message) => {
+          if (message.conversation_id !== participant.conversation_id) return false;
+          if (profileId && message.sender_profile_id === profileId) return false;
+          const createdAt = message.created_at ? new Date(message.created_at).getTime() : 0;
+          return createdAt > lastReadAt;
+        }).length
+      );
+    }, 0);
+
+    setOwnerChatUnreadCount(unread);
+  }, [ownerAccount, ownerChatMessages, ownerChatParticipants]);
 
   const selectedProperty =
     properties.find((property) => property.id === selectedPropertyId) || properties[0] || null;
@@ -1222,6 +1340,16 @@ export default function OwnerPage() {
 
     void markInvoicesRead();
   }, [activeOwnerTab, unreadPropertyOwnerInvoices]);
+
+  useEffect(() => {
+    if (activeOwnerTab !== "chat" || ownerChatParticipants.length === 0) return;
+
+    const readAt = new Date().toISOString();
+    setOwnerChatParticipants((participants) =>
+      participants.map((participant) => ({ ...participant, last_read_at: readAt }))
+    );
+    setOwnerChatUnreadCount(0);
+  }, [activeOwnerTab, ownerChatParticipants.length]);
 
   const openFlags = useMemo(() => propertyFlags.filter((flag) => !isResolved(flag)), [propertyFlags]);
 
@@ -1678,7 +1806,8 @@ export default function OwnerPage() {
               { key: "chat" as OwnerTab, label: "Chat", subtext: "Talk with property management" },
             ].map((tab) => {
               const isActive = activeOwnerTab === tab.key;
-              const unreadCount = tab.key === "invoices" ? unreadOwnerInvoices.length : 0;
+              const unreadCount =
+                tab.key === "invoices" ? unreadOwnerInvoices.length : tab.key === "chat" ? ownerChatUnreadCount : 0;
 
               return (
                 <button
@@ -2362,6 +2491,7 @@ export default function OwnerPage() {
             }
             title="Owner Chat"
             subtitle="Chat with property management about bookings, invoices, maintenance, or anything tied to your property."
+            onUnreadCountChange={setOwnerChatUnreadCount}
           />
         )}
       </div>

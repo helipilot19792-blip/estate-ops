@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 type ChatConversationRow = {
@@ -58,6 +58,7 @@ type PortalChatProps = {
   title?: string;
   subtitle?: string;
   className?: string;
+  onUnreadCountChange?: (count: number) => void;
 };
 
 function formatChatDate(value?: string | null) {
@@ -88,6 +89,7 @@ export default function PortalChat({
   title = "Chat",
   subtitle = "Chat with property management without sending an email for every reply.",
   className = "",
+  onUnreadCountChange,
 }: PortalChatProps) {
   const [authProfileId, setAuthProfileId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -99,6 +101,7 @@ export default function PortalChat({
   const [selectedConversationId, setSelectedConversationId] = useState("");
   const [replyBody, setReplyBody] = useState("");
   const [realtimeReady, setRealtimeReady] = useState(false);
+  const threadEndRef = useRef<HTMLDivElement | null>(null);
 
   const participantType = participant?.type || "";
   const participantProfileId = participant?.type === "profile" ? participant.profileId : "";
@@ -316,6 +319,14 @@ export default function PortalChat({
     void markConversationRead(conversationId);
   }, [selectedConversationId, conversations, messages.length]);
 
+  useEffect(() => {
+    onUnreadCountChange?.(unreadCount);
+  }, [onUnreadCountChange, unreadCount]);
+
+  useEffect(() => {
+    threadEndRef.current?.scrollIntoView({ block: "end" });
+  }, [activeConversationId, selectedMessages.length]);
+
   function getOtherParticipants(conversation: ChatConversationRow) {
     return participants.filter((row) => {
       if (row.conversation_id !== conversation.id) return false;
@@ -523,6 +534,7 @@ export default function PortalChat({
                     No chat replies yet.
                   </div>
                 )}
+                <div ref={threadEndRef} />
               </div>
 
               <div className="mt-4 grid gap-3">
