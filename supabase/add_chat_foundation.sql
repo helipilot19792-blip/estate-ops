@@ -74,6 +74,27 @@ create trigger touch_chat_conversation_on_message
 after insert on public.chat_messages
 for each row execute function public.touch_chat_conversation_from_message();
 
+create or replace function public.is_chat_participant(conversation_id_to_check uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.chat_participants
+    left join public.owner_accounts
+      on owner_accounts.id = chat_participants.participant_owner_account_id
+    where chat_participants.conversation_id = conversation_id_to_check
+      and (
+        chat_participants.participant_profile_id = auth.uid()
+        or owner_accounts.profile_id = auth.uid()
+      )
+  );
+$$;
+
+grant execute on function public.is_chat_participant(uuid) to authenticated;
+
 alter table public.chat_conversations enable row level security;
 alter table public.chat_participants enable row level security;
 alter table public.chat_messages enable row level security;
@@ -105,19 +126,7 @@ drop policy if exists "Participants can view chat conversations" on public.chat_
 create policy "Participants can view chat conversations"
 on public.chat_conversations
 for select
-using (
-  exists (
-    select 1
-    from public.chat_participants
-    left join public.owner_accounts
-      on owner_accounts.id = chat_participants.participant_owner_account_id
-    where chat_participants.conversation_id = chat_conversations.id
-      and (
-        chat_participants.participant_profile_id = auth.uid()
-        or owner_accounts.profile_id = auth.uid()
-      )
-  )
-);
+using (public.is_chat_participant(chat_conversations.id));
 
 drop policy if exists "Admins can manage organization chat participants" on public.chat_participants;
 create policy "Admins can manage organization chat participants"
@@ -146,19 +155,7 @@ drop policy if exists "Participants can view chat participants" on public.chat_p
 create policy "Participants can view chat participants"
 on public.chat_participants
 for select
-using (
-  exists (
-    select 1
-    from public.chat_participants participant_scope
-    left join public.owner_accounts
-      on owner_accounts.id = participant_scope.participant_owner_account_id
-    where participant_scope.conversation_id = chat_participants.conversation_id
-      and (
-        participant_scope.participant_profile_id = auth.uid()
-        or owner_accounts.profile_id = auth.uid()
-      )
-  )
-);
+using (public.is_chat_participant(chat_participants.conversation_id));
 
 drop policy if exists "Admins can manage organization chat messages" on public.chat_messages;
 create policy "Admins can manage organization chat messages"
@@ -187,19 +184,7 @@ drop policy if exists "Participants can view chat messages" on public.chat_messa
 create policy "Participants can view chat messages"
 on public.chat_messages
 for select
-using (
-  exists (
-    select 1
-    from public.chat_participants
-    left join public.owner_accounts
-      on owner_accounts.id = chat_participants.participant_owner_account_id
-    where chat_participants.conversation_id = chat_messages.conversation_id
-      and (
-        chat_participants.participant_profile_id = auth.uid()
-        or owner_accounts.profile_id = auth.uid()
-      )
-  )
-);
+using (public.is_chat_participant(chat_messages.conversation_id));
 
 drop policy if exists "Participants can send chat messages" on public.chat_messages;
 create policy "Participants can send chat messages"
@@ -207,15 +192,5 @@ on public.chat_messages
 for insert
 with check (
   sender_profile_id = auth.uid()
-  and exists (
-    select 1
-    from public.chat_participants
-    left join public.owner_accounts
-      on owner_accounts.id = chat_participants.participant_owner_account_id
-    where chat_participants.conversation_id = chat_messages.conversation_id
-      and (
-        chat_participants.participant_profile_id = auth.uid()
-        or owner_accounts.profile_id = auth.uid()
-      )
-  )
+  and public.is_chat_participant(chat_messages.conversation_id)
 );
