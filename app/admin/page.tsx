@@ -394,6 +394,8 @@ type OwnerInvoiceRow = {
   due_date: string | null;
   company_name: string | null;
   logo_url: string | null;
+  from_email?: string | null;
+  reply_to_email?: string | null;
   header_text: string | null;
   notes: string | null;
   payment_instructions: string | null;
@@ -771,6 +773,7 @@ export default function AdminPage() {
   const [invoiceReplyToEmail, setInvoiceReplyToEmail] = useState("");
   const [invoiceHeaderText, setInvoiceHeaderText] = useState("");
   const [invoicePaymentInstructions, setInvoicePaymentInstructions] = useState("");
+  const [editingOwnerInvoiceId, setEditingOwnerInvoiceId] = useState<string | null>(null);
   const [externalInvoiceUrl, setExternalInvoiceUrl] = useState("");
   const [externalInvoiceName, setExternalInvoiceName] = useState("");
   const [externalInvoiceContentType, setExternalInvoiceContentType] = useState("");
@@ -783,6 +786,11 @@ export default function AdminPage() {
   const [propertyInvoiceRateDrafts, setPropertyInvoiceRateDrafts] = useState<Record<string, { turnover: string; grounds: string }>>({});
   const [invoiceSettingsDirty, setInvoiceSettingsDirty] = useState(false);
   const [invoiceDraftDirty, setInvoiceDraftDirty] = useState(false);
+  const [invoiceHistoryOpenSections, setInvoiceHistoryOpenSections] = useState({
+    drafts: true,
+    active: true,
+    paid: false,
+  });
   const [dirtyPropertyInvoiceRateIds, setDirtyPropertyInvoiceRateIds] = useState<Set<string>>(() => new Set());
   const [invoiceAutoTurnover, setInvoiceAutoTurnover] = useState(true);
   const [invoiceAutoGrounds, setInvoiceAutoGrounds] = useState(true);
@@ -5498,6 +5506,62 @@ This removes its linked members and deletes the grounds account.`
     );
   }
 
+  function getEmptyInvoiceLineItem(): OwnerInvoiceLineItem {
+    return { id: `custom-${Date.now()}`, description: "", category: "expense", quantity: 1, rate: "" };
+  }
+
+  function resetInvoiceComposer() {
+    setEditingOwnerInvoiceId(null);
+    setInvoiceOwnerId("");
+    setInvoicePropertyId("");
+    setInvoiceIssueDate(getTodayYmd());
+    setInvoiceDueDate(getDefaultDueDateYmd());
+    setInvoiceNotes("");
+    setInvoiceCcEmails("");
+    setInvoiceLineItems([getEmptyInvoiceLineItem()]);
+    setInvoiceDraftDirty(false);
+  }
+
+  function loadOwnerInvoiceDraft(invoice: OwnerInvoiceRow) {
+    if (invoice.invoice_source === "uploaded") {
+      setError("Uploaded invoice files can be resent from history, but they cannot be edited in the invoice builder.");
+      return;
+    }
+
+    setEditingOwnerInvoiceId(invoice.id);
+    setInvoiceOwnerId(invoice.owner_account_id);
+    setInvoicePropertyId(invoice.property_id || "");
+    setInvoiceIssueDate(invoice.issue_date || getTodayYmd());
+    setInvoiceDueDate(invoice.due_date || "");
+    setInvoiceNotes(invoice.notes || "");
+    setInvoiceHeaderText(invoice.header_text || invoiceSettings?.header_text || "");
+    setInvoicePaymentInstructions(invoice.payment_instructions || invoiceSettings?.payment_instructions || "");
+    setInvoiceCompanyName(invoice.company_name || invoiceSettings?.company_name || "");
+    setInvoiceLogoUrl(invoice.logo_url || invoiceSettings?.logo_url || "");
+    setInvoiceFromEmail(invoice.from_email || invoiceSettings?.from_email || "");
+    setInvoiceReplyToEmail(invoice.reply_to_email || invoiceSettings?.reply_to_email || "");
+    setInvoiceLineItems(invoice.line_items.length > 0 ? invoice.line_items : [getEmptyInvoiceLineItem()]);
+    const loadedTaxLines = normalizeTaxLines(invoice.tax_lines).map((line) => ({
+      id: line.id,
+      label: line.label,
+      rate: line.rate,
+      enabled: true,
+    }));
+    if (loadedTaxLines.length > 0) {
+      setInvoiceTaxLines(loadedTaxLines);
+    }
+    setInvoiceDraftDirty(false);
+    setActionMessage(`Loaded running invoice ${invoice.invoice_number}.`);
+    setError("");
+  }
+
+  function toggleInvoiceHistorySection(section: keyof typeof invoiceHistoryOpenSections) {
+    setInvoiceHistoryOpenSections((sections) => ({
+      ...sections,
+      [section]: !sections[section],
+    }));
+  }
+
   function getValidInvoiceLineItems() {
     return invoiceLineItems
       .map((item) => ({
@@ -5708,6 +5772,9 @@ This removes its linked members and deletes the grounds account.`
   async function createOwnerInvoice(status: "draft" | "sent" = "draft") {
     if (!currentOrganizationId) return;
     const effectiveOwnerId = getInvoiceOwnerId();
+    const editingInvoice = editingOwnerInvoiceId
+      ? ownerInvoices.find((invoice) => invoice.id === editingOwnerInvoiceId)
+      : null;
 
     if (!effectiveOwnerId) {
       setError("Choose an owner for this invoice.");
@@ -5725,41 +5792,57 @@ This removes its linked members and deletes the grounds account.`
     const taxLines = getInvoiceTaxLinesForSubtotal(subtotal);
     const taxTotal = taxLines.reduce((sum, line) => sum + line.amount, 0);
     const total = subtotal + taxTotal;
-    const invoiceNumber = `INV-${Date.now().toString().slice(-8)}`;
+    const invoiceNumber = editingInvoice?.invoice_number || `INV-${Date.now().toString().slice(-8)}`;
 
     setCreatingInvoice(true);
     setError("");
     setActionMessage("");
 
     try {
-      const { data, error } = await supabase
-        .from("owner_invoices")
-        .insert({
-          organization_id: currentOrganizationId,
-          owner_account_id: effectiveOwnerId,
-          property_id: invoicePropertyId || null,
-          invoice_number: invoiceNumber,
-          status,
-          issue_date: invoiceIssueDate || getTodayYmd(),
-          due_date: invoiceDueDate || null,
-          company_name: invoiceCompanyName.trim() || null,
-          logo_url: invoiceLogoUrl.trim() || null,
-          from_email: invoiceFromEmail.trim().toLowerCase() || null,
-          reply_to_email: invoiceReplyToEmail.trim().toLowerCase() || null,
-          header_text: invoiceHeaderText.trim() || null,
-          tax_lines: taxLines,
-          notes: invoiceNotes.trim() || null,
-          payment_instructions: invoicePaymentInstructions.trim() || null,
-          line_items: validLineItems,
-          subtotal,
-          tax_total: taxTotal,
-          total,
-          sent_at: status === "sent" ? new Date().toISOString() : null,
-          sent_by_profile_id: status === "sent" ? currentAdminUserId : null,
-          created_by_profile_id: currentAdminUserId,
-        })
-        .select()
-        .single();
+      const timestamp = new Date().toISOString();
+      const invoicePayload = {
+        owner_account_id: effectiveOwnerId,
+        property_id: invoicePropertyId || null,
+        invoice_number: invoiceNumber,
+        status,
+        issue_date: invoiceIssueDate || getTodayYmd(),
+        due_date: invoiceDueDate || null,
+        company_name: invoiceCompanyName.trim() || null,
+        logo_url: invoiceLogoUrl.trim() || null,
+        from_email: invoiceFromEmail.trim().toLowerCase() || null,
+        reply_to_email: invoiceReplyToEmail.trim().toLowerCase() || null,
+        header_text: invoiceHeaderText.trim() || null,
+        tax_lines: taxLines,
+        notes: invoiceNotes.trim() || null,
+        payment_instructions: invoicePaymentInstructions.trim() || null,
+        line_items: validLineItems,
+        subtotal,
+        tax_total: taxTotal,
+        total,
+        sent_at: status === "sent" ? timestamp : editingInvoice?.sent_at || null,
+        sent_by_profile_id: status === "sent" ? currentAdminUserId : null,
+        updated_at: timestamp,
+      };
+
+      const { data, error } = editingOwnerInvoiceId
+        ? await supabase
+            .from("owner_invoices")
+            .update(invoicePayload)
+            .eq("id", editingOwnerInvoiceId)
+            .eq("organization_id", currentOrganizationId)
+            .select()
+            .single()
+        : await supabase
+            .from("owner_invoices")
+            .insert({
+              organization_id: currentOrganizationId,
+              ...invoicePayload,
+              sent_at: status === "sent" ? timestamp : null,
+              sent_by_profile_id: status === "sent" ? currentAdminUserId : null,
+              created_by_profile_id: currentAdminUserId,
+            })
+            .select()
+            .single();
 
       if (error) throw error;
 
@@ -5767,10 +5850,21 @@ This removes its linked members and deletes the grounds account.`
         await sendOwnerInvoiceEmail(data.id, invoiceCcEmails);
       }
 
-      setActionMessage(status === "sent" ? "Invoice created and sent to owner." : "Invoice draft created.");
-      setInvoiceNotes("");
-      setInvoiceLineItems([{ id: "custom-1", description: "", category: "expense", quantity: 1, rate: 0 }]);
-      setInvoiceDraftDirty(false);
+      setActionMessage(
+        status === "sent"
+          ? editingOwnerInvoiceId
+            ? "Running invoice sent to owner."
+            : "Invoice created and sent to owner."
+          : editingOwnerInvoiceId
+            ? "Running invoice updated."
+            : "Running invoice draft created."
+      );
+      if (status === "sent") {
+        resetInvoiceComposer();
+      } else {
+        setEditingOwnerInvoiceId(data?.id || editingOwnerInvoiceId);
+        setInvoiceDraftDirty(false);
+      }
       await loadData();
     } catch (err: unknown) {
       setError(getErrorMessage(err, "Could not create invoice."));
@@ -6022,6 +6116,157 @@ This removes its linked members and deletes the grounds account.`
     const invoiceTaxLinesWithAmounts = getInvoiceTaxLinesForSubtotal(invoiceSubtotal);
     const invoiceTaxTotal = invoiceTaxLinesWithAmounts.reduce((sum, line) => sum + line.amount, 0);
     const invoiceTotal = invoiceSubtotal + invoiceTaxTotal;
+    const editingInvoice = editingOwnerInvoiceId
+      ? ownerInvoices.find((invoice) => invoice.id === editingOwnerInvoiceId)
+      : null;
+    const draftInvoices = ownerInvoices.filter((invoice) => invoice.status === "draft");
+    const activeInvoices = ownerInvoices.filter((invoice) => invoice.status === "sent");
+    const paidInvoices = ownerInvoices.filter((invoice) => invoice.status === "paid" || invoice.status === "void");
+    const renderInvoiceHistoryCard = (invoice: OwnerInvoiceRow) => {
+      const owner = ownerAccounts.find((item) => item.id === invoice.owner_account_id);
+      const property = properties.find((item) => item.id === invoice.property_id);
+      const isPaidInvoice = invoice.status === "paid";
+      const isDraftInvoice = invoice.status === "draft";
+
+      return (
+        <div
+          key={invoice.id}
+          className={`rounded-[20px] border p-4 shadow-sm ${
+            isDraftInvoice
+              ? "border-[#d4c2ea] bg-[#fbf8ff] shadow-[0_16px_34px_rgba(91,62,126,0.08)]"
+              : isPaidInvoice
+                ? "border-[#9bd4a3] bg-[#edf9ef] shadow-[0_16px_34px_rgba(35,107,48,0.08)]"
+                : "border-[#f0b8b8] bg-[#fff1f1] shadow-[0_16px_34px_rgba(153,27,27,0.08)]"
+          }`}
+        >
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`font-semibold ${
+                  isDraftInvoice ? "text-[#5f3f86]" : isPaidInvoice ? "text-[#123f1b]" : "text-[#7f1d1d]"
+                }`}>
+                  {invoice.invoice_number}
+                </span>
+                <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
+                  isDraftInvoice
+                    ? "border-[#d4c2ea] bg-white text-[#6f4b9a]"
+                    : isPaidInvoice
+                      ? "border-[#bbdfc0] bg-[#f0fbf2] text-[#236b30]"
+                      : "border-[#fecaca] bg-white text-[#991b1b]"
+                }`}>
+                  {isDraftInvoice ? "running draft" : isPaidInvoice ? "paid" : invoice.status}
+                </span>
+                {invoice.invoice_source === "uploaded" ? (
+                  <span className="rounded-full border border-[#d4c2ea] bg-white px-2.5 py-0.5 text-xs font-semibold text-[#6f4b9a]">
+                    uploaded file
+                  </span>
+                ) : null}
+              </div>
+              <div className={`mt-1 text-sm ${
+                isDraftInvoice ? "text-[#6f4b9a]" : isPaidInvoice ? "text-[#2f5f36]" : "text-[#7f4242]"
+              }`}>
+                {owner?.full_name || owner?.email || "Owner"} | {property?.name || property?.address || "All properties"}
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className={`text-lg font-semibold ${
+                isDraftInvoice ? "text-[#5f3f86]" : isPaidInvoice ? "text-[#123f1b]" : "text-[#7f1d1d]"
+              }`}>
+                {formatCurrency(invoice.total)}
+              </div>
+              {isDraftInvoice && invoice.invoice_source !== "uploaded" ? (
+                <button
+                  type="button"
+                  onClick={() => loadOwnerInvoiceDraft(invoice)}
+                  className="rounded-full border border-[#d4c2ea] bg-white px-4 py-2 text-sm font-medium text-[#6f4b9a] hover:bg-[#f6efff]"
+                >
+                  Open draft
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => downloadInvoiceCsv(invoice, owner, property)}
+                className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-medium text-[#5f4c3b] hover:bg-[#f7f1e8]"
+              >
+                CSV
+              </button>
+              {invoice.uploaded_invoice_url ? (
+                <a
+                  href={invoice.uploaded_invoice_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-full border border-[#d4c2ea] bg-white px-4 py-2 text-sm font-medium text-[#6f4b9a] hover:bg-[#f6efff]"
+                >
+                  File
+                </a>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => void updateOwnerInvoiceStatus(invoice, invoice.status === "paid" ? "sent" : "paid")}
+                disabled={updatingInvoiceStatusId === invoice.id}
+                className={`rounded-full border px-4 py-2 text-sm font-medium disabled:opacity-60 ${
+                  invoice.status === "paid"
+                    ? "border-[#d8c7ab] bg-white text-[#5f4c3b] hover:bg-[#f7f1e8]"
+                    : "border-[#bbdfc0] bg-[#f0fbf2] text-[#236b30] hover:bg-[#e4f7e8]"
+                }`}
+              >
+                {updatingInvoiceStatusId === invoice.id
+                  ? "Updating..."
+                  : invoice.status === "paid"
+                    ? "Mark unpaid"
+                    : "Mark paid"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void sendExistingOwnerInvoice(invoice.id)}
+                disabled={sendingInvoiceId === invoice.id}
+                className="rounded-full bg-[#241c15] px-4 py-2 text-sm font-medium text-[#f8f2e8] disabled:opacity-60"
+              >
+                {sendingInvoiceId === invoice.id
+                  ? "Sending..."
+                  : invoice.invoice_source === "uploaded"
+                    ? invoice.status === "draft"
+                      ? "Send file"
+                      : "Resend file"
+                    : invoice.status === "draft"
+                      ? "Send PDF"
+                      : "Resend PDF"}
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    };
+    const renderInvoiceHistoryGroup = (
+      key: keyof typeof invoiceHistoryOpenSections,
+      title: string,
+      invoices: OwnerInvoiceRow[],
+      emptyLabel: string
+    ) => (
+      <div className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7]">
+        <button
+          type="button"
+          onClick={() => toggleInvoiceHistorySection(key)}
+          className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+        >
+          <span className="font-semibold text-[#241c15]">{title}</span>
+          <span className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-semibold text-[#6f6255]">
+            {invoices.length} {invoiceHistoryOpenSections[key] ? "Hide" : "Show"}
+          </span>
+        </button>
+        {invoiceHistoryOpenSections[key] ? (
+          <div className="space-y-3 border-t border-[#eadfce] p-3">
+            {invoices.length > 0 ? (
+              invoices.map(renderInvoiceHistoryCard)
+            ) : (
+              <div className="rounded-[18px] border border-dashed border-[#d8c7ab] bg-white p-4 text-sm text-[#7f7263]">
+                {emptyLabel}
+              </div>
+            )}
+          </div>
+        ) : null}
+      </div>
+    );
 
     return (
       <div className="space-y-6">
@@ -6403,6 +6648,35 @@ This removes its linked members and deletes the grounds account.`
         <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
           <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
             <div>
+              <div className={`mb-4 rounded-[22px] border p-4 ${
+                editingInvoice
+                  ? "border-[#d4c2ea] bg-[#fbf8ff]"
+                  : "border-[#eadfce] bg-[#fcfaf7]"
+              }`}>
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#8a7b68]">
+                      {editingInvoice ? "Running invoice open" : "Invoice builder"}
+                    </p>
+                    <h3 className="mt-1 text-lg font-semibold text-[#241c15]">
+                      {editingInvoice
+                        ? `${editingInvoice.invoice_number} is being edited`
+                        : "Create or save a running invoice"}
+                    </h3>
+                    <p className="mt-1 text-sm leading-6 text-[#6f6255]">
+                      Save as draft to keep adding cleaning, grounds, supplies, and receipts until you are ready to send it.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={resetInvoiceComposer}
+                    className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#f7f1e8]"
+                  >
+                    Start new invoice
+                  </button>
+                </div>
+              </div>
+
               <div className="grid gap-3 md:grid-cols-2">
                 <select
                   className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
@@ -6613,7 +6887,7 @@ This removes its linked members and deletes the grounds account.`
                   disabled={creatingInvoice}
                   className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2.5 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#fcfaf7] disabled:opacity-60"
                 >
-                  Save draft
+                  {editingInvoice ? "Save running invoice" : "Save as running invoice"}
                 </button>
                 <button
                   type="button"
@@ -6629,7 +6903,7 @@ This removes its linked members and deletes the grounds account.`
                   disabled={creatingInvoice}
                   className="rounded-full bg-[#241c15] px-4 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60"
                 >
-                  {creatingInvoice ? "Working..." : "Create and send PDF"}
+                  {creatingInvoice ? "Working..." : editingInvoice ? "Send running invoice" : "Create and send PDF"}
                 </button>
               </div>
             </aside>
@@ -6637,108 +6911,21 @@ This removes its linked members and deletes the grounds account.`
         </section>
 
         <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-          <h3 className="text-lg font-semibold text-[#241c15]">Invoice history</h3>
+          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-[#241c15]">Invoice history</h3>
+              <p className="mt-1 text-sm text-[#7f7263]">
+                Running drafts stay here until you open, update, and send them.
+              </p>
+            </div>
+            <span className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-semibold text-[#6f6255]">
+              {ownerInvoices.length} total
+            </span>
+          </div>
           <div className="mt-4 space-y-3">
-            {ownerInvoices.length === 0 ? (
-              <div className="rounded-[20px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] p-4 text-sm text-[#7f7263]">
-                No owner invoices yet.
-              </div>
-            ) : (
-              ownerInvoices.map((invoice) => {
-                const owner = ownerAccounts.find((item) => item.id === invoice.owner_account_id);
-                const property = properties.find((item) => item.id === invoice.property_id);
-                const isPaidInvoice = invoice.status === "paid";
-                return (
-                  <div
-                    key={invoice.id}
-                    className={`rounded-[20px] border p-4 shadow-sm ${
-                      isPaidInvoice
-                        ? "border-[#9bd4a3] bg-[#edf9ef] shadow-[0_16px_34px_rgba(35,107,48,0.08)]"
-                        : "border-[#f0b8b8] bg-[#fff1f1] shadow-[0_16px_34px_rgba(153,27,27,0.08)]"
-                    }`}
-                  >
-                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className={`font-semibold ${isPaidInvoice ? "text-[#123f1b]" : "text-[#7f1d1d]"}`}>
-                            {invoice.invoice_number}
-                          </span>
-                          <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
-                            isPaidInvoice
-                              ? "border-[#bbdfc0] bg-[#f0fbf2] text-[#236b30]"
-                              : "border-[#fecaca] bg-white text-[#991b1b]"
-                          }`}>
-                            {isPaidInvoice ? "paid" : invoice.status}
-                          </span>
-                          {invoice.invoice_source === "uploaded" ? (
-                            <span className="rounded-full border border-[#d4c2ea] bg-white px-2.5 py-0.5 text-xs font-semibold text-[#6f4b9a]">
-                              uploaded file
-                            </span>
-                          ) : null}
-                        </div>
-                        <div className={`mt-1 text-sm ${isPaidInvoice ? "text-[#2f5f36]" : "text-[#7f4242]"}`}>
-                          {owner?.full_name || owner?.email || "Owner"} | {property?.name || property?.address || "All properties"}
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-3">
-                        <div className={`text-lg font-semibold ${isPaidInvoice ? "text-[#123f1b]" : "text-[#7f1d1d]"}`}>
-                          {formatCurrency(invoice.total)}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => downloadInvoiceCsv(invoice, owner, property)}
-                          className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-medium text-[#5f4c3b] hover:bg-[#f7f1e8]"
-                        >
-                          CSV
-                        </button>
-                        {invoice.uploaded_invoice_url ? (
-                          <a
-                            href={invoice.uploaded_invoice_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="rounded-full border border-[#d4c2ea] bg-white px-4 py-2 text-sm font-medium text-[#6f4b9a] hover:bg-[#f6efff]"
-                          >
-                            File
-                          </a>
-                        ) : null}
-                        <button
-                          type="button"
-                          onClick={() => void updateOwnerInvoiceStatus(invoice, invoice.status === "paid" ? "sent" : "paid")}
-                          disabled={updatingInvoiceStatusId === invoice.id}
-                          className={`rounded-full border px-4 py-2 text-sm font-medium disabled:opacity-60 ${
-                            invoice.status === "paid"
-                              ? "border-[#d8c7ab] bg-white text-[#5f4c3b] hover:bg-[#f7f1e8]"
-                              : "border-[#bbdfc0] bg-[#f0fbf2] text-[#236b30] hover:bg-[#e4f7e8]"
-                          }`}
-                        >
-                          {updatingInvoiceStatusId === invoice.id
-                            ? "Updating..."
-                            : invoice.status === "paid"
-                              ? "Mark unpaid"
-                              : "Mark paid"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void sendExistingOwnerInvoice(invoice.id)}
-                          disabled={sendingInvoiceId === invoice.id}
-                          className="rounded-full bg-[#241c15] px-4 py-2 text-sm font-medium text-[#f8f2e8] disabled:opacity-60"
-                        >
-                          {sendingInvoiceId === invoice.id
-                            ? "Sending..."
-                            : invoice.invoice_source === "uploaded"
-                              ? invoice.status === "draft"
-                                ? "Send file"
-                                : "Resend file"
-                              : invoice.status === "draft"
-                                ? "Send PDF"
-                                : "Resend PDF"}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
-            )}
+            {renderInvoiceHistoryGroup("drafts", "Running drafts", draftInvoices, "No running invoice drafts yet.")}
+            {renderInvoiceHistoryGroup("active", "Sent and unpaid", activeInvoices, "No sent unpaid invoices.")}
+            {renderInvoiceHistoryGroup("paid", "Paid and closed", paidInvoices, "No paid or closed invoices.")}
           </div>
         </section>
       </div>
