@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import PortalChat from "@/components/chat/portalchat";
 import GroundsDesktopView from "@/components/grounds/groundsdesktopview";
 import GroundsMobileView from "@/components/grounds/groundsmobileview";
 
@@ -1416,9 +1417,28 @@ export default function GroundsShell({ mode }: GroundsShellProps) {
     handleSwitchToCleaner,
   };
 
-  if (mode === "mobile") {
-    return <GroundsMobileView {...viewProps} />;
-  }
+  const shellView = mode === "mobile" ? <GroundsMobileView {...viewProps} /> : <GroundsDesktopView {...viewProps} />;
 
-  return <GroundsDesktopView {...viewProps} />;
+  return (
+    <>
+      {shellView}
+      {profile ? (
+        <div className="bg-[#100d0a] px-3 pb-[35vh] sm:px-6">
+          <div className="mx-auto max-w-7xl">
+            <PortalChat
+              participant={{
+                type: "profile",
+                profileId: profile.id,
+                displayName: profile.full_name,
+                email: profile.email,
+                role: profile.role,
+              }}
+              title="Grounds Chat"
+              subtitle="Read and reply to chat from property management without email notifications for every message."
+            />
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
 }

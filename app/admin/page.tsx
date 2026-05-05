@@ -312,7 +312,7 @@ type AdminSection =
   | "calendar"
   | "maintenance"
   | "invites"
-  | "messages"
+  | "chat"
   | "invoices";
 type PropertyEntryMode = "manual" | "airbnb";
 type PropertySetupTab = "overview" | "access" | "calendars" | "sops";
@@ -4768,7 +4768,7 @@ This removes its linked members and deletes the grounds account.`
     { key: "cleanerAccounts", label: "Cleaner Accounts" },
     { key: "groundsAccounts", label: "Grounds Accounts" },
     { key: "invites", label: "Invites" },
-    { key: "messages", label: "Messages" },
+    { key: "chat", label: "Chat" },
     { key: "users", label: "Users" },
     { key: "maintenance", label: "Maintenance Flags" },
   ];
@@ -5069,7 +5069,7 @@ This removes its linked members and deletes the grounds account.`
     );
   }
 
-  function renderMessagesSection() {
+  function renderChatSection() {
     const chatRecipientOptions = [
       ...profiles
         .filter((profile) => profile.id !== currentAdminUserId)
@@ -5102,7 +5102,7 @@ This removes its linked members and deletes the grounds account.`
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8a7b68]">In-app chat</p>
-              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#241c15]">Messages</h2>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#241c15]">Chat</h2>
               <p className="mt-1 max-w-2xl text-sm leading-6 text-[#7f7263]">
                 Start conversations with cleaners, grounds users, owners, or other admins. This first version is in-app only and does not send email alerts.
               </p>
@@ -5137,7 +5137,7 @@ This removes its linked members and deletes the grounds account.`
                   />
                   <textarea
                     className="min-h-[120px] rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                    placeholder="Write the first message"
+                    placeholder="Start the chat"
                     value={chatMessageBody}
                     onChange={(e) => setChatMessageBody(e.target.value)}
                   />
@@ -5175,7 +5175,7 @@ This removes its linked members and deletes the grounds account.`
                         >
                           <div className="text-sm font-semibold">{getChatConversationTitle(conversation)}</div>
                           <div className={`mt-1 line-clamp-2 text-xs ${selected ? "text-[#eadfce]" : "text-[#7f7263]"}`}>
-                            {lastMessage?.body || "No messages yet"}
+                            {lastMessage?.body || "No chat yet"}
                           </div>
                           <div className={`mt-2 text-[11px] ${selected ? "text-[#d8c7ab]" : "text-[#8a7b68]"}`}>
                             {conversation.last_message_at || conversation.updated_at || conversation.created_at
@@ -5187,7 +5187,7 @@ This removes its linked members and deletes the grounds account.`
                     })
                   ) : (
                     <div className="rounded-[18px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-3 py-4 text-sm text-[#7f7263]">
-                      No conversations yet. Run the chat SQL, then start the first one.
+                      No chats yet. Run the chat SQL, then start the first one.
                     </div>
                   )}
                 </div>
@@ -5237,7 +5237,7 @@ This removes its linked members and deletes the grounds account.`
                       })
                     ) : (
                       <div className="rounded-[18px] border border-dashed border-[#d8c7ab] bg-white px-4 py-5 text-sm text-[#7f7263]">
-                        No messages in this conversation yet.
+                        No chat replies in this conversation yet.
                       </div>
                     )}
                   </div>
@@ -5481,7 +5481,7 @@ This removes its linked members and deletes the grounds account.`
     }
 
     if (!body) {
-      setError("Write a message before starting the conversation.");
+      setError("Write the first chat before starting the conversation.");
       return;
     }
 
@@ -5490,7 +5490,7 @@ This removes its linked members and deletes the grounds account.`
     const targetOwner = targetType === "owner" ? ownerAccounts.find((owner) => owner.id === targetId) : null;
 
     if (!targetProfile && !targetOwner) {
-      setError("Could not find that message recipient.");
+      setError("Could not find that chat recipient.");
       return;
     }
 
@@ -5565,7 +5565,7 @@ This removes its linked members and deletes the grounds account.`
       setActionMessage("Conversation started.");
       await loadData();
     } catch (err) {
-      setError(getErrorMessage(err, "Could not start conversation. Run the chat foundation SQL if this is the first time using messages."));
+      setError(getErrorMessage(err, "Could not start conversation. Run the chat foundation SQL if this is the first time using chat."));
     } finally {
       setCreatingChatConversation(false);
     }
@@ -5598,10 +5598,10 @@ This removes its linked members and deletes the grounds account.`
       if (messageError) throw messageError;
 
       setChatReplyBody("");
-      setActionMessage("Message sent.");
+      setActionMessage("Chat reply sent.");
       await loadData();
     } catch (err) {
-      setError(getErrorMessage(err, "Could not send message."));
+      setError(getErrorMessage(err, "Could not send chat reply."));
     } finally {
       setSendingChatMessage(false);
     }
@@ -10766,8 +10766,8 @@ This removes its linked members and deletes the grounds account.`
         return renderGroundsAccountsSection();
       case "invites":
         return renderInvitesSection();
-      case "messages":
-        return renderMessagesSection();
+      case "chat":
+        return renderChatSection();
       case "assignments":
         return renderAssignmentsSection();
       case "jobs":

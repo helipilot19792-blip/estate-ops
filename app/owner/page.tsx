@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import PortalChat from "@/components/chat/portalchat";
 
 type OwnerAccountRow = {
   id: string;
@@ -142,7 +143,7 @@ type TimelineItem = {
   tone?: "gold" | "emerald" | "sky" | "rose";
 };
 
-type OwnerTab = "overview" | "insights" | "invoices";
+type OwnerTab = "overview" | "insights" | "invoices" | "chat";
 
 type BookingInsight = {
   id: string;
@@ -1113,7 +1114,7 @@ export default function OwnerPage() {
 
     const params = new URLSearchParams(window.location.search);
     const tabFromUrl = params.get("tab");
-    if (tabFromUrl === "overview" || tabFromUrl === "insights" || tabFromUrl === "invoices") {
+    if (tabFromUrl === "overview" || tabFromUrl === "insights" || tabFromUrl === "invoices" || tabFromUrl === "chat") {
       setActiveOwnerTab(tabFromUrl);
     }
   }, []);
@@ -1669,11 +1670,12 @@ export default function OwnerPage() {
         </section>
 
         <section className="rounded-[26px] border border-white/8 bg-[#15110d] p-2">
-          <div className="grid gap-2 lg:grid-cols-3">
+          <div className="grid gap-2 lg:grid-cols-4">
             {[
               { key: "overview" as OwnerTab, label: "Overview", subtext: "Operations and upcoming activity" },
               { key: "insights" as OwnerTab, label: "Booking Insights", subtext: "Occupancy trends and booking history" },
               { key: "invoices" as OwnerTab, label: "Invoices", subtext: "Statements and property charges" },
+              { key: "chat" as OwnerTab, label: "Chat", subtext: "Talk with property management" },
             ].map((tab) => {
               const isActive = activeOwnerTab === tab.key;
               const unreadCount = tab.key === "invoices" ? unreadOwnerInvoices.length : 0;
@@ -2162,7 +2164,7 @@ export default function OwnerPage() {
               </div>
             </section>
           </>
-        ) : (
+        ) : activeOwnerTab === "invoices" ? (
           <section className="rounded-[30px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
               <div>
@@ -2344,6 +2346,23 @@ export default function OwnerPage() {
               )}
             </div>
           </section>
+        ) : (
+          <PortalChat
+            participant={
+              ownerAccount
+                ? {
+                    type: "owner",
+                    ownerAccountId: ownerAccount.id,
+                    profileId: ownerAccount.profile_id,
+                    displayName: ownerAccount.full_name,
+                    email: ownerAccount.email,
+                    role: "owner",
+                  }
+                : null
+            }
+            title="Owner Chat"
+            subtitle="Chat with property management about bookings, invoices, maintenance, or anything tied to your property."
+          />
         )}
       </div>
 

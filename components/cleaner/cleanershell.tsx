@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import PortalChat from "@/components/chat/portalchat";
 import CleanerDesktopView from "@/components/cleaner/cleanerdesktopview";
 import CleanerMobileView from "@/components/cleaner/cleanermobileview";
 
@@ -1377,9 +1378,28 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     handleSwitchToGrounds,
   };
 
-  if (mode === "mobile") {
-    return <CleanerMobileView {...viewProps} />;
-  }
+  const shellView = mode === "mobile" ? <CleanerMobileView {...viewProps} /> : <CleanerDesktopView {...viewProps} />;
 
-  return <CleanerDesktopView {...viewProps} />;
+  return (
+    <>
+      {shellView}
+      {profile ? (
+        <div className="bg-[#100d0a] px-3 pb-[35vh] sm:px-6">
+          <div className="mx-auto max-w-7xl">
+            <PortalChat
+              participant={{
+                type: "profile",
+                profileId: profile.id,
+                displayName: profile.full_name,
+                email: profile.email,
+                role: profile.role,
+              }}
+              title="Cleaner Chat"
+              subtitle="Read and reply to chat from property management without email notifications for every message."
+            />
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
 }
