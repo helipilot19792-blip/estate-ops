@@ -317,6 +317,7 @@ type AdminSection =
 type PropertyEntryMode = "manual" | "airbnb";
 type PropertyWorkflowTab = "add" | "setup" | "directory";
 type PropertySetupTab = "overview" | "access" | "calendars" | "sops";
+type JobWorkflowTab = "cleaning" | "grounds" | "active" | "exceptions";
 type InvoiceWorkflowTab = "create" | "running" | "existing" | "defaults" | "history";
 type MyOrganizationRow = {
   organization_id: string;
@@ -919,6 +920,7 @@ export default function AdminPage() {
   const [groundsJobNeedsGarageAccess, setGroundsJobNeedsGarageAccess] = useState(false);
   const [jobMode, setJobMode] = useState<"single" | "recurring">("single");
   const [recurringType, setRecurringType] = useState("weekly");
+  const [jobWorkflowTab, setJobWorkflowTab] = useState<JobWorkflowTab>("active");
 
   const [jobPropertyId, setJobPropertyId] = useState("");
   const [jobScheduledFor, setJobScheduledFor] = useState("");
@@ -8958,9 +8960,108 @@ This removes its linked members and deletes the grounds account.`
     );
   }
 
+  function renderJobsWorkflowCards() {
+    const exceptionCount = filteredStrandedJobs.length + recentDeclinedJobs.length;
+    const cards: Array<{
+      key: JobWorkflowTab;
+      title: string;
+      description: string;
+      meta: string;
+      action: string;
+    }> = [
+      {
+        key: "cleaning",
+        title: "Create cleaning job",
+        description: "Create a turnover job and offer slots to the cleaner teams assigned to that property.",
+        meta: `${properties.length} properties`,
+        action: "Open cleaner form",
+      },
+      {
+        key: "grounds",
+        title: "Create grounds job",
+        description: "Create one-time or recurring exterior work, then review grounds job slots.",
+        meta: `${groundsJobs.length} grounds jobs | ${groundsRecurringRules.length} recurring`,
+        action: "Open grounds tools",
+      },
+      {
+        key: "active",
+        title: "Active cleaning jobs",
+        description: "Review cleaning jobs, filter by property, watch acceptance status, and reassign open slots.",
+        meta: `${filteredJobs.length} shown | ${waitingJobs.length} waiting`,
+        action: "Review jobs",
+      },
+      {
+        key: "exceptions",
+        title: "Exceptions",
+        description: "Handle stranded jobs and recent declines without scrolling through creation forms.",
+        meta: `${exceptionCount} item${exceptionCount === 1 ? "" : "s"} need review`,
+        action: "Review issues",
+      },
+    ];
+
+    return (
+      <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8a7b68]">Job tools</p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#241c15]">Jobs</h2>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-[#7f7263]">
+              Choose the job task you want to work on. Creation, active work, and exceptions stay separated.
+            </p>
+          </div>
+          <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+            exceptionCount > 0
+              ? "border-[#f0b4b4] bg-[#fff5f5] text-[#8a2e22]"
+              : "border-[#d8c7ab] bg-[#fcfaf7] text-[#6f6255]"
+          }`}>
+            {exceptionCount} exception{exceptionCount === 1 ? "" : "s"}
+          </span>
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-4">
+          {cards.map((card) => {
+            const active = jobWorkflowTab === card.key;
+            const isExceptionCard = card.key === "exceptions" && exceptionCount > 0;
+
+            return (
+              <button
+                key={card.key}
+                type="button"
+                onClick={() => setJobWorkflowTab(card.key)}
+                className={`min-h-[170px] rounded-[18px] border p-4 text-left transition ${
+                  active
+                    ? "border-[#241c15] bg-[#241c15] text-[#f8f2e8] shadow-[0_18px_34px_rgba(36,28,21,0.16)]"
+                    : isExceptionCard
+                      ? "border-[#f0b4b4] bg-[#fff5f5] text-[#7e1f1f] hover:-translate-y-0.5 hover:bg-white"
+                      : "border-[#eadfce] bg-[#fcfaf7] text-[#241c15] hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_14px_28px_rgba(36,28,21,0.08)]"
+                }`}
+              >
+                <div className="text-base font-semibold">{card.title}</div>
+                <p className={`mt-3 text-sm leading-6 ${active ? "text-[#eadfce]" : isExceptionCard ? "text-[#8b3838]" : "text-[#6f6255]"}`}>
+                  {card.description}
+                </p>
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${active ? "border-[#eadfce]/40 bg-white/10 text-[#f8f2e8]" : "border-[#d8c7ab] bg-white text-[#6f6255]"}`}>
+                    {card.meta}
+                  </span>
+                  <span className={`text-xs font-semibold ${active ? "text-[#f8f2e8]" : isExceptionCard ? "text-[#8a2e22]" : "text-[#8a7b68]"}`}>
+                    {card.action}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+    );
+  }
+
   function renderJobsSection() {
     return (
       <div className="space-y-6" id="jobs-section">
+        {renderJobsWorkflowCards()}
+
+        {jobWorkflowTab === "cleaning" ? (
         <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
           <h2 className="text-xl font-semibold tracking-tight">Create Cleaning Job</h2>
           <p className="mt-1 text-sm text-[#7f7263]">
@@ -9019,7 +9120,10 @@ This removes its linked members and deletes the grounds account.`
             </button>
           </div>
         </section>
+        ) : null}
 
+        {jobWorkflowTab === "grounds" ? (
+        <>
         <section className="rounded-[30px] border border-[#d8e8d8] bg-[linear-gradient(180deg,#f8fcf8_0%,#f2f8f2_100%)] p-5 shadow-[0_18px_45px_rgba(28,86,39,0.08)]">
           <h2 className="text-xl font-semibold tracking-tight text-[#23422c]">Create Grounds Job</h2>
           <p className="mt-1 text-sm text-[#5b7460]">
@@ -9286,9 +9390,12 @@ This removes its linked members and deletes the grounds account.`
             )}
           </div>
         </section>
+        </>
+        ) : null}
 
 
 
+        {jobWorkflowTab === "active" ? (
         <section
           id="waiting-jobs-section"
           className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]"
@@ -9426,8 +9533,9 @@ This removes its linked members and deletes the grounds account.`
             })}
           </div>
         </section>
+        ) : null}
 
-        {filteredStrandedJobs.length > 0 ? (
+        {jobWorkflowTab === "exceptions" && filteredStrandedJobs.length > 0 ? (
           <section
             id="stranded-jobs-section"
             className="rounded-[30px] border border-[#f0b4b4] bg-[linear-gradient(135deg,#fff5f5_0%,#ffe9e9_100%)] p-5 shadow-[0_18px_45px_rgba(140,32,32,0.12)]"
@@ -9511,7 +9619,7 @@ This removes its linked members and deletes the grounds account.`
           </section>
         ) : null}
 
-        {recentDeclinedJobs.length > 0 ? (
+        {jobWorkflowTab === "exceptions" && recentDeclinedJobs.length > 0 ? (
           <section className="rounded-[30px] border border-[#efd8c9] bg-[linear-gradient(135deg,#fff8f4_0%,#fff2eb_100%)] p-5 shadow-[0_18px_45px_rgba(140,80,32,0.08)]">
             <div>
               <div className="text-[11px] uppercase tracking-[0.24em] text-[#b16a4b]">Recent Activity</div>
@@ -9543,6 +9651,13 @@ This removes its linked members and deletes the grounds account.`
                   </div>
                 );
               })}
+            </div>
+          </section>
+        ) : null}
+        {jobWorkflowTab === "exceptions" && filteredStrandedJobs.length === 0 && recentDeclinedJobs.length === 0 ? (
+          <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+            <div className="rounded-[22px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-5 py-8 text-sm text-[#8a7b68]">
+              No stranded jobs or recent declines for the current filter.
             </div>
           </section>
         ) : null}
