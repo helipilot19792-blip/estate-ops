@@ -315,6 +315,7 @@ type AdminSection =
   | "invoices";
 type PropertyEntryMode = "manual" | "airbnb";
 type PropertySetupTab = "overview" | "access" | "calendars" | "sops";
+type InvoiceWorkflowTab = "create" | "running" | "existing" | "defaults" | "history";
 type MyOrganizationRow = {
   organization_id: string;
   organization_name: string;
@@ -775,6 +776,7 @@ export default function AdminPage() {
   const [invoiceHeaderText, setInvoiceHeaderText] = useState("");
   const [invoicePaymentInstructions, setInvoicePaymentInstructions] = useState("");
   const [editingOwnerInvoiceId, setEditingOwnerInvoiceId] = useState<string | null>(null);
+  const [invoiceWorkflowTab, setInvoiceWorkflowTab] = useState<InvoiceWorkflowTab>("create");
   const [externalInvoiceUrl, setExternalInvoiceUrl] = useState("");
   const [externalInvoiceName, setExternalInvoiceName] = useState("");
   const [externalInvoiceContentType, setExternalInvoiceContentType] = useState("");
@@ -5662,6 +5664,7 @@ This removes its linked members and deletes the grounds account.`
     if (loadedTaxLines.length > 0) {
       setInvoiceTaxLines(loadedTaxLines);
     }
+    setInvoiceWorkflowTab("running");
     setInvoiceDraftDirty(false);
     setActionMessage(`Loaded running invoice ${invoice.invoice_number}.`);
     setError("");
@@ -6234,6 +6237,42 @@ This removes its linked members and deletes the grounds account.`
     const draftInvoices = ownerInvoices.filter((invoice) => invoice.status === "draft");
     const activeInvoices = ownerInvoices.filter((invoice) => invoice.status === "sent");
     const paidInvoices = ownerInvoices.filter((invoice) => invoice.status === "paid" || invoice.status === "void");
+    const invoiceWorkflowOptions: Array<{ key: InvoiceWorkflowTab; title: string; description: string; meta: string }> = [
+      {
+        key: "create",
+        title: "Create owner invoice",
+        description: "Build a regular invoice, preview the PDF, then send it to the owner.",
+        meta: `${activeInvoices.length} unpaid`,
+      },
+      {
+        key: "running",
+        title: "Create running invoice",
+        description: "Open or save a draft that you add to throughout the month before sending.",
+        meta: `${draftInvoices.length} draft${draftInvoices.length === 1 ? "" : "s"}`,
+      },
+      {
+        key: "existing",
+        title: "Send existing invoice",
+        description: "Upload a PDF or image invoice from another system and email it through the portal.",
+        meta: "Upload file",
+      },
+      {
+        key: "defaults",
+        title: "Defaults and rates",
+        description: "Set branding, taxes, payment instructions, and property-specific cleaning rates.",
+        meta: `${properties.length} propert${properties.length === 1 ? "y" : "ies"}`,
+      },
+      {
+        key: "history",
+        title: "Invoice history",
+        description: "Review drafts, sent invoices, paid invoices, downloads, and resend actions.",
+        meta: `${ownerInvoices.length} total`,
+      },
+    ];
+    const showInvoiceDefaults = invoiceWorkflowTab === "defaults";
+    const showExistingInvoiceUpload = invoiceWorkflowTab === "existing";
+    const showInvoiceBuilder = invoiceWorkflowTab === "create" || invoiceWorkflowTab === "running";
+    const showInvoiceHistory = invoiceWorkflowTab === "history" || invoiceWorkflowTab === "running";
     const renderInvoiceHistoryCard = (invoice: OwnerInvoiceRow) => {
       const owner = ownerAccounts.find((item) => item.id === invoice.owner_account_id);
       const property = properties.find((item) => item.id === invoice.property_id);
@@ -6383,10 +6422,51 @@ This removes its linked members and deletes the grounds account.`
     return (
       <div className="space-y-6">
         <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8a7b68]">Owner billing</p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#241c15]">Invoices</h2>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-[#7f7263]">
+              Choose the invoice task you want to work on. Each area stays focused so you do not have to scroll through every invoice tool at once.
+            </p>
+          </div>
+          <div className="mt-5 grid gap-3 lg:grid-cols-5">
+            {invoiceWorkflowOptions.map((option) => {
+              const selected = invoiceWorkflowTab === option.key;
+              return (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => setInvoiceWorkflowTab(option.key)}
+                  className={`rounded-[20px] border p-4 text-left transition ${
+                    selected
+                      ? "border-[#241c15] bg-[#241c15] text-[#f8f2e8] shadow-[0_16px_34px_rgba(36,28,21,0.16)]"
+                      : "border-[#eadfce] bg-[#fcfaf7] text-[#241c15] hover:border-[#d8c7ab] hover:bg-white"
+                  }`}
+                >
+                  <div className={`text-sm font-semibold ${selected ? "text-white" : "text-[#241c15]"}`}>
+                    {option.title}
+                  </div>
+                  <p className={`mt-2 text-xs leading-5 ${selected ? "text-[#eadfce]" : "text-[#6f6255]"}`}>
+                    {option.description}
+                  </p>
+                  <div className={`mt-3 inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                    selected
+                      ? "border-white/20 bg-white/10 text-[#f8f2e8]"
+                      : "border-[#d8c7ab] bg-white text-[#6f6255]"
+                  }`}>
+                    {option.meta}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className={`${showInvoiceDefaults ? "" : "hidden"} rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]`}>
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8a7b68]">Owner billing</p>
-              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#241c15]">Create owner invoices</h2>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#241c15]">Defaults and rates</h2>
               <p className="mt-1 max-w-2xl text-sm leading-6 text-[#7f7263]">
                 Set your invoice branding, auto-fill job charges from turnover and grounds work, then add custom expenses like supplies.
               </p>
@@ -6658,7 +6738,7 @@ This removes its linked members and deletes the grounds account.`
           </div>
         </section>
 
-        <section className="rounded-[30px] border border-[#d4c2ea] bg-[#fbf8ff] p-5 shadow-[0_18px_45px_rgba(91,62,126,0.06)]">
+        <section className={`${showExistingInvoiceUpload ? "" : "hidden"} rounded-[30px] border border-[#d4c2ea] bg-[#fbf8ff] p-5 shadow-[0_18px_45px_rgba(91,62,126,0.06)]`}>
           <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#6f4b9a]">Uploaded invoices</p>
@@ -6757,7 +6837,7 @@ This removes its linked members and deletes the grounds account.`
           </div>
         </section>
 
-        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+        <section className={`${showInvoiceBuilder ? "" : "hidden"} rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]`}>
           <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
             <div>
               <div className={`mb-4 rounded-[22px] border p-4 ${
@@ -6773,10 +6853,14 @@ This removes its linked members and deletes the grounds account.`
                     <h3 className="mt-1 text-lg font-semibold text-[#241c15]">
                       {editingInvoice
                         ? `${editingInvoice.invoice_number} is being edited`
-                        : "Create or save a running invoice"}
+                        : invoiceWorkflowTab === "running"
+                          ? "Create a running invoice"
+                          : "Create owner invoice"}
                     </h3>
                     <p className="mt-1 text-sm leading-6 text-[#6f6255]">
-                      Save as draft to keep adding cleaning, grounds, supplies, and receipts until you are ready to send it.
+                      {invoiceWorkflowTab === "running"
+                        ? "Save as draft to keep adding cleaning, grounds, supplies, and receipts until you are ready to send it."
+                        : "Build an invoice, preview the PDF, and send it to the owner when it is ready."}
                     </p>
                   </div>
                   <button
@@ -7022,7 +7106,7 @@ This removes its linked members and deletes the grounds account.`
           </div>
         </section>
 
-        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+        <section className={`${showInvoiceHistory ? "" : "hidden"} rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]`}>
           <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
             <div>
               <h3 className="text-lg font-semibold text-[#241c15]">Invoice history</h3>
