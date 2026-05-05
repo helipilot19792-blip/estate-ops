@@ -113,6 +113,13 @@ type OwnerInvoice = {
   owner_viewed_at?: string | null;
 };
 
+type OwnerInvoiceHiddenItem = {
+  id: string;
+  invoice_id: string;
+  owner_account_id: string;
+  hidden_at?: string | null;
+};
+
 type MaintenanceFlagImage = {
   id: string;
   flag_id: string;
@@ -820,6 +827,8 @@ export default function OwnerPage() {
   const [groundsJobs, setGroundsJobs] = useState<GroundsJob[]>([]);
   const [groundsRecurringRules, setGroundsRecurringRules] = useState<GroundsRecurringRule[]>([]);
   const [ownerInvoices, setOwnerInvoices] = useState<OwnerInvoice[]>([]);
+  const [ownerInvoiceHiddenItems, setOwnerInvoiceHiddenItems] = useState<OwnerInvoiceHiddenItem[]>([]);
+  const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
   const [flags, setFlags] = useState<MaintenanceFlag[]>([]);
   const [flagImages, setFlagImages] = useState<MaintenanceFlagImage[]>([]);
   const [reportOpen, setReportOpen] = useState(false);
@@ -944,6 +953,42 @@ export default function OwnerPage() {
     );
   }
 
+  async function hideOwnerInvoice(invoice: OwnerInvoice) {
+    if (!ownerAccount) return;
+
+    const confirmed = window.confirm(
+      `Delete invoice ${invoice.invoice_number} from your portal?\n\nThis only removes it from your view. Property management will still keep the invoice record.`
+    );
+    if (!confirmed) return;
+
+    const hiddenItem: OwnerInvoiceHiddenItem = {
+      id: `local-${invoice.id}`,
+      invoice_id: invoice.id,
+      owner_account_id: ownerAccount.id,
+      hidden_at: new Date().toISOString(),
+    };
+
+    setDeletingInvoiceId(invoice.id);
+    setOwnerInvoiceHiddenItems((items) =>
+      items.some((item) => item.invoice_id === invoice.id) ? items : [...items, hiddenItem]
+    );
+    setError("");
+
+    try {
+      const { error: hideError } = await supabase.from("owner_invoice_hidden_items").insert({
+        invoice_id: invoice.id,
+        owner_account_id: ownerAccount.id,
+      });
+
+      if (hideError && hideError.code !== "23505") throw hideError;
+    } catch (hideError) {
+      setOwnerInvoiceHiddenItems((items) => items.filter((item) => item.id !== hiddenItem.id));
+      setError(hideError instanceof Error ? hideError.message : "Could not delete invoice from your view.");
+    } finally {
+      setDeletingInvoiceId(null);
+    }
+  }
+
   const flagImagesByFlagId = useMemo(() => {
     const map = new Map<string, MaintenanceFlagImage[]>();
     for (const image of flagImages) {
@@ -1027,6 +1072,7 @@ export default function OwnerPage() {
       groundsRes,
       groundsRecurringRulesRes,
       ownerInvoicesRes,
+      ownerInvoiceHiddenItemsRes,
       flagsRes,
       flagImagesRes,
     ] = await Promise.all([
@@ -1062,6 +1108,10 @@ export default function OwnerPage() {
         .in("status", ["sent", "paid"])
         .order("issue_date", { ascending: false }),
       supabase
+        .from("owner_invoice_hidden_items")
+        .select("*")
+        .eq("owner_account_id", ownerRes.id),
+      supabase
         .from("property_maintenance_flags")
         .select("id,property_id,source,category,urgency,status,notes,created_at,flagged_at,resolved_at")
         .in("property_id", propertyIds)
@@ -1079,6 +1129,7 @@ export default function OwnerPage() {
       groundsRes,
       groundsRecurringRulesRes,
       ownerInvoicesRes,
+      ownerInvoiceHiddenItemsRes,
       flagsRes,
       flagImagesRes,
     ]) {
@@ -1087,6 +1138,14 @@ export default function OwnerPage() {
           res === bookingEventsRes &&
           ((res.error as any).code === "PGRST205" ||
             String(res.error.message || "").includes("property_booking_events"))
+        ) {
+          continue;
+        }
+
+        if (
+          res === ownerInvoiceHiddenItemsRes &&
+          ((res.error as any).code === "PGRST205" ||
+            String(res.error.message || "").includes("owner_invoice_hidden_items"))
         ) {
           continue;
         }
@@ -1104,6 +1163,9 @@ export default function OwnerPage() {
     setGroundsJobs((groundsRes.data ?? []) as GroundsJob[]);
     setGroundsRecurringRules((groundsRecurringRulesRes.data ?? []) as GroundsRecurringRule[]);
     setOwnerInvoices((ownerInvoicesRes.data ?? []) as OwnerInvoice[]);
+    setOwnerInvoiceHiddenItems(
+      ownerInvoiceHiddenItemsRes.error ? [] : ((ownerInvoiceHiddenItemsRes.data ?? []) as OwnerInvoiceHiddenItem[])
+    );
     setFlags((flagsRes.data ?? []) as MaintenanceFlag[]);
     setFlagImages((flagImagesRes.data ?? []) as MaintenanceFlagImage[]);
     setSelectedPropertyId((currentPropertyId) => {
@@ -1285,14 +1347,22 @@ export default function OwnerPage() {
   }, [selectedProperty, groundsRecurringRules]);
 
   const propertyOwnerInvoices = useMemo(() => {
-    if (!selectedProperty) return ownerInvoices;
-    return ownerInvoices.filter(
+    const visibleInvoices = ownerInvoices.filter(
+      (invoice) => !ownerInvoiceHiddenItems.some((item) => item.invoice_id === invoice.id)
+    );
+    if (!selectedProperty) return visibleInvoices;
+    return visibleInvoices.filter(
       (invoice) => !invoice.property_id || invoice.property_id === selectedProperty.id
     );
-  }, [selectedProperty, ownerInvoices]);
+  }, [ownerInvoiceHiddenItems, selectedProperty, ownerInvoices]);
   const unreadOwnerInvoices = useMemo(
-    () => ownerInvoices.filter((invoice) => !invoice.owner_viewed_at),
-    [ownerInvoices]
+    () =>
+      ownerInvoices.filter(
+        (invoice) =>
+          !invoice.owner_viewed_at &&
+          !ownerInvoiceHiddenItems.some((item) => item.invoice_id === invoice.id)
+      ),
+    [ownerInvoiceHiddenItems, ownerInvoices]
   );
   const unreadPropertyOwnerInvoices = useMemo(
     () => propertyOwnerInvoices.filter((invoice) => !invoice.owner_viewed_at),
@@ -2386,6 +2456,14 @@ export default function OwnerPage() {
                                   className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-semibold text-[#f7f1e8] transition hover:bg-white/[0.06]"
                                 >
                                   JSON
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void hideOwnerInvoice(invoice)}
+                                  disabled={deletingInvoiceId === invoice.id}
+                                  className="rounded-full border border-red-300/30 bg-red-950/20 px-3 py-1.5 text-xs font-semibold text-red-100 transition hover:bg-red-950/30 disabled:opacity-60"
+                                >
+                                  {deletingInvoiceId === invoice.id ? "Deleting..." : "Delete"}
                                 </button>
                               </div>
                             </div>

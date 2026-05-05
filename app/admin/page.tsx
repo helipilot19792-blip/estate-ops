@@ -815,6 +815,7 @@ export default function AdminPage() {
   const [uploadingExternalInvoice, setUploadingExternalInvoice] = useState(false);
   const [sendingInvoiceId, setSendingInvoiceId] = useState<string | null>(null);
   const [updatingInvoiceStatusId, setUpdatingInvoiceStatusId] = useState<string | null>(null);
+  const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
   const [creatingChatConversation, setCreatingChatConversation] = useState(false);
   const [sendingChatMessage, setSendingChatMessage] = useState(false);
   const [selectedChatConversationId, setSelectedChatConversationId] = useState("");
@@ -7242,6 +7243,37 @@ This removes its linked members and deletes the grounds account.`
     }
   }
 
+  async function deleteOwnerInvoice(invoice: OwnerInvoiceRow) {
+    const confirmed = window.confirm(
+      `Delete invoice ${invoice.invoice_number}?\n\nThis permanently removes it from admin and owner invoice history. This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    setDeletingInvoiceId(invoice.id);
+    setError("");
+    setActionMessage("");
+
+    try {
+      const { error } = await supabase
+        .from("owner_invoices")
+        .delete()
+        .eq("id", invoice.id)
+        .eq("organization_id", currentOrganizationId);
+
+      if (error) throw error;
+
+      setOwnerInvoices((invoices) => invoices.filter((item) => item.id !== invoice.id));
+      if (editingOwnerInvoiceId === invoice.id) {
+        resetInvoiceComposer();
+      }
+      setActionMessage(`Invoice ${invoice.invoice_number} deleted.`);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Could not delete invoice."));
+    } finally {
+      setDeletingInvoiceId(null);
+    }
+  }
+
   function renderInvoicesSection() {
     const ownerProperties = invoiceOwnerId ? getPropertiesForOwner(invoiceOwnerId) : properties;
     const invoiceSubtotal = getInvoiceLineItemsTotal(invoiceLineItems);
@@ -7399,6 +7431,14 @@ This removes its linked members and deletes the grounds account.`
                     : invoice.status === "draft"
                       ? "Send PDF"
                       : "Resend PDF"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void deleteOwnerInvoice(invoice)}
+                disabled={deletingInvoiceId === invoice.id}
+                className="rounded-full border border-[#efc6c6] bg-[#fff5f5] px-4 py-2 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-60"
+              >
+                {deletingInvoiceId === invoice.id ? "Deleting..." : "Delete"}
               </button>
             </div>
           </div>
