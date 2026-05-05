@@ -315,6 +315,7 @@ type AdminSection =
   | "chat"
   | "invoices";
 type PropertyEntryMode = "manual" | "airbnb";
+type PropertyWorkflowTab = "add" | "setup" | "directory";
 type PropertySetupTab = "overview" | "access" | "calendars" | "sops";
 type InvoiceWorkflowTab = "create" | "running" | "existing" | "defaults" | "history";
 type MyOrganizationRow = {
@@ -934,6 +935,7 @@ export default function AdminPage() {
   const [jobShowTeamStatus, setJobShowTeamStatus] = useState(true);
 
   const [selectedPropertyId, setSelectedPropertyId] = useState("");
+  const [propertyWorkflowTab, setPropertyWorkflowTab] = useState<PropertyWorkflowTab>("directory");
   const [propertySetupTab, setPropertySetupTab] = useState<PropertySetupTab>("overview");
   const [selectedPropertyUnitsNeeded, setSelectedPropertyUnitsNeeded] = useState("1");
   const [selectedPropertyUnitsStrict, setSelectedPropertyUnitsStrict] = useState(false);
@@ -8087,6 +8089,96 @@ This removes its linked members and deletes the grounds account.`
       </section>
     );
   }
+
+  function renderPropertyWorkflowCards() {
+    const propertyWithOwnerCount = properties.filter((property) => !!getOwnerForProperty(property.id)).length;
+    const propertyWithCalendarCount = properties.filter((property) =>
+      propertyCalendars.some((calendar) => calendar.property_id === property.id)
+    ).length;
+    const unassignedCleanerCount = properties.filter(
+      (property) => !assignments.some((assignment) => assignment.property_id === property.id)
+    ).length;
+
+    const cards: Array<{
+      key: PropertyWorkflowTab;
+      title: string;
+      description: string;
+      meta: string;
+      action: string;
+    }> = [
+      {
+        key: "add",
+        title: "Add property",
+        description: "Create a manual property or import an Airbnb calendar feed and sync it.",
+        meta: "Manual or Airbnb",
+        action: "Open setup form",
+      },
+      {
+        key: "setup",
+        title: "Setup selected property",
+        description: "Manage owner link, access notes, calendars, SOP photos, staffing defaults, and cover photo.",
+        meta: selectedPropertyId ? properties.find((property) => property.id === selectedPropertyId)?.name || "Selected" : "Choose property",
+        action: "Manage details",
+      },
+      {
+        key: "directory",
+        title: "Property directory",
+        description: "Review all properties, owner status, assignments, calendars, and admin reset tools.",
+        meta: `${properties.length} total | ${propertyWithOwnerCount} owner-linked | ${propertyWithCalendarCount} with calendars`,
+        action: "Review properties",
+      },
+    ];
+
+    return (
+      <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8a7b68]">Property tools</p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#241c15]">Properties</h2>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-[#7f7263]">
+              Choose the property task you want to work on. Each area stays focused so you do not have to scroll through every property tool at once.
+            </p>
+          </div>
+          <span className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-semibold text-[#6f6255]">
+            {unassignedCleanerCount} need cleaner assignment
+          </span>
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-3">
+          {cards.map((card) => {
+            const active = propertyWorkflowTab === card.key;
+
+            return (
+              <button
+                key={card.key}
+                type="button"
+                onClick={() => setPropertyWorkflowTab(card.key)}
+                className={`min-h-[154px] rounded-[18px] border p-4 text-left transition ${
+                  active
+                    ? "border-[#241c15] bg-[#241c15] text-[#f8f2e8] shadow-[0_18px_34px_rgba(36,28,21,0.16)]"
+                    : "border-[#eadfce] bg-[#fcfaf7] text-[#241c15] hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_14px_28px_rgba(36,28,21,0.08)]"
+                }`}
+              >
+                <div className="text-base font-semibold">{card.title}</div>
+                <p className={`mt-3 text-sm leading-6 ${active ? "text-[#eadfce]" : "text-[#6f6255]"}`}>
+                  {card.description}
+                </p>
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${active ? "border-[#eadfce]/40 bg-white/10 text-[#f8f2e8]" : "border-[#d8c7ab] bg-white text-[#6f6255]"}`}>
+                    {card.meta}
+                  </span>
+                  <span className={`text-xs font-semibold ${active ? "text-[#f8f2e8]" : "text-[#8a7b68]"}`}>
+                    {card.action}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+    );
+  }
+
   function renderPropertiesSection() {
     return (
       <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
@@ -10901,9 +10993,10 @@ This removes its linked members and deletes the grounds account.`
       case "properties":
         return (
           <div className="space-y-6">
-            {renderAddPropertySection()}
-            {renderPropertySetupSection()}
-            {renderPropertiesSection()}
+            {renderPropertyWorkflowCards()}
+            {propertyWorkflowTab === "add" ? renderAddPropertySection() : null}
+            {propertyWorkflowTab === "setup" ? renderPropertySetupSection() : null}
+            {propertyWorkflowTab === "directory" ? renderPropertiesSection() : null}
           </div>
         );
       case "cleanerAccounts":
