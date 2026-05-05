@@ -698,7 +698,7 @@ export default function GroundsShell({ mode }: GroundsShellProps) {
 
     const interval = window.setInterval(() => {
       void refreshGroundsJobs();
-    }, 15000);
+    }, 120000);
 
     return () => window.clearInterval(interval);
   }, [groundsAccount?.id]);

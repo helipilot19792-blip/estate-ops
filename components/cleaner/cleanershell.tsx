@@ -731,7 +731,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
 
     const interval = window.setInterval(() => {
       void refreshCleanerJobs();
-    }, 15000);
+    }, 120000);
 
     return () => window.clearInterval(interval);
   }, [cleanerAccount?.id]);

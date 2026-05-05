@@ -1175,7 +1175,7 @@ export default function AdminPage() {
     }
 
     // Polling must never rehydrate editable form state while the user has unsaved drafts.
-    const interval = window.setInterval(() => void loadData(), 15000);
+    const interval = window.setInterval(() => void loadData(), 120000);
     return () => window.clearInterval(interval);
   }, [checkingAuth, currentOrganizationId, adminDraftDirty]);
 
