@@ -5032,14 +5032,56 @@ This removes its linked members and deletes the grounds account.`
   function renderAdminNavigation(orientation: AdminMenuOrientation = "side") {
     const isTop = orientation === "top";
 
+    if (isTop) {
+      return (
+        <nav className="flex flex-wrap gap-2" aria-label="Admin sections">
+          {menuGroups.flatMap((group) => group.items).map((item) => {
+            const active = activeSection === item.key;
+            const badge = getAdminMenuBadge(item.key);
+
+            return (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => selectAdminSection(item.key)}
+                className={`inline-flex min-h-10 items-center gap-2 rounded-full border px-3 py-2 text-sm font-semibold transition ${
+                  active
+                    ? `${item.activeClass} shadow-[0_10px_20px_rgba(36,28,21,0.08)]`
+                    : item.key === "chat" && unreadChatCount > 0
+                      ? "border-[#a5f3fc] bg-[#ecfeff] text-[#0e7490] hover:bg-white"
+                      : "border-[#eadfce] bg-white text-[#5f5245] hover:border-[#d8c7ab] hover:bg-[#fcfaf7]"
+                }`}
+              >
+                <span className={`h-5 w-1.5 rounded-full ${item.accent}`} aria-hidden="true" />
+                <span>{item.label}</span>
+                {badge ? (
+                  <span
+                    className={`min-w-5 rounded-full px-1.5 py-0.5 text-center text-[11px] font-bold leading-none ${
+                      item.key === "maintenance" || item.key === "jobs"
+                        ? "bg-[#dc2626] text-white"
+                        : active
+                          ? "bg-white/80 text-current"
+                          : "bg-[#241c15] text-[#f8f2e8]"
+                    }`}
+                  >
+                    {badge}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </nav>
+      );
+    }
+
     return (
-      <nav className={isTop ? "space-y-3" : "space-y-5"} aria-label="Admin sections">
+      <nav className="space-y-5" aria-label="Admin sections">
         {menuGroups.map((group) => (
           <div key={group.label}>
-            <div className={`${isTop ? "px-1" : "px-2"} text-[11px] font-semibold uppercase tracking-[0.24em] text-[#9a8b78]`}>
+            <div className="px-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-[#9a8b78]">
               {group.label}
             </div>
-            <div className={isTop ? "mt-2 flex flex-wrap gap-2" : "mt-2 space-y-1.5"}>
+            <div className="mt-2 space-y-1.5">
               {group.items.map((item) => {
                 const active = activeSection === item.key;
                 const badge = getAdminMenuBadge(item.key);
@@ -5049,9 +5091,7 @@ This removes its linked members and deletes the grounds account.`
                     key={item.key}
                     type="button"
                     onClick={() => selectAdminSection(item.key)}
-                    className={`group flex items-center gap-3 rounded-[18px] border px-3 py-3 text-left transition ${
-                      isTop ? "min-w-[118px] flex-1 basis-[130px] py-2.5" : "w-full"
-                    } ${
+                    className={`group flex w-full items-center gap-3 rounded-[18px] border px-3 py-3 text-left transition ${
                       active
                         ? `${item.activeClass} shadow-[0_12px_24px_rgba(36,28,21,0.08)]`
                         : item.key === "chat" && unreadChatCount > 0
@@ -5062,7 +5102,7 @@ This removes its linked members and deletes the grounds account.`
                     <span className={`${isTop ? "h-7" : "h-9"} w-1.5 rounded-full ${item.accent}`} aria-hidden="true" />
                     <span className="min-w-0 flex-1">
                       <span className="block text-sm font-semibold leading-5">{item.label}</span>
-                      <span className={`mt-0.5 ${isTop ? "hidden" : "block"} text-xs leading-4 ${active ? "opacity-75" : "text-[#8a7b68]"}`}>
+                      <span className={`mt-0.5 block text-xs leading-4 ${active ? "opacity-75" : "text-[#8a7b68]"}`}>
                         {item.hint}
                       </span>
                     </span>
@@ -11572,18 +11612,17 @@ This removes its linked members and deletes the grounds account.`
         ) : null}
 
         {adminMenuOrientation === "top" ? (
-          <div className="mb-6 hidden origin-top rounded-[30px] border border-[#e7ddd0] bg-[#fbf8f4] p-4 shadow-[0_18px_45px_rgba(0,0,0,0.05)] transition-all duration-500 ease-out lg:block">
-            <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div className="mb-6 hidden origin-top rounded-[24px] border border-[#e7ddd0] bg-[#fbf8f4] p-3 shadow-[0_18px_45px_rgba(0,0,0,0.05)] transition-all duration-500 ease-out lg:block">
+            <div className="mb-3 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
               <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8a7b68]">Admin Workspace</div>
-                <div className="mt-1 text-sm text-[#6f6255]">Compact top navigation</div>
+                <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8a7b68]">Admin Menu</div>
               </div>
               <button
                 type="button"
                 onClick={toggleAdminMenuOrientation}
-                className="inline-flex items-center justify-center rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-semibold text-[#5f5245] transition hover:bg-[#fcfaf7]"
+                className="inline-flex items-center justify-center rounded-full border border-[#d8c7ab] bg-white px-3 py-1.5 text-xs font-semibold text-[#5f5245] transition hover:bg-[#fcfaf7]"
               >
-                Move menu to side
+                Use side menu
               </button>
             </div>
             {renderAdminNavigation("top")}
