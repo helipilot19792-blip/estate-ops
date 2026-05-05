@@ -1195,8 +1195,12 @@ export default function AdminPage() {
       return;
     }
 
-    // Polling must never rehydrate editable form state while the user has unsaved drafts.
-    const interval = window.setInterval(() => void loadData(), 120000);
+    // Keep this as a low-frequency safety refresh. Realtime and action-specific reloads
+    // handle normal updates; full admin hydration is intentionally expensive.
+    const interval = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      void loadData();
+    }, 600000);
     return () => window.clearInterval(interval);
   }, [checkingAuth, currentOrganizationId, adminDraftDirty]);
 
@@ -1494,23 +1498,23 @@ export default function AdminPage() {
         .order("created_at", { ascending: false }),
       supabase
         .from("chat_conversations")
-        .select("*")
+        .select("id,organization_id,subject,context_type,context_id,created_by_profile_id,last_message_at,created_at,updated_at")
         .eq("organization_id", currentOrganizationId)
         .order("updated_at", { ascending: false }),
       supabase
         .from("chat_participants")
-        .select("*")
+        .select("id,organization_id,conversation_id,participant_type,participant_profile_id,participant_owner_account_id,participant_role,display_name,email,last_read_at,created_at")
         .eq("organization_id", currentOrganizationId)
         .order("created_at", { ascending: true }),
       supabase
         .from("chat_messages")
-        .select("*")
+        .select("id,organization_id,conversation_id,sender_profile_id,body,created_at,updated_at")
         .eq("organization_id", currentOrganizationId)
         .order("created_at", { ascending: true }),
       currentAdminUserId
         ? supabase
             .from("chat_hidden_items")
-            .select("*")
+            .select("id,organization_id,conversation_id,message_id,hidden_by_profile_id,hidden_by_owner_account_id,hidden_at")
             .eq("organization_id", currentOrganizationId)
             .eq("hidden_by_profile_id", currentAdminUserId)
         : Promise.resolve({ data: [], error: null }),

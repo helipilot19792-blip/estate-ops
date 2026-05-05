@@ -144,7 +144,7 @@ export default function PortalChat({
 
       let participantQuery = supabase
         .from("chat_participants")
-        .select("*")
+        .select("id,organization_id,conversation_id,participant_type,participant_profile_id,participant_owner_account_id,participant_role,display_name,email,last_read_at,created_at")
         .order("created_at", { ascending: false });
 
       participantQuery =
@@ -170,7 +170,7 @@ export default function PortalChat({
 
       const hiddenQuery = supabase
         .from("chat_hidden_items")
-        .select("*")
+        .select("id,organization_id,conversation_id,message_id,hidden_by_profile_id,hidden_by_owner_account_id,hidden_at")
         .in("conversation_id", conversationIds);
 
       const scopedHiddenQuery =
@@ -181,17 +181,17 @@ export default function PortalChat({
       const [conversationResult, participantResult, messageResult, hiddenResult] = await Promise.all([
         supabase
           .from("chat_conversations")
-          .select("*")
+          .select("id,organization_id,subject,context_type,last_message_at,created_at,updated_at")
           .in("id", conversationIds)
           .order("updated_at", { ascending: false }),
         supabase
           .from("chat_participants")
-          .select("*")
+          .select("id,organization_id,conversation_id,participant_type,participant_profile_id,participant_owner_account_id,participant_role,display_name,email,last_read_at,created_at")
           .in("conversation_id", conversationIds)
           .order("created_at", { ascending: true }),
         supabase
           .from("chat_messages")
-          .select("*")
+          .select("id,organization_id,conversation_id,sender_profile_id,body,created_at")
           .in("conversation_id", conversationIds)
           .order("created_at", { ascending: true }),
         scopedHiddenQuery,

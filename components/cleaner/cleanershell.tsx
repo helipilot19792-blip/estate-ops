@@ -730,8 +730,9 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     if (!cleanerAccount?.id) return;
 
     const interval = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
       void refreshCleanerJobs();
-    }, 120000);
+    }, 600000);
 
     return () => window.clearInterval(interval);
   }, [cleanerAccount?.id]);
