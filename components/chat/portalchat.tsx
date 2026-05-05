@@ -35,6 +35,15 @@ type ChatMessageRow = {
   body: string;
   created_at?: string | null;
 };
+type ChatHiddenItemRow = {
+  id: string;
+  organization_id: string;
+  conversation_id: string;
+  message_id?: string | null;
+  hidden_by_profile_id?: string | null;
+  hidden_by_owner_account_id?: string | null;
+  hidden_at?: string | null;
+};
 
 export type PortalChatParticipant =
   | {
@@ -98,6 +107,7 @@ export default function PortalChat({
   const [conversations, setConversations] = useState<ChatConversationRow[]>([]);
   const [participants, setParticipants] = useState<ChatParticipantRow[]>([]);
   const [messages, setMessages] = useState<ChatMessageRow[]>([]);
+  const [hiddenItems, setHiddenItems] = useState<ChatHiddenItemRow[]>([]);
   const [selectedConversationId, setSelectedConversationId] = useState("");
   const [replyBody, setReplyBody] = useState("");
   const [realtimeReady, setRealtimeReady] = useState(false);
@@ -153,11 +163,22 @@ export default function PortalChat({
         setConversations([]);
         setParticipants([]);
         setMessages([]);
+        setHiddenItems([]);
         setSelectedConversationId("");
         return;
       }
 
-      const [conversationResult, participantResult, messageResult] = await Promise.all([
+      const hiddenQuery = supabase
+        .from("chat_hidden_items")
+        .select("*")
+        .in("conversation_id", conversationIds);
+
+      const scopedHiddenQuery =
+        participantType === "profile"
+          ? hiddenQuery.eq("hidden_by_profile_id", participantProfileId)
+          : hiddenQuery.eq("hidden_by_owner_account_id", participantOwnerAccountId);
+
+      const [conversationResult, participantResult, messageResult, hiddenResult] = await Promise.all([
         supabase
           .from("chat_conversations")
           .select("*")
@@ -173,6 +194,7 @@ export default function PortalChat({
           .select("*")
           .in("conversation_id", conversationIds)
           .order("created_at", { ascending: true }),
+        scopedHiddenQuery,
       ]);
 
       if (conversationResult.error) throw conversationResult.error;
@@ -183,6 +205,7 @@ export default function PortalChat({
       setConversations(loadedConversations);
       setParticipants((participantResult.data || []) as ChatParticipantRow[]);
       setMessages((messageResult.data || []) as ChatMessageRow[]);
+      setHiddenItems(hiddenResult.error ? [] : ((hiddenResult.data || []) as ChatHiddenItemRow[]));
       setSelectedConversationId((current) =>
         current && loadedConversations.some((conversation) => conversation.id === current)
           ? current
@@ -199,27 +222,40 @@ export default function PortalChat({
     void loadChat();
   }, [loadChat, participantKey]);
 
-  const selectedConversation =
-    conversations.find((conversation) => conversation.id === selectedConversationId) || conversations[0] || null;
-  const activeConversationId = selectedConversation?.id || "";
-  const selectedMessages = useMemo(
-    () => messages.filter((message) => message.conversation_id === activeConversationId),
-    [activeConversationId, messages]
-  );
-  const selectedParticipants = useMemo(
-    () => participants.filter((row) => row.conversation_id === activeConversationId),
-    [activeConversationId, participants]
-  );
-
   const ownProfileId = participantType === "profile" ? participantProfileId : participantOwnerProfileId || authProfileId;
   const conversationIdsKey = useMemo(
     () => conversations.map((conversation) => conversation.id).sort().join(","),
     [conversations]
   );
+  const isConversationHidden = useCallback(
+    (conversationId: string) => hiddenItems.some((item) => item.conversation_id === conversationId && !item.message_id),
+    [hiddenItems]
+  );
+  const isMessageHidden = useCallback(
+    (messageId: string) => hiddenItems.some((item) => item.message_id === messageId),
+    [hiddenItems]
+  );
+  const visibleConversations = useMemo(
+    () => conversations.filter((conversation) => !isConversationHidden(conversation.id)),
+    [conversations, isConversationHidden]
+  );
+  const selectedConversation =
+    visibleConversations.find((conversation) => conversation.id === selectedConversationId) ||
+    visibleConversations[0] ||
+    null;
+  const activeConversationId = selectedConversation?.id || "";
+  const selectedMessages = useMemo(
+    () => messages.filter((message) => message.conversation_id === activeConversationId && !isMessageHidden(message.id)),
+    [activeConversationId, isMessageHidden, messages]
+  );
+  const selectedParticipants = useMemo(
+    () => participants.filter((row) => row.conversation_id === activeConversationId),
+    [activeConversationId, participants]
+  );
   const unreadCount = useMemo(() => {
     if (!ownProfileId) return 0;
 
-    return conversations.reduce((total, conversation) => {
+    return visibleConversations.reduce((total, conversation) => {
       const myParticipant = participants.find((row) => {
         if (row.conversation_id !== conversation.id) return false;
         if (participantType === "profile") return row.participant_profile_id === participantProfileId;
@@ -233,13 +269,14 @@ export default function PortalChat({
         total +
         messages.filter((message) => {
           if (message.conversation_id !== conversation.id) return false;
+          if (isMessageHidden(message.id)) return false;
           if (message.sender_profile_id === ownProfileId) return false;
           const createdAt = message.created_at ? new Date(message.created_at).getTime() : 0;
           return createdAt > lastReadAt;
         }).length
       );
     }, 0);
-  }, [conversations, messages, ownProfileId, participantOwnerAccountId, participantProfileId, participantType, participants]);
+  }, [isMessageHidden, messages, ownProfileId, participantOwnerAccountId, participantProfileId, participantType, participants, visibleConversations]);
 
   async function markConversationRead(conversationId: string) {
     if (!conversationId || !ownProfileId) return;
@@ -424,6 +461,74 @@ export default function PortalChat({
     }
   }
 
+  async function hideConversationForMe(conversation: ChatConversationRow) {
+    const confirmed = window.confirm(
+      `Delete "${getConversationTitle(conversation)}" from your chat list?\n\nThis only hides it for you. Other participants will still see the chat.`
+    );
+    if (!confirmed) return;
+
+    const hiddenItem: ChatHiddenItemRow = {
+      id: `local-${conversation.id}`,
+      organization_id: conversation.organization_id,
+      conversation_id: conversation.id,
+      message_id: null,
+      hidden_by_profile_id: participantType === "profile" ? participantProfileId : null,
+      hidden_by_owner_account_id: participantType === "owner" ? participantOwnerAccountId : null,
+      hidden_at: new Date().toISOString(),
+    };
+
+    setHiddenItems((current) =>
+      current.some((item) => item.conversation_id === conversation.id && !item.message_id)
+        ? current
+        : [...current, hiddenItem]
+    );
+
+    const { error: hideError } = await supabase.from("chat_hidden_items").insert({
+      organization_id: conversation.organization_id,
+      conversation_id: conversation.id,
+      message_id: null,
+      hidden_by_profile_id: participantType === "profile" ? participantProfileId : null,
+      hidden_by_owner_account_id: participantType === "owner" ? participantOwnerAccountId : null,
+    });
+
+    if (hideError && hideError.code !== "23505") {
+      setHiddenItems((current) => current.filter((item) => item.id !== hiddenItem.id));
+      setError(getErrorMessage(hideError, "Could not delete that chat from your view yet."));
+    }
+  }
+
+  async function hideMessageForMe(message: ChatMessageRow) {
+    const confirmed = window.confirm("Delete this message from your view? Other participants will still see it.");
+    if (!confirmed) return;
+
+    const hiddenItem: ChatHiddenItemRow = {
+      id: `local-${message.id}`,
+      organization_id: message.organization_id,
+      conversation_id: message.conversation_id,
+      message_id: message.id,
+      hidden_by_profile_id: participantType === "profile" ? participantProfileId : null,
+      hidden_by_owner_account_id: participantType === "owner" ? participantOwnerAccountId : null,
+      hidden_at: new Date().toISOString(),
+    };
+
+    setHiddenItems((current) =>
+      current.some((item) => item.message_id === message.id) ? current : [...current, hiddenItem]
+    );
+
+    const { error: hideError } = await supabase.from("chat_hidden_items").insert({
+      organization_id: message.organization_id,
+      conversation_id: message.conversation_id,
+      message_id: message.id,
+      hidden_by_profile_id: participantType === "profile" ? participantProfileId : null,
+      hidden_by_owner_account_id: participantType === "owner" ? participantOwnerAccountId : null,
+    });
+
+    if (hideError && hideError.code !== "23505") {
+      setHiddenItems((current) => current.filter((item) => item.id !== hiddenItem.id));
+      setError(getErrorMessage(hideError, "Could not delete that message from your view yet."));
+    }
+  }
+
   if (!participant) return null;
 
   return (
@@ -471,15 +576,15 @@ export default function PortalChat({
       <div className="mt-5 grid gap-4 lg:grid-cols-[320px_1fr]">
         <div className="rounded-[24px] border border-white/8 bg-white/[0.03] p-3">
           <div className="px-1 pb-2 text-sm font-semibold">
-            {conversations.length} chat{conversations.length === 1 ? "" : "s"}
+            {visibleConversations.length} chat{visibleConversations.length === 1 ? "" : "s"}
           </div>
           <div className="space-y-2">
-            {conversations.length > 0 ? (
-              conversations.map((conversation) => {
+            {visibleConversations.length > 0 ? (
+              visibleConversations.map((conversation) => {
                 const selected = conversation.id === activeConversationId;
                 const otherSummary = getConversationOtherSummary(conversation);
                 const lastMessage = messages
-                  .filter((message) => message.conversation_id === conversation.id)
+                  .filter((message) => message.conversation_id === conversation.id && !isMessageHidden(message.id))
                   .at(-1);
 
                 return (
@@ -500,8 +605,27 @@ export default function PortalChat({
                     <div className="mt-1 line-clamp-2 text-xs text-[#ccb99a]">
                       {lastMessage?.body || "No replies yet"}
                     </div>
-                    <div className="mt-2 text-[11px] uppercase tracking-[0.14em] text-[#e7c98a]">
-                      {formatChatDate(conversation.last_message_at || conversation.updated_at || conversation.created_at) || "New"}
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <span className="text-[11px] uppercase tracking-[0.14em] text-[#e7c98a]">
+                        {formatChatDate(conversation.last_message_at || conversation.updated_at || conversation.created_at) || "New"}
+                      </span>
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void hideConversationForMe(conversation);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key !== "Enter" && event.key !== " ") return;
+                          event.preventDefault();
+                          event.stopPropagation();
+                          void hideConversationForMe(conversation);
+                        }}
+                        className="rounded-full border border-red-300/30 bg-red-950/20 px-2 py-1 text-[11px] font-semibold text-red-100"
+                      >
+                        Delete
+                      </span>
                     </div>
                   </button>
                 );
@@ -543,7 +667,16 @@ export default function PortalChat({
                       >
                         <div className="text-xs font-semibold text-[#e7c98a]">{getSenderLabel(message)}</div>
                         <div className="mt-1 whitespace-pre-wrap text-sm leading-6 text-[#f7f1e8]">{message.body}</div>
-                        <div className="mt-2 text-[11px] text-[#ccb99a]">{formatChatDate(message.created_at)}</div>
+                        <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-[#ccb99a]">
+                          <span>{formatChatDate(message.created_at)}</span>
+                          <button
+                            type="button"
+                            onClick={() => void hideMessageForMe(message)}
+                            className="rounded-full border border-red-300/30 bg-red-950/20 px-2 py-1 font-semibold text-red-100 transition hover:bg-red-950/30"
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </div>
                     );
                   })

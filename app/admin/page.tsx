@@ -383,6 +383,15 @@ type ChatMessageRow = {
   created_at?: string | null;
   updated_at?: string | null;
 };
+type ChatHiddenItemRow = {
+  id: string;
+  organization_id: string;
+  conversation_id: string;
+  message_id?: string | null;
+  hidden_by_profile_id?: string | null;
+  hidden_by_owner_account_id?: string | null;
+  hidden_at?: string | null;
+};
 type InvoiceSettingsRow = {
   organization_id: string;
   company_name: string | null;
@@ -766,6 +775,7 @@ export default function AdminPage() {
   const [chatConversations, setChatConversations] = useState<ChatConversationRow[]>([]);
   const [chatParticipants, setChatParticipants] = useState<ChatParticipantRow[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessageRow[]>([]);
+  const [chatHiddenItems, setChatHiddenItems] = useState<ChatHiddenItemRow[]>([]);
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
 
   const [error, setError] = useState("");
@@ -1383,6 +1393,7 @@ export default function AdminPage() {
       chatConversationsRes,
       chatParticipantsRes,
       chatMessagesRes,
+      chatHiddenItemsRes,
     ] = await Promise.all([
       supabase
         .from("properties")
@@ -1495,6 +1506,13 @@ export default function AdminPage() {
         .select("*")
         .eq("organization_id", currentOrganizationId)
         .order("created_at", { ascending: true }),
+      currentAdminUserId
+        ? supabase
+            .from("chat_hidden_items")
+            .select("*")
+            .eq("organization_id", currentOrganizationId)
+            .eq("hidden_by_profile_id", currentAdminUserId)
+        : Promise.resolve({ data: [], error: null }),
     ]);
 
     const responses = [
@@ -1528,6 +1546,7 @@ export default function AdminPage() {
       chatConversationsRes,
       chatParticipantsRes,
       chatMessagesRes,
+      chatHiddenItemsRes,
     ];
 
     for (const response of responses) {
@@ -1537,7 +1556,8 @@ export default function AdminPage() {
         response !== propertyInvoiceRatesRes &&
         response !== chatConversationsRes &&
         response !== chatParticipantsRes &&
-        response !== chatMessagesRes
+        response !== chatMessagesRes &&
+        response !== chatHiddenItemsRes
       ) {
         setError(response.error.message);
         return;
@@ -1596,6 +1616,9 @@ export default function AdminPage() {
       chatParticipantsRes.error ? [] : ((chatParticipantsRes.data ?? []) as ChatParticipantRow[])
     );
     setChatMessages(chatMessagesRes.error ? [] : ((chatMessagesRes.data ?? []) as ChatMessageRow[]));
+    setChatHiddenItems(
+      chatHiddenItemsRes.error ? [] : ((chatHiddenItemsRes.data ?? []) as ChatHiddenItemRow[])
+    );
 
     setReassignSelections((prev) => {
       const next = { ...prev };
@@ -4974,6 +4997,8 @@ This removes its linked members and deletes the grounds account.`
     if (!currentAdminUserId) return 0;
 
     return chatConversations.reduce((total, conversation) => {
+      if (chatHiddenItems.some((item) => item.conversation_id === conversation.id && !item.message_id)) return total;
+
       const myParticipant = chatParticipants.find(
         (participant) =>
           participant.conversation_id === conversation.id &&
@@ -4986,13 +5011,14 @@ This removes its linked members and deletes the grounds account.`
         total +
         chatMessages.filter((message) => {
           if (message.conversation_id !== conversation.id) return false;
+          if (chatHiddenItems.some((item) => item.message_id === message.id)) return false;
           if (message.sender_profile_id === currentAdminUserId) return false;
           const createdAt = message.created_at ? new Date(message.created_at).getTime() : 0;
           return createdAt > lastReadAt;
         }).length
       );
     }, 0);
-  }, [chatConversations, chatMessages, chatParticipants, currentAdminUserId]);
+  }, [chatConversations, chatHiddenItems, chatMessages, chatParticipants, currentAdminUserId]);
 
   function getAdminMenuBadge(section: AdminSection) {
     if (section === "chat" && unreadChatCount > 0) return unreadChatCount > 99 ? "99+" : String(unreadChatCount);
@@ -5005,6 +5031,7 @@ This removes its linked members and deletes the grounds account.`
 
   function getChatConversationUnreadCount(conversationId: string) {
     if (!currentAdminUserId) return 0;
+    if (isChatConversationHidden(conversationId)) return 0;
 
     const myParticipant = chatParticipants.find(
       (participant) =>
@@ -5016,10 +5043,19 @@ This removes its linked members and deletes the grounds account.`
 
     return chatMessages.filter((message) => {
       if (message.conversation_id !== conversationId) return false;
+      if (isChatMessageHidden(message.id)) return false;
       if (message.sender_profile_id === currentAdminUserId) return false;
       const createdAt = message.created_at ? new Date(message.created_at).getTime() : 0;
       return createdAt > lastReadAt;
     }).length;
+  }
+
+  function isChatConversationHidden(conversationId: string) {
+    return chatHiddenItems.some((item) => item.conversation_id === conversationId && !item.message_id);
+  }
+
+  function isChatMessageHidden(messageId: string) {
+    return chatHiddenItems.some((item) => item.message_id === messageId);
   }
 
   function selectAdminSection(section: AdminSection) {
@@ -5462,13 +5498,14 @@ This removes its linked members and deletes the grounds account.`
         detail: owner.email,
       })),
     ];
+    const visibleChatConversations = chatConversations.filter((conversation) => !isChatConversationHidden(conversation.id));
     const selectedConversation =
-      chatConversations.find((conversation) => conversation.id === selectedChatConversationId) ||
-      chatConversations[0] ||
+      visibleChatConversations.find((conversation) => conversation.id === selectedChatConversationId) ||
+      visibleChatConversations[0] ||
       null;
     const activeConversationId = selectedConversation?.id || "";
     const selectedConversationMessages = activeConversationId
-      ? chatMessages.filter((message) => message.conversation_id === activeConversationId)
+      ? chatMessages.filter((message) => message.conversation_id === activeConversationId && !isChatMessageHidden(message.id))
       : [];
     const selectedConversationParticipants = activeConversationId
       ? chatParticipants.filter((participant) => participant.conversation_id === activeConversationId)
@@ -5496,7 +5533,7 @@ This removes its linked members and deletes the grounds account.`
                 {chatRealtimeReady ? "Live" : "Connecting"}
               </span>
               <span className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-semibold text-[#6f6255]">
-                {chatConversations.length} conversation{chatConversations.length === 1 ? "" : "s"}
+                {visibleChatConversations.length} conversation{visibleChatConversations.length === 1 ? "" : "s"}
               </span>
             </div>
           </div>
@@ -5544,13 +5581,13 @@ This removes its linked members and deletes the grounds account.`
               <div className="rounded-[24px] border border-[#eadfce] bg-white p-3">
                 <div className="px-1 pb-2 text-sm font-semibold text-[#241c15]">Conversations</div>
                 <div className="space-y-2">
-                  {chatConversations.length > 0 ? (
-                    chatConversations.map((conversation) => {
+                  {visibleChatConversations.length > 0 ? (
+                    visibleChatConversations.map((conversation) => {
                       const selected = activeConversationId === conversation.id;
                       const recipientSummary = getChatConversationRecipientSummary(conversation);
                       const conversationUnreadCount = getChatConversationUnreadCount(conversation.id);
                       const lastMessage = chatMessages
-                        .filter((message) => message.conversation_id === conversation.id)
+                        .filter((message) => message.conversation_id === conversation.id && !isChatMessageHidden(message.id))
                         .at(-1);
 
                       return (
@@ -5584,10 +5621,33 @@ This removes its linked members and deletes the grounds account.`
                           <div className={`mt-1 line-clamp-2 text-xs ${selected ? "text-[#eadfce]" : "text-[#7f7263]"}`}>
                             {lastMessage?.body || "No chat yet"}
                           </div>
-                          <div className={`mt-2 text-[11px] ${selected ? "text-[#d8c7ab]" : "text-[#8a7b68]"}`}>
-                            {conversation.last_message_at || conversation.updated_at || conversation.created_at
-                              ? formatDateTime(conversation.last_message_at || conversation.updated_at || conversation.created_at || "")
-                              : "New"}
+                          <div className="mt-2 flex items-center justify-between gap-2">
+                            <span className={`text-[11px] ${selected ? "text-[#d8c7ab]" : "text-[#8a7b68]"}`}>
+                              {conversation.last_message_at || conversation.updated_at || conversation.created_at
+                                ? formatDateTime(conversation.last_message_at || conversation.updated_at || conversation.created_at || "")
+                                : "New"}
+                            </span>
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void hideChatConversationForMe(conversation);
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key !== "Enter" && event.key !== " ") return;
+                                event.preventDefault();
+                                event.stopPropagation();
+                                void hideChatConversationForMe(conversation);
+                              }}
+                              className={`rounded-full border px-2 py-1 text-[11px] font-semibold ${
+                                selected
+                                  ? "border-[#f8f2e8]/30 text-[#f8f2e8]"
+                                  : "border-[#efc6c6] bg-white text-[#8a2e22]"
+                              }`}
+                            >
+                              Delete
+                            </span>
                           </div>
                         </button>
                       );
@@ -5637,8 +5697,15 @@ This removes its linked members and deletes the grounds account.`
                               {isMine ? "You" : sender?.full_name || sender?.email || "Participant"}
                             </div>
                             <div className="mt-1 whitespace-pre-wrap text-sm leading-6 text-[#241c15]">{message.body}</div>
-                            <div className="mt-2 text-[11px] text-[#8a7b68]">
-                              {message.created_at ? formatDateTime(message.created_at) : ""}
+                            <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-[#8a7b68]">
+                              <span>{message.created_at ? formatDateTime(message.created_at) : ""}</span>
+                              <button
+                                type="button"
+                                onClick={() => void hideChatMessageForMe(message)}
+                                className="rounded-full border border-[#efc6c6] bg-[#fff5f5] px-2 py-1 font-semibold text-[#8a2e22] transition hover:bg-[#fff0f0]"
+                              >
+                                Delete
+                              </button>
                             </div>
                           </div>
                         );
@@ -5897,6 +5964,80 @@ This removes its linked members and deletes the grounds account.`
     if (conversation.subject?.trim()) return conversation.subject.trim();
     const otherParticipant = getChatOtherParticipants(conversation)[0];
     return getChatParticipantLabel(otherParticipant);
+  }
+
+  async function hideChatConversationForMe(conversation: ChatConversationRow) {
+    if (!currentAdminUserId) {
+      setError("No admin sign-in was found.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete "${getChatConversationTitle(conversation)}" from your chat list?\n\nThis only hides it for you. Other participants will still see the chat.`
+    );
+    if (!confirmed) return;
+
+    const hiddenItem: ChatHiddenItemRow = {
+      id: `local-${conversation.id}`,
+      organization_id: conversation.organization_id,
+      conversation_id: conversation.id,
+      message_id: null,
+      hidden_by_profile_id: currentAdminUserId,
+      hidden_at: new Date().toISOString(),
+    };
+
+    setChatHiddenItems((current) =>
+      current.some((item) => item.conversation_id === conversation.id && !item.message_id)
+        ? current
+        : [...current, hiddenItem]
+    );
+
+    const { error: hideError } = await supabase.from("chat_hidden_items").insert({
+      organization_id: conversation.organization_id,
+      conversation_id: conversation.id,
+      message_id: null,
+      hidden_by_profile_id: currentAdminUserId,
+    });
+
+    if (hideError && hideError.code !== "23505") {
+      setChatHiddenItems((current) => current.filter((item) => item.id !== hiddenItem.id));
+      setError(getErrorMessage(hideError, "Could not delete that chat from your view. Run the chat delete SQL first."));
+    }
+  }
+
+  async function hideChatMessageForMe(message: ChatMessageRow) {
+    if (!currentAdminUserId) {
+      setError("No admin sign-in was found.");
+      return;
+    }
+
+    const confirmed = window.confirm("Delete this message from your view? Other participants will still see it.");
+    if (!confirmed) return;
+
+    const hiddenItem: ChatHiddenItemRow = {
+      id: `local-${message.id}`,
+      organization_id: message.organization_id,
+      conversation_id: message.conversation_id,
+      message_id: message.id,
+      hidden_by_profile_id: currentAdminUserId,
+      hidden_at: new Date().toISOString(),
+    };
+
+    setChatHiddenItems((current) =>
+      current.some((item) => item.message_id === message.id) ? current : [...current, hiddenItem]
+    );
+
+    const { error: hideError } = await supabase.from("chat_hidden_items").insert({
+      organization_id: message.organization_id,
+      conversation_id: message.conversation_id,
+      message_id: message.id,
+      hidden_by_profile_id: currentAdminUserId,
+    });
+
+    if (hideError && hideError.code !== "23505") {
+      setChatHiddenItems((current) => current.filter((item) => item.id !== hiddenItem.id));
+      setError(getErrorMessage(hideError, "Could not delete that message from your view. Run the chat delete SQL first."));
+    }
   }
 
   async function createChatConversation() {
