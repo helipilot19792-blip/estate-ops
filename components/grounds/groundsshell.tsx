@@ -532,9 +532,11 @@ export default function GroundsShell({ mode }: GroundsShellProps) {
   const [selectionDismissed, setSelectionDismissed] = useState(false);
   const [jobsCollapsed, setJobsCollapsed] = useState(true);
   const [now, setNow] = useState(() => new Date());
+  const [chatUnreadCount, setChatUnreadCount] = useState(0);
 
   const hasAutoSelectedInitialJob = useRef(false);
   const realtimeRefreshTimeoutRef = useRef<number | null>(null);
+  const chatSectionRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -1350,6 +1352,10 @@ export default function GroundsShell({ mode }: GroundsShellProps) {
     setJobsCollapsed(false);
   }
 
+  function scrollToChatSection() {
+    chatSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   const viewProps: GroundsViewProps = {
     loading,
     signingOut,
@@ -1422,8 +1428,17 @@ export default function GroundsShell({ mode }: GroundsShellProps) {
   return (
     <>
       {shellView}
+      {profile && chatUnreadCount > 0 ? (
+        <button
+          type="button"
+          onClick={scrollToChatSection}
+          className="fixed bottom-4 right-4 z-40 rounded-full border border-[#e3c177]/50 bg-[#d3322b] px-4 py-3 text-sm font-bold text-white shadow-[0_18px_45px_rgba(0,0,0,0.24)] transition hover:brightness-110"
+        >
+          Chat {chatUnreadCount > 99 ? "99+" : chatUnreadCount}
+        </button>
+      ) : null}
       {profile ? (
-        <div className="bg-[#100d0a] px-3 pb-[35vh] sm:px-6">
+        <div ref={chatSectionRef} className="bg-[#100d0a] px-3 pb-[35vh] sm:px-6">
           <div className="mx-auto max-w-7xl">
             <PortalChat
               participant={{
@@ -1435,6 +1450,7 @@ export default function GroundsShell({ mode }: GroundsShellProps) {
               }}
               title="Grounds Chat"
               subtitle="Read and reply to chat from property management without email notifications for every message."
+              onUnreadCountChange={setChatUnreadCount}
             />
           </div>
         </div>

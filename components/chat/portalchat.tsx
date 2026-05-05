@@ -268,15 +268,31 @@ export default function PortalChat({
   }
 
   useEffect(() => {
-    if (conversations.length === 0) {
+    const conversationIds = new Set(conversations.map((conversation) => conversation.id));
+    if (!participantKey) {
       setRealtimeReady(false);
       return;
     }
 
-    const conversationIds = new Set(conversations.map((conversation) => conversation.id));
-    const channel = supabase
-      .channel(`portal-chat-realtime-${participantKey || "anonymous"}`)
-      .on(
+    let channel = supabase.channel(`portal-chat-realtime-${participantKey}`);
+    channel = channel.on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "chat_participants",
+        filter:
+          participantType === "profile"
+            ? `participant_profile_id=eq.${participantProfileId}`
+            : `participant_owner_account_id=eq.${participantOwnerAccountId}`,
+      },
+      () => {
+        void loadChat();
+      }
+    );
+
+    if (conversationIds.size > 0) {
+      channel = channel.on(
         "postgres_changes",
         {
           event: "INSERT",
@@ -302,16 +318,18 @@ export default function PortalChat({
             )
           );
         }
-      )
-      .subscribe((status) => {
-        setRealtimeReady(status === "SUBSCRIBED");
-      });
+      );
+    }
+
+    channel.subscribe((status) => {
+      setRealtimeReady(status === "SUBSCRIBED");
+    });
 
     return () => {
       setRealtimeReady(false);
       void supabase.removeChannel(channel);
     };
-  }, [conversationIdsKey, participantKey]);
+  }, [conversationIdsKey, loadChat, participantKey, participantOwnerAccountId, participantProfileId, participantType]);
 
   useEffect(() => {
     const conversationId = selectedConversationId || conversations[0]?.id || "";
