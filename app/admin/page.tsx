@@ -5033,13 +5033,13 @@ This removes its linked members and deletes the grounds account.`
     const isTop = orientation === "top";
 
     return (
-      <nav className={isTop ? "flex gap-3 overflow-x-auto pb-1" : "space-y-5"} aria-label="Admin sections">
+      <nav className={isTop ? "space-y-3" : "space-y-5"} aria-label="Admin sections">
         {menuGroups.map((group) => (
-          <div key={group.label} className={isTop ? "min-w-max" : undefined}>
+          <div key={group.label}>
             <div className={`${isTop ? "px-1" : "px-2"} text-[11px] font-semibold uppercase tracking-[0.24em] text-[#9a8b78]`}>
               {group.label}
             </div>
-            <div className={isTop ? "mt-2 flex gap-2" : "mt-2 space-y-1.5"}>
+            <div className={isTop ? "mt-2 flex flex-wrap gap-2" : "mt-2 space-y-1.5"}>
               {group.items.map((item) => {
                 const active = activeSection === item.key;
                 const badge = getAdminMenuBadge(item.key);
@@ -5050,7 +5050,7 @@ This removes its linked members and deletes the grounds account.`
                     type="button"
                     onClick={() => selectAdminSection(item.key)}
                     className={`group flex items-center gap-3 rounded-[18px] border px-3 py-3 text-left transition ${
-                      isTop ? "min-w-[190px]" : "w-full"
+                      isTop ? "min-w-[118px] flex-1 basis-[130px] py-2.5" : "w-full"
                     } ${
                       active
                         ? `${item.activeClass} shadow-[0_12px_24px_rgba(36,28,21,0.08)]`
@@ -5059,10 +5059,10 @@ This removes its linked members and deletes the grounds account.`
                           : "border-transparent bg-transparent text-[#5f5245] hover:border-[#eadfce] hover:bg-white"
                     }`}
                   >
-                    <span className={`${isTop ? "h-8" : "h-9"} w-1.5 rounded-full ${item.accent}`} aria-hidden="true" />
+                    <span className={`${isTop ? "h-7" : "h-9"} w-1.5 rounded-full ${item.accent}`} aria-hidden="true" />
                     <span className="min-w-0 flex-1">
                       <span className="block text-sm font-semibold leading-5">{item.label}</span>
-                      <span className={`mt-0.5 block text-xs leading-4 ${active ? "opacity-75" : "text-[#8a7b68]"}`}>
+                      <span className={`mt-0.5 ${isTop ? "hidden" : "block"} text-xs leading-4 ${active ? "opacity-75" : "text-[#8a7b68]"}`}>
                         {item.hint}
                       </span>
                     </span>
@@ -11408,25 +11408,6 @@ This removes its linked members and deletes the grounds account.`
         </aside>
 
         <div className="min-w-0">
-        {adminMenuOrientation === "top" ? (
-          <div className="mb-6 hidden origin-top rounded-[30px] border border-[#e7ddd0] bg-[#fbf8f4] p-4 shadow-[0_18px_45px_rgba(0,0,0,0.05)] transition-all duration-500 ease-out lg:block">
-            <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8a7b68]">Admin Workspace</div>
-                <div className="mt-1 text-sm text-[#6f6255]">Horizontal navigation</div>
-              </div>
-              <button
-                type="button"
-                onClick={toggleAdminMenuOrientation}
-                className="inline-flex items-center justify-center rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-semibold text-[#5f5245] transition hover:bg-[#fcfaf7]"
-              >
-                Move menu to side
-              </button>
-            </div>
-            {renderAdminNavigation("top")}
-          </div>
-        ) : null}
-
         <div className="mb-6 overflow-hidden rounded-[34px] border border-[#e7ddd0] bg-white shadow-[0_30px_70px_rgba(0,0,0,0.08)]">
           <div className="bg-[linear-gradient(135deg,#1f1812_0%,#2a2119_55%,#3a2c1d_100%)] px-6 py-8 text-white md:px-8 md:py-10">
             <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
@@ -11587,6 +11568,25 @@ This removes its linked members and deletes the grounds account.`
                 ))}
               </div>
             </div>
+          </div>
+        ) : null}
+
+        {adminMenuOrientation === "top" ? (
+          <div className="mb-6 hidden origin-top rounded-[30px] border border-[#e7ddd0] bg-[#fbf8f4] p-4 shadow-[0_18px_45px_rgba(0,0,0,0.05)] transition-all duration-500 ease-out lg:block">
+            <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8a7b68]">Admin Workspace</div>
+                <div className="mt-1 text-sm text-[#6f6255]">Compact top navigation</div>
+              </div>
+              <button
+                type="button"
+                onClick={toggleAdminMenuOrientation}
+                className="inline-flex items-center justify-center rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-semibold text-[#5f5245] transition hover:bg-[#fcfaf7]"
+              >
+                Move menu to side
+              </button>
+            </div>
+            {renderAdminNavigation("top")}
           </div>
         ) : null}
 
