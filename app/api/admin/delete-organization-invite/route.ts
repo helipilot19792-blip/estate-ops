@@ -87,22 +87,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { data: deletedInvite, error: deleteError } = await service
+    const { data: revokedInvite, error: revokeError } = await service
       .from("organization_invites")
-      .delete()
+      .update({ status: "revoked" })
       .eq("id", inviteId)
       .eq("organization_id", organizationId)
       .in("status", ["pending", "sent"])
       .select("id")
       .maybeSingle();
 
-    if (deleteError) {
-      return NextResponse.json({ error: deleteError.message }, { status: 500 });
+    if (revokeError) {
+      return NextResponse.json({ error: revokeError.message }, { status: 500 });
     }
 
-    if (!deletedInvite) {
+    if (!revokedInvite) {
       return NextResponse.json(
-        { error: "No pending invite was found to delete." },
+        { error: "No pending invite was found to revoke." },
         { status: 404 }
       );
     }
@@ -116,13 +116,13 @@ export async function POST(req: NextRequest) {
       targetType: "organization_invite",
       targetId: inviteId,
       metadata: {
-        status: "deleted_pending_invite",
+        status: "revoked_pending_invite",
       },
     });
 
     return NextResponse.json({
       success: true,
-      message: "Pending invite deleted.",
+      message: "Pending invite revoked.",
     });
   } catch (error) {
     return NextResponse.json(

@@ -2253,7 +2253,7 @@ export default function AdminPage() {
 
   async function deleteOrganizationInvite(inviteId: string) {
     const confirmed = window.confirm(
-      "Delete this pending invite? This will remove the invite record."
+      "Revoke this pending invite? The invite link will stop working."
     );
     if (!confirmed) return;
 
@@ -2291,14 +2291,16 @@ export default function AdminPage() {
       const payload = await response.json().catch(() => null);
 
       if (!response.ok) {
-        throw new Error(payload?.error || "Could not delete pending invite.");
+        throw new Error(payload?.error || "Could not revoke pending invite.");
       }
 
-      setOrganizationInvites((prev) => prev.filter((invite) => invite.id !== inviteId));
-      setActionMessage(payload?.message || "Pending invite deleted.");
+      setOrganizationInvites((prev) =>
+        prev.map((invite) => (invite.id === inviteId ? { ...invite, status: "revoked" } : invite))
+      );
+      setActionMessage(payload?.message || "Pending invite revoked.");
       await loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not delete pending invite.");
+      setError(err instanceof Error ? err.message : "Could not revoke pending invite.");
     } finally {
       setDeletingOrganizationInviteId(null);
     }
@@ -4529,6 +4531,54 @@ This removes its linked members and deletes the grounds account.`
     );
   }, [organizationInvites, ownerAccounts]);
 
+  const invitationStatusRows = useMemo(() => {
+    const teamRows = organizationInvites.map((invite) => {
+      const status = invite.accepted_at
+        ? "accepted"
+        : invite.status === "revoked"
+          ? "revoked"
+          : invite.expires_at && new Date(invite.expires_at).getTime() < Date.now()
+            ? "expired"
+            : invite.status || "sent";
+
+      return {
+        id: `team-${invite.id}`,
+        sourceId: invite.id,
+        kind: "team" as const,
+        name: invite.full_name || invite.email,
+        email: invite.email,
+        role: invite.role,
+        status,
+        sentAt: invite.sent_at || invite.created_at || null,
+        acceptedAt: invite.accepted_at || null,
+        expiresAt: invite.expires_at || null,
+        canRevoke: !invite.accepted_at && (invite.status === "pending" || invite.status === "sent" || !invite.status),
+      };
+    });
+
+    const ownerRows = ownerAccounts
+      .filter((owner) => owner.invite_sent_at || owner.invite_accepted_at)
+      .map((owner) => ({
+        id: `owner-${owner.id}`,
+        sourceId: owner.id,
+        kind: "owner" as const,
+        name: owner.full_name || owner.email,
+        email: owner.email,
+        role: "owner" as const,
+        status: owner.invite_accepted_at ? "accepted" : "sent",
+        sentAt: owner.invite_sent_at || null,
+        acceptedAt: owner.invite_accepted_at || null,
+        expiresAt: null,
+        canRevoke: false,
+      }));
+
+    return [...teamRows, ...ownerRows].sort((a, b) => {
+      const aDate = a.acceptedAt || a.sentAt || "";
+      const bDate = b.acceptedAt || b.sentAt || "";
+      return bDate.localeCompare(aDate);
+    });
+  }, [organizationInvites, ownerAccounts]);
+
   const operationsAlerts = useMemo(() => {
     const alerts: Array<{
       key: string;
@@ -4893,19 +4943,53 @@ This removes its linked members and deletes the grounds account.`
           <div className="mt-3 rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3 text-sm text-[#6f6255]">
             <span className="font-semibold text-[#241c15]">How access works:</span> Users are linked to Cleaner and/or Grounds teams. Properties are assigned to those teams.
           </div>
-          {recentlyAcceptedInvites.length > 0 ? (
-            <div className="mt-3 rounded-[18px] border border-[#bbdfc0] bg-[#f0fbf2] px-4 py-3">
-              <div className="text-sm font-semibold text-[#236b30]">Recently accepted invites</div>
-              <div className="mt-2 grid gap-2 md:grid-cols-2">
-                {recentlyAcceptedInvites.slice(0, 6).map((invite) => (
-                  <div key={invite.id} className="rounded-[14px] border border-[#bbdfc0] bg-white px-3 py-2 text-sm text-[#2f5f36]">
-                    <div className="font-medium">{invite.label}</div>
-                    <div className="mt-1 text-xs text-[#5f7f63]">{formatDateTime(invite.acceptedAt)}</div>
-                  </div>
-                ))}
+          <div className="mt-3 rounded-[18px] border border-[#d8c7ab] bg-white px-4 py-3">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-sm font-semibold text-[#241c15]">Invitation status</div>
+              <div className="text-xs text-[#7f7263]">
+                {invitationStatusRows.length} invite{invitationStatusRows.length === 1 ? "" : "s"} tracked
               </div>
             </div>
-          ) : null}
+            <div className="mt-3 grid gap-2 lg:grid-cols-2">
+              {invitationStatusRows.length > 0 ? (
+                invitationStatusRows.slice(0, 12).map((invite) => (
+                  <div key={invite.id} className="rounded-[16px] border border-[#eadfce] bg-[#fcfaf7] px-3 py-3">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold text-[#241c15]">{invite.name}</span>
+                          <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${getInviteStatusTone(invite.status)}`}>
+                            {formatInviteStatus(invite.status)}
+                          </span>
+                        </div>
+                        <div className="mt-1 break-all text-xs text-[#7f7263]">{invite.email}</div>
+                        <div className="mt-1 text-xs text-[#7f7263]">
+                          Role: {invite.role}
+                          {invite.sentAt ? ` | Sent ${formatDateTime(invite.sentAt)}` : ""}
+                          {invite.acceptedAt ? ` | Accepted ${formatDateTime(invite.acceptedAt)}` : ""}
+                          {invite.expiresAt && invite.status !== "accepted" ? ` | Expires ${formatDateTime(invite.expiresAt)}` : ""}
+                        </div>
+                      </div>
+                      {invite.kind === "team" && invite.canRevoke ? (
+                        <button
+                          type="button"
+                          onClick={() => void deleteOrganizationInvite(invite.sourceId)}
+                          disabled={deletingOrganizationInviteId === invite.sourceId}
+                          className="shrink-0 rounded-full border border-[#efc6c6] bg-[#fff5f5] px-3 py-1.5 text-xs font-medium text-[#8a2e22] disabled:opacity-60"
+                        >
+                          {deletingOrganizationInviteId === invite.sourceId ? "Revoking..." : "Revoke"}
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-[16px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-3 py-4 text-sm text-[#7f7263]">
+                  No invitations have been sent yet.
+                </div>
+              )}
+            </div>
+          </div>
         </div>
         <div className="space-y-3">
           {profiles.map((profile) => {
@@ -5051,6 +5135,20 @@ This removes its linked members and deletes the grounds account.`
     if (owner.invite_accepted_at) return "Active";
     if (owner.invite_sent_at) return "Invite sent";
     return "Not invited";
+  }
+
+  function getInviteStatusTone(status: string) {
+    if (status === "accepted") return "border-[#bbdfc0] bg-[#f0fbf2] text-[#236b30]";
+    if (status === "revoked" || status === "expired") return "border-[#efc6c6] bg-[#fff5f5] text-[#8a2e22]";
+    return "border-[#f1cf8f] bg-[#fff8e8] text-[#8a6112]";
+  }
+
+  function formatInviteStatus(status: string) {
+    if (status === "accepted") return "Accepted";
+    if (status === "revoked") return "Revoked";
+    if (status === "expired") return "Expired";
+    if (status === "pending") return "Pending";
+    return "Sent";
   }
 
   async function inviteOwnerForProperty(propertyId: string, ownerEmail: string, ownerName: string) {
@@ -7521,7 +7619,7 @@ This removes its linked members and deletes the grounds account.`
             {pendingCleanerInvites.length > 0 ? (
               <div className="mt-5 rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] p-4">
                 <div className="mb-2 text-sm font-medium text-[#5f5245]">
-                  Pending Cleaner Invites
+                  Cleaner Invites
                 </div>
 
                 <div className="space-y-3">
@@ -7572,7 +7670,7 @@ This removes its linked members and deletes the grounds account.`
                             disabled={deletingOrganizationInviteId === invite.id}
                             className="inline-flex items-center justify-center rounded-full border border-[#efc6c6] bg-[#fff5f5] px-4 py-2 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:cursor-not-allowed disabled:opacity-60"
                           >
-                            {deletingOrganizationInviteId === invite.id ? "Deleting..." : "Delete"}
+                            {deletingOrganizationInviteId === invite.id ? "Revoking..." : "Revoke"}
                           </button>
                         </div>
                       </div>
@@ -7773,7 +7871,7 @@ This removes its linked members and deletes the grounds account.`
             {pendingGroundsInvites.length > 0 ? (
               <div className="mt-5 rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] p-4">
                 <div className="mb-2 text-sm font-medium text-[#5f5245]">
-                  Pending Grounds Invites
+                  Grounds Invites
                 </div>
 
                 <div className="space-y-3">
@@ -7824,7 +7922,7 @@ This removes its linked members and deletes the grounds account.`
                             disabled={deletingOrganizationInviteId === invite.id}
                             className="inline-flex items-center justify-center rounded-full border border-[#efc6c6] bg-[#fff5f5] px-4 py-2 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:cursor-not-allowed disabled:opacity-60"
                           >
-                            {deletingOrganizationInviteId === invite.id ? "Deleting..." : "Delete"}
+                            {deletingOrganizationInviteId === invite.id ? "Revoking..." : "Revoke"}
                           </button>
                         </div>
                       </div>
