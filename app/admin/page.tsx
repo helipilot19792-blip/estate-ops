@@ -723,6 +723,7 @@ export default function AdminPage() {
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [currentPortalRole, setCurrentPortalRole] = useState<string | null>(null);
   const [currentAdminUserId, setCurrentAdminUserId] = useState<string | null>(null);
+  const [currentAdminProfile, setCurrentAdminProfile] = useState<ProfileRow | null>(null);
   const [currentOrganizationId, setCurrentOrganizationId] = useState<string | null>(null);
   const [currentOrganizationBilling, setCurrentOrganizationBilling] = useState<OrganizationBillingRow | null>(null);
   const [myOrganizations, setMyOrganizations] = useState<MyOrganizationRow[]>([]);
@@ -1115,6 +1116,7 @@ export default function AdminPage() {
       }
 
       setCurrentPortalRole(profile.role);
+      setCurrentAdminProfile(profile);
       setMyOrganizations(orgRows as MyOrganizationRow[]);
       setCurrentOrganizationId(orgRows[0].organization_id);
       setCurrentAdminUserId(user.id);
@@ -4997,6 +4999,19 @@ This removes its linked members and deletes the grounds account.`
   function selectAdminSection(section: AdminSection) {
     setActiveSection(section);
     setShowAdminNav(false);
+  }
+
+  function getProfileDisplayName(profileId?: string | null) {
+    if (!profileId) return "";
+
+    const profile =
+      profiles.find((profile) => profile.id === profileId) ||
+      (currentAdminProfile?.id === profileId ? currentAdminProfile : null);
+
+    const displayName = profile?.full_name?.trim() || profile?.email?.trim();
+    if (displayName) return displayName;
+    if (profileId === currentAdminUserId) return "You";
+    return "Unknown user";
   }
 
   function renderAdminNavigation() {
@@ -10866,8 +10881,8 @@ This removes its linked members and deletes the grounds account.`
                         urgencyLower.includes("urgent") ||
                         urgencyLower.includes("critical");
 
-                      const flaggedByName = profiles.find((profile) => profile.id === flag.flagged_by_profile_id)?.full_name;
-                      const resolvedByName = profiles.find((profile) => profile.id === flag.resolved_by_profile_id)?.full_name;
+                      const flaggedByName = getProfileDisplayName(flag.flagged_by_profile_id);
+                      const resolvedByName = getProfileDisplayName(flag.resolved_by_profile_id);
                       const labelKeys = Object.keys(flag).filter(
                         (key) =>
                           ![
@@ -10979,10 +10994,10 @@ This removes its linked members and deletes the grounds account.`
                                   <div>{formatDateTime(flag.flagged_at || flag.created_at)}</div>
                                 </div>
 
-                                {flaggedByName || flag.flagged_by_profile_id ? (
+                                {flaggedByName ? (
                                   <div>
                                     <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Flagged by</div>
-                                    <div>{flaggedByName || flag.flagged_by_profile_id}</div>
+                                    <div>{flaggedByName}</div>
                                   </div>
                                 ) : null}
 
@@ -10993,10 +11008,10 @@ This removes its linked members and deletes the grounds account.`
                                   </div>
                                 ) : null}
 
-                                {resolvedByName || flag.resolved_by_profile_id ? (
+                                {resolvedByName ? (
                                   <div>
                                     <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Resolved by</div>
-                                    <div>{resolvedByName || flag.resolved_by_profile_id}</div>
+                                    <div>{resolvedByName}</div>
                                   </div>
                                 ) : null}
                               </div>
@@ -11074,8 +11089,8 @@ This removes its linked members and deletes the grounds account.`
                       {resolvedMaintenanceFlags.map((flag) => {
                         const state = String(getMaintenanceFlagState(flag) || "resolved");
                         const urgency = String(flag.urgency || flag.priority || flag.severity || "normal");
-                        const flaggedByName = profiles.find((profile) => profile.id === flag.flagged_by_profile_id)?.full_name;
-                        const resolvedByName = profiles.find((profile) => profile.id === flag.resolved_by_profile_id)?.full_name;
+                        const flaggedByName = getProfileDisplayName(flag.flagged_by_profile_id);
+                        const resolvedByName = getProfileDisplayName(flag.resolved_by_profile_id);
                         const labelKeys = Object.keys(flag).filter(
                           (key) =>
                             ![
@@ -11129,10 +11144,10 @@ This removes its linked members and deletes the grounds account.`
                                     <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Flagged</div>
                                     <div>{formatDateTime(flag.flagged_at || flag.created_at)}</div>
                                   </div>
-                                  {flaggedByName || flag.flagged_by_profile_id ? (
+                                  {flaggedByName ? (
                                     <div>
                                       <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Flagged by</div>
-                                      <div>{flaggedByName || flag.flagged_by_profile_id}</div>
+                                      <div>{flaggedByName}</div>
                                     </div>
                                   ) : null}
                                   {flag.resolved_at ? (
@@ -11141,10 +11156,10 @@ This removes its linked members and deletes the grounds account.`
                                       <div>{formatDateTime(flag.resolved_at)}</div>
                                     </div>
                                   ) : null}
-                                  {resolvedByName || flag.resolved_by_profile_id ? (
+                                  {resolvedByName ? (
                                     <div>
                                       <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Resolved by</div>
-                                      <div>{resolvedByName || flag.resolved_by_profile_id}</div>
+                                      <div>{resolvedByName}</div>
                                     </div>
                                   ) : null}
                                 </div>
