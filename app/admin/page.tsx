@@ -2784,10 +2784,21 @@ export default function AdminPage() {
     const bookingEventsSaved = Number(totals.booking_events_saved ?? 0);
     const removedMissingFuture = Number(totals.removed_missing_future ?? 0);
     const errors = Number(totals.errors ?? 0);
+    const results = Array.isArray(payload?.results) ? payload.results : [];
+    const resultIssueSummaries = results
+      .map((result: any) => {
+        const resultErrors = Array.isArray(result?.errors) ? result.errors : [];
+        if (resultErrors.length === 0) return "";
+        const propertyName = result?.property_name || "Unknown property";
+        const source = result?.source || "calendar";
+        const firstError = String(resultErrors[0] || "Unknown issue").replace(/\s+/g, " ");
+        return `${propertyName} / ${source}: ${resultErrors.length} issue${resultErrors.length === 1 ? "" : "s"} (${firstError.slice(0, 140)}${firstError.length > 140 ? "..." : ""})`;
+      })
+      .filter(Boolean);
 
     const propertySummaries =
-      Array.isArray(payload?.results)
-        ? payload.results
+      results.length > 0
+        ? results
           .map((result: any) => {
             const propertyName = result?.property_name || "Unknown property";
             const source = result?.source || "calendar";
@@ -2795,10 +2806,10 @@ export default function AdminPage() {
             const resultBookingEvents = Number(result?.booking_events_saved ?? 0);
             const resultRemovedMissingFuture = Number(result?.removed_missing_future ?? 0);
             const resultErrors = Array.isArray(result?.errors) ? result.errors.length : 0;
-            const createdDates = Array.isArray(result?.created_dates) ? result.created_dates.slice(0, 3).join(", ") : "";
-            const existingDates = Array.isArray(result?.existing_dates) ? result.existing_dates.slice(0, 3).join(", ") : "";
-            return `${propertyName} / ${source}: ${resultCreated} created${createdDates ? ` (${createdDates})` : ""}, ${resultBookingEvents} booking event${resultBookingEvents === 1 ? "" : "s"} saved, ${resultRemovedMissingFuture} missing future event${resultRemovedMissingFuture === 1 ? "" : "s"} removed${existingDates ? `, existing on ${existingDates}` : ""}${resultErrors > 0 ? `, ${resultErrors} error${resultErrors === 1 ? "" : "s"}` : ""}`;
+            if (resultCreated === 0 && resultBookingEvents === 0 && resultRemovedMissingFuture === 0 && resultErrors === 0) return "";
+            return `${propertyName} / ${source}: ${resultCreated} created, ${resultBookingEvents} booking saved, ${resultRemovedMissingFuture} removed${resultErrors > 0 ? `, ${resultErrors} issue${resultErrors === 1 ? "" : "s"}` : ""}`;
           })
+          .filter(Boolean)
           .slice(0, 4)
           .join(" | ")
         : "";
@@ -2807,22 +2818,20 @@ export default function AdminPage() {
       return "Calendar sync finished, but no active calendar feeds were found. Add an iCal URL to the property, save calendars, then sync again.";
     }
 
-    const parts = [
-      `Calendar sync finished: ${calendarsFound} active feed${calendarsFound === 1 ? "" : "s"}`,
-      `${created} job${created === 1 ? "" : "s"} created`,
-      `${skippedExisting} existing skipped`,
-      `${skippedPast} past skipped`,
-      `${skippedNonBooking} blocked/non-booking skipped`,
-      `${bookingEventsSaved} booking history event${bookingEventsSaved === 1 ? "" : "s"} saved`,
-      `${removedMissingFuture} missing future booking event${removedMissingFuture === 1 ? "" : "s"} removed`,
-    ];
-
-    if (errors > 0) {
-      parts.push(`${errors} error${errors === 1 ? "" : "s"}`);
-    }
+    const parts = [`Calendar sync finished${errors > 0 ? " with issues" : ""}: ${calendarsFound} active feed${calendarsFound === 1 ? "" : "s"}`];
+    parts.push(`${created} job${created === 1 ? "" : "s"} created`);
+    parts.push(`${skippedExisting} existing, ${skippedPast} past, ${skippedNonBooking} blocked/non-booking skipped`);
+    parts.push(`${bookingEventsSaved} booking history saved, ${removedMissingFuture} missing future removed`);
 
     if (propertySummaries) {
       parts.push(propertySummaries);
+    }
+
+    if (errors > 0) {
+      parts.push(`${errors} issue${errors === 1 ? "" : "s"} found`);
+      if (resultIssueSummaries.length > 0) {
+        parts.push(`First issue: ${resultIssueSummaries[0]}`);
+      }
     }
 
     return `${parts.join(". ")}.`;
