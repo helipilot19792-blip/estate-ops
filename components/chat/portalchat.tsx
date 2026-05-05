@@ -209,16 +209,42 @@ export default function PortalChat({
 
   const ownProfileId = participantType === "profile" ? participantProfileId : participantOwnerProfileId || authProfileId;
 
-  function getConversationTitle(conversation: ChatConversationRow) {
-    if (conversation.subject?.trim()) return conversation.subject.trim();
-    const otherParticipant = participants.find((row) => {
+  function getOtherParticipants(conversation: ChatConversationRow) {
+    return participants.filter((row) => {
       if (row.conversation_id !== conversation.id) return false;
       if (participantType === "profile") return row.participant_profile_id !== participantProfileId;
       if (participantType === "owner") return row.participant_owner_account_id !== participantOwnerAccountId;
       return true;
     });
+  }
 
-    return otherParticipant?.display_name || otherParticipant?.email || "Property management";
+  function getParticipantLabel(row: ChatParticipantRow | undefined) {
+    return row?.display_name || row?.email || row?.participant_role || "Participant";
+  }
+
+  function getParticipantRoleLabel(row: ChatParticipantRow | undefined) {
+    if (!row) return "participant";
+    if (row.participant_type === "owner" || row.participant_role === "owner") return "owner";
+    if (row.participant_role === "grounds") return "grounds";
+    if (row.participant_role === "cleaner") return "cleaner";
+    if (row.participant_role === "admin") return "admin";
+    return row.participant_role || row.participant_type || "participant";
+  }
+
+  function getParticipantSummary(row: ChatParticipantRow | undefined) {
+    if (!row) return "Property management";
+    return `${getParticipantLabel(row)} (${getParticipantRoleLabel(row)})`;
+  }
+
+  function getConversationOtherSummary(conversation: ChatConversationRow) {
+    const others = getOtherParticipants(conversation);
+    if (others.length === 0) return "Property management";
+    return others.map((row) => getParticipantSummary(row)).join(" | ");
+  }
+
+  function getConversationTitle(conversation: ChatConversationRow) {
+    if (conversation.subject?.trim()) return conversation.subject.trim();
+    return getParticipantLabel(getOtherParticipants(conversation)[0]);
   }
 
   function getSenderLabel(message: ChatMessageRow) {
@@ -297,6 +323,7 @@ export default function PortalChat({
             {conversations.length > 0 ? (
               conversations.map((conversation) => {
                 const selected = conversation.id === activeConversationId;
+                const otherSummary = getConversationOtherSummary(conversation);
                 const lastMessage = messages
                   .filter((message) => message.conversation_id === conversation.id)
                   .at(-1);
@@ -313,6 +340,9 @@ export default function PortalChat({
                     }`}
                   >
                     <div className="truncate text-sm font-semibold">{getConversationTitle(conversation)}</div>
+                    <div className="mt-1 text-xs font-medium text-[#f1d9a5]">
+                      With: {otherSummary}
+                    </div>
                     <div className="mt-1 line-clamp-2 text-xs text-[#ccb99a]">
                       {lastMessage?.body || "No replies yet"}
                     </div>
@@ -336,9 +366,10 @@ export default function PortalChat({
               <div className="border-b border-white/8 pb-4">
                 <h3 className="text-lg font-semibold">{getConversationTitle(selectedConversation)}</h3>
                 <div className="mt-1 text-sm text-[#ccb99a]">
-                  {selectedParticipants
-                    .map((row) => row.display_name || row.email || row.participant_role || "Participant")
-                    .join(" | ")}
+                  With: {getConversationOtherSummary(selectedConversation)}
+                </div>
+                <div className="mt-1 text-xs text-[#9e8f78]">
+                  All participants: {selectedParticipants.map((row) => getParticipantSummary(row)).join(" | ")}
                 </div>
               </div>
 

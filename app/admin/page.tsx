@@ -5158,6 +5158,7 @@ This removes its linked members and deletes the grounds account.`
                   {chatConversations.length > 0 ? (
                     chatConversations.map((conversation) => {
                       const selected = activeConversationId === conversation.id;
+                      const recipientSummary = getChatConversationRecipientSummary(conversation);
                       const lastMessage = chatMessages
                         .filter((message) => message.conversation_id === conversation.id)
                         .at(-1);
@@ -5174,6 +5175,9 @@ This removes its linked members and deletes the grounds account.`
                           }`}
                         >
                           <div className="text-sm font-semibold">{getChatConversationTitle(conversation)}</div>
+                          <div className={`mt-1 text-xs font-medium ${selected ? "text-[#f5e9d8]" : "text-[#5f5144]"}`}>
+                            With: {recipientSummary}
+                          </div>
                           <div className={`mt-1 line-clamp-2 text-xs ${selected ? "text-[#eadfce]" : "text-[#7f7263]"}`}>
                             {lastMessage?.body || "No chat yet"}
                           </div>
@@ -5201,9 +5205,10 @@ This removes its linked members and deletes the grounds account.`
                     <div>
                       <h3 className="text-lg font-semibold text-[#241c15]">{getChatConversationTitle(selectedConversation)}</h3>
                       <div className="mt-1 text-sm text-[#7f7263]">
-                        {selectedConversationParticipants
-                          .map((participant) => getChatParticipantLabel(participant))
-                          .join(" | ")}
+                        With: {getChatConversationRecipientSummary(selectedConversation)}
+                      </div>
+                      <div className="mt-1 text-xs text-[#8a7b68]">
+                        All participants: {selectedConversationParticipants.map((participant) => getChatParticipantSummary(participant)).join(" | ")}
                       </div>
                     </div>
                     <span className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-semibold text-[#6f6255]">
@@ -5458,13 +5463,36 @@ This removes its linked members and deletes the grounds account.`
     return participant.display_name || participant.email || participant.participant_role || "Participant";
   }
 
-  function getChatConversationTitle(conversation: ChatConversationRow) {
-    if (conversation.subject?.trim()) return conversation.subject.trim();
-    const otherParticipant = chatParticipants.find(
+  function getChatOtherParticipants(conversation: ChatConversationRow) {
+    return chatParticipants.filter(
       (participant) =>
         participant.conversation_id === conversation.id &&
         participant.participant_profile_id !== currentAdminUserId
     );
+  }
+
+  function getChatParticipantRoleLabel(participant: ChatParticipantRow) {
+    if (participant.participant_type === "owner" || participant.participant_role === "owner") return "owner";
+    if (participant.participant_role === "grounds") return "grounds";
+    if (participant.participant_role === "cleaner") return "cleaner";
+    if (participant.participant_role === "admin") return "admin";
+    return participant.participant_role || participant.participant_type || "participant";
+  }
+
+  function getChatParticipantSummary(participant: ChatParticipantRow | undefined) {
+    if (!participant) return "Participant";
+    return `${getChatParticipantLabel(participant)} (${getChatParticipantRoleLabel(participant)})`;
+  }
+
+  function getChatConversationRecipientSummary(conversation: ChatConversationRow) {
+    const others = getChatOtherParticipants(conversation);
+    if (others.length === 0) return "No recipient listed";
+    return others.map((participant) => getChatParticipantSummary(participant)).join(" | ");
+  }
+
+  function getChatConversationTitle(conversation: ChatConversationRow) {
+    if (conversation.subject?.trim()) return conversation.subject.trim();
+    const otherParticipant = getChatOtherParticipants(conversation)[0];
     return getChatParticipantLabel(otherParticipant);
   }
 
