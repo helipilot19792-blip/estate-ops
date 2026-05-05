@@ -813,7 +813,7 @@ export default function AdminPage() {
   const [chatMessageBody, setChatMessageBody] = useState("");
   const [chatReplyBody, setChatReplyBody] = useState("");
   const [chatRealtimeReady, setChatRealtimeReady] = useState(false);
-  const chatThreadEndRef = useRef<HTMLDivElement | null>(null);
+  const chatThreadScrollRef = useRef<HTMLDivElement | null>(null);
   const [invoiceOwnerId, setInvoiceOwnerId] = useState("");
   const [invoicePropertyId, setInvoicePropertyId] = useState("");
   const [invoiceIssueDate, setInvoiceIssueDate] = useState(() => getTodayYmd());
@@ -1677,7 +1677,9 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (activeSection !== "chat") return;
-    chatThreadEndRef.current?.scrollIntoView({ block: "end" });
+    const thread = chatThreadScrollRef.current;
+    if (!thread) return;
+    thread.scrollTop = thread.scrollHeight;
   }, [activeSection, selectedChatConversationId, chatMessages.length]);
 
   function handleSopFilesChange(e: ChangeEvent<HTMLInputElement>) {
@@ -5001,6 +5003,25 @@ This removes its linked members and deletes the grounds account.`
     return "";
   }
 
+  function getChatConversationUnreadCount(conversationId: string) {
+    if (!currentAdminUserId) return 0;
+
+    const myParticipant = chatParticipants.find(
+      (participant) =>
+        participant.conversation_id === conversationId &&
+        participant.participant_profile_id === currentAdminUserId
+    );
+    const lastReadAt = myParticipant?.last_read_at ? new Date(myParticipant.last_read_at).getTime() : 0;
+    if (Number.isNaN(lastReadAt)) return 0;
+
+    return chatMessages.filter((message) => {
+      if (message.conversation_id !== conversationId) return false;
+      if (message.sender_profile_id === currentAdminUserId) return false;
+      const createdAt = message.created_at ? new Date(message.created_at).getTime() : 0;
+      return createdAt > lastReadAt;
+    }).length;
+  }
+
   function selectAdminSection(section: AdminSection) {
     setActiveSection(section);
     setShowAdminNav(false);
@@ -5527,6 +5548,7 @@ This removes its linked members and deletes the grounds account.`
                     chatConversations.map((conversation) => {
                       const selected = activeConversationId === conversation.id;
                       const recipientSummary = getChatConversationRecipientSummary(conversation);
+                      const conversationUnreadCount = getChatConversationUnreadCount(conversation.id);
                       const lastMessage = chatMessages
                         .filter((message) => message.conversation_id === conversation.id)
                         .at(-1);
@@ -5539,10 +5561,23 @@ This removes its linked members and deletes the grounds account.`
                           className={`w-full rounded-[18px] border px-3 py-3 text-left transition ${
                             selected
                               ? "border-[#241c15] bg-[#241c15] text-[#f8f2e8]"
+                              : conversationUnreadCount > 0
+                                ? "border-[#a5f3fc] bg-[#ecfeff] text-[#0e7490] shadow-[0_10px_22px_rgba(6,182,212,0.10)]"
                               : "border-[#eadfce] bg-[#fcfaf7] text-[#241c15] hover:bg-white"
                           }`}
                         >
-                          <div className="text-sm font-semibold">{getChatConversationTitle(conversation)}</div>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="text-sm font-semibold">{getChatConversationTitle(conversation)}</div>
+                            {conversationUnreadCount > 0 ? (
+                              <span
+                                className={`rounded-full px-2 py-1 text-[11px] font-bold leading-none ${
+                                  selected ? "bg-[#f8f2e8] text-[#241c15]" : "bg-[#0891b2] text-white"
+                                }`}
+                              >
+                                {conversationUnreadCount > 99 ? "99+" : conversationUnreadCount} new
+                              </span>
+                            ) : null}
+                          </div>
                           <div className={`mt-1 text-xs font-medium ${selected ? "text-[#f5e9d8]" : "text-[#5f5144]"}`}>
                             With: {recipientSummary}
                           </div>
@@ -5584,7 +5619,7 @@ This removes its linked members and deletes the grounds account.`
                     </span>
                   </div>
 
-                  <div className="mt-4 max-h-[440px] space-y-3 overflow-y-auto pr-1">
+                  <div ref={chatThreadScrollRef} className="mt-4 max-h-[440px] space-y-3 overflow-y-auto pr-1">
                     {selectedConversationMessages.length > 0 ? (
                       selectedConversationMessages.map((message) => {
                         const isMine = message.sender_profile_id === currentAdminUserId;
@@ -5613,7 +5648,6 @@ This removes its linked members and deletes the grounds account.`
                         No chat replies in this conversation yet.
                       </div>
                     )}
-                    <div ref={chatThreadEndRef} />
                   </div>
 
                   <div className="mt-4 grid gap-3">
