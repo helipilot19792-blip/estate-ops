@@ -311,6 +311,7 @@ type AdminSection =
   | "jobs"
   | "calendar"
   | "maintenance"
+  | "invites"
   | "invoices";
 type PropertyEntryMode = "manual" | "airbnb";
 type PropertySetupTab = "overview" | "access" | "calendars" | "sops";
@@ -4587,15 +4588,6 @@ This removes its linked members and deletes the grounds account.`
       onClick: () => void;
     }> = [];
 
-    if (recentlyAcceptedInvites.length > 0) {
-      alerts.push({
-        key: "accepted-invites",
-        label: `${recentlyAcceptedInvites.length} recent accepted invite${recentlyAcceptedInvites.length === 1 ? "" : "s"}`,
-        tone: "green",
-        onClick: () => setActiveSection("users"),
-      });
-    }
-
     if (waitingJobs.length > 0) {
       alerts.push({
         key: "waiting",
@@ -4652,7 +4644,7 @@ This removes its linked members and deletes the grounds account.`
     }
 
     return alerts;
-  }, [recentlyAcceptedInvites.length, waitingJobs.length, overdueWaitingJobs.length, strandedJobs.length, maintenanceFlagCounts.open, maintenanceFlagCounts.urgent]);
+  }, [waitingJobs.length, overdueWaitingJobs.length, strandedJobs.length, maintenanceFlagCounts.open, maintenanceFlagCounts.urgent]);
 
   function selectAdminCalendarDate(dateYmd: string) {
     setAdminSelectedDate(dateYmd);
@@ -4690,6 +4682,7 @@ This removes its linked members and deletes the grounds account.`
     { key: "properties", label: "Properties" },
     { key: "cleanerAccounts", label: "Cleaner Accounts" },
     { key: "groundsAccounts", label: "Grounds Accounts" },
+    { key: "invites", label: "Invites" },
     { key: "users", label: "Users" },
     { key: "maintenance", label: "Maintenance Flags" },
   ];
@@ -4929,6 +4922,67 @@ This removes its linked members and deletes the grounds account.`
       </div>
     );
   }
+  function renderInvitesSection() {
+    return (
+      <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-4 shadow-[0_18px_45px_rgba(0,0,0,0.05)] md:p-5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8a7b68]">Team access</p>
+            <h2 className="mt-2 text-xl font-semibold tracking-tight text-[#241c15]">Invitation status</h2>
+            <p className="mt-1 text-sm text-[#7f7263]">
+              Track who has been invited, who has accepted, and revoke cleaner or grounds invites that should no longer work.
+            </p>
+          </div>
+          <span className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-semibold text-[#6f6255]">
+            {invitationStatusRows.length} invite{invitationStatusRows.length === 1 ? "" : "s"} tracked
+          </span>
+        </div>
+
+        <div className="mt-5 grid gap-3 lg:grid-cols-2">
+          {invitationStatusRows.length > 0 ? (
+            invitationStatusRows.map((invite) => (
+              <div key={invite.id} className="rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-semibold text-[#241c15]">{invite.name}</span>
+                      <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${getInviteStatusTone(invite.status)}`}>
+                        {formatInviteStatus(invite.status)}
+                      </span>
+                      <span className="rounded-full border border-[#d8c7ab] bg-white px-2.5 py-0.5 text-[11px] font-semibold capitalize text-[#6f6255]">
+                        {invite.role}
+                      </span>
+                    </div>
+                    <div className="mt-1 break-all text-sm text-[#7f7263]">{invite.email}</div>
+                    <div className="mt-2 grid gap-1 text-xs text-[#7f7263]">
+                      {invite.sentAt ? <div>Sent: {formatDateTime(invite.sentAt)}</div> : null}
+                      {invite.acceptedAt ? <div>Accepted: {formatDateTime(invite.acceptedAt)}</div> : null}
+                      {invite.expiresAt && invite.status !== "accepted" ? <div>Expires: {formatDateTime(invite.expiresAt)}</div> : null}
+                    </div>
+                  </div>
+                  {invite.kind === "team" && invite.canRevoke ? (
+                    <button
+                      type="button"
+                      onClick={() => void deleteOrganizationInvite(invite.sourceId)}
+                      disabled={deletingOrganizationInviteId === invite.sourceId}
+                      className="shrink-0 rounded-full border border-[#efc6c6] bg-[#fff5f5] px-4 py-2 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-60"
+                    >
+                      {deletingOrganizationInviteId === invite.sourceId ? "Revoking..." : "Revoke invite"}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="rounded-[18px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-4 py-5 text-sm text-[#7f7263]">
+              No invitations have been sent yet.
+            </div>
+          )}
+        </div>
+      </section>
+    );
+  }
+
   function renderUsersSection() {
     return (
       <div className="rounded-[30px] border border-[#e7ddd0] bg-white p-4 md:p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
@@ -4943,53 +4997,13 @@ This removes its linked members and deletes the grounds account.`
           <div className="mt-3 rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3 text-sm text-[#6f6255]">
             <span className="font-semibold text-[#241c15]">How access works:</span> Users are linked to Cleaner and/or Grounds teams. Properties are assigned to those teams.
           </div>
-          <div className="mt-3 rounded-[18px] border border-[#d8c7ab] bg-white px-4 py-3">
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-sm font-semibold text-[#241c15]">Invitation status</div>
-              <div className="text-xs text-[#7f7263]">
-                {invitationStatusRows.length} invite{invitationStatusRows.length === 1 ? "" : "s"} tracked
-              </div>
-            </div>
-            <div className="mt-3 grid gap-2 lg:grid-cols-2">
-              {invitationStatusRows.length > 0 ? (
-                invitationStatusRows.slice(0, 12).map((invite) => (
-                  <div key={invite.id} className="rounded-[16px] border border-[#eadfce] bg-[#fcfaf7] px-3 py-3">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-semibold text-[#241c15]">{invite.name}</span>
-                          <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${getInviteStatusTone(invite.status)}`}>
-                            {formatInviteStatus(invite.status)}
-                          </span>
-                        </div>
-                        <div className="mt-1 break-all text-xs text-[#7f7263]">{invite.email}</div>
-                        <div className="mt-1 text-xs text-[#7f7263]">
-                          Role: {invite.role}
-                          {invite.sentAt ? ` | Sent ${formatDateTime(invite.sentAt)}` : ""}
-                          {invite.acceptedAt ? ` | Accepted ${formatDateTime(invite.acceptedAt)}` : ""}
-                          {invite.expiresAt && invite.status !== "accepted" ? ` | Expires ${formatDateTime(invite.expiresAt)}` : ""}
-                        </div>
-                      </div>
-                      {invite.kind === "team" && invite.canRevoke ? (
-                        <button
-                          type="button"
-                          onClick={() => void deleteOrganizationInvite(invite.sourceId)}
-                          disabled={deletingOrganizationInviteId === invite.sourceId}
-                          className="shrink-0 rounded-full border border-[#efc6c6] bg-[#fff5f5] px-3 py-1.5 text-xs font-medium text-[#8a2e22] disabled:opacity-60"
-                        >
-                          {deletingOrganizationInviteId === invite.sourceId ? "Revoking..." : "Revoke"}
-                        </button>
-                      ) : null}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="rounded-[16px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-3 py-4 text-sm text-[#7f7263]">
-                  No invitations have been sent yet.
-                </div>
-              )}
-            </div>
-          </div>
+          <button
+            type="button"
+            onClick={() => setActiveSection("invites")}
+            className="mt-3 rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#fcfaf7]"
+          >
+            View invitation status
+          </button>
         </div>
         <div className="space-y-3">
           {profiles.map((profile) => {
@@ -10226,6 +10240,8 @@ This removes its linked members and deletes the grounds account.`
         return renderCleanerAccountsSection();
       case "groundsAccounts":
         return renderGroundsAccountsSection();
+      case "invites":
+        return renderInvitesSection();
       case "assignments":
         return renderAssignmentsSection();
       case "jobs":
