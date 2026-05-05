@@ -5706,7 +5706,12 @@ This removes its linked members and deletes the grounds account.`
   }
 
   async function sendChatReply() {
-    if (!currentOrganizationId || !currentAdminUserId || !selectedChatConversationId) {
+    const activeConversation =
+      chatConversations.find((conversation) => conversation.id === selectedChatConversationId) ||
+      chatConversations[0] ||
+      null;
+
+    if (!currentOrganizationId || !currentAdminUserId || !activeConversation) {
       setError("Choose a conversation before sending a reply.");
       return;
     }
@@ -5724,7 +5729,7 @@ This removes its linked members and deletes the grounds account.`
     try {
       const { error: messageError } = await supabase.from("chat_messages").insert({
         organization_id: currentOrganizationId,
-        conversation_id: selectedChatConversationId,
+        conversation_id: activeConversation.id,
         sender_profile_id: currentAdminUserId,
         body,
       });
