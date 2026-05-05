@@ -312,6 +312,7 @@ type AdminSection =
   | "calendar"
   | "maintenance"
   | "invites"
+  | "messages"
   | "invoices";
 type PropertyEntryMode = "manual" | "airbnb";
 type PropertySetupTab = "overview" | "access" | "calendars" | "sops";
@@ -345,6 +346,39 @@ type OrganizationInviteRow = {
   accepted_at?: string | null;
   expires_at?: string | null;
   created_at?: string | null;
+};
+type ChatConversationRow = {
+  id: string;
+  organization_id: string;
+  subject: string | null;
+  context_type: string;
+  context_id?: string | null;
+  created_by_profile_id?: string | null;
+  last_message_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+type ChatParticipantRow = {
+  id: string;
+  organization_id: string;
+  conversation_id: string;
+  participant_type: "profile" | "owner";
+  participant_profile_id?: string | null;
+  participant_owner_account_id?: string | null;
+  participant_role?: string | null;
+  display_name?: string | null;
+  email?: string | null;
+  last_read_at?: string | null;
+  created_at?: string | null;
+};
+type ChatMessageRow = {
+  id: string;
+  organization_id: string;
+  conversation_id: string;
+  sender_profile_id: string | null;
+  body: string;
+  created_at?: string | null;
+  updated_at?: string | null;
 };
 type InvoiceSettingsRow = {
   organization_id: string;
@@ -725,6 +759,9 @@ export default function AdminPage() {
   const [invoiceSettings, setInvoiceSettings] = useState<InvoiceSettingsRow | null>(null);
   const [propertyInvoiceRates, setPropertyInvoiceRates] = useState<PropertyInvoiceRateRow[]>([]);
   const [ownerInvoices, setOwnerInvoices] = useState<OwnerInvoiceRow[]>([]);
+  const [chatConversations, setChatConversations] = useState<ChatConversationRow[]>([]);
+  const [chatParticipants, setChatParticipants] = useState<ChatParticipantRow[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessageRow[]>([]);
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
 
   const [error, setError] = useState("");
@@ -764,6 +801,13 @@ export default function AdminPage() {
   const [uploadingExternalInvoice, setUploadingExternalInvoice] = useState(false);
   const [sendingInvoiceId, setSendingInvoiceId] = useState<string | null>(null);
   const [updatingInvoiceStatusId, setUpdatingInvoiceStatusId] = useState<string | null>(null);
+  const [creatingChatConversation, setCreatingChatConversation] = useState(false);
+  const [sendingChatMessage, setSendingChatMessage] = useState(false);
+  const [selectedChatConversationId, setSelectedChatConversationId] = useState("");
+  const [chatRecipientTarget, setChatRecipientTarget] = useState("");
+  const [chatSubject, setChatSubject] = useState("");
+  const [chatMessageBody, setChatMessageBody] = useState("");
+  const [chatReplyBody, setChatReplyBody] = useState("");
   const [invoiceOwnerId, setInvoiceOwnerId] = useState("");
   const [invoicePropertyId, setInvoicePropertyId] = useState("");
   const [invoiceIssueDate, setInvoiceIssueDate] = useState(() => getTodayYmd());
@@ -1317,6 +1361,9 @@ export default function AdminPage() {
       invoiceSettingsRes,
       propertyInvoiceRatesRes,
       ownerInvoicesRes,
+      chatConversationsRes,
+      chatParticipantsRes,
+      chatMessagesRes,
     ] = await Promise.all([
       supabase
         .from("properties")
@@ -1398,7 +1445,6 @@ export default function AdminPage() {
         .select("*")
         .eq("organization_id", currentOrganizationId)
         .in("role", ["cleaner", "grounds"])
-        .in("status", ["pending", "sent"])
         .order("created_at", { ascending: false }),
       supabase
         .from("organization_invoice_settings")
@@ -1415,6 +1461,21 @@ export default function AdminPage() {
         .select("*")
         .eq("organization_id", currentOrganizationId)
         .order("created_at", { ascending: false }),
+      supabase
+        .from("chat_conversations")
+        .select("*")
+        .eq("organization_id", currentOrganizationId)
+        .order("updated_at", { ascending: false }),
+      supabase
+        .from("chat_participants")
+        .select("*")
+        .eq("organization_id", currentOrganizationId)
+        .order("created_at", { ascending: true }),
+      supabase
+        .from("chat_messages")
+        .select("*")
+        .eq("organization_id", currentOrganizationId)
+        .order("created_at", { ascending: true }),
     ]);
 
     const responses = [
@@ -1445,13 +1506,19 @@ export default function AdminPage() {
       invoiceSettingsRes,
       propertyInvoiceRatesRes,
       ownerInvoicesRes,
+      chatConversationsRes,
+      chatParticipantsRes,
+      chatMessagesRes,
     ];
 
     for (const response of responses) {
       if (
         response.error &&
         response !== invoiceSettingsRes &&
-        response !== propertyInvoiceRatesRes
+        response !== propertyInvoiceRatesRes &&
+        response !== chatConversationsRes &&
+        response !== chatParticipantsRes &&
+        response !== chatMessagesRes
       ) {
         setError(response.error.message);
         return;
@@ -1503,6 +1570,13 @@ export default function AdminPage() {
       propertyInvoiceRatesRes.error ? [] : ((propertyInvoiceRatesRes.data ?? []) as PropertyInvoiceRateRow[])
     );
     setOwnerInvoices((ownerInvoicesRes.data ?? []) as OwnerInvoiceRow[]);
+    setChatConversations(
+      chatConversationsRes.error ? [] : ((chatConversationsRes.data ?? []) as ChatConversationRow[])
+    );
+    setChatParticipants(
+      chatParticipantsRes.error ? [] : ((chatParticipantsRes.data ?? []) as ChatParticipantRow[])
+    );
+    setChatMessages(chatMessagesRes.error ? [] : ((chatMessagesRes.data ?? []) as ChatMessageRow[]));
 
     setReassignSelections((prev) => {
       const next = { ...prev };
@@ -4685,6 +4759,7 @@ This removes its linked members and deletes the grounds account.`
     { key: "cleanerAccounts", label: "Cleaner Accounts" },
     { key: "groundsAccounts", label: "Grounds Accounts" },
     { key: "invites", label: "Invites" },
+    { key: "messages", label: "Messages" },
     { key: "users", label: "Users" },
     { key: "maintenance", label: "Maintenance Flags" },
   ];
@@ -4985,6 +5060,208 @@ This removes its linked members and deletes the grounds account.`
     );
   }
 
+  function renderMessagesSection() {
+    const chatRecipientOptions = [
+      ...profiles
+        .filter((profile) => profile.id !== currentAdminUserId)
+        .map((profile) => ({
+          value: `profile:${profile.id}`,
+          label: `${profile.full_name || profile.email || "User"} (${profile.role})`,
+          detail: profile.email || "",
+        })),
+      ...ownerAccounts.map((owner) => ({
+        value: `owner:${owner.id}`,
+        label: `${owner.full_name || owner.email} (owner)`,
+        detail: owner.email,
+      })),
+    ];
+    const selectedConversation =
+      chatConversations.find((conversation) => conversation.id === selectedChatConversationId) ||
+      chatConversations[0] ||
+      null;
+    const activeConversationId = selectedConversation?.id || "";
+    const selectedConversationMessages = activeConversationId
+      ? chatMessages.filter((message) => message.conversation_id === activeConversationId)
+      : [];
+    const selectedConversationParticipants = activeConversationId
+      ? chatParticipants.filter((participant) => participant.conversation_id === activeConversationId)
+      : [];
+
+    return (
+      <div className="space-y-6">
+        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8a7b68]">In-app chat</p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#241c15]">Messages</h2>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-[#7f7263]">
+                Start conversations with cleaners, grounds users, owners, or other admins. This first version is in-app only and does not send email alerts.
+              </p>
+            </div>
+            <span className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-semibold text-[#6f6255]">
+              {chatConversations.length} conversation{chatConversations.length === 1 ? "" : "s"}
+            </span>
+          </div>
+
+          <div className="mt-5 grid gap-4 lg:grid-cols-[360px_1fr]">
+            <div className="space-y-4">
+              <div className="rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+                <h3 className="text-base font-semibold text-[#241c15]">Start a conversation</h3>
+                <div className="mt-4 grid gap-3">
+                  <select
+                    className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                    value={chatRecipientTarget}
+                    onChange={(e) => setChatRecipientTarget(e.target.value)}
+                  >
+                    <option value="">Choose recipient</option>
+                    {chatRecipientOptions.map((recipient) => (
+                      <option key={recipient.value} value={recipient.value}>
+                        {recipient.label}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                    placeholder="Subject (optional)"
+                    value={chatSubject}
+                    onChange={(e) => setChatSubject(e.target.value)}
+                  />
+                  <textarea
+                    className="min-h-[120px] rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                    placeholder="Write the first message"
+                    value={chatMessageBody}
+                    onChange={(e) => setChatMessageBody(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void createChatConversation()}
+                    disabled={creatingChatConversation}
+                    className="rounded-full bg-[#241c15] px-4 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60"
+                  >
+                    {creatingChatConversation ? "Starting..." : "Start conversation"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-[24px] border border-[#eadfce] bg-white p-3">
+                <div className="px-1 pb-2 text-sm font-semibold text-[#241c15]">Conversations</div>
+                <div className="space-y-2">
+                  {chatConversations.length > 0 ? (
+                    chatConversations.map((conversation) => {
+                      const selected = activeConversationId === conversation.id;
+                      const lastMessage = chatMessages
+                        .filter((message) => message.conversation_id === conversation.id)
+                        .at(-1);
+
+                      return (
+                        <button
+                          key={conversation.id}
+                          type="button"
+                          onClick={() => setSelectedChatConversationId(conversation.id)}
+                          className={`w-full rounded-[18px] border px-3 py-3 text-left transition ${
+                            selected
+                              ? "border-[#241c15] bg-[#241c15] text-[#f8f2e8]"
+                              : "border-[#eadfce] bg-[#fcfaf7] text-[#241c15] hover:bg-white"
+                          }`}
+                        >
+                          <div className="text-sm font-semibold">{getChatConversationTitle(conversation)}</div>
+                          <div className={`mt-1 line-clamp-2 text-xs ${selected ? "text-[#eadfce]" : "text-[#7f7263]"}`}>
+                            {lastMessage?.body || "No messages yet"}
+                          </div>
+                          <div className={`mt-2 text-[11px] ${selected ? "text-[#d8c7ab]" : "text-[#8a7b68]"}`}>
+                            {conversation.last_message_at || conversation.updated_at || conversation.created_at
+                              ? formatDateTime(conversation.last_message_at || conversation.updated_at || conversation.created_at || "")
+                              : "New"}
+                          </div>
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <div className="rounded-[18px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-3 py-4 text-sm text-[#7f7263]">
+                      No conversations yet. Run the chat SQL, then start the first one.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+              {selectedConversation ? (
+                <>
+                  <div className="flex flex-col gap-2 border-b border-[#eadfce] pb-4 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <h3 className="text-lg font-semibold text-[#241c15]">{getChatConversationTitle(selectedConversation)}</h3>
+                      <div className="mt-1 text-sm text-[#7f7263]">
+                        {selectedConversationParticipants
+                          .map((participant) => getChatParticipantLabel(participant))
+                          .join(" | ")}
+                      </div>
+                    </div>
+                    <span className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-semibold text-[#6f6255]">
+                      In-app only
+                    </span>
+                  </div>
+
+                  <div className="mt-4 max-h-[440px] space-y-3 overflow-y-auto pr-1">
+                    {selectedConversationMessages.length > 0 ? (
+                      selectedConversationMessages.map((message) => {
+                        const isMine = message.sender_profile_id === currentAdminUserId;
+                        const sender = profiles.find((profile) => profile.id === message.sender_profile_id);
+                        return (
+                          <div
+                            key={message.id}
+                            className={`rounded-[18px] border px-4 py-3 ${
+                              isMine
+                                ? "ml-auto max-w-[85%] border-[#d8c7ab] bg-white"
+                                : "mr-auto max-w-[85%] border-[#d4c2ea] bg-[#fbf8ff]"
+                            }`}
+                          >
+                            <div className="text-xs font-semibold text-[#7f7263]">
+                              {isMine ? "You" : sender?.full_name || sender?.email || "Participant"}
+                            </div>
+                            <div className="mt-1 whitespace-pre-wrap text-sm leading-6 text-[#241c15]">{message.body}</div>
+                            <div className="mt-2 text-[11px] text-[#8a7b68]">
+                              {message.created_at ? formatDateTime(message.created_at) : ""}
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="rounded-[18px] border border-dashed border-[#d8c7ab] bg-white px-4 py-5 text-sm text-[#7f7263]">
+                        No messages in this conversation yet.
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-4 grid gap-3">
+                    <textarea
+                      className="min-h-[110px] rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                      placeholder="Write a reply"
+                      value={chatReplyBody}
+                      onChange={(e) => setChatReplyBody(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void sendChatReply()}
+                      disabled={sendingChatMessage}
+                      className="justify-self-end rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60"
+                    >
+                      {sendingChatMessage ? "Sending..." : "Send reply"}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-[20px] border border-dashed border-[#d8c7ab] bg-white px-4 py-8 text-center text-sm text-[#7f7263]">
+                  Choose or start a conversation.
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   function renderUsersSection() {
     return (
       <div className="rounded-[30px] border border-[#e7ddd0] bg-white p-4 md:p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
@@ -5165,6 +5442,160 @@ This removes its linked members and deletes the grounds account.`
     if (status === "expired") return "Expired";
     if (status === "pending") return "Pending";
     return "Sent";
+  }
+
+  function getChatParticipantLabel(participant: ChatParticipantRow | undefined) {
+    if (!participant) return "Conversation";
+    return participant.display_name || participant.email || participant.participant_role || "Participant";
+  }
+
+  function getChatConversationTitle(conversation: ChatConversationRow) {
+    if (conversation.subject?.trim()) return conversation.subject.trim();
+    const otherParticipant = chatParticipants.find(
+      (participant) =>
+        participant.conversation_id === conversation.id &&
+        participant.participant_profile_id !== currentAdminUserId
+    );
+    return getChatParticipantLabel(otherParticipant);
+  }
+
+  async function createChatConversation() {
+    if (!currentOrganizationId || !currentAdminUserId) {
+      setError("No admin organization session was found.");
+      return;
+    }
+
+    const body = chatMessageBody.trim();
+    if (!chatRecipientTarget) {
+      setError("Choose who this message is for.");
+      return;
+    }
+
+    if (!body) {
+      setError("Write a message before starting the conversation.");
+      return;
+    }
+
+    const [targetType, targetId] = chatRecipientTarget.split(":");
+    const targetProfile = targetType === "profile" ? profiles.find((profile) => profile.id === targetId) : null;
+    const targetOwner = targetType === "owner" ? ownerAccounts.find((owner) => owner.id === targetId) : null;
+
+    if (!targetProfile && !targetOwner) {
+      setError("Could not find that message recipient.");
+      return;
+    }
+
+    setCreatingChatConversation(true);
+    setError("");
+    setActionMessage("");
+
+    try {
+      const { data: conversation, error: conversationError } = await supabase
+        .from("chat_conversations")
+        .insert({
+          organization_id: currentOrganizationId,
+          subject: chatSubject.trim() || null,
+          context_type: "direct",
+          created_by_profile_id: currentAdminUserId,
+        })
+        .select()
+        .single();
+
+      if (conversationError) throw conversationError;
+
+      const participants = [
+        {
+          organization_id: currentOrganizationId,
+          conversation_id: conversation.id,
+          participant_type: "profile",
+          participant_profile_id: currentAdminUserId,
+          participant_role: "admin",
+          display_name: profiles.find((profile) => profile.id === currentAdminUserId)?.full_name || "Admin",
+          email: profiles.find((profile) => profile.id === currentAdminUserId)?.email || null,
+          last_read_at: new Date().toISOString(),
+        },
+        targetProfile
+          ? {
+              organization_id: currentOrganizationId,
+              conversation_id: conversation.id,
+              participant_type: "profile",
+              participant_profile_id: targetProfile.id,
+              participant_role: targetProfile.role,
+              display_name: targetProfile.full_name || targetProfile.email,
+              email: targetProfile.email,
+              last_read_at: null,
+            }
+          : {
+              organization_id: currentOrganizationId,
+              conversation_id: conversation.id,
+              participant_type: "owner",
+              participant_owner_account_id: targetOwner?.id,
+              participant_role: "owner",
+              display_name: targetOwner?.full_name || targetOwner?.email,
+              email: targetOwner?.email,
+              last_read_at: null,
+            },
+      ];
+
+      const { error: participantsError } = await supabase.from("chat_participants").insert(participants);
+      if (participantsError) throw participantsError;
+
+      const { error: messageError } = await supabase.from("chat_messages").insert({
+        organization_id: currentOrganizationId,
+        conversation_id: conversation.id,
+        sender_profile_id: currentAdminUserId,
+        body,
+      });
+
+      if (messageError) throw messageError;
+
+      setSelectedChatConversationId(conversation.id);
+      setChatRecipientTarget("");
+      setChatSubject("");
+      setChatMessageBody("");
+      setActionMessage("Conversation started.");
+      await loadData();
+    } catch (err) {
+      setError(getErrorMessage(err, "Could not start conversation. Run the chat foundation SQL if this is the first time using messages."));
+    } finally {
+      setCreatingChatConversation(false);
+    }
+  }
+
+  async function sendChatReply() {
+    if (!currentOrganizationId || !currentAdminUserId || !selectedChatConversationId) {
+      setError("Choose a conversation before sending a reply.");
+      return;
+    }
+
+    const body = chatReplyBody.trim();
+    if (!body) {
+      setError("Write a reply before sending.");
+      return;
+    }
+
+    setSendingChatMessage(true);
+    setError("");
+    setActionMessage("");
+
+    try {
+      const { error: messageError } = await supabase.from("chat_messages").insert({
+        organization_id: currentOrganizationId,
+        conversation_id: selectedChatConversationId,
+        sender_profile_id: currentAdminUserId,
+        body,
+      });
+
+      if (messageError) throw messageError;
+
+      setChatReplyBody("");
+      setActionMessage("Message sent.");
+      await loadData();
+    } catch (err) {
+      setError(getErrorMessage(err, "Could not send message."));
+    } finally {
+      setSendingChatMessage(false);
+    }
   }
 
   async function inviteOwnerForProperty(propertyId: string, ownerEmail: string, ownerName: string) {
@@ -10326,6 +10757,8 @@ This removes its linked members and deletes the grounds account.`
         return renderGroundsAccountsSection();
       case "invites":
         return renderInvitesSection();
+      case "messages":
+        return renderMessagesSection();
       case "assignments":
         return renderAssignmentsSection();
       case "jobs":
