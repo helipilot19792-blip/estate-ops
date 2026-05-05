@@ -4485,6 +4485,7 @@ This removes its linked members and deletes the grounds account.`
 
   function jumpToJobs(type: "waiting" | "stranded") {
     setActiveSection("jobs");
+    setJobWorkflowTab(type === "waiting" ? "active" : "exceptions");
 
     setTimeout(() => {
       document
