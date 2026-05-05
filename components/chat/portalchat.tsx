@@ -98,6 +98,7 @@ export default function PortalChat({
   const [messages, setMessages] = useState<ChatMessageRow[]>([]);
   const [selectedConversationId, setSelectedConversationId] = useState("");
   const [replyBody, setReplyBody] = useState("");
+  const [realtimeReady, setRealtimeReady] = useState(false);
 
   const participantType = participant?.type || "";
   const participantProfileId = participant?.type === "profile" ? participant.profileId : "";
@@ -208,6 +209,112 @@ export default function PortalChat({
   );
 
   const ownProfileId = participantType === "profile" ? participantProfileId : participantOwnerProfileId || authProfileId;
+  const conversationIdsKey = useMemo(
+    () => conversations.map((conversation) => conversation.id).sort().join(","),
+    [conversations]
+  );
+  const unreadCount = useMemo(() => {
+    if (!ownProfileId) return 0;
+
+    return conversations.reduce((total, conversation) => {
+      const myParticipant = participants.find((row) => {
+        if (row.conversation_id !== conversation.id) return false;
+        if (participantType === "profile") return row.participant_profile_id === participantProfileId;
+        if (participantType === "owner") return row.participant_owner_account_id === participantOwnerAccountId;
+        return false;
+      });
+      const lastReadAt = myParticipant?.last_read_at ? new Date(myParticipant.last_read_at).getTime() : 0;
+      if (Number.isNaN(lastReadAt)) return total;
+
+      return (
+        total +
+        messages.filter((message) => {
+          if (message.conversation_id !== conversation.id) return false;
+          if (message.sender_profile_id === ownProfileId) return false;
+          const createdAt = message.created_at ? new Date(message.created_at).getTime() : 0;
+          return createdAt > lastReadAt;
+        }).length
+      );
+    }, 0);
+  }, [conversations, messages, ownProfileId, participantOwnerAccountId, participantProfileId, participantType, participants]);
+
+  async function markConversationRead(conversationId: string) {
+    if (!conversationId || !ownProfileId) return;
+
+    const readAt = new Date().toISOString();
+    setParticipants((current) =>
+      current.map((row) => {
+        if (row.conversation_id !== conversationId) return row;
+        if (participantType === "profile" && row.participant_profile_id === participantProfileId) {
+          return { ...row, last_read_at: readAt };
+        }
+        if (participantType === "owner" && row.participant_owner_account_id === participantOwnerAccountId) {
+          return { ...row, last_read_at: readAt };
+        }
+        return row;
+      })
+    );
+
+    const { error: readError } = await supabase.rpc("mark_chat_conversation_read", {
+      conversation_id_to_mark: conversationId,
+    });
+
+    if (readError) {
+      console.warn("Could not mark chat conversation read", readError);
+    }
+  }
+
+  useEffect(() => {
+    if (conversations.length === 0) {
+      setRealtimeReady(false);
+      return;
+    }
+
+    const conversationIds = new Set(conversations.map((conversation) => conversation.id));
+    const channel = supabase
+      .channel(`portal-chat-realtime-${participantKey || "anonymous"}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "chat_messages",
+        },
+        (payload) => {
+          const incoming = payload.new as ChatMessageRow;
+          if (!conversationIds.has(incoming.conversation_id)) return;
+
+          setMessages((current) =>
+            current.some((message) => message.id === incoming.id) ? current : [...current, incoming]
+          );
+          setConversations((current) =>
+            current.map((conversation) =>
+              conversation.id === incoming.conversation_id
+                ? {
+                    ...conversation,
+                    last_message_at: incoming.created_at,
+                    updated_at: incoming.created_at,
+                  }
+                : conversation
+            )
+          );
+        }
+      )
+      .subscribe((status) => {
+        setRealtimeReady(status === "SUBSCRIBED");
+      });
+
+    return () => {
+      setRealtimeReady(false);
+      void supabase.removeChannel(channel);
+    };
+  }, [conversationIdsKey, participantKey]);
+
+  useEffect(() => {
+    const conversationId = selectedConversationId || conversations[0]?.id || "";
+    if (!conversationId) return;
+    void markConversationRead(conversationId);
+  }, [selectedConversationId, conversations, messages.length]);
 
   function getOtherParticipants(conversation: ChatConversationRow) {
     return participants.filter((row) => {
@@ -295,17 +402,35 @@ export default function PortalChat({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#e7c98a]">Chat</div>
-          <h2 className="mt-2 text-xl font-semibold tracking-tight">{title}</h2>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
+            {unreadCount > 0 ? (
+              <span className="rounded-full bg-[#d3322b] px-2 py-0.5 text-xs font-bold text-white">
+                {unreadCount > 99 ? "99+" : unreadCount}
+              </span>
+            ) : null}
+          </div>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-[#e6d8bf]">{subtitle}</p>
         </div>
-        <button
-          type="button"
-          onClick={() => void loadChat()}
-          disabled={loading}
-          className="rounded-full border border-[#b08b47]/35 bg-[#b08b47]/10 px-4 py-2 text-sm font-semibold text-[#f1d9a5] transition hover:bg-[#b08b47]/16 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {loading ? "Refreshing..." : "Refresh"}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <span
+            className={`rounded-full border px-4 py-2 text-sm font-semibold ${
+              realtimeReady
+                ? "border-emerald-400/30 bg-emerald-950/20 text-emerald-200"
+                : "border-[#b08b47]/35 bg-[#b08b47]/10 text-[#f1d9a5]"
+            }`}
+          >
+            {realtimeReady ? "Live" : "Connecting"}
+          </span>
+          <button
+            type="button"
+            onClick={() => void loadChat()}
+            disabled={loading}
+            className="rounded-full border border-[#b08b47]/35 bg-[#b08b47]/10 px-4 py-2 text-sm font-semibold text-[#f1d9a5] transition hover:bg-[#b08b47]/16 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {loading ? "Refreshing..." : "Refresh"}
+          </button>
+        </div>
       </div>
 
       {error ? (

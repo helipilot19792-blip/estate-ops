@@ -808,6 +808,7 @@ export default function AdminPage() {
   const [chatSubject, setChatSubject] = useState("");
   const [chatMessageBody, setChatMessageBody] = useState("");
   const [chatReplyBody, setChatReplyBody] = useState("");
+  const [chatRealtimeReady, setChatRealtimeReady] = useState(false);
   const [invoiceOwnerId, setInvoiceOwnerId] = useState("");
   const [invoicePropertyId, setInvoicePropertyId] = useState("");
   const [invoiceIssueDate, setInvoiceIssueDate] = useState(() => getTodayYmd());
@@ -1586,6 +1587,75 @@ export default function AdminPage() {
       return next;
     });
   }
+
+  async function markChatConversationRead(conversationId: string) {
+    if (!conversationId || !currentAdminUserId) return;
+
+    const readAt = new Date().toISOString();
+    setChatParticipants((participants) =>
+      participants.map((participant) =>
+        participant.conversation_id === conversationId && participant.participant_profile_id === currentAdminUserId
+          ? { ...participant, last_read_at: readAt }
+          : participant
+      )
+    );
+
+    const { error: readError } = await supabase.rpc("mark_chat_conversation_read", {
+      conversation_id_to_mark: conversationId,
+    });
+
+    if (readError) {
+      console.warn("Could not mark chat conversation read", readError);
+    }
+  }
+
+  useEffect(() => {
+    if (!currentOrganizationId) return;
+
+    const channel = supabase
+      .channel(`admin-chat-realtime-${currentOrganizationId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "chat_messages",
+          filter: `organization_id=eq.${currentOrganizationId}`,
+        },
+        (payload) => {
+          const incoming = payload.new as ChatMessageRow;
+          setChatMessages((current) =>
+            current.some((message) => message.id === incoming.id) ? current : [...current, incoming]
+          );
+          setChatConversations((current) =>
+            current.map((conversation) =>
+              conversation.id === incoming.conversation_id
+                ? {
+                    ...conversation,
+                    last_message_at: incoming.created_at,
+                    updated_at: incoming.created_at,
+                  }
+                : conversation
+            )
+          );
+        }
+      )
+      .subscribe((status) => {
+        setChatRealtimeReady(status === "SUBSCRIBED");
+      });
+
+    return () => {
+      setChatRealtimeReady(false);
+      void supabase.removeChannel(channel);
+    };
+  }, [currentOrganizationId]);
+
+  useEffect(() => {
+    if (activeSection !== "chat") return;
+    const conversationId = selectedChatConversationId || chatConversations[0]?.id || "";
+    if (!conversationId) return;
+    void markChatConversationRead(conversationId);
+  }, [activeSection, selectedChatConversationId, chatConversations, chatMessages.length]);
 
   function handleSopFilesChange(e: ChangeEvent<HTMLInputElement>) {
     setSopFiles(Array.from(e.target.files ?? []));
@@ -4772,6 +4842,31 @@ This removes its linked members and deletes the grounds account.`
     { key: "users", label: "Users" },
     { key: "maintenance", label: "Maintenance Flags" },
   ];
+
+  const unreadChatCount = useMemo(() => {
+    if (!currentAdminUserId) return 0;
+
+    return chatConversations.reduce((total, conversation) => {
+      const myParticipant = chatParticipants.find(
+        (participant) =>
+          participant.conversation_id === conversation.id &&
+          participant.participant_profile_id === currentAdminUserId
+      );
+      const lastReadAt = myParticipant?.last_read_at ? new Date(myParticipant.last_read_at).getTime() : 0;
+      if (Number.isNaN(lastReadAt)) return total;
+
+      return (
+        total +
+        chatMessages.filter((message) => {
+          if (message.conversation_id !== conversation.id) return false;
+          if (message.sender_profile_id === currentAdminUserId) return false;
+          const createdAt = message.created_at ? new Date(message.created_at).getTime() : 0;
+          return createdAt > lastReadAt;
+        }).length
+      );
+    }, 0);
+  }, [chatConversations, chatMessages, chatParticipants, currentAdminUserId]);
+
   function renderHomeSection() {
     return (
       <div className="space-y-6">
@@ -5107,9 +5202,20 @@ This removes its linked members and deletes the grounds account.`
                 Start conversations with cleaners, grounds users, owners, or other admins. This first version is in-app only and does not send email alerts.
               </p>
             </div>
-            <span className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-semibold text-[#6f6255]">
-              {chatConversations.length} conversation{chatConversations.length === 1 ? "" : "s"}
-            </span>
+            <div className="flex flex-wrap gap-2">
+              <span
+                className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                  chatRealtimeReady
+                    ? "border-[#bbdfc0] bg-[#f0fbf2] text-[#236b30]"
+                    : "border-[#d8c7ab] bg-[#fcfaf7] text-[#6f6255]"
+                }`}
+              >
+                {chatRealtimeReady ? "Live" : "Connecting"}
+              </span>
+              <span className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-semibold text-[#6f6255]">
+                {chatConversations.length} conversation{chatConversations.length === 1 ? "" : "s"}
+              </span>
+            </div>
           </div>
 
           <div className="mt-5 grid gap-4 lg:grid-cols-[360px_1fr]">
@@ -11090,12 +11196,23 @@ This removes its linked members and deletes the grounds account.`
               <button
                 key={item.key}
                 onClick={() => setActiveSection(item.key)}
-                className={`rounded-full px-4 py-2 text-sm font-medium transition ${activeSection === item.key
+                className={`relative inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition ${activeSection === item.key
                   ? "bg-[#241c15] text-[#f8f2e8]"
-                  : "border border-[#d8c7ab] bg-[#fcfaf7] text-[#6f6255] hover:bg-white"
+                  : item.key === "chat" && unreadChatCount > 0
+                    ? "border border-[#b48d4e] bg-[#fff8e8] text-[#241c15] shadow-[0_0_0_1px_rgba(180,141,78,0.18)] hover:bg-white"
+                    : "border border-[#d8c7ab] bg-[#fcfaf7] text-[#6f6255] hover:bg-white"
                   }`}
               >
-                {item.label}
+                <span>{item.label}</span>
+                {item.key === "chat" && unreadChatCount > 0 ? (
+                  <span
+                    className={`min-w-5 rounded-full px-1.5 py-0.5 text-center text-[11px] font-bold leading-none ${
+                      activeSection === "chat" ? "bg-[#f8f2e8] text-[#241c15]" : "bg-[#d3322b] text-white"
+                    }`}
+                  >
+                    {unreadChatCount > 99 ? "99+" : unreadChatCount}
+                  </span>
+                ) : null}
               </button>
             ))}
           </div>
