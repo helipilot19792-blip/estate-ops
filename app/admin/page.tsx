@@ -11354,7 +11354,7 @@ This removes its linked members and deletes the grounds account.`
 
   return (
     <main className="min-h-screen bg-[#f7f3ee] text-[#241c15]">
-      <div className="mx-auto grid max-w-7xl gap-6 p-4 pb-[45vh] md:p-6 md:pb-[45vh] lg:grid-cols-[270px_minmax(0,1fr)] lg:items-start">
+      <div className="mx-auto grid w-full max-w-[1800px] gap-4 p-4 pb-[45vh] md:p-6 md:pb-[45vh] lg:grid-cols-[240px_minmax(0,1fr)] lg:items-start xl:grid-cols-[270px_minmax(0,1fr)] 2xl:max-w-[calc(100vw-96px)] 2xl:gap-8">
         <aside className="hidden lg:sticky lg:top-6 lg:block">
           <div className="rounded-[30px] border border-[#e7ddd0] bg-[#fbf8f4] p-4 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
             <div className="mb-5 rounded-[22px] border border-[#eadfce] bg-white px-4 py-4">
@@ -11418,7 +11418,7 @@ This removes its linked members and deletes the grounds account.`
             </div>
           </div>
 
-          <div className="grid gap-3 border-t border-[#efe6dc] bg-[#fbf8f4] px-6 py-4 md:grid-cols-4 lg:grid-cols-8 md:px-8">
+          <div className="grid gap-3 border-t border-[#efe6dc] bg-[#fbf8f4] px-6 py-4 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-8 md:px-8">
             {[
               { label: "Properties", value: properties.length },
               { label: "Cleaner Accounts", value: cleanerAccounts.length },
