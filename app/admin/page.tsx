@@ -323,7 +323,7 @@ type AdminSection =
 type PropertyEntryMode = "manual" | "airbnb";
 type PropertyWorkflowTab = "add" | "setup" | "directory";
 type PropertySetupTab = "overview" | "access" | "calendars" | "sops";
-type JobWorkflowTab = "cleaning" | "grounds" | "active" | "reliability" | "exceptions";
+type JobWorkflowTab = "cleaning" | "grounds" | "active" | "reliability" | "notifications" | "exceptions";
 type InvoiceWorkflowTab = "create" | "running" | "existing" | "defaults" | "history";
 type AdminMenuOrientation = "side" | "top";
 type MyOrganizationRow = {
@@ -940,6 +940,8 @@ export default function AdminPage() {
   const [jobMode, setJobMode] = useState<"single" | "recurring">("single");
   const [recurringType, setRecurringType] = useState("weekly");
   const [jobWorkflowTab, setJobWorkflowTab] = useState<JobWorkflowTab>("active");
+  const [retryingNotificationSlotId, setRetryingNotificationSlotId] = useState<string | null>(null);
+  const [retryingNotificationBatch, setRetryingNotificationBatch] = useState(false);
 
   const [jobPropertyId, setJobPropertyId] = useState("");
   const [jobScheduledFor, setJobScheduledFor] = useState("");
@@ -2558,6 +2560,78 @@ export default function AdminPage() {
       skipped: Number(payload?.skipped ?? 0),
       errors: Array.isArray(payload?.errors) ? payload.errors : [],
     };
+  }
+
+  async function retryJobNotification(kind: "cleaner" | "grounds", slotIds: string[], retryId?: string) {
+    const uniqueSlotIds = [...new Set(slotIds.filter(Boolean))];
+    if (uniqueSlotIds.length === 0) {
+      setError("No pending notification slots were selected.");
+      return;
+    }
+
+    if (retryId) {
+      setRetryingNotificationSlotId(retryId);
+    } else {
+      setRetryingNotificationBatch(true);
+    }
+
+    try {
+      const result = await notifyJobOffers(kind, uniqueSlotIds);
+      if (result.errors.length > 0) {
+        setError(result.errors.join(" "));
+      }
+
+      if (result.sent > 0) {
+        setActionMessage(`${result.sent} ${kind} offer email${result.sent === 1 ? "" : "s"} sent.`);
+      } else if (result.skipped > 0 && result.errors.length === 0) {
+        setActionMessage("No emails were sent because those slots are no longer pending.");
+      }
+
+      await loadData();
+    } finally {
+      setRetryingNotificationSlotId(null);
+      setRetryingNotificationBatch(false);
+    }
+  }
+
+  async function retryAllPendingJobNotifications() {
+    const cleanerSlotIds = failedNotificationRows
+      .filter((row) => row.kindApi === "cleaner")
+      .map((row) => row.slotId);
+    const groundsSlotIds = failedNotificationRows
+      .filter((row) => row.kindApi === "grounds")
+      .map((row) => row.slotId);
+
+    if (cleanerSlotIds.length === 0 && groundsSlotIds.length === 0) {
+      setActionMessage("No pending job offer email notifications need retrying.");
+      return;
+    }
+
+    setRetryingNotificationBatch(true);
+    try {
+      const cleanerResult = cleanerSlotIds.length > 0
+        ? await notifyJobOffers("cleaner", cleanerSlotIds)
+        : { sent: 0, skipped: 0, errors: [] as string[] };
+      const groundsResult = groundsSlotIds.length > 0
+        ? await notifyJobOffers("grounds", groundsSlotIds)
+        : { sent: 0, skipped: 0, errors: [] as string[] };
+      const sent = cleanerResult.sent + groundsResult.sent;
+      const errors = [...cleanerResult.errors, ...groundsResult.errors];
+
+      if (errors.length > 0) {
+        setError(errors.join(" "));
+      }
+
+      setActionMessage(
+        sent > 0
+          ? `${sent} pending job offer email${sent === 1 ? "" : "s"} sent.`
+          : "No pending job offer emails were sent."
+      );
+
+      await loadData();
+    } finally {
+      setRetryingNotificationBatch(false);
+    }
   }
   async function inviteCleanerFromForm() {
     if (!inviteCleanerEmail.trim()) {
@@ -4558,6 +4632,8 @@ This removes its linked members and deletes the grounds account.`
     const rows: Array<{
       id: string;
       kind: "Cleaner" | "Grounds";
+      kindApi: "cleaner" | "grounds";
+      slotId: string;
       propertyName: string;
       accountName: string;
       scheduledFor: string | null | undefined;
@@ -4579,6 +4655,8 @@ This removes its linked members and deletes the grounds account.`
         rows.push({
           id: `cleaner-${slot.id}`,
           kind: "Cleaner",
+          kindApi: "cleaner",
+          slotId: slot.id,
           propertyName: getPropertyName(job.property_id),
           accountName: getCleanerAccountName(slot.cleaner_account_id),
           scheduledFor: job.scheduled_for || extractCheckoutDate(job.notes),
@@ -4602,6 +4680,8 @@ This removes its linked members and deletes the grounds account.`
         rows.push({
           id: `grounds-${slot.id}`,
           kind: "Grounds",
+          kindApi: "grounds",
+          slotId: slot.id,
           propertyName: getPropertyName(job.property_id),
           accountName: getGroundsAccountName(slot.grounds_account_id),
           scheduledFor: job.scheduled_for,
@@ -4645,6 +4725,29 @@ This removes its linked members and deletes the grounds account.`
       acceptedRate: total > 0 ? Math.round((accepted / total) * 100) : 0,
     };
   }, [jobReliabilityRows]);
+
+  const failedNotificationRows = useMemo(
+    () =>
+      jobReliabilityRows.filter(
+        (row) =>
+          row.status === "offered" &&
+          (row.notificationLabel === "Offer email pending" || row.overdue)
+      ),
+    [jobReliabilityRows]
+  );
+
+  const failedNotificationStats = useMemo(() => {
+    const overdue = failedNotificationRows.filter((row) => row.overdue).length;
+    const cleaner = failedNotificationRows.filter((row) => row.kindApi === "cleaner").length;
+    const grounds = failedNotificationRows.filter((row) => row.kindApi === "grounds").length;
+
+    return {
+      total: failedNotificationRows.length,
+      overdue,
+      cleaner,
+      grounds,
+    };
+  }, [failedNotificationRows]);
 
   const recentDeclinedJobs = useMemo(
     () =>
@@ -9589,6 +9692,13 @@ This removes its linked members and deletes the grounds account.`
         action: "Open dashboard",
       },
       {
+        key: "notifications",
+        title: "Notification queue",
+        description: "Retry cleaner and grounds offer emails that have not been sent or are overdue.",
+        meta: `${failedNotificationStats.total} pending | ${failedNotificationStats.overdue} overdue`,
+        action: "Review queue",
+      },
+      {
         key: "exceptions",
         title: "Exceptions",
         description: "Handle stranded jobs and recent declines without scrolling through creation forms.",
@@ -9616,7 +9726,7 @@ This removes its linked members and deletes the grounds account.`
           </span>
         </div>
 
-        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-6">
           {cards.map((card) => {
             const active = jobWorkflowTab === card.key;
             const isExceptionCard = card.key === "exceptions" && exceptionCount > 0;
@@ -10105,6 +10215,121 @@ This removes its linked members and deletes the grounds account.`
                       <div>Expires: {formatDateTime(row.expiresAt)}</div>
                       <div>Accepted: {formatDateTime(row.acceptedAt)}</div>
                       <div>Declined: {formatDateTime(row.declinedAt)}</div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </section>
+        ) : null}
+
+        {jobWorkflowTab === "notifications" ? (
+        <section className="rounded-[30px] border border-[#f0c9a5] bg-[linear-gradient(180deg,#fffaf3_0%,#fff4e6_100%)] p-5 shadow-[0_18px_45px_rgba(168,105,28,0.08)]">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#9a650d]">Notification Queue</p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#2b2118]">Failed and pending job emails</h2>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-[#6f6255]">
+                These are cleaner and grounds job offers that still need an email sent, plus overdue offers that may need a resend.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <select
+                className="rounded-full border border-[#e5caa6] bg-white px-4 py-2 text-sm font-medium text-[#5f4422] outline-none transition focus:border-[#b7791f]"
+                value={selectedJobsPropertyFilter}
+                onChange={(e) => setSelectedJobsPropertyFilter(e.target.value)}
+              >
+                <option value="all">All properties</option>
+                {properties.map((property) => (
+                  <option key={property.id} value={property.id}>
+                    {property.name || property.address || "Unnamed property"}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => void retryAllPendingJobNotifications()}
+                disabled={retryingNotificationBatch || failedNotificationRows.length === 0}
+                className="rounded-full bg-[#2b2118] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#4a3829] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {retryingNotificationBatch ? "Retrying..." : "Retry all pending"}
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              { label: "Pending emails", value: failedNotificationStats.total, tone: "border-[#e5caa6] bg-white text-[#2b2118]" },
+              { label: "Overdue offers", value: failedNotificationStats.overdue, tone: "border-[#f0b4b4] bg-[#fff5f5] text-[#8a2e22]" },
+              { label: "Cleaner slots", value: failedNotificationStats.cleaner, tone: "border-[#c7dcf5] bg-[#f1f7ff] text-[#275b8a]" },
+              { label: "Grounds slots", value: failedNotificationStats.grounds, tone: "border-[#c7e2c8] bg-[#f3fbf3] text-[#2d6b35]" },
+            ].map((stat) => (
+              <div key={stat.label} className={`rounded-[20px] border px-4 py-3 shadow-sm ${stat.tone}`}>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-75">{stat.label}</div>
+                <div className="mt-2 text-3xl font-semibold">{stat.value}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-5 rounded-[24px] border border-[#e5caa6] bg-white p-4">
+            <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-[#2b2118]">Queue</h3>
+                <p className="mt-1 text-sm text-[#6f6255]">
+                  Retry sends one offer email through the same notification system used when jobs are created.
+                </p>
+              </div>
+              <span className="rounded-full border border-[#e5caa6] bg-[#fffaf3] px-3 py-1 text-xs font-semibold text-[#7b520f]">
+                {failedNotificationStats.total} waiting
+              </span>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {failedNotificationRows.length === 0 ? (
+                <div className="rounded-[18px] border border-dashed border-[#e5caa6] bg-[#fffaf3] px-4 py-5 text-sm text-[#6f6255]">
+                  No failed or pending job offer emails for this filter.
+                </div>
+              ) : (
+                failedNotificationRows.map((row) => (
+                  <div
+                    key={row.id}
+                    className={`rounded-[18px] border px-4 py-3 ${
+                      row.overdue ? "border-[#f0b4b4] bg-[#fff5f5]" : "border-[#e5caa6] bg-[#fffaf3]"
+                    }`}
+                  >
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-sm font-semibold text-[#2b2118]">{row.propertyName}</span>
+                          <span className="rounded-full border border-[#e5caa6] bg-white px-2 py-0.5 text-[11px] font-semibold text-[#6f6255]">
+                            {row.kind}
+                          </span>
+                          {row.overdue ? (
+                            <span className="rounded-full border border-[#f0b4b4] bg-white px-2 py-0.5 text-[11px] font-semibold text-[#8a2e22]">
+                              Overdue response
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="mt-1 text-sm text-[#6f6255]">{row.accountName}</div>
+                        <div className="mt-1 text-xs text-[#8b7a68]">
+                          Scheduled: {formatScheduledFor(row.scheduledFor)} | Offered: {formatDateTime(row.offeredAt)} | Expires: {formatDateTime(row.expiresAt)}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${row.notificationTone}`}>
+                          {row.notificationLabel}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => void retryJobNotification(row.kindApi, [row.slotId], row.id)}
+                          disabled={retryingNotificationBatch || retryingNotificationSlotId === row.id}
+                          className="rounded-full bg-[#2b2118] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#4a3829] disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {retryingNotificationSlotId === row.id ? "Retrying..." : "Retry email"}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))
