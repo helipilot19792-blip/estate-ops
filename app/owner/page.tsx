@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import PortalChat from "@/components/chat/portalchat";
+import { trackFeatureUsage } from "@/lib/feature-usage";
 
 type OwnerAccountRow = {
   id: string;
@@ -151,6 +152,12 @@ type TimelineItem = {
 };
 
 type OwnerTab = "overview" | "insights" | "invoices" | "chat";
+const OWNER_FEATURE_LABELS: Record<OwnerTab, string> = {
+  overview: "Owner Overview",
+  insights: "Booking Insights",
+  invoices: "Owner Invoices",
+  chat: "Owner Chat",
+};
 
 type OwnerChatParticipantRow = {
   id: string;
@@ -1301,6 +1308,20 @@ export default function OwnerPage() {
 
   const selectedProperty =
     properties.find((property) => property.id === selectedPropertyId) || properties[0] || null;
+
+  useEffect(() => {
+    const organizationId = selectedProperty?.organization_id || properties[0]?.organization_id || null;
+    if (!ownerAccount || !organizationId) return;
+
+    trackFeatureUsage({
+      organizationId,
+      portal: "owner",
+      area: "navigation",
+      featureKey: `owner.${activeOwnerTab}`,
+      featureLabel: OWNER_FEATURE_LABELS[activeOwnerTab] || activeOwnerTab,
+      action: "open",
+    });
+  }, [activeOwnerTab, ownerAccount, properties, selectedProperty]);
 
   function handleOwnerTabChange(tab: OwnerTab) {
     setActiveOwnerTab(tab);

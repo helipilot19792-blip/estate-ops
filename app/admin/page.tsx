@@ -4,6 +4,7 @@ import Image from "next/image";
 import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { trackFeatureUsage } from "@/lib/feature-usage";
 
 function getCityFromAddress(address?: string | null) {
   if (!address) return "";
@@ -343,6 +344,23 @@ type PropertySetupTab = "overview" | "access" | "calendars" | "sops";
 type JobWorkflowTab = "cleaning" | "grounds" | "active" | "reliability" | "notifications" | "exceptions";
 type InvoiceWorkflowTab = "create" | "running" | "existing" | "defaults" | "history";
 type AdminMenuOrientation = "side" | "top";
+const ADMIN_FEATURE_LABELS: Record<AdminSection, string> = {
+  home: "Admin Home",
+  notifications: "Notification Center",
+  users: "Users",
+  properties: "Properties",
+  cleanerAccounts: "Cleaner Accounts",
+  groundsAccounts: "Grounds Accounts",
+  assignments: "Assignments",
+  jobs: "Jobs",
+  calendar: "Calendar",
+  maintenance: "Maintenance Flags",
+  invites: "Invites",
+  chat: "Chat",
+  documents: "Document Vault",
+  backup: "Backup Center",
+  invoices: "Invoices",
+};
 type MyOrganizationRow = {
   organization_id: string;
   organization_name: string;
@@ -1207,6 +1225,19 @@ export default function AdminPage() {
       void loadData();
     }
   }, [checkingAuth, currentOrganizationId]);
+
+  useEffect(() => {
+    if (checkingAuth || !currentOrganizationId) return;
+
+    trackFeatureUsage({
+      organizationId: currentOrganizationId,
+      portal: "admin",
+      area: "navigation",
+      featureKey: `admin.${activeSection}`,
+      featureLabel: ADMIN_FEATURE_LABELS[activeSection] || activeSection,
+      action: "open",
+    });
+  }, [activeSection, checkingAuth, currentOrganizationId]);
 
   useEffect(() => {
     async function loadOrganizationBilling() {

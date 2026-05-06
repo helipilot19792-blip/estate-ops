@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { trackFeatureUsage } from "@/lib/feature-usage";
 import PortalChat from "@/components/chat/portalchat";
 import GroundsDesktopView from "@/components/grounds/groundsdesktopview";
 import GroundsMobileView from "@/components/grounds/groundsmobileview";
@@ -765,7 +766,7 @@ export default function GroundsShell({ mode }: GroundsShellProps) {
 
     const { data, error } = await supabase
       .from("properties")
-      .select("id, name, address, notes")
+      .select("id, organization_id, name, address, notes")
       .in("id", propertyIds);
 
     if (error) throw error;
@@ -1124,6 +1125,23 @@ export default function GroundsShell({ mode }: GroundsShellProps) {
   function handleSwitchToCleaner() {
     router.push("/cleaner");
   }
+
+  useEffect(() => {
+    const organizationId = properties.find((property) => property.organization_id)?.organization_id || null;
+    if (!profile?.id || !organizationId) return;
+
+    trackFeatureUsage({
+      organizationId,
+      portal: "grounds",
+      area: "portal",
+      featureKey: "grounds.dashboard",
+      featureLabel: "Grounds Dashboard",
+      action: "open",
+      metadata: {
+        mode,
+      },
+    });
+  }, [mode, profile?.id, properties]);
 
   async function handleSignOut() {
     try {

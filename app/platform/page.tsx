@@ -46,6 +46,32 @@ type PlatformAuditLog = {
   metadata?: Record<string, unknown> | null;
 };
 
+type FeatureUsageSummary = {
+  available: boolean;
+  global: {
+    total_events: number;
+    unique_features: number;
+    top_features: Array<FeatureUsageTopFeature>;
+  };
+  byOrganization: Record<
+    string,
+    {
+      total_events: number;
+      unique_features: number;
+      last_used_at: string | null;
+      top_features: Array<FeatureUsageTopFeature>;
+    }
+  >;
+};
+
+type FeatureUsageTopFeature = {
+  feature_key: string;
+  feature_label: string;
+  portal: string;
+  count: number;
+  last_used_at: string | null;
+};
+
 function getTrialDaysRemaining(trialEndsAt?: string | null) {
   if (!trialEndsAt) return null;
   const end = new Date(trialEndsAt);
@@ -75,6 +101,7 @@ export default function PlatformPage() {
   const [organizations, setOrganizations] = useState<PlatformOrganization[]>([]);
   const [auditLogs, setAuditLogs] = useState<PlatformAuditLog[]>([]);
   const [auditLogAvailable, setAuditLogAvailable] = useState(true);
+  const [featureUsage, setFeatureUsage] = useState<FeatureUsageSummary | null>(null);
   const [error, setError] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [actingOrganizationId, setActingOrganizationId] = useState<string | null>(null);
@@ -109,6 +136,7 @@ export default function PlatformPage() {
     setOrganizations((payload.organizations || []) as PlatformOrganization[]);
     setAuditLogs((payload.auditLogs || []) as PlatformAuditLog[]);
     setAuditLogAvailable(payload.auditLogAvailable !== false);
+    setFeatureUsage((payload.featureUsage || null) as FeatureUsageSummary | null);
     setLoading(false);
   }
 
@@ -161,6 +189,7 @@ export default function PlatformPage() {
       setOrganizations((payload.organizations || []) as PlatformOrganization[]);
       setAuditLogs((payload.auditLogs || []) as PlatformAuditLog[]);
       setAuditLogAvailable(payload.auditLogAvailable !== false);
+      setFeatureUsage((payload.featureUsage || null) as FeatureUsageSummary | null);
       setStatusMessage(message);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Platform action failed.");
@@ -235,10 +264,81 @@ export default function PlatformPage() {
           </div>
         ) : null}
 
+        <section className="mt-6 rounded-[28px] border border-[#d7e6df] bg-[linear-gradient(135deg,#f5fbf8_0%,#fffaf1_100%)] p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#4f7c6b]">Usage Insights</div>
+              <h2 className="mt-2 text-xl font-semibold tracking-tight text-[#17382d]">Feature adoption</h2>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-[#5e7469]">
+                See which parts of GuleraOS are actually being opened across tenant workspaces. This tracks feature names and actions, not private invoice text, chat contents, or owner notes.
+              </p>
+            </div>
+            <span className="rounded-full border border-[#b9d9ca] bg-white/80 px-3 py-1 text-xs font-semibold text-[#2f6b55]">
+              Last 30 days
+            </span>
+          </div>
+
+          {featureUsage?.available === false ? (
+            <div className="mt-5 rounded-[22px] border border-[#ecd7a8] bg-[#fff8e8] px-4 py-5 text-sm text-[#8a6112]">
+              Usage tracking is installed in the app, but the database table is missing. Run{" "}
+              <span className="font-mono">supabase/add_feature_usage_events.sql</span> in Supabase SQL Editor.
+            </div>
+          ) : (
+            <>
+              <div className="mt-5 grid gap-3 md:grid-cols-3">
+                <div className="rounded-[22px] border border-[#cfe4d9] bg-white/85 px-4 py-4 shadow-sm">
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-[#6a8a7d]">Events tracked</div>
+                  <div className="mt-2 text-3xl font-semibold text-[#17382d]">
+                    {featureUsage?.global.total_events || 0}
+                  </div>
+                </div>
+                <div className="rounded-[22px] border border-[#cfe4d9] bg-white/85 px-4 py-4 shadow-sm">
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-[#6a8a7d]">Features used</div>
+                  <div className="mt-2 text-3xl font-semibold text-[#17382d]">
+                    {featureUsage?.global.unique_features || 0}
+                  </div>
+                </div>
+                <div className="rounded-[22px] border border-[#cfe4d9] bg-white/85 px-4 py-4 shadow-sm">
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-[#6a8a7d]">Top feature</div>
+                  <div className="mt-2 text-lg font-semibold text-[#17382d]">
+                    {featureUsage?.global.top_features[0]?.feature_label || "No usage yet"}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 grid gap-3 lg:grid-cols-2">
+                {(featureUsage?.global.top_features || []).length === 0 ? (
+                  <div className="rounded-[22px] border border-dashed border-[#b9d9ca] bg-white/60 px-4 py-5 text-sm text-[#6a8a7d]">
+                    No feature usage has been recorded yet. Open a few tenant workspaces after running the SQL and this will start filling in.
+                  </div>
+                ) : null}
+
+                {(featureUsage?.global.top_features || []).map((feature) => (
+                  <div key={`${feature.portal}-${feature.feature_key}`} className="rounded-[20px] border border-[#cfe4d9] bg-white/85 px-4 py-4 shadow-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-[#17382d]">{feature.feature_label}</div>
+                        <div className="mt-1 text-xs uppercase tracking-[0.16em] text-[#6a8a7d]">{feature.portal}</div>
+                      </div>
+                      <span className="rounded-full border border-[#b9d9ca] bg-[#eef8f2] px-3 py-1 text-xs font-semibold text-[#2f6b55]">
+                        {feature.count}
+                      </span>
+                    </div>
+                    <div className="mt-2 text-xs text-[#6a8a7d]">
+                      Last used {feature.last_used_at ? new Date(feature.last_used_at).toLocaleString() : "not yet"}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </section>
+
         <section className="mt-6 space-y-4">
           {organizations.map((organization) => {
             const daysRemaining = getTrialDaysRemaining(organization.trial_ends_at);
             const isActing = actingOrganizationId === organization.id;
+            const usage = featureUsage?.byOrganization?.[organization.id] || null;
 
             return (
               <div
@@ -308,6 +408,35 @@ export default function PlatformPage() {
                               .join(", ")
                           : "No tenant admins found"}
                       </div>
+                    </div>
+
+                    <div className="mt-4 rounded-[22px] border border-[#d7e6df] bg-[#f6fbf8] px-4 py-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <div className="text-[11px] uppercase tracking-[0.18em] text-[#4f7c6b]">Feature usage</div>
+                          <div className="mt-1 text-sm font-semibold text-[#17382d]">
+                            {usage
+                              ? `${usage.total_events} event${usage.total_events === 1 ? "" : "s"} | ${usage.unique_features} feature${usage.unique_features === 1 ? "" : "s"}`
+                              : "No usage tracked yet"}
+                          </div>
+                        </div>
+                        <div className="text-xs text-[#6a8a7d]">
+                          {usage?.last_used_at ? `Last used ${new Date(usage.last_used_at).toLocaleDateString()}` : "Waiting for activity"}
+                        </div>
+                      </div>
+
+                      {usage?.top_features?.length ? (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {usage.top_features.map((feature) => (
+                            <span
+                              key={`${organization.id}-${feature.portal}-${feature.feature_key}`}
+                              className="rounded-full border border-[#b9d9ca] bg-white px-3 py-1 text-xs font-medium text-[#2f6b55]"
+                            >
+                              {feature.feature_label} ({feature.count})
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
 

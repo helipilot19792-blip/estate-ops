@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { trackFeatureUsage } from "@/lib/feature-usage";
 import PortalChat from "@/components/chat/portalchat";
 import CleanerDesktopView from "@/components/cleaner/cleanerdesktopview";
 import CleanerMobileView from "@/components/cleaner/cleanermobileview";
@@ -34,6 +35,7 @@ type CleanerAccount = {
 
 type Property = {
   id: string;
+  organization_id?: string | null;
   name: string | null;
   address: string | null;
   notes: string | null;
@@ -798,7 +800,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
 
     const { data, error } = await supabase
       .from("properties")
-      .select("id, name, address, notes")
+      .select("id, organization_id, name, address, notes")
       .in("id", propertyIds);
 
     if (error) throw error;
@@ -1085,6 +1087,23 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
   function handleSwitchToGrounds() {
     router.push("/grounds");
   }
+
+  useEffect(() => {
+    const organizationId = properties.find((property) => property.organization_id)?.organization_id || null;
+    if (!profile?.id || !organizationId) return;
+
+    trackFeatureUsage({
+      organizationId,
+      portal: "cleaner",
+      area: "portal",
+      featureKey: "cleaner.dashboard",
+      featureLabel: "Cleaner Dashboard",
+      action: "open",
+      metadata: {
+        mode,
+      },
+    });
+  }, [mode, profile?.id, properties]);
 
   async function handleSignOut() {
     try {

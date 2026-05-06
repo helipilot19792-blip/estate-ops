@@ -54,6 +54,47 @@ type AuditLogRow = {
   metadata?: Record<string, unknown> | null;
 };
 
+type FeatureUsageEventRow = {
+  id: string;
+  created_at?: string | null;
+  organization_id: string;
+  portal: string;
+  area: string;
+  feature_key: string;
+  feature_label: string;
+  action: string;
+};
+
+type FeatureUsageSummary = {
+  available: boolean;
+  global: {
+    total_events: number;
+    unique_features: number;
+    top_features: Array<{
+      feature_key: string;
+      feature_label: string;
+      portal: string;
+      count: number;
+      last_used_at: string | null;
+    }>;
+  };
+  byOrganization: Record<
+    string,
+    {
+      total_events: number;
+      unique_features: number;
+      last_used_at: string | null;
+      top_features: Array<{
+        feature_key: string;
+        feature_label: string;
+        portal: string;
+        count: number;
+        last_used_at: string | null;
+      }>;
+    }
+  >;
+};
+
 function getClients(token?: string | null) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey =
@@ -228,6 +269,119 @@ async function loadRecentAuditLogs(serviceClient: ReturnType<typeof getClients>[
   };
 }
 
+function isMissingFeatureUsageTableError(error: { code?: string; message?: string }) {
+  return error.code === "42P01" || (error.message || "").includes("feature_usage_events");
+}
+
+function summarizeFeatureUsage(events: FeatureUsageEventRow[]): FeatureUsageSummary {
+  const byOrganization: FeatureUsageSummary["byOrganization"] = {};
+  const globalFeatures = new Map<
+    string,
+    { feature_key: string; feature_label: string; portal: string; count: number; last_used_at: string | null }
+  >();
+
+  for (const event of events) {
+    const createdAt = event.created_at || null;
+    const orgSummary =
+      byOrganization[event.organization_id] ||
+      {
+        total_events: 0,
+        unique_features: 0,
+        last_used_at: null,
+        top_features: [],
+      };
+
+    orgSummary.total_events += 1;
+    if (!orgSummary.last_used_at || (createdAt && createdAt > orgSummary.last_used_at)) {
+      orgSummary.last_used_at = createdAt;
+    }
+
+    const featureId = `${event.portal}:${event.feature_key}`;
+    const orgFeature =
+      orgSummary.top_features.find((feature) => `${feature.portal}:${feature.feature_key}` === featureId) ||
+      {
+        feature_key: event.feature_key,
+        feature_label: event.feature_label,
+        portal: event.portal,
+        count: 0,
+        last_used_at: null,
+      };
+
+    orgFeature.count += 1;
+    if (!orgFeature.last_used_at || (createdAt && createdAt > orgFeature.last_used_at)) {
+      orgFeature.last_used_at = createdAt;
+    }
+
+    if (!orgSummary.top_features.some((feature) => `${feature.portal}:${feature.feature_key}` === featureId)) {
+      orgSummary.top_features.push(orgFeature);
+    }
+
+    byOrganization[event.organization_id] = orgSummary;
+
+    const globalFeature =
+      globalFeatures.get(featureId) ||
+      {
+        feature_key: event.feature_key,
+        feature_label: event.feature_label,
+        portal: event.portal,
+        count: 0,
+        last_used_at: null,
+      };
+
+    globalFeature.count += 1;
+    if (!globalFeature.last_used_at || (createdAt && createdAt > globalFeature.last_used_at)) {
+      globalFeature.last_used_at = createdAt;
+    }
+    globalFeatures.set(featureId, globalFeature);
+  }
+
+  for (const summary of Object.values(byOrganization)) {
+    summary.unique_features = summary.top_features.length;
+    summary.top_features = summary.top_features
+      .sort((a, b) => b.count - a.count || String(b.last_used_at || "").localeCompare(String(a.last_used_at || "")))
+      .slice(0, 5);
+  }
+
+  const topFeatures = [...globalFeatures.values()]
+    .sort((a, b) => b.count - a.count || String(b.last_used_at || "").localeCompare(String(a.last_used_at || "")))
+    .slice(0, 8);
+
+  return {
+    available: true,
+    global: {
+      total_events: events.length,
+      unique_features: globalFeatures.size,
+      top_features: topFeatures,
+    },
+    byOrganization,
+  };
+}
+
+async function loadFeatureUsageSummary(serviceClient: ReturnType<typeof getClients>["serviceClient"]) {
+  const since = new Date();
+  since.setDate(since.getDate() - 30);
+
+  const { data, error } = await serviceClient
+    .from("feature_usage_events")
+    .select("id,created_at,organization_id,portal,area,feature_key,feature_label,action")
+    .gte("created_at", since.toISOString())
+    .order("created_at", { ascending: false })
+    .limit(2000);
+
+  if (error) {
+    if (isMissingFeatureUsageTableError(error)) {
+      return {
+        ...summarizeFeatureUsage([]),
+        available: false,
+      };
+    }
+
+    throw new Error(error.message);
+  }
+
+  return summarizeFeatureUsage((data ?? []) as FeatureUsageEventRow[]);
+}
+
 export async function GET(req: NextRequest) {
   try {
     const authHeader = req.headers.get("authorization");
@@ -235,6 +389,7 @@ export async function GET(req: NextRequest) {
     const { profile, serviceClient } = await requirePlatformAdmin(token);
     const organizations = await loadOrganizationOverview(serviceClient);
     const auditLogState = await loadRecentAuditLogs(serviceClient);
+    const featureUsage = await loadFeatureUsageSummary(serviceClient);
 
     return NextResponse.json({
       ok: true,
@@ -246,6 +401,7 @@ export async function GET(req: NextRequest) {
       organizations,
       auditLogs: auditLogState.entries,
       auditLogAvailable: auditLogState.available,
+      featureUsage,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected server error.";
@@ -343,11 +499,13 @@ export async function POST(req: NextRequest) {
 
     const organizations = await loadOrganizationOverview(serviceClient);
     const auditLogState = await loadRecentAuditLogs(serviceClient);
+    const featureUsage = await loadFeatureUsageSummary(serviceClient);
     return NextResponse.json({
       ok: true,
       organizations,
       auditLogs: auditLogState.entries,
       auditLogAvailable: auditLogState.available,
+      featureUsage,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected server error.";
