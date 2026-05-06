@@ -323,7 +323,7 @@ type AdminSection =
 type PropertyEntryMode = "manual" | "airbnb";
 type PropertyWorkflowTab = "add" | "setup" | "directory";
 type PropertySetupTab = "overview" | "access" | "calendars" | "sops";
-type JobWorkflowTab = "cleaning" | "grounds" | "active" | "exceptions";
+type JobWorkflowTab = "cleaning" | "grounds" | "active" | "reliability" | "exceptions";
 type InvoiceWorkflowTab = "create" | "running" | "existing" | "defaults" | "history";
 type AdminMenuOrientation = "side" | "top";
 type MyOrganizationRow = {
@@ -4553,6 +4553,99 @@ This removes its linked members and deletes the grounds account.`
   );
 
   const visibleJobs = jobsExpanded ? filteredJobs : filteredJobs.slice(0, 3);
+
+  const jobReliabilityRows = useMemo(() => {
+    const rows: Array<{
+      id: string;
+      kind: "Cleaner" | "Grounds";
+      propertyName: string;
+      accountName: string;
+      scheduledFor: string | null | undefined;
+      status: string;
+      notificationLabel: string;
+      notificationTone: string;
+      offeredAt?: string | null;
+      expiresAt?: string | null;
+      acceptedAt?: string | null;
+      declinedAt?: string | null;
+      overdue: boolean;
+    }> = [];
+
+    for (const job of jobs) {
+      if (selectedJobsPropertyFilter !== "all" && job.property_id !== selectedJobsPropertyFilter) continue;
+      const slots = jobSlotsByJobId[job.id] ?? [];
+      for (const slot of slots) {
+        const expiresAt = slot.expires_at ? new Date(slot.expires_at) : null;
+        rows.push({
+          id: `cleaner-${slot.id}`,
+          kind: "Cleaner",
+          propertyName: getPropertyName(job.property_id),
+          accountName: getCleanerAccountName(slot.cleaner_account_id),
+          scheduledFor: job.scheduled_for || extractCheckoutDate(job.notes),
+          status: slot.status,
+          notificationLabel: getJobNotificationLabel(slot),
+          notificationTone: getJobNotificationTone(slot),
+          offeredAt: slot.offered_at,
+          expiresAt: slot.expires_at,
+          acceptedAt: slot.accepted_at,
+          declinedAt: slot.declined_at,
+          overdue: slot.status === "offered" && !!expiresAt && expiresAt.getTime() < now.getTime(),
+        });
+      }
+    }
+
+    for (const job of groundsJobs) {
+      if (selectedJobsPropertyFilter !== "all" && job.property_id !== selectedJobsPropertyFilter) continue;
+      const slots = groundsJobSlotsByJobId[job.id] ?? [];
+      for (const slot of slots) {
+        const expiresAt = slot.expires_at ? new Date(slot.expires_at) : null;
+        rows.push({
+          id: `grounds-${slot.id}`,
+          kind: "Grounds",
+          propertyName: getPropertyName(job.property_id),
+          accountName: getGroundsAccountName(slot.grounds_account_id),
+          scheduledFor: job.scheduled_for,
+          status: slot.status,
+          notificationLabel: getJobNotificationLabel(slot),
+          notificationTone: getJobNotificationTone(slot),
+          offeredAt: slot.offered_at,
+          expiresAt: slot.expires_at,
+          acceptedAt: slot.accepted_at,
+          declinedAt: slot.declined_at,
+          overdue: slot.status === "offered" && !!expiresAt && expiresAt.getTime() < now.getTime(),
+        });
+      }
+    }
+
+    return rows.sort((a, b) => {
+      const aNeedsAttention = (a.status === "offered" && !a.notificationLabel.includes("sent")) || a.overdue || a.status === "declined";
+      const bNeedsAttention = (b.status === "offered" && !b.notificationLabel.includes("sent")) || b.overdue || b.status === "declined";
+      if (aNeedsAttention !== bNeedsAttention) return aNeedsAttention ? -1 : 1;
+      return new Date(b.offeredAt || b.acceptedAt || b.declinedAt || 0).getTime() - new Date(a.offeredAt || a.acceptedAt || a.declinedAt || 0).getTime();
+    });
+  }, [jobs, groundsJobs, selectedJobsPropertyFilter, jobSlotsByJobId, groundsJobSlotsByJobId, now]);
+
+  const jobReliabilityStats = useMemo(() => {
+    const total = jobReliabilityRows.length;
+    const accepted = jobReliabilityRows.filter((row) => row.status === "accepted").length;
+    const waiting = jobReliabilityRows.filter((row) => row.status === "offered").length;
+    const overdue = jobReliabilityRows.filter((row) => row.overdue).length;
+    const declined = jobReliabilityRows.filter((row) => row.status === "declined").length;
+    const emailPending = jobReliabilityRows.filter(
+      (row) => row.status === "offered" && row.notificationLabel === "Offer email pending"
+    ).length;
+
+    return {
+      total,
+      accepted,
+      waiting,
+      overdue,
+      declined,
+      emailPending,
+      acceptedRate: total > 0 ? Math.round((accepted / total) * 100) : 0,
+    };
+  }, [jobReliabilityRows]);
+
   const recentDeclinedJobs = useMemo(
     () =>
       [...jobSlots]
@@ -9489,6 +9582,13 @@ This removes its linked members and deletes the grounds account.`
         action: "Review jobs",
       },
       {
+        key: "reliability",
+        title: "Job reliability",
+        description: "See whether cleaner and grounds offers were emailed, accepted, declined, or overdue.",
+        meta: `${jobReliabilityStats.emailPending} email pending | ${jobReliabilityStats.overdue} overdue`,
+        action: "Open dashboard",
+      },
+      {
         key: "exceptions",
         title: "Exceptions",
         description: "Handle stranded jobs and recent declines without scrolling through creation forms.",
@@ -9516,7 +9616,7 @@ This removes its linked members and deletes the grounds account.`
           </span>
         </div>
 
-        <div className="mt-5 grid gap-4 lg:grid-cols-4">
+        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           {cards.map((card) => {
             const active = jobWorkflowTab === card.key;
             const isExceptionCard = card.key === "exceptions" && exceptionCount > 0;
@@ -9895,6 +9995,124 @@ This removes its linked members and deletes the grounds account.`
         ) : null}
 
 
+
+        {jobWorkflowTab === "reliability" ? (
+        <section className="rounded-[30px] border border-[#d8e7f3] bg-[linear-gradient(180deg,#f7fbff_0%,#eef7ff_100%)] p-5 shadow-[0_18px_45px_rgba(22,78,125,0.08)]">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#25637f]">Reliability</p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#17384a]">Job Reliability Dashboard</h2>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-[#4c6b7b]">
+                Track whether staff were notified and how each cleaner or grounds offer is moving through acceptance.
+              </p>
+            </div>
+            <select
+              className="rounded-full border border-[#bdd8e8] bg-white px-4 py-2 text-sm font-medium text-[#31566a] outline-none transition focus:border-[#31799c]"
+              value={selectedJobsPropertyFilter}
+              onChange={(e) => setSelectedJobsPropertyFilter(e.target.value)}
+            >
+              <option value="all">All properties</option>
+              {properties.map((property) => (
+                <option key={property.id} value={property.id}>
+                  {property.name || property.address || "Unnamed property"}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+            {[
+              { label: "Slots tracked", value: jobReliabilityStats.total, tone: "border-[#bdd8e8] bg-white text-[#17384a]" },
+              { label: "Accepted", value: jobReliabilityStats.accepted, tone: "border-[#bbdfc0] bg-[#f0fbf2] text-[#236b30]" },
+              { label: "Waiting", value: jobReliabilityStats.waiting, tone: "border-[#f1cf8f] bg-[#fff8e8] text-[#8a6112]" },
+              { label: "Overdue", value: jobReliabilityStats.overdue, tone: "border-[#f0b4b4] bg-[#fff5f5] text-[#8a2e22]" },
+              { label: "Declined", value: jobReliabilityStats.declined, tone: "border-[#e5c2ef] bg-[#fbf5ff] text-[#6d3f80]" },
+              { label: "Accepted rate", value: `${jobReliabilityStats.acceptedRate}%`, tone: "border-[#bdd8e8] bg-white text-[#17384a]" },
+            ].map((stat) => (
+              <div key={stat.label} className={`rounded-[20px] border px-4 py-3 shadow-sm ${stat.tone}`}>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-75">{stat.label}</div>
+                <div className="mt-2 text-3xl font-semibold">{stat.value}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-5 rounded-[24px] border border-[#bdd8e8] bg-white p-4">
+            <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-[#17384a]">Staff offer trail</h3>
+                <p className="mt-1 text-sm text-[#4c6b7b]">
+                  Items needing attention stay at the top.
+                </p>
+              </div>
+              <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                jobReliabilityStats.emailPending > 0 || jobReliabilityStats.overdue > 0
+                  ? "border-[#f0b4b4] bg-[#fff5f5] text-[#8a2e22]"
+                  : "border-[#bbdfc0] bg-[#f0fbf2] text-[#236b30]"
+              }`}>
+                {jobReliabilityStats.emailPending + jobReliabilityStats.overdue} need attention
+              </span>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {jobReliabilityRows.length === 0 ? (
+                <div className="rounded-[18px] border border-dashed border-[#bdd8e8] bg-[#f7fbff] px-4 py-5 text-sm text-[#4c6b7b]">
+                  No cleaner or grounds slots found for this filter yet.
+                </div>
+              ) : (
+                jobReliabilityRows.map((row) => (
+                  <div
+                    key={row.id}
+                    className={`rounded-[18px] border px-4 py-3 ${
+                      row.overdue
+                        ? "border-[#f0b4b4] bg-[#fff5f5]"
+                        : row.status === "accepted"
+                          ? "border-[#bbdfc0] bg-[#f0fbf2]"
+                          : row.status === "declined"
+                            ? "border-[#e5c2ef] bg-[#fbf5ff]"
+                            : "border-[#bdd8e8] bg-[#f7fbff]"
+                    }`}
+                  >
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-sm font-semibold text-[#17384a]">{row.propertyName}</span>
+                          <span className="rounded-full border border-[#bdd8e8] bg-white px-2 py-0.5 text-[11px] font-semibold text-[#31566a]">
+                            {row.kind}
+                          </span>
+                          {row.overdue ? (
+                            <span className="rounded-full border border-[#f0b4b4] bg-white px-2 py-0.5 text-[11px] font-semibold text-[#8a2e22]">
+                              Overdue
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="mt-1 text-sm text-[#4c6b7b]">{row.accountName}</div>
+                        <div className="mt-1 text-xs text-[#6d8795]">
+                          Scheduled: {formatScheduledFor(row.scheduledFor)} | Offered: {formatDateTime(row.offeredAt)}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-full border border-[#bdd8e8] bg-white px-3 py-1 text-xs font-semibold capitalize text-[#31566a]">
+                          {row.status}
+                        </span>
+                        <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${row.notificationTone}`}>
+                          {row.notificationLabel}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 grid gap-2 text-xs text-[#4c6b7b] sm:grid-cols-3">
+                      <div>Expires: {formatDateTime(row.expiresAt)}</div>
+                      <div>Accepted: {formatDateTime(row.acceptedAt)}</div>
+                      <div>Declined: {formatDateTime(row.declinedAt)}</div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </section>
+        ) : null}
 
         {jobWorkflowTab === "active" ? (
         <section
