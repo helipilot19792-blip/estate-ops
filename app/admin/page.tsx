@@ -337,7 +337,7 @@ type AdminSection =
   | "backup"
   | "invoices";
 type PropertyEntryMode = "manual" | "airbnb";
-type PropertyWorkflowTab = "add" | "setup" | "directory";
+type PropertyWorkflowTab = "add" | "setup" | "directory" | "health";
 type PropertySetupTab = "overview" | "access" | "calendars" | "sops";
 type JobWorkflowTab = "cleaning" | "grounds" | "active" | "reliability" | "notifications" | "exceptions";
 type InvoiceWorkflowTab = "create" | "running" | "existing" | "defaults" | "history";
@@ -5301,6 +5301,164 @@ This removes its linked members and deletes the grounds account.`
     };
   }, [documentVaultRows]);
 
+  const propertyHealthRows = useMemo(() => {
+    return properties
+      .map((property) => {
+        const ownerAccess = ownerPropertyAccess.find((access) => access.property_id === property.id);
+        const owner = ownerAccounts.find((account) => account.id === ownerAccess?.owner_account_id);
+        const calendarCount = propertyCalendars.filter((calendar) => calendar.property_id === property.id).length;
+        const cleanerAssignmentCount = assignments.filter((assignment) => assignment.property_id === property.id).length;
+        const groundsAssignmentCount = groundsAssignments.filter((assignment) => assignment.property_id === property.id).length;
+        const openFlags = maintenanceFlags.filter((flag) => {
+          if (flag.property_id !== property.id) return false;
+          const state = String(getMaintenanceFlagState(flag) || "").toLowerCase();
+          return !(state.includes("resolved") || state.includes("closed") || state.includes("done"));
+        });
+        const urgentFlags = openFlags.filter((flag) => {
+          const urgency = String(flag.urgency || flag.priority || flag.severity || "").toLowerCase();
+          return urgency.includes("urgent") || urgency.includes("critical") || urgency.includes("high");
+        });
+        const strandedCount = strandedJobs.filter((job) => job.property_id === property.id).length;
+        const accessReady = accessRows.some(
+          (row) => row.property_id === property.id && (!!row.door_code || !!row.alarm_code || !!row.notes)
+        );
+        const hasInvoiceRates = propertyInvoiceRates.some((rate) => rate.property_id === property.id);
+        const documentCount = documentVaultRows.filter((document) => document.property_id === property.id).length;
+        const sopCount = sops.filter((sop) => sop.property_id === property.id).length;
+
+        const issues: string[] = [];
+        let score = 100;
+
+        if (!owner) {
+          score -= 20;
+          issues.push("Owner not linked");
+        } else if (!owner.invite_accepted_at) {
+          score -= 8;
+          issues.push("Owner invite not accepted");
+        }
+
+        if (calendarCount === 0) {
+          score -= 20;
+          issues.push("No booking calendar");
+        }
+
+        if (cleanerAssignmentCount === 0) {
+          score -= 18;
+          issues.push("No cleaner assignment");
+        }
+
+        if (groundsAssignmentCount === 0) {
+          score -= 8;
+          issues.push("No grounds assignment");
+        }
+
+        if (!accessReady) {
+          score -= 8;
+          issues.push("No access notes");
+        }
+
+        if (openFlags.length > 0) {
+          score -= Math.min(20, openFlags.length * 7);
+          issues.push(`${openFlags.length} open maintenance flag${openFlags.length === 1 ? "" : "s"}`);
+        }
+
+        if (urgentFlags.length > 0) {
+          score -= 10;
+          issues.push(`${urgentFlags.length} urgent flag${urgentFlags.length === 1 ? "" : "s"}`);
+        }
+
+        if (strandedCount > 0) {
+          score -= Math.min(18, strandedCount * 9);
+          issues.push(`${strandedCount} stranded job${strandedCount === 1 ? "" : "s"}`);
+        }
+
+        if (!hasInvoiceRates) {
+          score -= 5;
+          issues.push("Invoice rates not saved");
+        }
+
+        if (sopCount === 0) {
+          score -= 4;
+          issues.push("No SOP notes");
+        }
+
+        score = Math.max(0, Math.min(100, score));
+
+        const status =
+          score >= 85 ? "Healthy" :
+          score >= 65 ? "Needs polish" :
+          score >= 40 ? "Needs attention" :
+          "At risk";
+
+        const tone =
+          score >= 85 ? "border-[#bbdfc0] bg-[#f0fbf2] text-[#236b30]" :
+          score >= 65 ? "border-[#f1cf8f] bg-[#fff8e8] text-[#8a6112]" :
+          score >= 40 ? "border-[#f0b4b4] bg-[#fff5f5] text-[#8a2e22]" :
+          "border-[#ef4444] bg-[#fee2e2] text-[#991b1b]";
+
+        return {
+          id: property.id,
+          property,
+          score,
+          status,
+          tone,
+          issues,
+          ownerName: owner?.full_name || owner?.email || "No owner",
+          calendarCount,
+          cleanerAssignmentCount,
+          groundsAssignmentCount,
+          openFlagCount: openFlags.length,
+          strandedCount,
+          accessReady,
+          hasInvoiceRates,
+          documentCount,
+          sopCount,
+        };
+      })
+      .sort(
+        (a, b) =>
+          a.score - b.score ||
+          (a.property.name || a.property.address || "").localeCompare(b.property.name || b.property.address || "")
+      );
+  }, [
+    properties,
+    ownerPropertyAccess,
+    ownerAccounts,
+    propertyCalendars,
+    assignments,
+    groundsAssignments,
+    maintenanceFlags,
+    strandedJobs,
+    accessRows,
+    propertyInvoiceRates,
+    documentVaultRows,
+    sops,
+  ]);
+
+  const propertyHealthStats = useMemo(() => {
+    const average =
+      propertyHealthRows.length > 0
+        ? Math.round(propertyHealthRows.reduce((sum, row) => sum + row.score, 0) / propertyHealthRows.length)
+        : 0;
+    const atRisk = propertyHealthRows.filter((row) => row.score < 65).length;
+    const healthy = propertyHealthRows.filter((row) => row.score >= 85).length;
+    const topIssues = propertyHealthRows.reduce<Record<string, number>>((counts, row) => {
+      for (const issue of row.issues.slice(0, 4)) {
+        counts[issue] = (counts[issue] || 0) + 1;
+      }
+      return counts;
+    }, {});
+
+    return {
+      average,
+      atRisk,
+      healthy,
+      topIssues: Object.entries(topIssues)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 4),
+    };
+  }, [propertyHealthRows]);
+
   const operationsAlerts = useMemo(() => {
     const alerts: Array<{
       key: string;
@@ -9354,6 +9512,13 @@ This removes its linked members and deletes the grounds account.`
         meta: `${properties.length} total | ${propertyWithOwnerCount} owner-linked | ${propertyWithCalendarCount} with calendars`,
         action: "Review properties",
       },
+      {
+        key: "health",
+        title: "Property health",
+        description: "Score every property for owner link, calendars, staffing, maintenance, access, and billing setup.",
+        meta: `${propertyHealthStats.average}% average | ${propertyHealthStats.atRisk} need attention`,
+        action: "Open scorecard",
+      },
     ];
 
     return (
@@ -9371,7 +9536,7 @@ This removes its linked members and deletes the grounds account.`
           </span>
         </div>
 
-        <div className="mt-5 grid gap-4 lg:grid-cols-3">
+        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {cards.map((card) => {
             const active = propertyWorkflowTab === card.key;
 
@@ -9564,6 +9729,163 @@ This removes its linked members and deletes the grounds account.`
           </button>
         </div>
       </section>
+    );
+  }
+
+  function renderPropertyHealthSection() {
+    return (
+      <div className="space-y-6">
+        <section className="rounded-[30px] border border-[#bbf7d0] bg-[linear-gradient(180deg,#f8fff9_0%,#effdf3_100%)] p-5 shadow-[0_18px_45px_rgba(34,197,94,0.08)]">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#15803d]">Property Health</p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#14532d]">Health score dashboard</h2>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-[#3f7050]">
+                Scores flag setup gaps that tend to create operational trouble: owner links, calendars, staffing, access notes, maintenance, stranded jobs, SOPs, and invoice rates.
+              </p>
+            </div>
+            <span className="rounded-full border border-[#bbf7d0] bg-white px-3 py-1 text-xs font-semibold text-[#15803d]">
+              {propertyHealthStats.average}% average
+            </span>
+          </div>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {[
+              { label: "Average score", value: `${propertyHealthStats.average}%`, tone: "border-[#bbf7d0] bg-white text-[#14532d]" },
+              { label: "Healthy", value: propertyHealthStats.healthy, tone: "border-[#bbdfc0] bg-[#f0fbf2] text-[#236b30]" },
+              { label: "Need attention", value: propertyHealthStats.atRisk, tone: "border-[#f0b4b4] bg-[#fff5f5] text-[#8a2e22]" },
+              { label: "Properties", value: properties.length, tone: "border-[#bbf7d0] bg-white text-[#14532d]" },
+            ].map((stat) => (
+              <div key={stat.label} className={`rounded-[20px] border px-4 py-3 shadow-sm ${stat.tone}`}>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-75">{stat.label}</div>
+                <div className="mt-2 text-3xl font-semibold">{stat.value}</div>
+              </div>
+            ))}
+          </div>
+
+          {propertyHealthStats.topIssues.length > 0 ? (
+            <div className="mt-5 rounded-[20px] border border-[#bbf7d0] bg-white p-4">
+              <div className="text-sm font-semibold text-[#14532d]">Most common issues</div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {propertyHealthStats.topIssues.map(([issue, count]) => (
+                  <span key={issue} className="rounded-full border border-[#d9f99d] bg-[#f7fee7] px-3 py-1 text-xs font-semibold text-[#4d7c0f]">
+                    {issue}: {count}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </section>
+
+        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h3 className="text-xl font-semibold tracking-tight text-[#241c15]">Property scorecards</h3>
+              <p className="mt-1 text-sm text-[#7f7263]">Lowest scores appear first so the next cleanup target is obvious.</p>
+            </div>
+            <span className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-semibold text-[#6f6255]">
+              {propertyHealthRows.length} tracked
+            </span>
+          </div>
+
+          <div className="mt-5 grid gap-4 xl:grid-cols-2">
+            {propertyHealthRows.length === 0 ? (
+              <div className="rounded-[20px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-4 py-5 text-sm text-[#7f7263]">
+                No properties yet.
+              </div>
+            ) : (
+              propertyHealthRows.map((row) => (
+                <div key={row.id} className="rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] p-4 shadow-sm">
+                  <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-lg font-semibold text-[#241c15]">{row.property.name || row.property.address || "Unnamed property"}</div>
+                      <div className="mt-1 text-sm text-[#6f6255]">{row.property.address || "No address"}</div>
+                      <div className="mt-2 text-sm text-[#8a7b68]">Owner: {row.ownerName}</div>
+                    </div>
+                    <div className={`rounded-[20px] border px-4 py-3 text-center ${row.tone}`}>
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] opacity-75">{row.status}</div>
+                      <div className="mt-1 text-3xl font-semibold">{row.score}%</div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-2 text-xs sm:grid-cols-3">
+                    <div className="rounded-[14px] border border-[#eadfce] bg-white px-3 py-2 text-[#6f6255]">
+                      Calendars: <span className="font-semibold text-[#241c15]">{row.calendarCount}</span>
+                    </div>
+                    <div className="rounded-[14px] border border-[#eadfce] bg-white px-3 py-2 text-[#6f6255]">
+                      Cleaners: <span className="font-semibold text-[#241c15]">{row.cleanerAssignmentCount}</span>
+                    </div>
+                    <div className="rounded-[14px] border border-[#eadfce] bg-white px-3 py-2 text-[#6f6255]">
+                      Grounds: <span className="font-semibold text-[#241c15]">{row.groundsAssignmentCount}</span>
+                    </div>
+                    <div className="rounded-[14px] border border-[#eadfce] bg-white px-3 py-2 text-[#6f6255]">
+                      Open flags: <span className="font-semibold text-[#241c15]">{row.openFlagCount}</span>
+                    </div>
+                    <div className="rounded-[14px] border border-[#eadfce] bg-white px-3 py-2 text-[#6f6255]">
+                      Stranded jobs: <span className="font-semibold text-[#241c15]">{row.strandedCount}</span>
+                    </div>
+                    <div className="rounded-[14px] border border-[#eadfce] bg-white px-3 py-2 text-[#6f6255]">
+                      Docs/SOPs: <span className="font-semibold text-[#241c15]">{row.documentCount}/{row.sopCount}</span>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {row.issues.length === 0 ? (
+                      <span className="rounded-full border border-[#bbdfc0] bg-[#f0fbf2] px-3 py-1 text-xs font-semibold text-[#236b30]">
+                        No obvious setup gaps
+                      </span>
+                    ) : (
+                      row.issues.slice(0, 5).map((issue) => (
+                        <span key={issue} className="rounded-full border border-[#f0b4b4] bg-[#fff5f5] px-3 py-1 text-xs font-semibold text-[#8a2e22]">
+                          {issue}
+                        </span>
+                      ))
+                    )}
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedPropertyId(row.id);
+                        setPropertyWorkflowTab("setup");
+                      }}
+                      className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-semibold text-[#5f5245] transition hover:bg-[#fffaf4]"
+                    >
+                      Open setup
+                    </button>
+                    {row.openFlagCount > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedJobsPropertyFilter(row.id);
+                          setActiveSection("maintenance");
+                        }}
+                        className="rounded-full border border-[#f0b4b4] bg-[#fff5f5] px-4 py-2 text-sm font-semibold text-[#8a2e22] transition hover:bg-[#fff0f0]"
+                      >
+                        View flags
+                      </button>
+                    ) : null}
+                    {row.strandedCount > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedJobsPropertyFilter(row.id);
+                          setActiveSection("jobs");
+                          setJobWorkflowTab("exceptions");
+                        }}
+                        className="rounded-full border border-[#f0b4b4] bg-[#fff5f5] px-4 py-2 text-sm font-semibold text-[#8a2e22] transition hover:bg-[#fff0f0]"
+                      >
+                        View stranded jobs
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+      </div>
     );
   }
 
@@ -12961,6 +13283,7 @@ This removes its linked members and deletes the grounds account.`
             {propertyWorkflowTab === "add" ? renderAddPropertySection() : null}
             {propertyWorkflowTab === "setup" ? renderPropertySetupSection() : null}
             {propertyWorkflowTab === "directory" ? renderPropertiesSection() : null}
+            {propertyWorkflowTab === "health" ? renderPropertyHealthSection() : null}
           </div>
         );
       case "cleanerAccounts":
