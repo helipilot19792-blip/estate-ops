@@ -334,6 +334,7 @@ type AdminSection =
   | "invites"
   | "chat"
   | "documents"
+  | "backup"
   | "invoices";
 type PropertyEntryMode = "manual" | "airbnb";
 type PropertyWorkflowTab = "add" | "setup" | "directory";
@@ -5506,6 +5507,13 @@ This removes its linked members and deletes the grounds account.`
           accent: "bg-[#7c3aed]",
           activeClass: "border-[#ddd6fe] bg-[#f5f3ff] text-[#6d28d9]",
         },
+        {
+          key: "backup",
+          label: "Backup",
+          hint: "Exports and snapshots",
+          accent: "bg-[#475569]",
+          activeClass: "border-[#cbd5e1] bg-[#f8fafc] text-[#334155]",
+        },
       ],
     },
     {
@@ -6924,6 +6932,213 @@ This removes its linked members and deletes the grounds account.`
       return `"${text.replace(/"/g, '""')}"`;
     }
     return text;
+  }
+
+  function downloadTextFile(filename: string, content: string, type: string) {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function getBackupBaseName(label: string) {
+    const organizationLabel =
+      currentOrganizationBilling?.name ||
+      myOrganizations.find((organization) => organization.organization_id === currentOrganizationId)?.organization_name ||
+      "estate-ops";
+    const organizationName = organizationLabel
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "");
+    return `${organizationName || "estate-ops"}-${label}-${toYmd(new Date())}`;
+  }
+
+  function downloadCsvFile(filename: string, rows: Array<Array<string | number | null | undefined>>) {
+    const csv = rows.map((row) => row.map(escapeCsvCell).join(",")).join("\r\n");
+    downloadTextFile(filename, csv, "text/csv;charset=utf-8");
+  }
+
+  function downloadFullBackupJson() {
+    const backup = {
+      exported_at: new Date().toISOString(),
+      organization: {
+        id: currentOrganizationId,
+        name:
+          currentOrganizationBilling?.name ||
+          myOrganizations.find((organization) => organization.organization_id === currentOrganizationId)?.organization_name ||
+          null,
+      },
+      counts: {
+        properties: properties.length,
+        cleaner_accounts: cleanerAccounts.length,
+        grounds_accounts: groundsAccounts.length,
+        owner_accounts: ownerAccounts.length,
+        turnover_jobs: jobs.length,
+        grounds_jobs: groundsJobs.length,
+        owner_invoices: ownerInvoices.length,
+        document_vault_files: documentVaultRows.length,
+        maintenance_flags: maintenanceFlags.length,
+      },
+      data: {
+        properties,
+        property_access: accessRows,
+        property_calendars: propertyCalendars,
+        property_sops: sops,
+        property_sop_images: sopImages,
+        cleaner_accounts: cleanerAccounts,
+        cleaner_account_members: cleanerAccountMembers,
+        cleaner_assignments: assignments,
+        turnover_jobs: jobs,
+        turnover_job_slots: jobSlots,
+        grounds_accounts: groundsAccounts,
+        grounds_account_members: groundsAccountMembers,
+        grounds_assignments: groundsAssignments,
+        grounds_jobs: groundsJobs,
+        grounds_job_slots: groundsJobSlots,
+        grounds_recurring_rules: groundsRecurringRules,
+        owner_accounts: ownerAccounts,
+        owner_property_access: ownerPropertyAccess,
+        owner_invoices: ownerInvoices,
+        invoice_settings: invoiceSettings,
+        property_invoice_rates: propertyInvoiceRates,
+        document_vault_files: documentVaultRows,
+        maintenance_flags: maintenanceFlags,
+        maintenance_flag_images: maintenanceFlagImages,
+        organization_invites: organizationInvites,
+      },
+    };
+
+    downloadTextFile(
+      `${getBackupBaseName("full-backup")}.json`,
+      JSON.stringify(backup, null, 2),
+      "application/json;charset=utf-8"
+    );
+    setActionMessage("Full JSON backup downloaded.");
+  }
+
+  function downloadBackupCsv(kind: "properties" | "people" | "jobs" | "invoices" | "documents") {
+    if (kind === "properties") {
+      downloadCsvFile(`${getBackupBaseName("properties")}.csv`, [
+        ["Property", "Address", "Cleaner units", "Strict cleaner units", "Show cleaner team status", "Owner"],
+        ...properties.map((property) => {
+          const ownerAccess = ownerPropertyAccess.find((access) => access.property_id === property.id);
+          const owner = ownerAccounts.find((account) => account.id === ownerAccess?.owner_account_id);
+          return [
+            property.name,
+            property.address,
+            property.default_cleaner_units_needed,
+            property.cleaner_units_required_strict ? "yes" : "no",
+            property.show_team_status_to_cleaners ? "yes" : "no",
+            owner?.full_name || owner?.email || "",
+          ];
+        }),
+      ]);
+    }
+
+    if (kind === "people") {
+      downloadCsvFile(`${getBackupBaseName("people")}.csv`, [
+        ["Type", "Name", "Email", "Phone", "Active", "Members"],
+        ...cleanerAccounts.map((account) => [
+          "Cleaner",
+          account.display_name,
+          account.email,
+          account.phone,
+          account.active === false ? "no" : "yes",
+          (cleanerMembersByAccountId[account.id] ?? []).map((member) => member.full_name || member.email || member.id).join("; "),
+        ]),
+        ...groundsAccounts.map((account) => [
+          "Grounds",
+          account.display_name,
+          account.email,
+          account.phone,
+          account.active === false ? "no" : "yes",
+          (groundsMembersByAccountId[account.id] ?? []).map((member) => member.full_name || member.email || member.id).join("; "),
+        ]),
+        ...ownerAccounts.map((owner) => [
+          "Owner",
+          owner.full_name,
+          owner.email,
+          "",
+          owner.is_active ? "yes" : "no",
+          "",
+        ]),
+      ]);
+    }
+
+    if (kind === "jobs") {
+      downloadCsvFile(`${getBackupBaseName("jobs")}.csv`, [
+        ["Type", "Property", "Scheduled", "Status", "Staffing status", "Slots accepted", "Slots offered"],
+        ...jobs.map((job) => {
+          const slots = jobSlotsByJobId[job.id] ?? [];
+          return [
+            "Cleaning",
+            getPropertyName(job.property_id),
+            job.scheduled_for || extractCheckoutDate(job.notes),
+            job.status,
+            job.staffing_status,
+            slots.filter((slot) => slot.status === "accepted").length,
+            slots.filter((slot) => slot.status === "offered").length,
+          ];
+        }),
+        ...groundsJobs.map((job) => {
+          const slots = groundsJobSlotsByJobId[job.id] ?? [];
+          return [
+            "Grounds",
+            getPropertyName(job.property_id),
+            job.scheduled_for,
+            job.status,
+            job.staffing_status,
+            slots.filter((slot) => slot.status === "accepted").length,
+            slots.filter((slot) => slot.status === "offered").length,
+          ];
+        }),
+      ]);
+    }
+
+    if (kind === "invoices") {
+      downloadCsvFile(`${getBackupBaseName("invoices")}.csv`, [
+        ["Invoice", "Owner", "Property", "Status", "Issue date", "Due date", "Subtotal", "Tax", "Total", "Sent"],
+        ...ownerInvoices.map((invoice) => {
+          const owner = ownerAccounts.find((account) => account.id === invoice.owner_account_id);
+          const property = properties.find((entry) => entry.id === invoice.property_id);
+          return [
+            invoice.invoice_number,
+            owner?.full_name || owner?.email || "",
+            property?.name || property?.address || "",
+            invoice.status,
+            invoice.issue_date,
+            invoice.due_date,
+            Number(invoice.subtotal || 0).toFixed(2),
+            Number(invoice.tax_total || 0).toFixed(2),
+            Number(invoice.total || 0).toFixed(2),
+            invoice.sent_at,
+          ];
+        }),
+      ]);
+    }
+
+    if (kind === "documents") {
+      downloadCsvFile(`${getBackupBaseName("documents")}.csv`, [
+        ["Title", "Category", "Property", "File name", "Size", "Mime type", "Storage path", "Created"],
+        ...documentVaultRows.map((document) => [
+          document.title,
+          document.category,
+          document.property_id ? getPropertyName(document.property_id) : "Organization-wide",
+          document.file_name,
+          document.file_size,
+          document.mime_type,
+          document.storage_path,
+          document.created_at,
+        ]),
+      ]);
+    }
+
+    setActionMessage("CSV export downloaded.");
   }
 
   function downloadInvoiceCsv(
@@ -12593,6 +12808,146 @@ This removes its linked members and deletes the grounds account.`
     );
   }
 
+  function renderBackupSection() {
+    const exportCards: Array<{
+      title: string;
+      description: string;
+      meta: string;
+      action: string;
+      onClick: () => void;
+      tone: string;
+    }> = [
+      {
+        title: "Full backup",
+        description: "Download one JSON snapshot containing the main organization records loaded in admin.",
+        meta: `${properties.length + jobs.length + groundsJobs.length + ownerInvoices.length} core records`,
+        action: "Download JSON",
+        onClick: downloadFullBackupJson,
+        tone: "border-[#cbd5e1] bg-[#f8fafc] text-[#334155]",
+      },
+      {
+        title: "Properties",
+        description: "Property directory, ownership link, staffing defaults, and basic listing details.",
+        meta: `${properties.length} properties`,
+        action: "Download CSV",
+        onClick: () => downloadBackupCsv("properties"),
+        tone: "border-[#bae6fd] bg-[#f0f9ff] text-[#0369a1]",
+      },
+      {
+        title: "People",
+        description: "Cleaner, grounds, and owner account exports with linked team member names.",
+        meta: `${cleanerAccounts.length + groundsAccounts.length + ownerAccounts.length} accounts`,
+        action: "Download CSV",
+        onClick: () => downloadBackupCsv("people"),
+        tone: "border-[#a7f3d0] bg-[#ecfdf5] text-[#047857]",
+      },
+      {
+        title: "Jobs",
+        description: "Cleaning and grounds job status, schedule, staffing status, and slot counts.",
+        meta: `${jobs.length + groundsJobs.length} jobs`,
+        action: "Download CSV",
+        onClick: () => downloadBackupCsv("jobs"),
+        tone: "border-[#bbf7d0] bg-[#f0fdf4] text-[#15803d]",
+      },
+      {
+        title: "Invoices",
+        description: "Owner invoice totals, status, owner, property, issue date, due date, and sent date.",
+        meta: `${ownerInvoices.length} invoices`,
+        action: "Download CSV",
+        onClick: () => downloadBackupCsv("invoices"),
+        tone: "border-[#fde68a] bg-[#fffbeb] text-[#b45309]",
+      },
+      {
+        title: "Document index",
+        description: "Vault metadata, property links, storage paths, categories, and file sizes.",
+        meta: `${documentVaultRows.length} documents`,
+        action: "Download CSV",
+        onClick: () => downloadBackupCsv("documents"),
+        tone: "border-[#ddd6fe] bg-[#f5f3ff] text-[#6d28d9]",
+      },
+    ];
+
+    return (
+      <div className="space-y-6">
+        <section className="rounded-[30px] border border-[#cbd5e1] bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-5 shadow-[0_18px_45px_rgba(51,65,85,0.08)]">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#475569]">Backup Center</p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#1e293b]">Exports and snapshots</h2>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-[#64748b]">
+                Download a local backup or targeted CSVs for bookkeeping, offline review, and support troubleshooting.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={downloadFullBackupJson}
+              className="rounded-full bg-[#1e293b] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#334155]"
+            >
+              Download full backup
+            </button>
+          </div>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {[
+              { label: "Properties", value: properties.length },
+              { label: "Staff accounts", value: cleanerAccounts.length + groundsAccounts.length },
+              { label: "Jobs", value: jobs.length + groundsJobs.length },
+              { label: "Invoices", value: ownerInvoices.length },
+            ].map((stat) => (
+              <div key={stat.label} className="rounded-[20px] border border-[#cbd5e1] bg-white px-4 py-3 shadow-sm">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">{stat.label}</div>
+                <div className="mt-2 text-3xl font-semibold text-[#1e293b]">{stat.value}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-[30px] border border-[#cbd5e1] bg-white p-5 shadow-[0_18px_45px_rgba(51,65,85,0.06)]">
+          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h3 className="text-xl font-semibold tracking-tight text-[#1e293b]">Export options</h3>
+              <p className="mt-1 text-sm text-[#64748b]">
+                CSV exports are easier to open in Excel or import into other tools. JSON is best for a complete snapshot.
+              </p>
+            </div>
+            <span className="rounded-full border border-[#cbd5e1] bg-[#f8fafc] px-3 py-1 text-xs font-semibold text-[#475569]">
+              Generated from current admin data
+            </span>
+          </div>
+
+          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {exportCards.map((card) => (
+              <div key={card.title} className={`rounded-[22px] border p-4 shadow-sm ${card.tone}`}>
+                <div className="flex min-h-[170px] flex-col justify-between gap-4">
+                  <div>
+                    <div className="text-lg font-semibold">{card.title}</div>
+                    <p className="mt-2 text-sm leading-6 opacity-85">{card.description}</p>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="rounded-full border border-current/20 bg-white/70 px-3 py-1 text-xs font-semibold">
+                      {card.meta}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={card.onClick}
+                      className="rounded-full bg-[#1e293b] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#334155]"
+                    >
+                      {card.action}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-[24px] border border-[#e2e8f0] bg-[#f8fafc] p-4 text-sm leading-6 text-[#475569]">
+          This is a local export center, not an automated offsite database backup yet. It gives you practical downloadable copies now, while a future server-side backup can add scheduled encrypted storage.
+        </section>
+      </div>
+    );
+  }
+
   function renderActiveSection() {
     switch (activeSection) {
       case "home":
@@ -12626,6 +12981,8 @@ This removes its linked members and deletes the grounds account.`
         return renderMaintenanceSection();
       case "documents":
         return renderDocumentVaultSection();
+      case "backup":
+        return renderBackupSection();
       case "invoices":
         return renderInvoicesSection();
       default:
