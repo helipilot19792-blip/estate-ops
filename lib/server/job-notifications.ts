@@ -525,8 +525,10 @@ export async function sendJobOfferEmailsForSlots(
       }
 
       const result = await sendNotificationEmail(bundle, "offer", origin);
-      if (result.successCount <= 0) {
+      if (result.failures.length > 0) {
         errors.push(...result.failures);
+      }
+      if (result.successCount <= 0) {
         continue;
       }
 
@@ -554,12 +556,22 @@ async function runSlotNotificationSweep(
   const accountIdColumn = getAccountIdColumn(kind);
   const sentColumn = getSentColumn(mode);
 
-  const { data: rows, error } = await (service
+  let query = service
     .from(slotTable as any)
     .select(
       `id,status,offered_at,accepted_at,expires_at,offer_email_sent_at,offer_reminder_sent_at,day_of_reminder_sent_at,${accountIdColumn}`
     )
-    .not(accountIdColumn, "is", null)) as any;
+    .not(accountIdColumn, "is", null);
+
+  if (mode === "offer") {
+    query = query.eq("status", "offered").is("offer_email_sent_at", null);
+  } else if (mode === "offer_reminder") {
+    query = query.eq("status", "offered").is("offer_reminder_sent_at", null).not("offered_at", "is", null);
+  } else {
+    query = query.eq("status", "accepted").is("day_of_reminder_sent_at", null);
+  }
+
+  const { data: rows, error } = await query as any;
 
   if (error) {
     throw new Error(error.message);
@@ -587,8 +599,10 @@ async function runSlotNotificationSweep(
 
     try {
       const result = await sendNotificationEmail(bundle, mode, origin);
-      if (result.successCount <= 0) {
+      if (result.failures.length > 0) {
         errors.push(...result.failures);
+      }
+      if (result.successCount <= 0) {
         continue;
       }
 

@@ -77,6 +77,9 @@ type JobSlot = {
   expires_at?: string | null;
   accepted_by_profile_id?: string | null;
   declined_by_profile_id?: string | null;
+  offer_email_sent_at?: string | null;
+  offer_reminder_sent_at?: string | null;
+  day_of_reminder_sent_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -142,6 +145,9 @@ type GroundsJobSlot = {
   expires_at?: string | null;
   accepted_by_profile_id?: string | null;
   declined_by_profile_id?: string | null;
+  offer_email_sent_at?: string | null;
+  offer_reminder_sent_at?: string | null;
+  day_of_reminder_sent_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -4880,6 +4886,33 @@ This removes its linked members and deletes the grounds account.`
     if (offered > 0) return "Waiting for response";
     if (declined > 0) return "Reoffer needed";
     return job.status || "Open";
+  }
+
+  function getJobNotificationLabel(slot: JobSlot | GroundsJobSlot) {
+    if (slot.status === "offered") {
+      if (slot.offer_email_sent_at) return `Offer email sent ${formatDateTime(slot.offer_email_sent_at)}`;
+      return "Offer email pending";
+    }
+
+    if (slot.status === "accepted") {
+      if (slot.day_of_reminder_sent_at) return `Day-of reminder sent ${formatDateTime(slot.day_of_reminder_sent_at)}`;
+      return "Day-of reminder pending";
+    }
+
+    if (slot.offer_reminder_sent_at) return `Reminder sent ${formatDateTime(slot.offer_reminder_sent_at)}`;
+    return "No active email notice";
+  }
+
+  function getJobNotificationTone(slot: JobSlot | GroundsJobSlot) {
+    if (slot.status === "offered" && !slot.offer_email_sent_at) {
+      return "border-[#f0b4b4] bg-[#fff5f5] text-[#8a2e22]";
+    }
+
+    if (slot.offer_email_sent_at || slot.offer_reminder_sent_at || slot.day_of_reminder_sent_at) {
+      return "border-[#bbdfc0] bg-[#f0fbf2] text-[#236b30]";
+    }
+
+    return "border-[#d8c7ab] bg-white text-[#6f6255]";
   }
 
   const menuGroups: Array<{
@@ -9843,6 +9876,9 @@ This removes its linked members and deletes the grounds account.`
                             <div>Account: {getGroundsAccountName(slot.grounds_account_id)}</div>
                             <div>Status: {slot.status}</div>
                             <div>Offered: {formatDateTime(slot.offered_at)}</div>
+                            <div className={`mt-2 inline-flex rounded-full border px-2 py-1 font-semibold ${getJobNotificationTone(slot)}`}>
+                              {getJobNotificationLabel(slot)}
+                            </div>
                             <div>Accepted: {formatDateTime(slot.accepted_at)}</div>
                             <div>Declined: {formatDateTime(slot.declined_at)}</div>
                           </div>
@@ -9938,6 +9974,9 @@ This removes its linked members and deletes the grounds account.`
                         <div>Status: {slot.status}</div>
                         <div>Offered: {formatDateTime(slot.offered_at)}</div>
                         <div>Expires: {formatDateTime(slot.expires_at)}</div>
+                        <div className={`mt-2 inline-flex rounded-full border px-2 py-1 font-semibold ${getJobNotificationTone(slot)}`}>
+                          {getJobNotificationLabel(slot)}
+                        </div>
                         <div>Accepted: {formatDateTime(slot.accepted_at)}</div>
                         <div>Declined: {formatDateTime(slot.declined_at)}</div>
                       </div>
