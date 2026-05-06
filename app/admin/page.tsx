@@ -323,6 +323,7 @@ type MaintenanceFlagImageRow = {
 
 type AdminSection =
   | "home"
+  | "notifications"
   | "users"
   | "properties"
   | "cleanerAccounts"
@@ -5600,6 +5601,13 @@ This removes its linked members and deletes the grounds account.`
           activeClass: "border-[#bfdbfe] bg-[#eff6ff] text-[#1d4ed8]",
         },
         {
+          key: "notifications",
+          label: "Notifications",
+          hint: "Items needing action",
+          accent: "bg-[#f97316]",
+          activeClass: "border-[#fed7aa] bg-[#fff7ed] text-[#c2410c]",
+        },
+        {
           key: "calendar",
           label: "Calendar",
           hint: "Bookings and schedules",
@@ -5736,7 +5744,152 @@ This removes its linked members and deletes the grounds account.`
     }, 0);
   }, [chatConversations, chatHiddenItems, chatMessages, chatParticipants, currentAdminUserId]);
 
+  const notificationCenterItems = useMemo(() => {
+    const sentUnpaidInvoices = ownerInvoices.filter((invoice) => invoice.status === "sent");
+    const runningDraftInvoices = ownerInvoices.filter((invoice) => invoice.status === "draft");
+    const lowHealthProperties = propertyHealthRows.filter((row) => row.score < 65);
+
+    const items: Array<{
+      key: string;
+      title: string;
+      detail: string;
+      count: number;
+      tone: "red" | "amber" | "blue" | "green" | "purple";
+      actionLabel: string;
+      onClick: () => void;
+    }> = [];
+
+    if (unreadChatCount > 0) {
+      items.push({
+        key: "chat",
+        title: "Unread chat messages",
+        detail: "New in-app messages are waiting for admin review.",
+        count: unreadChatCount,
+        tone: "blue",
+        actionLabel: "Open chat",
+        onClick: () => setActiveSection("chat"),
+      });
+    }
+
+    if (failedNotificationStats.total > 0) {
+      items.push({
+        key: "notification-queue",
+        title: "Job emails need retry",
+        detail: `${failedNotificationStats.overdue} overdue offer${failedNotificationStats.overdue === 1 ? "" : "s"} and ${failedNotificationStats.total} pending email${failedNotificationStats.total === 1 ? "" : "s"}.`,
+        count: failedNotificationStats.total,
+        tone: failedNotificationStats.overdue > 0 ? "red" : "amber",
+        actionLabel: "Open queue",
+        onClick: () => {
+          setActiveSection("jobs");
+          setJobWorkflowTab("notifications");
+        },
+      });
+    }
+
+    if (strandedJobs.length > 0) {
+      items.push({
+        key: "stranded-jobs",
+        title: "Stranded jobs",
+        detail: "Cleaning jobs need manual assignment or review.",
+        count: strandedJobs.length,
+        tone: "red",
+        actionLabel: "Review jobs",
+        onClick: () => jumpToJobs("stranded"),
+      });
+    }
+
+    if (maintenanceFlagCounts.urgent > 0 || maintenanceFlagCounts.open > 0) {
+      items.push({
+        key: "maintenance",
+        title: maintenanceFlagCounts.urgent > 0 ? "Urgent maintenance flags" : "Open maintenance flags",
+        detail: `${maintenanceFlagCounts.open} open maintenance flag${maintenanceFlagCounts.open === 1 ? "" : "s"} across the workspace.`,
+        count: maintenanceFlagCounts.urgent || maintenanceFlagCounts.open,
+        tone: maintenanceFlagCounts.urgent > 0 ? "red" : "amber",
+        actionLabel: "Open flags",
+        onClick: () => setActiveSection("maintenance"),
+      });
+    }
+
+    if (recentlyAcceptedInvites.length > 0) {
+      items.push({
+        key: "invites",
+        title: "Recently accepted invites",
+        detail: "New users accepted invitations and may need assignment or review.",
+        count: recentlyAcceptedInvites.length,
+        tone: "green",
+        actionLabel: "Open invites",
+        onClick: () => setActiveSection("invites"),
+      });
+    }
+
+    if (sentUnpaidInvoices.length > 0) {
+      items.push({
+        key: "unpaid-invoices",
+        title: "Sent unpaid invoices",
+        detail: "Invoices have been sent and are still marked unpaid.",
+        count: sentUnpaidInvoices.length,
+        tone: "purple",
+        actionLabel: "Open invoices",
+        onClick: () => {
+          setActiveSection("invoices");
+          setInvoiceWorkflowTab("history");
+        },
+      });
+    }
+
+    if (runningDraftInvoices.length > 0) {
+      items.push({
+        key: "invoice-drafts",
+        title: "Running invoice drafts",
+        detail: "Draft invoices are being held for later sending.",
+        count: runningDraftInvoices.length,
+        tone: "amber",
+        actionLabel: "Open drafts",
+        onClick: () => {
+          setActiveSection("invoices");
+          setInvoiceWorkflowTab("history");
+        },
+      });
+    }
+
+    if (lowHealthProperties.length > 0) {
+      items.push({
+        key: "property-health",
+        title: "Properties need attention",
+        detail: "Some properties have low setup or operations health scores.",
+        count: lowHealthProperties.length,
+        tone: "amber",
+        actionLabel: "Open health",
+        onClick: () => {
+          setActiveSection("properties");
+          setPropertyWorkflowTab("health");
+        },
+      });
+    }
+
+    return items.sort((a, b) => {
+      const order = { red: 0, amber: 1, blue: 2, purple: 3, green: 4 };
+      return order[a.tone] - order[b.tone] || b.count - a.count;
+    });
+  }, [
+    unreadChatCount,
+    failedNotificationStats.total,
+    failedNotificationStats.overdue,
+    strandedJobs.length,
+    maintenanceFlagCounts.open,
+    maintenanceFlagCounts.urgent,
+    recentlyAcceptedInvites.length,
+    ownerInvoices,
+    propertyHealthRows,
+  ]);
+
+  const notificationCenterCount = useMemo(
+    () => notificationCenterItems.reduce((sum, item) => sum + item.count, 0),
+    [notificationCenterItems]
+  );
+
   function getAdminMenuBadge(section: AdminSection) {
+    if (section === "notifications" && notificationCenterCount > 0) return notificationCenterCount > 99 ? "99+" : String(notificationCenterCount);
     if (section === "chat" && unreadChatCount > 0) return unreadChatCount > 99 ? "99+" : String(unreadChatCount);
     if (section === "jobs" && strandedJobs.length > 0) return String(strandedJobs.length);
     if (section === "maintenance" && maintenanceFlagCounts.urgent > 0) return String(maintenanceFlagCounts.urgent);
@@ -5899,6 +6052,100 @@ This removes its linked members and deletes the grounds account.`
           </div>
         ))}
       </nav>
+    );
+  }
+
+  function renderNotificationCenterSection() {
+    const toneClasses = {
+      red: "border-[#f0b4b4] bg-[#fff5f5] text-[#8a2e22]",
+      amber: "border-[#f1cf8f] bg-[#fff8e8] text-[#8a6112]",
+      blue: "border-[#a5f3fc] bg-[#ecfeff] text-[#0e7490]",
+      green: "border-[#bbdfc0] bg-[#f0fbf2] text-[#236b30]",
+      purple: "border-[#ddd6fe] bg-[#f5f3ff] text-[#6d28d9]",
+    };
+
+    return (
+      <div className="space-y-6">
+        <section className="rounded-[30px] border border-[#fed7aa] bg-[linear-gradient(180deg,#fffaf5_0%,#fff7ed_100%)] p-5 shadow-[0_18px_45px_rgba(249,115,22,0.08)]">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#c2410c]">Notification Center</p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#431407]">Items needing attention</h2>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-[#7c4a24]">
+                A single place for active alerts from chat, jobs, maintenance, invitations, invoices, and property health.
+              </p>
+            </div>
+            <span className="rounded-full border border-[#fed7aa] bg-white px-3 py-1 text-xs font-semibold text-[#c2410c]">
+              {notificationCenterCount} active
+            </span>
+          </div>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {[
+              { label: "Unread chat", value: unreadChatCount, tone: toneClasses.blue },
+              { label: "Job issues", value: strandedJobs.length + failedNotificationStats.total, tone: strandedJobs.length + failedNotificationStats.total > 0 ? toneClasses.red : toneClasses.green },
+              { label: "Maintenance", value: maintenanceFlagCounts.open, tone: maintenanceFlagCounts.urgent > 0 ? toneClasses.red : toneClasses.amber },
+              { label: "Property health", value: propertyHealthStats.atRisk, tone: propertyHealthStats.atRisk > 0 ? toneClasses.amber : toneClasses.green },
+            ].map((stat) => (
+              <div key={stat.label} className={`rounded-[20px] border px-4 py-3 shadow-sm ${stat.tone}`}>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-75">{stat.label}</div>
+                <div className="mt-2 text-3xl font-semibold">{stat.value}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h3 className="text-xl font-semibold tracking-tight text-[#241c15]">Active notifications</h3>
+              <p className="mt-1 text-sm text-[#7f7263]">Highest priority items stay at the top.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void loadData()}
+              className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-semibold text-[#5f5245] transition hover:bg-white"
+            >
+              Refresh
+            </button>
+          </div>
+
+          <div className="mt-5 space-y-3">
+            {notificationCenterItems.length === 0 ? (
+              <div className="rounded-[22px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-4 py-8 text-center text-sm text-[#7f7263]">
+                Nothing needs attention right now.
+              </div>
+            ) : (
+              notificationCenterItems.map((item) => (
+                <div key={item.key} className={`rounded-[22px] border p-4 shadow-sm ${toneClasses[item.tone]}`}>
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h4 className="text-base font-semibold">{item.title}</h4>
+                        <span className="rounded-full border border-current/20 bg-white/70 px-2.5 py-0.5 text-xs font-semibold">
+                          {item.count}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-sm leading-6 opacity-85">{item.detail}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={item.onClick}
+                      className="rounded-full bg-[#241c15] px-4 py-2 text-sm font-semibold text-[#f8f2e8] transition hover:bg-[#352a21]"
+                    >
+                      {item.actionLabel}
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+
+        <section className="rounded-[24px] border border-[#fed7aa] bg-[#fff7ed] p-4 text-sm leading-6 text-[#7c4a24]">
+          This center shows current in-app attention items. It does not create extra database polling; it summarizes data the admin portal already loads or receives through realtime.
+        </section>
+      </div>
     );
   }
 
@@ -13274,6 +13521,8 @@ This removes its linked members and deletes the grounds account.`
     switch (activeSection) {
       case "home":
         return renderHomeSection();
+      case "notifications":
+        return renderNotificationCenterSection();
       case "users":
         return renderUsersSection();
       case "properties":
