@@ -4556,6 +4556,145 @@ This removes its linked members and deletes the grounds account.`
     [profiles]
   );
 
+  const teamAvailabilityRows = useMemo(() => {
+    const windowEnd = new Date(now);
+    windowEnd.setDate(windowEnd.getDate() + 14);
+    const windowEndYmd = toYmd(windowEnd);
+    const rows: Array<{
+      id: string;
+      kind: "Cleaner" | "Grounds";
+      name: string;
+      members: string;
+      active: boolean;
+      todayCount: number;
+      upcomingCount: number;
+      pendingOffers: number;
+      nextJobDate: string | null;
+      status: "Available" | "Busy today" | "Booked soon" | "Needs response" | "Inactive";
+      tone: string;
+    }> = [];
+
+    for (const account of cleanerAccounts) {
+      const accountSlots = jobSlots.filter((slot) => slot.cleaner_account_id === account.id);
+      const relevantSlots = accountSlots.filter((slot) => {
+        const job = jobs.find((entry) => entry.id === slot.job_id);
+        const jobDate = job?.scheduled_for || extractCheckoutDate(job?.notes || null);
+        return !!jobDate && jobDate >= todayYmd && jobDate <= windowEndYmd && slot.status !== "declined";
+      });
+      const dates = relevantSlots
+        .map((slot) => {
+          const job = jobs.find((entry) => entry.id === slot.job_id);
+          return job?.scheduled_for || extractCheckoutDate(job?.notes || null);
+        })
+        .filter((value): value is string => !!value)
+        .sort();
+      const todayCount = dates.filter((date) => date === todayYmd).length;
+      const pendingOffers = relevantSlots.filter((slot) => slot.status === "offered").length;
+      const members = cleanerMembersByAccountId[account.id] ?? [];
+      let status: "Available" | "Busy today" | "Booked soon" | "Needs response" | "Inactive" = "Available";
+      if (account.active === false) status = "Inactive";
+      else if (pendingOffers > 0) status = "Needs response";
+      else if (todayCount > 0) status = "Busy today";
+      else if (dates.length > 0) status = "Booked soon";
+
+      rows.push({
+        id: `cleaner-${account.id}`,
+        kind: "Cleaner",
+        name: account.display_name || account.email || "Cleaner account",
+        members: members.length ? members.map((member) => member.full_name || member.email || member.id).join(", ") : account.email || "No linked members",
+        active: account.active !== false,
+        todayCount,
+        upcomingCount: dates.length,
+        pendingOffers,
+        nextJobDate: dates[0] || null,
+        status,
+        tone:
+          status === "Available"
+            ? "border-[#bbdfc0] bg-[#f0fbf2] text-[#236b30]"
+            : status === "Needs response"
+              ? "border-[#f0b4b4] bg-[#fff5f5] text-[#8a2e22]"
+              : status === "Inactive"
+                ? "border-[#d8c7ab] bg-[#f6f2eb] text-[#6f6255]"
+                : "border-[#f1cf8f] bg-[#fff8e8] text-[#8a6112]",
+      });
+    }
+
+    for (const account of groundsAccounts) {
+      const accountSlots = groundsJobSlots.filter((slot) => slot.grounds_account_id === account.id);
+      const relevantSlots = accountSlots.filter((slot) => {
+        const job = groundsJobs.find((entry) => entry.id === slot.job_id);
+        const jobDate = job?.scheduled_for || null;
+        return !!jobDate && jobDate >= todayYmd && jobDate <= windowEndYmd && slot.status !== "declined";
+      });
+      const dates = relevantSlots
+        .map((slot) => groundsJobs.find((entry) => entry.id === slot.job_id)?.scheduled_for || null)
+        .filter((value): value is string => !!value)
+        .sort();
+      const todayCount = dates.filter((date) => date === todayYmd).length;
+      const pendingOffers = relevantSlots.filter((slot) => slot.status === "offered").length;
+      const members = groundsMembersByAccountId[account.id] ?? [];
+      let status: "Available" | "Busy today" | "Booked soon" | "Needs response" | "Inactive" = "Available";
+      if (account.active === false) status = "Inactive";
+      else if (pendingOffers > 0) status = "Needs response";
+      else if (todayCount > 0) status = "Busy today";
+      else if (dates.length > 0) status = "Booked soon";
+
+      rows.push({
+        id: `grounds-${account.id}`,
+        kind: "Grounds",
+        name: account.display_name || account.email || "Grounds account",
+        members: members.length ? members.map((member) => member.full_name || member.email || member.id).join(", ") : account.email || "No linked members",
+        active: account.active !== false,
+        todayCount,
+        upcomingCount: dates.length,
+        pendingOffers,
+        nextJobDate: dates[0] || null,
+        status,
+        tone:
+          status === "Available"
+            ? "border-[#bbdfc0] bg-[#f0fbf2] text-[#236b30]"
+            : status === "Needs response"
+              ? "border-[#f0b4b4] bg-[#fff5f5] text-[#8a2e22]"
+              : status === "Inactive"
+                ? "border-[#d8c7ab] bg-[#f6f2eb] text-[#6f6255]"
+                : "border-[#f1cf8f] bg-[#fff8e8] text-[#8a6112]",
+      });
+    }
+
+    return rows.sort((a, b) => {
+      const order = ["Needs response", "Busy today", "Booked soon", "Available", "Inactive"];
+      const statusDiff = order.indexOf(a.status) - order.indexOf(b.status);
+      if (statusDiff !== 0) return statusDiff;
+      return a.name.localeCompare(b.name);
+    });
+  }, [
+    cleanerAccounts,
+    groundsAccounts,
+    jobSlots,
+    groundsJobSlots,
+    jobs,
+    groundsJobs,
+    todayYmd,
+    now,
+    cleanerMembersByAccountId,
+    groundsMembersByAccountId,
+  ]);
+
+  const teamAvailabilityStats = useMemo(() => {
+    const available = teamAvailabilityRows.filter((row) => row.status === "Available").length;
+    const busyToday = teamAvailabilityRows.filter((row) => row.status === "Busy today").length;
+    const needsResponse = teamAvailabilityRows.filter((row) => row.status === "Needs response").length;
+    const bookedSoon = teamAvailabilityRows.filter((row) => row.status === "Booked soon").length;
+
+    return {
+      total: teamAvailabilityRows.length,
+      available,
+      busyToday,
+      needsResponse,
+      bookedSoon,
+    };
+  }, [teamAvailabilityRows]);
+
   function getActiveCountdownMs(jobId: string) {
     const slots = jobSlotsByJobId[jobId] ?? [];
     const activeOffered = slots
@@ -9523,6 +9662,75 @@ This removes its linked members and deletes the grounds account.`
   function renderAssignmentsSection() {
     return (
       <div className="space-y-6">
+        <section className="rounded-[30px] border border-[#d7e7d0] bg-[linear-gradient(180deg,#f8fff5_0%,#eefbea_100%)] p-5 shadow-[0_18px_45px_rgba(60,120,48,0.08)]">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#3f7b45]">Availability</div>
+              <h2 className="mt-1 text-2xl font-semibold tracking-tight text-[#1f4b24]">Cleaner and grounds availability</h2>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-[#557257]">
+                See who is free, booked, or waiting on job offers before assigning more work. This view looks at the next 14 days.
+              </p>
+            </div>
+            <span className="rounded-full border border-[#bddbbd] bg-white px-3 py-1 text-xs font-semibold text-[#3f7b45]">
+              {teamAvailabilityStats.total} teams tracked
+            </span>
+          </div>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            {[
+              { label: "Available", value: teamAvailabilityStats.available, tone: "border-[#bbdfc0] bg-[#f0fbf2] text-[#236b30]" },
+              { label: "Busy today", value: teamAvailabilityStats.busyToday, tone: "border-[#f1cf8f] bg-[#fff8e8] text-[#8a6112]" },
+              { label: "Booked soon", value: teamAvailabilityStats.bookedSoon, tone: "border-[#c7dcf5] bg-[#f1f7ff] text-[#275b8a]" },
+              { label: "Need response", value: teamAvailabilityStats.needsResponse, tone: "border-[#f0b4b4] bg-[#fff5f5] text-[#8a2e22]" },
+              { label: "Total teams", value: teamAvailabilityStats.total, tone: "border-[#bddbbd] bg-white text-[#1f4b24]" },
+            ].map((stat) => (
+              <div key={stat.label} className={`rounded-[20px] border px-4 py-3 shadow-sm ${stat.tone}`}>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-75">{stat.label}</div>
+                <div className="mt-2 text-3xl font-semibold">{stat.value}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-5 grid gap-3 lg:grid-cols-2">
+            {teamAvailabilityRows.length === 0 ? (
+              <div className="rounded-[20px] border border-dashed border-[#bddbbd] bg-white px-4 py-5 text-sm text-[#557257]">
+                No cleaner or grounds accounts exist yet.
+              </div>
+            ) : (
+              teamAvailabilityRows.map((row) => (
+                <div key={row.id} className="rounded-[22px] border border-[#bddbbd] bg-white p-4 shadow-sm">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-base font-semibold text-[#1f4b24]">{row.name}</h3>
+                        <span className="rounded-full border border-[#bddbbd] bg-[#f8fff7] px-2 py-0.5 text-[11px] font-semibold text-[#3f7b45]">
+                          {row.kind}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-sm text-[#557257]">{row.members}</div>
+                    </div>
+                    <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${row.tone}`}>
+                      {row.status}
+                    </span>
+                  </div>
+                  <div className="mt-4 grid gap-2 text-xs text-[#6f8a71] sm:grid-cols-4">
+                    <div>
+                      <span className="font-semibold text-[#1f4b24]">{row.todayCount}</span> today
+                    </div>
+                    <div>
+                      <span className="font-semibold text-[#1f4b24]">{row.upcomingCount}</span> next 14 days
+                    </div>
+                    <div>
+                      <span className="font-semibold text-[#1f4b24]">{row.pendingOffers}</span> pending offers
+                    </div>
+                    <div>Next: {formatScheduledFor(row.nextJobDate)}</div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+
         <section className="rounded-[30px] border border-[#b8d8ea] bg-[#f4fbff] p-5 shadow-[0_18px_45px_rgba(37,99,135,0.08)]">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div>
