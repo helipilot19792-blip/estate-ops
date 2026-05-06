@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
@@ -966,6 +966,8 @@ export default function AdminPage() {
   const [showSupport, setShowSupport] = useState(false);
   const [showAdminNav, setShowAdminNav] = useState(false);
   const [adminMenuOrientation, setAdminMenuOrientation] = useState<AdminMenuOrientation>("side");
+  const [adminMenuOrder, setAdminMenuOrder] = useState<AdminSection[]>([]);
+  const [draggingAdminMenuKey, setDraggingAdminMenuKey] = useState<AdminSection | null>(null);
   const [supportSubject, setSupportSubject] = useState("");
   const [supportMessage, setSupportMessage] = useState("");
   const [sendingSupport, setSendingSupport] = useState(false);
@@ -1116,6 +1118,18 @@ export default function AdminPage() {
     const savedOrientation = window.localStorage.getItem("admin-menu-orientation");
     if (savedOrientation === "side" || savedOrientation === "top") {
       setAdminMenuOrientation(savedOrientation);
+    }
+
+    const savedOrder = window.localStorage.getItem("admin-menu-order");
+    if (savedOrder) {
+      try {
+        const parsed = JSON.parse(savedOrder);
+        if (Array.isArray(parsed)) {
+          setAdminMenuOrder(parsed.filter((value): value is AdminSection => typeof value === "string"));
+        }
+      } catch {
+        window.localStorage.removeItem("admin-menu-order");
+      }
     }
   }, []);
 
@@ -5717,6 +5731,16 @@ This removes its linked members and deletes the grounds account.`
     },
   ];
 
+  const defaultAdminMenuOrder = menuGroups.flatMap((group) => group.items.map((item) => item.key));
+  const adminMenuItemsByKey = new Map(menuGroups.flatMap((group) => group.items.map((item) => [item.key, item] as const)));
+  const orderedAdminMenuItems = [
+    ...adminMenuOrder.filter((key) => adminMenuItemsByKey.has(key)),
+    ...defaultAdminMenuOrder.filter((key) => !adminMenuOrder.includes(key)),
+  ]
+    .filter((key, index, keys) => keys.indexOf(key) === index)
+    .map((key) => adminMenuItemsByKey.get(key))
+    .filter(Boolean) as Array<(typeof menuGroups)[number]["items"][number]>;
+
   const unreadChatCount = useMemo(() => {
     if (!currentAdminUserId) return 0;
 
@@ -5942,6 +5966,52 @@ This removes its linked members and deletes the grounds account.`
     });
   }
 
+  function saveAdminMenuOrder(order: AdminSection[]) {
+    setAdminMenuOrder(order);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("admin-menu-order", JSON.stringify(order));
+    }
+  }
+
+  function resetAdminMenuOrder() {
+    saveAdminMenuOrder([]);
+    setDraggingAdminMenuKey(null);
+  }
+
+  function moveDraggedAdminMenuItem(targetKey: AdminSection) {
+    if (!draggingAdminMenuKey || draggingAdminMenuKey === targetKey) return;
+
+    const currentOrder = orderedAdminMenuItems.map((item) => item.key);
+    const fromIndex = currentOrder.indexOf(draggingAdminMenuKey);
+    const toIndex = currentOrder.indexOf(targetKey);
+    if (fromIndex < 0 || toIndex < 0) return;
+
+    const nextOrder = [...currentOrder];
+    const [moved] = nextOrder.splice(fromIndex, 1);
+    nextOrder.splice(toIndex, 0, moved);
+    saveAdminMenuOrder(nextOrder);
+  }
+
+  function getAdminMenuDragProps(key: AdminSection) {
+    return {
+      draggable: true,
+      onDragStart: (event: DragEvent<HTMLButtonElement>) => {
+        setDraggingAdminMenuKey(key);
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", key);
+      },
+      onDragOver: (event: DragEvent<HTMLButtonElement>) => {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+      },
+      onDrop: (event: DragEvent<HTMLButtonElement>) => {
+        event.preventDefault();
+        moveDraggedAdminMenuItem(key);
+      },
+      onDragEnd: () => setDraggingAdminMenuKey(null),
+    };
+  }
+
   function getProfileDisplayName(profileId?: string | null) {
     if (!profileId) return "";
 
@@ -5961,22 +6031,25 @@ This removes its linked members and deletes the grounds account.`
     if (isTop) {
       return (
         <nav className="flex flex-wrap gap-2" aria-label="Admin sections">
-          {menuGroups.flatMap((group) => group.items).map((item) => {
+          {orderedAdminMenuItems.map((item) => {
             const active = activeSection === item.key;
             const badge = getAdminMenuBadge(item.key);
+            const dragging = draggingAdminMenuKey === item.key;
 
             return (
               <button
                 key={item.key}
                 type="button"
                 onClick={() => selectAdminSection(item.key)}
+                {...getAdminMenuDragProps(item.key)}
                 className={`inline-flex min-h-10 items-center gap-2 rounded-full border px-3 py-2 text-sm font-semibold transition ${
                   active
                     ? `${item.activeClass} shadow-[0_10px_20px_rgba(36,28,21,0.08)]`
                     : item.key === "chat" && unreadChatCount > 0
                       ? "border-[#a5f3fc] bg-[#ecfeff] text-[#0e7490] hover:bg-white"
                       : "border-[#eadfce] bg-white text-[#5f5245] hover:border-[#d8c7ab] hover:bg-[#fcfaf7]"
-                }`}
+                } ${dragging ? "scale-95 opacity-60" : "cursor-grab active:cursor-grabbing"}`}
+                title="Drag to reorder"
               >
                 <span className={`h-5 w-1.5 rounded-full ${item.accent}`} aria-hidden="true" />
                 <span>{item.label}</span>
@@ -5996,34 +6069,56 @@ This removes its linked members and deletes the grounds account.`
               </button>
             );
           })}
+          {adminMenuOrder.length > 0 ? (
+            <button
+              type="button"
+              onClick={resetAdminMenuOrder}
+              className="inline-flex min-h-10 items-center rounded-full border border-[#d8c7ab] bg-white px-3 py-2 text-sm font-semibold text-[#6f6255] transition hover:bg-[#fcfaf7]"
+            >
+              Reset order
+            </button>
+          ) : null}
         </nav>
       );
     }
 
     return (
       <nav className="space-y-5" aria-label="Admin sections">
-        {menuGroups.map((group) => (
-          <div key={group.label}>
-            <div className="px-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-[#9a8b78]">
-              {group.label}
+          <div>
+            <div className="flex items-center justify-between gap-3 px-2">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#9a8b78]">
+                Navigation
+              </div>
+              {adminMenuOrder.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={resetAdminMenuOrder}
+                  className="rounded-full border border-[#d8c7ab] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#6f6255] transition hover:bg-[#fcfaf7]"
+                >
+                  Reset
+                </button>
+              ) : null}
             </div>
             <div className="mt-2 space-y-1.5">
-              {group.items.map((item) => {
+              {orderedAdminMenuItems.map((item) => {
                 const active = activeSection === item.key;
                 const badge = getAdminMenuBadge(item.key);
+                const dragging = draggingAdminMenuKey === item.key;
 
                 return (
                   <button
                     key={item.key}
                     type="button"
                     onClick={() => selectAdminSection(item.key)}
+                    {...getAdminMenuDragProps(item.key)}
                     className={`group flex w-full items-center gap-3 rounded-[18px] border px-3 py-3 text-left transition ${
                       active
                         ? `${item.activeClass} shadow-[0_12px_24px_rgba(36,28,21,0.08)]`
                         : item.key === "chat" && unreadChatCount > 0
                           ? "border-[#a5f3fc] bg-[#ecfeff] text-[#0e7490] hover:bg-white"
                           : "border-transparent bg-transparent text-[#5f5245] hover:border-[#eadfce] hover:bg-white"
-                    }`}
+                    } ${dragging ? "scale-[0.98] opacity-60" : "cursor-grab active:cursor-grabbing"}`}
+                    title="Drag to reorder"
                   >
                     <span className={`${isTop ? "h-7" : "h-9"} w-1.5 rounded-full ${item.accent}`} aria-hidden="true" />
                     <span className="min-w-0 flex-1">
@@ -6050,7 +6145,6 @@ This removes its linked members and deletes the grounds account.`
               })}
             </div>
           </div>
-        ))}
       </nav>
     );
   }
@@ -13891,7 +13985,7 @@ This removes its linked members and deletes the grounds account.`
             <span>
               Menu
               <span className="ml-2 text-xs font-medium text-[#8a7b68]">
-                {menuGroups.flatMap((group) => group.items).find((item) => item.key === activeSection)?.label}
+                {orderedAdminMenuItems.find((item) => item.key === activeSection)?.label}
               </span>
             </span>
             <span className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs text-[#6f6255]">
