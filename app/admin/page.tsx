@@ -13684,7 +13684,7 @@ This removes its linked members and deletes the grounds account.`
   }
 
   return (
-    <main className="min-h-screen bg-[#f7f3ee] text-[#241c15]">
+    <main className="admin-shell min-h-screen">
       <div className={`mx-auto grid w-full max-w-[1800px] gap-4 p-4 pb-[45vh] transition-[grid-template-columns,gap] duration-500 ease-out md:p-6 md:pb-[45vh] 2xl:max-w-[calc(100vw-96px)] ${
         adminMenuOrientation === "side"
           ? "lg:grid-cols-[240px_minmax(0,1fr)] lg:items-start xl:grid-cols-[270px_minmax(0,1fr)] 2xl:gap-8"
@@ -13697,45 +13697,59 @@ This removes its linked members and deletes the grounds account.`
               : "lg:pointer-events-none lg:absolute lg:-translate-y-4 lg:scale-95 lg:opacity-0"
           }`}
         >
-          <div className="rounded-[30px] border border-[#e7ddd0] bg-[#fbf8f4] p-4 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-            <div className="mb-5 rounded-[22px] border border-[#eadfce] bg-white px-4 py-4">
-              <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8a7b68]">Admin</div>
-              <div className="mt-1 text-xl font-semibold tracking-tight text-[#241c15]">Workspace</div>
+          <div className="admin-premium-surface rounded-[28px] border p-4">
+            <div className="mb-5 rounded-[20px] border border-[#dce7ef] bg-white/90 px-4 py-4">
+              <div className="admin-kicker text-xs font-semibold uppercase text-[#64748b]">Admin</div>
+              <div className="mt-1 text-xl font-semibold tracking-tight text-[#17202a]">Workspace</div>
             </div>
             <button
               type="button"
               onClick={toggleAdminMenuOrientation}
-              className="mb-4 flex w-full items-center justify-between rounded-[18px] border border-[#d8c7ab] bg-white px-4 py-3 text-sm font-semibold text-[#5f5245] transition hover:bg-[#fcfaf7]"
+              className="mb-4 flex w-full items-center justify-between rounded-[16px] border border-[#d9e3ee] bg-white/90 px-4 py-3 text-sm font-semibold text-[#475569] transition hover:bg-white"
             >
               <span>Move menu</span>
-              <span className="rounded-full bg-[#241c15] px-3 py-1 text-xs text-[#f8f2e8]">Top</span>
+              <span className="rounded-full bg-[#17202a] px-3 py-1 text-xs text-white">Top</span>
             </button>
             {renderAdminNavigation("side")}
           </div>
         </aside>
 
         <div className="min-w-0">
-        <div className="mb-6 overflow-hidden rounded-[34px] border border-[#e7ddd0] bg-white shadow-[0_30px_70px_rgba(0,0,0,0.08)]">
-          <div className="bg-[linear-gradient(135deg,#1f1812_0%,#2a2119_55%,#3a2c1d_100%)] px-6 py-8 text-white md:px-8 md:py-10">
-            <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-              <div className="flex items-start gap-4">
-
-                <div className="w-[220px] shrink-0 rounded-[18px] bg-white px-4 py-5 shadow-[0_10px_24px_rgba(0,0,0,0.18)]">
+        <div className="admin-premium-surface mb-6 overflow-hidden rounded-[28px] border">
+          <div className="relative overflow-hidden px-6 py-7 md:px-8 md:py-8">
+            <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(240,249,255,0.96)_0%,rgba(240,253,244,0.82)_50%,rgba(255,247,237,0.92)_100%)]" aria-hidden="true" />
+            <div className="absolute right-0 top-0 h-36 w-72 rounded-bl-[80px] bg-[#bae6fd]/35" aria-hidden="true" />
+            <div className="relative flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+              <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+                <div className="admin-brand-orb flex h-[116px] w-[172px] shrink-0 items-center justify-center rounded-[26px] border border-white/80 px-5 shadow-[0_18px_45px_rgba(15,23,42,0.12)]">
                   <Image
                     src="/guleraoslogo.png"
                     alt="GuleraOS"
-                    width={360}
-                    height={120}
-                    className="mx-auto h-auto w-full max-w-[180px]"
+                    width={300}
+                    height={100}
+                    className="h-auto w-full max-w-[132px]"
                     priority
                   />
                 </div>
-                <div>
-                  <div className="mb-2 text-xs uppercase tracking-[0.32em] text-[#d8c7ab]">GULERAOS</div>
-                  <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">Property operations, elevated.</h1>
-                  <p className="mt-2 max-w-2xl text-sm leading-6 text-[#e7dccb] md:text-base">
-                    Staffing, scheduling, and maintenance.
+                <div className="max-w-3xl">
+                  <div className="admin-kicker text-xs font-semibold uppercase text-[#0f766e]">GULERAOS</div>
+                  <h1 className="mt-2 text-3xl font-semibold tracking-tight text-[#17202a] md:text-5xl">
+                    Property operations, elevated.
+                  </h1>
+                  <p className="mt-3 max-w-2xl text-sm leading-6 text-[#475569] md:text-base">
+                    Staffing, scheduling, maintenance, billing, and owner communication in one focused workspace.
                   </p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <span className="rounded-full border border-[#bae6fd] bg-white/80 px-3 py-1 text-xs font-semibold text-[#0369a1]">
+                      Live operations
+                    </span>
+                    <span className="rounded-full border border-[#bbf7d0] bg-white/80 px-3 py-1 text-xs font-semibold text-[#15803d]">
+                      {properties.length} properties
+                    </span>
+                    <span className="rounded-full border border-[#fed7aa] bg-white/80 px-3 py-1 text-xs font-semibold text-[#c2410c]">
+                      {notificationCenterCount} alerts
+                    </span>
+                  </div>
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-3">
@@ -13743,19 +13757,19 @@ This removes its linked members and deletes the grounds account.`
                   <button
                     type="button"
                     onClick={() => router.push("/platform")}
-                    className="inline-flex items-center justify-center rounded-full border border-[#d6b36a]/40 bg-white/10 px-5 py-2.5 text-sm font-medium text-[#f6efe4] shadow-sm transition hover:bg-white/20"
+                    className="inline-flex items-center justify-center rounded-full border border-[#cbd5e1] bg-white/80 px-5 py-2.5 text-sm font-medium text-[#334155] shadow-sm transition hover:bg-white"
                   >
                     SaaS Tower
                   </button>
                 ) : null}
                 <button
                   onClick={() => setShowSupport(true)}
-                  className="inline-flex items-center justify-center rounded-full border border-[#d6b36a]/40 bg-[#fef3c7] px-5 py-2.5 text-sm font-medium text-[#7c5a10] hover:bg-[#fde68a]"
+                  className="inline-flex items-center justify-center rounded-full border border-[#fde68a] bg-[#fef3c7] px-5 py-2.5 text-sm font-medium text-[#7c5a10] shadow-sm hover:bg-[#fde68a]"
                 >
                   Support
                 </button>
                 <button
-                  className="inline-flex items-center justify-center rounded-full border border-[#d6b36a]/40 bg-white/10 px-5 py-2.5 text-sm font-medium text-[#f6efe4] shadow-sm transition hover:bg-white/20"
+                  className="inline-flex items-center justify-center rounded-full border border-[#cbd5e1] bg-[#17202a] px-5 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-[#263241]"
                   onClick={async () => {
                     await supabase.auth.signOut();
                     window.location.href = "/login";
@@ -13767,20 +13781,20 @@ This removes its linked members and deletes the grounds account.`
             </div>
           </div>
 
-          <div className="grid gap-3 border-t border-[#efe6dc] bg-[#fbf8f4] px-6 py-4 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-8 md:px-8">
+          <div className="grid gap-3 border-t border-[#e2e8f0] bg-white/72 px-6 py-4 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-8 md:px-8">
             {[
-              { label: "Properties", value: properties.length },
-              { label: "Cleaner Accounts", value: cleanerAccounts.length },
-              { label: "Grounds Accounts", value: groundsAccounts.length },
-              { label: "Assignments", value: assignments.length + groundsAssignments.length },
-              { label: "Jobs", value: jobs.length + groundsJobs.length },
-              { label: "Invoices", value: ownerInvoices.length },
-              { label: "Users", value: profiles.length },
-              { label: "Flags", value: maintenanceFlags.length },
+              { label: "Properties", value: properties.length, tone: "border-[#bae6fd] bg-[#f0f9ff]" },
+              { label: "Cleaner Accounts", value: cleanerAccounts.length, tone: "border-[#a7f3d0] bg-[#ecfdf5]" },
+              { label: "Grounds Accounts", value: groundsAccounts.length, tone: "border-[#99f6e4] bg-[#f0fdfa]" },
+              { label: "Assignments", value: assignments.length + groundsAssignments.length, tone: "border-[#d9f99d] bg-[#f7fee7]" },
+              { label: "Jobs", value: jobs.length + groundsJobs.length, tone: "border-[#bbf7d0] bg-[#f0fdf4]" },
+              { label: "Invoices", value: ownerInvoices.length, tone: "border-[#fde68a] bg-[#fffbeb]" },
+              { label: "Users", value: profiles.length, tone: "border-[#c7d2fe] bg-[#eef2ff]" },
+              { label: "Flags", value: maintenanceFlags.length, tone: "border-[#fecaca] bg-[#fff1f2]" },
             ].map((item) => (
-              <div key={item.label} className="rounded-[24px] border border-[#eadfce] bg-white px-4 py-4 shadow-sm">
-                <div className="text-[11px] uppercase tracking-[0.22em] text-[#8a7b68]">{item.label}</div>
-                <div className="mt-2 text-3xl font-semibold text-[#241c15]">{item.value}</div>
+              <div key={item.label} className={`rounded-[20px] border px-4 py-4 shadow-sm ${item.tone}`}>
+                <div className="admin-kicker text-[11px] uppercase text-[#64748b]">{item.label}</div>
+                <div className="mt-2 text-3xl font-semibold text-[#17202a]">{item.value}</div>
               </div>
             ))}
           </div>

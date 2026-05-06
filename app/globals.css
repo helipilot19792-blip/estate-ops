@@ -22,7 +22,34 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), "Aptos", "Segoe UI", Arial, Helvetica, sans-serif;
+}
+
+.admin-shell {
+  background:
+    radial-gradient(circle at 18% 8%, rgba(125, 211, 252, 0.18), transparent 28%),
+    radial-gradient(circle at 88% 12%, rgba(187, 247, 208, 0.2), transparent 30%),
+    linear-gradient(180deg, #f7fafc 0%, #f4f1ec 100%);
+  color: #17202a;
+  font-family: var(--font-geist-sans), "Aptos", "Segoe UI", Arial, Helvetica, sans-serif;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+.admin-shell .admin-premium-surface {
+  background: rgba(255, 255, 255, 0.86);
+  border-color: rgba(139, 126, 105, 0.18);
+  box-shadow: 0 24px 70px rgba(25, 35, 45, 0.09);
+  backdrop-filter: blur(18px);
+}
+
+.admin-shell .admin-brand-orb {
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.92), rgba(240, 253, 250, 0.86)),
+    radial-gradient(circle at top right, rgba(186, 230, 253, 0.6), transparent 55%);
+}
+
+.admin-shell .admin-kicker {
+  letter-spacing: 0.22em;
 }
 
 .owner-shell {
