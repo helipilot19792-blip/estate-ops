@@ -238,6 +238,20 @@ type SopImageRow = {
   created_at?: string | null;
 };
 
+type DocumentVaultRow = {
+  id: string;
+  organization_id: string;
+  property_id: string | null;
+  title: string;
+  category: string;
+  file_name: string;
+  file_size: number | null;
+  mime_type: string | null;
+  storage_path: string;
+  created_by_profile_id: string | null;
+  created_at?: string | null;
+};
+
 type ProfileRow = {
   id: string;
   email: string | null;
@@ -319,6 +333,7 @@ type AdminSection =
   | "maintenance"
   | "invites"
   | "chat"
+  | "documents"
   | "invoices";
 type PropertyEntryMode = "manual" | "airbnb";
 type PropertyWorkflowTab = "add" | "setup" | "directory";
@@ -768,6 +783,7 @@ export default function AdminPage() {
   const [accessRows, setAccessRows] = useState<AccessRow[]>([]);
   const [sops, setSops] = useState<SopRow[]>([]);
   const [sopImages, setSopImages] = useState<SopImageRow[]>([]);
+  const [documentVaultRows, setDocumentVaultRows] = useState<DocumentVaultRow[]>([]);
   const [profiles, setProfiles] = useState<ProfileRow[]>([]);
   const [ownerAccounts, setOwnerAccounts] = useState<OwnerAccountRow[]>([]);
   const [ownerPropertyAccess, setOwnerPropertyAccess] = useState<OwnerPropertyAccessRow[]>([]);
@@ -980,6 +996,13 @@ export default function AdminPage() {
   const [sopTitle, setSopTitle] = useState("");
   const [sopContent, setSopContent] = useState("");
   const [sopFiles, setSopFiles] = useState<File[]>([]);
+  const [documentVaultPropertyId, setDocumentVaultPropertyId] = useState("all");
+  const [documentVaultCategory, setDocumentVaultCategory] = useState("General");
+  const [documentVaultTitle, setDocumentVaultTitle] = useState("");
+  const [documentVaultFiles, setDocumentVaultFiles] = useState<File[]>([]);
+  const [uploadingDocumentVaultFiles, setUploadingDocumentVaultFiles] = useState(false);
+  const [openingDocumentVaultId, setOpeningDocumentVaultId] = useState<string | null>(null);
+  const [deletingDocumentVaultId, setDeletingDocumentVaultId] = useState<string | null>(null);
 
 
   const [linkSelections, setLinkSelections] = useState<Record<string, string>>({});
@@ -1393,6 +1416,7 @@ export default function AdminPage() {
       accessRowsRes,
       sopsRes,
       sopImagesRes,
+      documentVaultRes,
       profilesRes,
       ownerAccountsRes,
       ownerPropertyAccessRes,
@@ -1457,6 +1481,11 @@ export default function AdminPage() {
       supabase.from("property_access").select("*"),
       supabase.from("property_sops").select("*").order("created_at", { ascending: false }),
       supabase.from("property_sop_images").select("*").order("sort_order", { ascending: true }),
+      supabase
+        .from("document_vault_files")
+        .select("*")
+        .eq("organization_id", currentOrganizationId)
+        .order("created_at", { ascending: false }),
       supabase
         .from("organization_members")
         .select(`
@@ -1546,6 +1575,7 @@ export default function AdminPage() {
       accessRowsRes,
       sopsRes,
       sopImagesRes,
+      documentVaultRes,
       profilesRes,
       ownerAccountsRes,
       ownerPropertyAccessRes,
@@ -1567,6 +1597,7 @@ export default function AdminPage() {
         response.error &&
         response !== invoiceSettingsRes &&
         response !== propertyInvoiceRatesRes &&
+        response !== documentVaultRes &&
         response !== chatConversationsRes &&
         response !== chatParticipantsRes &&
         response !== chatMessagesRes &&
@@ -1594,6 +1625,9 @@ export default function AdminPage() {
     setAccessRows((accessRowsRes.data ?? []) as AccessRow[]);
     setSops((sopsRes.data ?? []) as SopRow[]);
     setSopImages((sopImagesRes.data ?? []) as SopImageRow[]);
+    setDocumentVaultRows(
+      documentVaultRes.error ? [] : ((documentVaultRes.data ?? []) as DocumentVaultRow[])
+    );
     setProfiles(
       ((profilesRes.data ?? []) as any[])
         .map((member) => {
@@ -4212,6 +4246,114 @@ This removes its linked members and deletes the grounds account.`
     }
   }
 
+  async function uploadDocumentVaultFiles() {
+    if (!currentOrganizationId) {
+      setError("No organization selected.");
+      return;
+    }
+
+    if (documentVaultFiles.length === 0) {
+      setError("Choose at least one document to upload.");
+      return;
+    }
+
+    setError("");
+    setActionMessage("");
+    setUploadingDocumentVaultFiles(true);
+
+    try {
+      for (let i = 0; i < documentVaultFiles.length; i++) {
+        const file = documentVaultFiles[i];
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const propertySegment = documentVaultPropertyId === "all" ? "organization" : documentVaultPropertyId;
+        const filePath = `${currentOrganizationId}/${propertySegment}/${Date.now()}-${i}-${safeName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from("document-vault")
+          .upload(filePath, file, { cacheControl: "3600", upsert: false });
+
+        if (uploadError) {
+          throw new Error(uploadError.message);
+        }
+
+        const { error: insertError } = await supabase.from("document_vault_files").insert({
+          organization_id: currentOrganizationId,
+          property_id: documentVaultPropertyId === "all" ? null : documentVaultPropertyId,
+          title: documentVaultTitle.trim() || file.name.replace(/\.[^.]+$/, ""),
+          category: documentVaultCategory,
+          file_name: file.name,
+          file_size: file.size,
+          mime_type: file.type || null,
+          storage_path: filePath,
+          created_by_profile_id: currentAdminUserId,
+        });
+
+        if (insertError) {
+          await supabase.storage.from("document-vault").remove([filePath]);
+          throw new Error(insertError.message);
+        }
+      }
+
+      setDocumentVaultTitle("");
+      setDocumentVaultFiles([]);
+      setActionMessage(`${documentVaultFiles.length} document${documentVaultFiles.length === 1 ? "" : "s"} uploaded.`);
+      await loadData();
+    } catch (err) {
+      setError(getErrorMessage(err, "Could not upload document. Run the document vault SQL first if the table or bucket is missing."));
+    } finally {
+      setUploadingDocumentVaultFiles(false);
+    }
+  }
+
+  async function openDocumentVaultFile(document: DocumentVaultRow) {
+    setOpeningDocumentVaultId(document.id);
+    setError("");
+
+    try {
+      const { data, error } = await supabase.storage
+        .from("document-vault")
+        .createSignedUrl(document.storage_path, 10 * 60, {
+          download: document.file_name,
+        });
+
+      if (error || !data?.signedUrl) {
+        throw new Error(error?.message || "Could not create download link.");
+      }
+
+      window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      setError(getErrorMessage(err, "Could not open this document."));
+    } finally {
+      setOpeningDocumentVaultId(null);
+    }
+  }
+
+  async function deleteDocumentVaultFile(document: DocumentVaultRow) {
+    const confirmed = window.confirm(`Delete ${document.title || document.file_name}? This removes it from the document vault.`);
+    if (!confirmed) return;
+
+    setDeletingDocumentVaultId(document.id);
+    setError("");
+    setActionMessage("");
+
+    try {
+      const { error: deleteError } = await supabase
+        .from("document_vault_files")
+        .delete()
+        .eq("id", document.id);
+
+      if (deleteError) throw deleteError;
+
+      await supabase.storage.from("document-vault").remove([document.storage_path]);
+      setDocumentVaultRows((rows) => rows.filter((row) => row.id !== document.id));
+      setActionMessage("Document deleted.");
+    } catch (err) {
+      setError(getErrorMessage(err, "Could not delete document."));
+    } finally {
+      setDeletingDocumentVaultId(null);
+    }
+  }
+
   function getPropertyName(id: string | null) {
     if (!id) return "Unknown property";
     return properties.find((p) => p.id === id)?.name || id;
@@ -4275,6 +4417,13 @@ This removes its linked members and deletes the grounds account.`
     const d = new Date(`${value}T12:00:00`);
     if (Number.isNaN(d.getTime())) return value;
     return d.toLocaleDateString();
+  }
+
+  function formatFileSize(bytes?: number | null) {
+    if (!bytes || bytes <= 0) return "Unknown size";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${Math.round(bytes / 102.4) / 10} KB`;
+    return `${Math.round(bytes / (1024 * 102.4)) / 10} MB`;
   }
 
   function getMaintenanceFlagLabel(flag: MaintenanceFlagRow, keys: string[]) {
@@ -5130,6 +5279,27 @@ This removes its linked members and deletes the grounds account.`
     });
   }, [organizationInvites, ownerAccounts]);
 
+  const filteredDocumentVaultRows = useMemo(
+    () =>
+      documentVaultPropertyId === "all"
+        ? documentVaultRows
+        : documentVaultRows.filter((document) => document.property_id === documentVaultPropertyId),
+    [documentVaultRows, documentVaultPropertyId]
+  );
+
+  const documentVaultStats = useMemo(() => {
+    const totalSize = documentVaultRows.reduce((sum, document) => sum + (document.file_size || 0), 0);
+    const propertyLinked = documentVaultRows.filter((document) => !!document.property_id).length;
+    const categories = new Set(documentVaultRows.map((document) => document.category || "General"));
+
+    return {
+      total: documentVaultRows.length,
+      propertyLinked,
+      categories: categories.size,
+      totalSize,
+    };
+  }, [documentVaultRows]);
+
   const operationsAlerts = useMemo(() => {
     const alerts: Array<{
       key: string;
@@ -5328,6 +5498,13 @@ This removes its linked members and deletes the grounds account.`
           hint: "Cleaner and grounds coverage",
           accent: "bg-[#84cc16]",
           activeClass: "border-[#d9f99d] bg-[#f7fee7] text-[#4d7c0f]",
+        },
+        {
+          key: "documents",
+          label: "Documents",
+          hint: "Vault and property files",
+          accent: "bg-[#7c3aed]",
+          activeClass: "border-[#ddd6fe] bg-[#f5f3ff] text-[#6d28d9]",
         },
       ],
     },
@@ -12254,6 +12431,168 @@ This removes its linked members and deletes the grounds account.`
     );
   }
 
+  function renderDocumentVaultSection() {
+    const categories = ["General", "Owner", "Property", "Insurance", "Tax", "Vendor", "Maintenance", "Invoice", "Legal"];
+
+    return (
+      <div className="space-y-6">
+        <section className="rounded-[30px] border border-[#ddd6fe] bg-[linear-gradient(180deg,#fbfaff_0%,#f5f3ff_100%)] p-5 shadow-[0_18px_45px_rgba(109,40,217,0.08)]">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#6d28d9]">Document Vault</p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#2f1b63]">Property and operations files</h2>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-[#66548d]">
+                Store insurance, owner documents, vendor paperwork, receipts, permits, and other files in one searchable place.
+              </p>
+            </div>
+            <span className="rounded-full border border-[#c4b5fd] bg-white px-3 py-1 text-xs font-semibold text-[#6d28d9]">
+              {documentVaultStats.total} document{documentVaultStats.total === 1 ? "" : "s"}
+            </span>
+          </div>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {[
+              { label: "Documents", value: documentVaultStats.total },
+              { label: "Linked to properties", value: documentVaultStats.propertyLinked },
+              { label: "Categories", value: documentVaultStats.categories },
+              { label: "Stored size", value: formatFileSize(documentVaultStats.totalSize) },
+            ].map((stat) => (
+              <div key={stat.label} className="rounded-[20px] border border-[#ddd6fe] bg-white px-4 py-3 shadow-sm">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7c6aa7]">{stat.label}</div>
+                <div className="mt-2 text-3xl font-semibold text-[#2f1b63]">{stat.value}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-[30px] border border-[#ddd6fe] bg-white p-5 shadow-[0_18px_45px_rgba(109,40,217,0.06)]">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
+            <div className="rounded-[24px] border border-[#ddd6fe] bg-[#fbfaff] p-4">
+              <h3 className="text-lg font-semibold text-[#2f1b63]">Upload documents</h3>
+              <div className="mt-4 space-y-3">
+                <select
+                  className="w-full rounded-[18px] border border-[#c4b5fd] bg-white px-4 py-3 text-sm outline-none focus:border-[#7c3aed]"
+                  value={documentVaultPropertyId}
+                  onChange={(e) => setDocumentVaultPropertyId(e.target.value)}
+                >
+                  <option value="all">Organization-wide document</option>
+                  {properties.map((property) => (
+                    <option key={property.id} value={property.id}>
+                      {property.name || property.address || "Unnamed property"}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  className="w-full rounded-[18px] border border-[#c4b5fd] bg-white px-4 py-3 text-sm outline-none focus:border-[#7c3aed]"
+                  value={documentVaultCategory}
+                  onChange={(e) => setDocumentVaultCategory(e.target.value)}
+                >
+                  {categories.map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </select>
+
+                <input
+                  className="w-full rounded-[18px] border border-[#c4b5fd] bg-white px-4 py-3 text-sm outline-none focus:border-[#7c3aed]"
+                  placeholder="Document title optional"
+                  value={documentVaultTitle}
+                  onChange={(e) => setDocumentVaultTitle(e.target.value)}
+                />
+
+                <label className="block rounded-[18px] border border-dashed border-[#c4b5fd] bg-white px-4 py-4 text-sm text-[#66548d]">
+                  <span className="font-semibold text-[#6d28d9]">Choose files</span>
+                  <input
+                    type="file"
+                    className="sr-only"
+                    multiple
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => setDocumentVaultFiles(Array.from(e.target.files ?? []))}
+                  />
+                  <div className="mt-2 text-xs">
+                    {documentVaultFiles.length > 0
+                      ? `${documentVaultFiles.length} file${documentVaultFiles.length === 1 ? "" : "s"} selected`
+                      : "PDFs, images, spreadsheets, and documents can be stored here."}
+                  </div>
+                </label>
+
+                <button
+                  type="button"
+                  onClick={() => void uploadDocumentVaultFiles()}
+                  disabled={uploadingDocumentVaultFiles}
+                  className="w-full rounded-full bg-[#6d28d9] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#5b21b6] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {uploadingDocumentVaultFiles ? "Uploading..." : "Upload to vault"}
+                </button>
+              </div>
+            </div>
+
+            <div className="rounded-[24px] border border-[#ddd6fe] bg-[#fbfaff] p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-[#2f1b63]">Vault files</h3>
+                  <p className="mt-1 text-sm text-[#66548d]">Filter by property using the upload property selector.</p>
+                </div>
+                <span className="rounded-full border border-[#c4b5fd] bg-white px-3 py-1 text-xs font-semibold text-[#6d28d9]">
+                  {filteredDocumentVaultRows.length} shown
+                </span>
+              </div>
+
+              <div className="mt-4 space-y-3">
+                {filteredDocumentVaultRows.length === 0 ? (
+                  <div className="rounded-[18px] border border-dashed border-[#c4b5fd] bg-white px-4 py-5 text-sm text-[#66548d]">
+                    No documents found. If you have not run the document vault SQL yet, the vault will be ready after that setup is complete.
+                  </div>
+                ) : (
+                  filteredDocumentVaultRows.map((document) => (
+                    <div key={document.id} className="rounded-[18px] border border-[#ddd6fe] bg-white p-4 shadow-sm">
+                      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h4 className="break-words text-base font-semibold text-[#2f1b63]">{document.title || document.file_name}</h4>
+                            <span className="rounded-full border border-[#c4b5fd] bg-[#f5f3ff] px-2.5 py-0.5 text-[11px] font-semibold text-[#6d28d9]">
+                              {document.category || "General"}
+                            </span>
+                          </div>
+                          <div className="mt-1 break-all text-sm text-[#66548d]">{document.file_name}</div>
+                          <div className="mt-2 flex flex-wrap gap-2 text-xs text-[#7c6aa7]">
+                            <span>{document.property_id ? getPropertyName(document.property_id) : "Organization-wide"}</span>
+                            <span>{formatFileSize(document.file_size)}</span>
+                            <span>{document.created_at ? formatDateTime(document.created_at) : "Unknown time"}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void openDocumentVaultFile(document)}
+                            disabled={openingDocumentVaultId === document.id}
+                            className="rounded-full border border-[#c4b5fd] bg-white px-4 py-2 text-sm font-semibold text-[#6d28d9] transition hover:bg-[#f5f3ff] disabled:opacity-60"
+                          >
+                            {openingDocumentVaultId === document.id ? "Opening..." : "Download"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void deleteDocumentVaultFile(document)}
+                            disabled={deletingDocumentVaultId === document.id}
+                            className="rounded-full border border-[#fecaca] bg-[#fff5f5] px-4 py-2 text-sm font-semibold text-[#b91c1c] transition hover:bg-[#fff1f2] disabled:opacity-60"
+                          >
+                            {deletingDocumentVaultId === document.id ? "Deleting..." : "Delete"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   function renderActiveSection() {
     switch (activeSection) {
       case "home":
@@ -12285,6 +12624,8 @@ This removes its linked members and deletes the grounds account.`
         return renderCalendarSection();
       case "maintenance":
         return renderMaintenanceSection();
+      case "documents":
+        return renderDocumentVaultSection();
       case "invoices":
         return renderInvoicesSection();
       default:
