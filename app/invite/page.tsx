@@ -515,6 +515,11 @@ function InvitePageContent() {
 
                 {!inviteAccepted ? (
                   <form onSubmit={handleCreateAccount} className="space-y-3">
+                    <div className="rounded-[20px] border border-[#efd8a8] bg-[#fff8e8] px-4 py-3 text-sm leading-6 text-[#6f5525]">
+                      Gulera OS is currently in a testing phase. Features may change, errors may occur,
+                      and important operational or invoice details should be reviewed before relying on them.
+                    </div>
+
                     <input
                       className="w-full rounded-[20px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
                       type="email"
@@ -538,7 +543,7 @@ function InvitePageContent() {
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8a7b68] hover:text-[#241c15]"
                         onClick={() => setShowPassword((prev) => !prev)}
                       >
-                        👁
+                        {showPassword ? "Hide" : "Show"}
                       </button>
                     </div>
 

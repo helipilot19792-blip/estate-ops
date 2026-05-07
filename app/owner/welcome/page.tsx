@@ -498,6 +498,11 @@ async function handleFreshLoginLink() {
             </div>
           ) : null}
 
+          <div className="mt-4 rounded-2xl border border-[#b08b47]/35 bg-[#b08b47]/12 px-4 py-3 text-sm leading-6 text-[#ead8b8]">
+            Gulera OS is currently in a testing phase. Features may change, errors may occur,
+            and important operational or invoice details should be reviewed before relying on them.
+          </div>
+
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             <div>
               <label className="text-xs uppercase tracking-[0.18em] text-[#e7c98a]">New password</label>

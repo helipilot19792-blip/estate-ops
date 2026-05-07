@@ -588,6 +588,10 @@ export default function LoginPage() {
                     <p className="mt-1 text-sm text-[#7f7263]">
                       Start your own Gulera OS workspace as the first admin for your company
                     </p>
+                    <div className="mt-4 rounded-[20px] border border-[#efd8a8] bg-[#fff8e8] px-4 py-3 text-sm leading-6 text-[#6f5525]">
+                      Gulera OS is currently in a testing phase. Features may change, errors may occur,
+                      and important operational or invoice details should be reviewed before relying on them.
+                    </div>
 
                     <form onSubmit={handleCompanySignup} className="mt-5 grid gap-3 md:grid-cols-2">
                       <input
@@ -647,7 +651,7 @@ export default function LoginPage() {
                           className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8a7b68] hover:text-[#241c15]"
                           onClick={() => setShowSignupPassword(!showSignupPassword)}
                         >
-                          👁
+                          {showSignupPassword ? "Hide" : "Show"}
                         </button>
                       </div>
 
@@ -666,7 +670,7 @@ export default function LoginPage() {
                           className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8a7b68] hover:text-[#241c15]"
                           onClick={() => setShowSignupConfirmPassword(!showSignupConfirmPassword)}
                         >
-                          👁
+                          {showSignupConfirmPassword ? "Hide" : "Show"}
                         </button>
                       </div>
 
