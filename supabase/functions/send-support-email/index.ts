@@ -1,5 +1,5 @@
 // supabase/functions/send-support-email/index.ts
-// @ts-ignore
+// @ts-expect-error Deno URL imports are resolved by Supabase Edge Functions.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 declare const Deno: { env: { get: (key: string) => string | undefined } };

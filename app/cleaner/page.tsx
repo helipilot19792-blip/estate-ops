@@ -8,13 +8,15 @@ export default function CleanerPage() {
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
-    setHasMounted(true);
-
     const media = window.matchMedia("(max-width: 767px)");
 
     const updateMode = () => {
       setIsMobile(media.matches);
     };
+
+    const mountTimeout = window.setTimeout(() => {
+      setHasMounted(true);
+    }, 0);
 
     updateMode();
 
@@ -25,6 +27,8 @@ export default function CleanerPage() {
     }
 
     return () => {
+      window.clearTimeout(mountTimeout);
+
       if (typeof media.removeEventListener === "function") {
         media.removeEventListener("change", updateMode);
       } else {

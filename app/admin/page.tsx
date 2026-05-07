@@ -11129,7 +11129,7 @@ This removes its linked members and deletes the grounds account.`
         <section className="rounded-[30px] border border-[#d8e8d8] bg-[linear-gradient(180deg,#f8fcf8_0%,#f2f8f2_100%)] p-5 shadow-[0_18px_45px_rgba(28,86,39,0.08)]">
           <h2 className="text-xl font-semibold tracking-tight text-[#23422c]">Create Grounds Job</h2>
           <p className="mt-1 text-sm text-[#5b7460]">
-            Create a grounds job. Grounds slots are offered automatically from the property's grounds assignments.
+            Create a grounds job. Grounds slots are offered automatically from the property&apos;s grounds assignments.
           </p>
 
           <div className="mt-4 flex gap-3">
@@ -14178,7 +14178,7 @@ This removes its linked members and deletes the grounds account.`
                       return;
                     }
 
-                    const { data: emailData, error: emailError } = await supabase.functions.invoke(
+                    const { error: emailError } = await supabase.functions.invoke(
                       "send-support-email",
                       {
                         body: {
@@ -14188,8 +14188,6 @@ This removes its linked members and deletes the grounds account.`
                         },
                       }
                     );
-
-                    console.log("Support email response:", emailData, emailError);
 
                     setShowSupport(false);
                     setSupportMessage("");
@@ -14201,7 +14199,7 @@ This removes its linked members and deletes the grounds account.`
                       return;
                     }
 
-                    alert("Submitted 👍");
+                    alert("Submitted.");
                   } catch (error) {
                     console.error("Unexpected support submit error:", error);
                     alert("Something went wrong submitting your request.");

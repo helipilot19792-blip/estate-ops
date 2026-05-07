@@ -394,19 +394,19 @@ function countBookedNightsInWindow(bookings: BookingInsight[], days: number) {
 function getGroundsLabel(jobType?: string | null) {
   switch ((jobType || "").toLowerCase()) {
     case "lawn_cut":
-      return "Grounds service • Lawn cut";
+      return "Grounds service | Lawn cut";
     case "yard_cleanup":
-      return "Grounds service • Yard cleanup";
+      return "Grounds service | Yard cleanup";
     case "snow_clear":
-      return "Grounds service • Snow clearing";
+      return "Grounds service | Snow clearing";
     case "salt":
-      return "Grounds service • Salt / ice";
+      return "Grounds service | Salt / ice";
     case "garbage_out":
-      return "Grounds service • Garbage out";
+      return "Grounds service | Garbage out";
     case "recycling_out":
-      return "Grounds service • Recycling out";
+      return "Grounds service | Recycling out";
     case "bulk_pickup_out":
-      return "Grounds service • Bulk pickup";
+      return "Grounds service | Bulk pickup";
     default:
       return "Grounds service";
   }
@@ -560,12 +560,16 @@ function ReportIssueModal({
 
   useEffect(() => {
     if (!open) return;
-    setCategory("General concern");
-    setUrgency("normal");
-    setNotes("");
-    setFiles([]);
-    setSaving(false);
-    setError("");
+    const timeout = window.setTimeout(() => {
+      setCategory("General concern");
+      setUrgency("normal");
+      setNotes("");
+      setFiles([]);
+      setSaving(false);
+      setError("");
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
   }, [open]);
 
   if (!open) return null;
@@ -1517,7 +1521,7 @@ export default function OwnerPage() {
           title: "Scheduled cleaning",
           date: normalizeYmd(job.scheduled_for),
           subtitle: booking.guest
-            ? `Prepared for ${booking.guest}${booking.sourceLabel ? ` • ${booking.sourceLabel}` : ""}`
+            ? `Prepared for ${booking.guest}${booking.sourceLabel ? ` | ${booking.sourceLabel}` : ""}`
             : "Upcoming cleaning visit",
           tone: "gold",
         });
@@ -1531,7 +1535,7 @@ export default function OwnerPage() {
           date: booking.checkinDate,
           subtitle:
             booking.guest || booking.sourceLabel
-              ? [booking.guest, booking.sourceLabel].filter(Boolean).join(" • ")
+              ? [booking.guest, booking.sourceLabel].filter(Boolean).join(" | ")
               : "Upcoming reservation activity",
           tone: "sky",
         });
@@ -1551,7 +1555,7 @@ export default function OwnerPage() {
           date: event.checkin_date,
           subtitle:
             event.summary || sourceLabel
-              ? [event.summary, sourceLabel].filter(Boolean).join(" â€¢ ")
+              ? [event.summary, sourceLabel].filter(Boolean).join(" | ")
               : "Upcoming reservation activity",
           tone: "sky",
         });
@@ -1578,7 +1582,7 @@ export default function OwnerPage() {
       items.push({
         id: `grounds-rule-${rule.id}`,
         type: "grounds",
-        title: `${formatRecurringGroundsLabel(rule)} • Recurring`,
+        title: `${formatRecurringGroundsLabel(rule)} | Recurring`,
         date: nextDate,
         subtitle: rule.notes?.trim() || "Recurring grounds schedule",
         tone: "emerald",
@@ -1589,7 +1593,7 @@ export default function OwnerPage() {
       items.push({
         id: `issue-${flag.id}`,
         type: "issue",
-        title: `Open issue${flag.category ? ` • ${flag.category}` : ""}`,
+        title: `Open issue${flag.category ? ` | ${flag.category}` : ""}`,
         date: flag.flagged_at || flag.created_at || null,
         subtitle: flag.notes || "Issue reported",
         tone: "rose",
@@ -2005,7 +2009,7 @@ export default function OwnerPage() {
             value={nextGrounds ? formatDateLabel(nextGrounds.date) : "Not scheduled"}
             subtext={
               nextGrounds
-                ? `${nextGrounds.label}${nextGrounds.subtext ? ` • ${nextGrounds.subtext}` : ""}`
+                ? `${nextGrounds.label}${nextGrounds.subtext ? ` | ${nextGrounds.subtext}` : ""}`
                 : "No exterior service scheduled"
             }
           />
@@ -2014,7 +2018,7 @@ export default function OwnerPage() {
             value={bookingInfo?.checkinDate ? formatDateLabel(bookingInfo.checkinDate) : "Not available"}
             subtext={
               bookingInfo
-                ? [bookingInfo.guest, bookingInfo.sourceLabel].filter(Boolean).join(" • ") || "Booking found from sync"
+                ? [bookingInfo.guest, bookingInfo.sourceLabel].filter(Boolean).join(" | ") || "Booking found from sync"
                 : "No synced upcoming booking found"
             }
           />
@@ -2542,7 +2546,7 @@ export default function OwnerPage() {
                             <span>{formatCurrency(invoice.subtotal)}</span>
                           </div>
                           {taxLines.map((taxLine) => (
-                            <div className="flex justify-between">
+                            <div key={taxLine.id || taxLine.label} className="flex justify-between">
                               <span>{taxLine.label} ({taxLine.rate}%)</span>
                               <span>{formatCurrency(taxLine.amount)}</span>
                             </div>

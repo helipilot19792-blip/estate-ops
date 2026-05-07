@@ -11,7 +11,11 @@ export default function LegalConsentBanner() {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    setVisible(!window.localStorage.getItem(CONSENT_KEY));
+    const timeout = window.setTimeout(() => {
+      setVisible(!window.localStorage.getItem(CONSENT_KEY));
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
   }, []);
 
   function saveConsent(choice: ConsentChoice) {

@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
     endDate.toISOString().slice(0, 10)
   );
 
-  const title = `Cleaning – ${property?.name || "Property"}`;
+  const title = `Cleaning - ${property?.name || "Property"}`;
   const description = job.notes || "";
   const location = property?.address || "";
 

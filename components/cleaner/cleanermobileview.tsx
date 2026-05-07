@@ -51,13 +51,17 @@ function ReportIssueModal({
 
   useEffect(() => {
     if (!open) return;
-    setPropertyId(defaultPropertyId);
-    setCategory("");
-    setUrgency("normal");
-    setNotes("");
-    setFiles([]);
-    setError("");
-    setSaving(false);
+    const timeout = window.setTimeout(() => {
+      setPropertyId(defaultPropertyId);
+      setCategory("");
+      setUrgency("normal");
+      setNotes("");
+      setFiles([]);
+      setError("");
+      setSaving(false);
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
   }, [open, defaultPropertyId]);
 
   if (!open) return null;

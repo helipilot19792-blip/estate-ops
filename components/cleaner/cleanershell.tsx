@@ -545,10 +545,9 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
         {
           event: "*",
           schema: "public",
-          table: "turnover_job_slots", // 🔥 this is key
+          table: "turnover_job_slots",
         },
         async () => {
-          console.log("🔔 Job change detected, refreshing...");
           await refreshCleanerJobs();
         }
       )
@@ -582,7 +581,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
         if (userError) throw userError;
 
         if (!user) {
-          setPageError("DEBUG: No signed-in user found in CleanerShell after login.");
+          setPageError("No signed-in cleaner account was found. Please log in again.");
           setLoading(false);
           return;
         }
@@ -594,14 +593,14 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
           .single();
 
         if (profileError) {
-          setPageError(`DEBUG: Profile lookup failed: ${profileError.message}`);
+          setPageError(`Your cleaner profile could not be loaded. ${profileError.message}`);
           setLoading(false);
           return;
         }
         if (!mounted) return;
 
         if (!profileData) {
-          setPageError("DEBUG: No profile row found for signed-in user.");
+          setPageError("No profile is linked to this sign-in yet. Ask an admin to send or accept your invite.");
           setLoading(false);
           return;
         }
@@ -609,7 +608,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
         setProfile(profileData);
 
         if (profileData.role === "admin") {
-          setPageError("DEBUG: User is being treated as admin and redirected away from cleaner.");
+          setPageError("This sign-in belongs to an admin account. Please use the admin workspace or log in with a cleaner account.");
           setLoading(false);
           return;
         }
@@ -621,7 +620,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
 
         if (!accountData.account) {
           setPageError(
-            `DEBUG: No cleaner account loaded. ${accountData.warning || "No warning returned."}`
+            accountData.warning || "This sign-in is not linked to a cleaner account yet. Ask an admin to connect your profile."
           );
           setProperties([]);
           setCleanerJobs([]);

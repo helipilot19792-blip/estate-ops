@@ -494,7 +494,7 @@ async function handleFreshLoginLink() {
           </p>
           {!hasInviteSession ? (
             <div className="mt-4 rounded-2xl border border-amber-400/25 bg-amber-950/20 px-4 py-3 text-sm text-amber-100">
-              Password setup needs an active email-link session. Click "Email me a fresh link" above, then open the newest email.
+              Password setup needs an active email-link session. Click &quot;Email me a fresh link&quot; above, then open the newest email.
             </div>
           ) : null}
 
