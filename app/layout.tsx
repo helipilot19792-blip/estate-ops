@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { I18nProvider } from "@/components/i18n-provider";
+import LanguageSwitcher from "@/components/language-switcher";
 import LegalConsentBanner from "@/components/legal-consent-banner";
 import "./globals.css";
 
@@ -31,8 +33,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
-        {children}
-        <LegalConsentBanner />
+        <I18nProvider>
+          {children}
+          <LanguageSwitcher />
+          <LegalConsentBanner />
+        </I18nProvider>
       </body>
     </html>
   );
