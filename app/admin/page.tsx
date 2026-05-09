@@ -1540,12 +1540,104 @@ export default function AdminPage() {
       setSendingSupport(false);
     }
   }
+  function applyAdminDataPayload(data: any) {
+    const loadedProperties = (data.properties ?? []) as Property[];
+    const loadedStrandedJobs = (data.strandedJobs ?? []) as StrandedJob[];
+
+    setProperties(loadedProperties);
+    setCleanerAccounts((data.cleanerAccounts ?? []) as CleanerAccount[]);
+    setCleanerAccountMembers((data.cleanerAccountMembers ?? []) as CleanerAccountMember[]);
+    setAssignments((data.assignments ?? []) as Assignment[]);
+    setJobs((data.jobs ?? []) as Job[]);
+    setJobSlots((data.jobSlots ?? []) as JobSlot[]);
+    setGroundsAccounts((data.groundsAccounts ?? []) as GroundsAccount[]);
+    setGroundsAccountMembers((data.groundsAccountMembers ?? []) as GroundsAccountMember[]);
+    setGroundsAssignments((data.groundsAssignments ?? []) as GroundsAssignment[]);
+    setGroundsJobs((data.groundsJobs ?? []) as GroundsJob[]);
+    setGroundsJobSlots((data.groundsJobSlots ?? []) as GroundsJobSlot[]);
+    setGroundsRecurringTasks((data.groundsRecurringTasks ?? []) as GroundsRecurringTask[]);
+    setGroundsRecurringRules((data.groundsRecurringRules ?? []) as GroundsRecurringRule[]);
+    setStrandedJobs(loadedStrandedJobs);
+    setAccessRows((data.accessRows ?? []) as AccessRow[]);
+    setSops((data.sops ?? []) as SopRow[]);
+    setSopImages((data.sopImages ?? []) as SopImageRow[]);
+    setDocumentVaultRows((data.documentVaultRows ?? []) as DocumentVaultRow[]);
+    setProfiles(
+      ((data.profiles ?? []) as any[])
+        .map((member) => {
+          const profile = Array.isArray(member.profiles) ? member.profiles[0] : member.profiles;
+          if (!profile) return null;
+
+          return {
+            id: profile.id,
+            email: profile.email,
+            full_name: profile.full_name,
+            phone: profile.phone,
+            role: member.role || profile.role,
+            created_at: profile.created_at,
+          } as ProfileRow;
+        })
+        .filter(Boolean) as ProfileRow[]
+    );
+    setOwnerAccounts((data.ownerAccounts ?? []) as OwnerAccountRow[]);
+    setOwnerPropertyAccess((data.ownerPropertyAccess ?? []) as OwnerPropertyAccessRow[]);
+    setPropertyCalendars((data.propertyCalendars ?? []) as PropertyCalendarRow[]);
+    setMaintenanceFlags((data.maintenanceFlags ?? []) as MaintenanceFlagRow[]);
+    setMaintenanceFlagImages((data.maintenanceFlagImages ?? []) as MaintenanceFlagImageRow[]);
+    setOrganizationInvites((data.organizationInvites ?? []) as OrganizationInviteRow[]);
+    setInvoiceSettings((data.invoiceSettings ?? null) as InvoiceSettingsRow | null);
+    setPropertyInvoiceRates((data.propertyInvoiceRates ?? []) as PropertyInvoiceRateRow[]);
+    setOwnerInvoices((data.ownerInvoices ?? []) as OwnerInvoiceRow[]);
+    setChatConversations((data.chatConversations ?? []) as ChatConversationRow[]);
+    setChatParticipants((data.chatParticipants ?? []) as ChatParticipantRow[]);
+    setChatMessages((data.chatMessages ?? []) as ChatMessageRow[]);
+    setChatHiddenItems((data.chatHiddenItems ?? []) as ChatHiddenItemRow[]);
+
+    setReassignSelections((prev) => {
+      const next = { ...prev };
+      for (const job of loadedStrandedJobs) {
+        if (!next[job.id]) next[job.id] = "";
+      }
+      return next;
+    });
+    setAdminDataLoaded(true);
+  }
+
   async function loadData() {
     setError("");
     setAdminDataLoaded(false);
 
     if (!currentOrganizationId) {
       setError("No organization selected.");
+      return;
+    }
+
+    if (currentPortalRole === "platform_admin") {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        setError("No active admin session was found.");
+        return;
+      }
+
+      const response = await fetch(
+        `/api/admin/dashboard-data?organizationId=${encodeURIComponent(currentOrganizationId)}`,
+        {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        }
+      );
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || !payload?.ok) {
+        setError(payload?.error || "Could not load admin dashboard data.");
+        return;
+      }
+
+      applyAdminDataPayload(payload.data || {});
       return;
     }
 
