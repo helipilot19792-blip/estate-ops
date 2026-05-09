@@ -985,6 +985,7 @@ export default function AdminPage() {
   const [showAdminNav, setShowAdminNav] = useState(false);
   const [adminMenuOrientation, setAdminMenuOrientation] = useState<AdminMenuOrientation>("side");
   const [adminMenuOrder, setAdminMenuOrder] = useState<AdminSection[]>([]);
+  const [showMobileWorkspaceStats, setShowMobileWorkspaceStats] = useState(false);
   const [draggingAdminMenuKey, setDraggingAdminMenuKey] = useState<AdminSection | null>(null);
   const [supportSubject, setSupportSubject] = useState("");
   const [supportMessage, setSupportMessage] = useState("");
@@ -13831,7 +13832,25 @@ This removes its linked members and deletes the grounds account.`
             </div>
           </div>
 
-          <div className="grid gap-3 border-t border-[#e2e8f0] bg-white/72 px-6 py-4 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-8 md:px-8">
+          <div className="border-t border-[#e2e8f0] bg-white/72 px-4 py-3 md:hidden">
+            <button
+              type="button"
+              onClick={() => setShowMobileWorkspaceStats((current) => !current)}
+              className="flex w-full items-center justify-between gap-3 rounded-[18px] border border-[#d8e4ef] bg-white/85 px-4 py-3 text-left shadow-sm"
+            >
+              <span>
+                <span className="block text-sm font-semibold text-[#17202a]">Workspace stats</span>
+                <span className="mt-0.5 block text-xs text-[#64748b]">
+                  {properties.length} properties | {jobs.length + groundsJobs.length} jobs | {ownerInvoices.length} invoices
+                </span>
+              </span>
+              <span className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-semibold text-[#6f6255]">
+                {showMobileWorkspaceStats ? "Hide" : "Show"}
+              </span>
+            </button>
+          </div>
+
+          <div className={`${showMobileWorkspaceStats ? "grid" : "hidden"} gap-3 border-t border-[#e2e8f0] bg-white/72 px-6 py-4 sm:grid-cols-2 md:grid md:grid-cols-4 xl:grid-cols-8 md:px-8`}>
             {[
               { label: "Properties", value: properties.length, tone: "border-[#bae6fd] bg-[#f0f9ff]" },
               { label: "Cleaner Accounts", value: cleanerAccounts.length, tone: "border-[#a7f3d0] bg-[#ecfdf5]" },
