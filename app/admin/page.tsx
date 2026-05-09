@@ -366,9 +366,10 @@ type MyOrganizationRow = {
   organization_name: string;
   organization_slug: string;
   role: string;
+  record_count?: number;
 };
 
-const ADMIN_SELECTED_ORGANIZATION_KEY = "admin-current-organization-id";
+const ADMIN_SELECTED_ORGANIZATION_KEY = "admin-current-organization-id-v2";
 
 type OrganizationBillingRow = {
   id: string;
@@ -768,6 +769,37 @@ function createInviteToken() {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+async function loadPlatformAdminOrganizations(accessToken: string): Promise<MyOrganizationRow[]> {
+  const response = await fetch("/api/platform/organizations", {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+  const payload = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(payload?.error || "Could not load platform organizations.");
+  }
+
+  return ((payload?.organizations || []) as Array<{
+    id: string;
+    name: string | null;
+    slug: string | null;
+    property_count?: number;
+    cleaning_job_count?: number;
+    grounds_job_count?: number;
+  }>).map((organization) => ({
+    organization_id: organization.id,
+    organization_name: organization.name || organization.slug || "Organization",
+    organization_slug: organization.slug || "",
+    role: "platform_admin",
+    record_count:
+      (organization.property_count || 0) +
+      (organization.cleaning_job_count || 0) +
+      (organization.grounds_job_count || 0),
+  }));
 }
 
 export default function AdminPage() {
@@ -1196,7 +1228,19 @@ export default function AdminPage() {
         return;
       }
 
-      const { data: orgRows, error: orgError } = await supabase.rpc("get_my_organizations");
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      const platformOrganizationRows =
+        profile.role === "platform_admin" && session?.access_token
+          ? await loadPlatformAdminOrganizations(session.access_token).catch(() => [])
+          : [];
+
+      const { data: orgRows, error: orgError } =
+        platformOrganizationRows.length > 0
+          ? { data: platformOrganizationRows, error: null }
+          : await supabase.rpc("get_my_organizations");
 
       if (orgError) {
         setError(`Organization lookup failed: ${orgError.message}`);
@@ -1216,7 +1260,18 @@ export default function AdminPage() {
       const savedOrganization = organizationRows.find((row) => row.organization_id === savedOrganizationId);
       let nextOrganizationId = savedOrganization?.organization_id || organizationRows[0].organization_id;
 
-      if (!savedOrganization && organizationRows.length > 1) {
+      if (organizationRows.length > 1 && organizationRows.some((row) => row.record_count !== undefined)) {
+        const bestOrganization = [...organizationRows].sort(
+          (a, b) => (b.record_count || 0) - (a.record_count || 0)
+        )[0];
+        const savedOrganizationRecordCount = savedOrganization?.record_count || 0;
+        const shouldPreferDataOrganization =
+          !savedOrganization || (savedOrganizationRecordCount === 0 && (bestOrganization?.record_count || 0) > 0);
+
+        if (shouldPreferDataOrganization && (bestOrganization?.record_count || 0) > 0) {
+          nextOrganizationId = bestOrganization.organization_id;
+        }
+      } else if (!savedOrganization && organizationRows.length > 1) {
         const organizationScores = await Promise.all(
           organizationRows.map(async (organization) => {
             const [propertiesCount, jobsCount, groundsJobsCount] = await Promise.all([
