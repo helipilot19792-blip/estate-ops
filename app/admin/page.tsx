@@ -5983,6 +5983,9 @@ This removes its linked members and deletes the grounds account.`
   }
 
   function selectAdminSection(section: AdminSection) {
+    if (section === "properties") {
+      setPropertyWorkflowTab("directory");
+    }
     setActiveSection(section);
     setShowAdminNav(false);
   }
@@ -9953,8 +9956,23 @@ This removes its linked members and deletes the grounds account.`
           </span>
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-2">
-          {properties.map((p) => {
+        {properties.length === 0 ? (
+          <div className="rounded-[22px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-4 py-6 text-sm leading-6 text-[#7f7263]">
+            <div>No properties are loaded for this organization yet.</div>
+            <div className="mt-1">
+              If jobs are showing property names, reload the directory; it uses the same property data as Jobs.
+            </div>
+            <button
+              type="button"
+              onClick={() => void loadData()}
+              className="mt-4 rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-semibold text-[#6f6255] transition hover:bg-[#fffaf4]"
+            >
+              Reload properties
+            </button>
+          </div>
+        ) : (
+          <div className="grid gap-4 xl:grid-cols-2">
+            {properties.map((p) => {
             const propertyCalendarCount = propertyCalendars.filter(
               (calendar) => calendar.property_id === p.id
             ).length;
@@ -10076,8 +10094,9 @@ This removes its linked members and deletes the grounds account.`
                 </div>
               </div>
             );
-          })}
-        </div>
+            })}
+          </div>
+        )}
         <div className="mt-5 rounded-[22px] border border-red-200 bg-red-50 p-4">
           <p className="text-sm font-semibold text-red-700">Reset Organization Data</p>
           <p className="mt-1 text-xs text-red-600">
