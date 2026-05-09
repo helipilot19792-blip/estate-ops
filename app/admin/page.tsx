@@ -778,6 +778,7 @@ export default function AdminPage() {
   const [currentOrganizationId, setCurrentOrganizationId] = useState<string | null>(null);
   const [currentOrganizationBilling, setCurrentOrganizationBilling] = useState<OrganizationBillingRow | null>(null);
   const [myOrganizations, setMyOrganizations] = useState<MyOrganizationRow[]>([]);
+  const [adminDataLoaded, setAdminDataLoaded] = useState(false);
   const [now, setNow] = useState(() => new Date());
   const [adminCalendarMonth, setAdminCalendarMonth] = useState(() => {
     const today = new Date();
@@ -1051,7 +1052,11 @@ export default function AdminPage() {
         return aDate.localeCompare(bDate);
       });
   }, [groundsJobs, todayYmd]);
-  const tomorrowYmd = toYmd(new Date(new Date().setDate(new Date().getDate() + 1)));
+  const tomorrowYmd = useMemo(() => {
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return toYmd(tomorrow);
+  }, [now]);
 
   const tomorrowsCleaningJobs = useMemo(() => {
     return jobs.filter(
@@ -1436,6 +1441,7 @@ export default function AdminPage() {
   }
   async function loadData() {
     setError("");
+    setAdminDataLoaded(false);
 
     if (!currentOrganizationId) {
       setError("No organization selected.");
@@ -1722,6 +1728,7 @@ export default function AdminPage() {
       }
       return next;
     });
+    setAdminDataLoaded(true);
   }
 
   async function markChatConversationRead(conversationId: string) {
@@ -6422,7 +6429,7 @@ This removes its linked members and deletes the grounds account.`
                     </h3>
                   </div>
                   <div className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-[#9a6206]">
-                    {tomorrowsCleaningJobs.length + tomorrowsGroundsJobs.length} jobs
+                    {adminDataLoaded ? `${tomorrowsCleaningJobs.length + tomorrowsGroundsJobs.length} jobs` : "Loading"}
                   </div>
                 </div>
 
@@ -6467,11 +6474,15 @@ This removes its linked members and deletes the grounds account.`
                     );
                   })}
 
-                  {tomorrowsCleaningJobs.length === 0 && tomorrowsGroundsJobs.length === 0 && (
+                  {!adminDataLoaded ? (
+                    <div className="rounded-[20px] border border-dashed border-[#f1cf8f] bg-white/80 px-4 py-5 text-sm text-[#8b6a32]">
+                      Loading tomorrow&apos;s schedule...
+                    </div>
+                  ) : tomorrowsCleaningJobs.length === 0 && tomorrowsGroundsJobs.length === 0 ? (
                     <div className="rounded-[20px] border border-dashed border-[#f1cf8f] bg-white/80 px-4 py-5 text-sm text-[#8b6a32]">
                       Nothing lined up for tomorrow yet.
                     </div>
-                  )}
+                  ) : null}
                 </div>
               </div>
             </div>
