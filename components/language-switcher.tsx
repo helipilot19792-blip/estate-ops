@@ -7,7 +7,7 @@ export default function LanguageSwitcher() {
   const { locale, setLocale, t } = useI18n();
 
   return (
-    <div className="fixed bottom-3 right-3 z-[999] rounded-full border border-[#d8c7ab] bg-[#fffdf9]/95 p-1 shadow-[0_14px_40px_rgba(36,28,21,0.16)] backdrop-blur sm:bottom-5 sm:right-5">
+    <div className="fixed right-3 top-3 z-[999] rounded-full border border-[#d8c7ab] bg-[#fffdf9]/95 p-1 shadow-[0_14px_40px_rgba(36,28,21,0.16)] backdrop-blur sm:right-5 sm:top-5">
       <div className="flex items-center gap-1" role="group" aria-label={t("common.language")}>
         {SUPPORTED_LOCALES.map((option) => {
           const active = option === locale;

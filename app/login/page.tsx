@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
+import { useI18n } from "@/components/i18n-provider";
 
 type ProfileRow = {
   id: string;
@@ -86,6 +87,7 @@ async function getPortalDestinationForUser(userId: string, role: string | null |
 
 export default function LoginPage() {
   const router = useRouter();
+  const { t } = useI18n();
 
   const [authMode, setAuthMode] = useState<AuthMode>("login");
 
@@ -412,50 +414,49 @@ export default function LoginPage() {
               </div>
 
               <div className="mb-2 text-xs uppercase tracking-[0.32em] text-[#d8c7ab]">
-                Gulera OS
+                {t("login.eyebrow")}
               </div>
 
               <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">
-                Company Admin Access
+                {t("login.title")}
               </h1>
 
               <p className="mt-4 text-sm leading-7 text-[#e7dccb] md:text-base">
-                Sign in to your existing workspace or create a new company account. Staff and
-                owner access is managed by invitation from inside each company workspace.
+                {t("login.intro")}
               </p>
 
               <div className="mt-8 grid gap-3">
                 <div className="rounded-[20px] border border-white/10 bg-white/5 px-4 py-4">
-                  <div className="text-sm font-semibold text-white">For company admins</div>
+                  <div className="text-sm font-semibold text-white">{t("login.adminTitle")}</div>
                   <div className="mt-1 text-sm text-[#e7dccb]">
-                    Launch your own isolated Gulera OS workspace.
+                    {t("login.adminBody")}
                   </div>
                 </div>
 
                 <div className="rounded-[20px] border border-white/10 bg-white/5 px-4 py-4">
-                  <div className="text-sm font-semibold text-white">For invited team members</div>
+                  <div className="text-sm font-semibold text-white">{t("login.teamTitle")}</div>
                   <div className="mt-1 text-sm text-[#e7dccb]">
-                    Cleaner, grounds, and owner access should come from an admin invite.
+                    {t("login.teamBody")}
                   </div>
                 </div>
 
                 <div className="rounded-[20px] border border-white/10 bg-white/5 px-4 py-4">
-                  <div className="text-sm font-semibold text-white">For returning users</div>
+                  <div className="text-sm font-semibold text-white">{t("login.returningTitle")}</div>
                   <div className="mt-1 text-sm text-[#e7dccb]">
-                    Use the login tab to access your existing portal.
+                    {t("login.returningBody")}
                   </div>
                 </div>
 
                 <div className="rounded-[20px] border border-[#d8c7ab]/35 bg-[#f2e6d1]/10 px-4 py-4">
-                  <div className="text-sm font-semibold text-white">Looking for owner access?</div>
+                  <div className="text-sm font-semibold text-white">{t("login.ownerTitle")}</div>
                   <div className="mt-1 text-sm text-[#e7dccb]">
-                    Owners sign in through the separate owner portal login page.
+                    {t("login.ownerBody")}
                   </div>
                   <Link
                     href="/owner/login"
                     className="mt-3 inline-flex items-center rounded-full border border-[#d8c7ab] px-4 py-2 text-sm font-medium text-[#f7e5bf] transition hover:bg-white/10"
                   >
-                    Go to Owner Login
+                    {t("login.ownerLink")}
                   </Link>
                 </div>
               </div>
@@ -486,7 +487,7 @@ export default function LoginPage() {
                       : "bg-white text-[#5f5245] hover:bg-[#fffaf4]"
                       }`}
                   >
-                    Login
+                    {t("login.loginTab")}
                   </button>
 
                   <button
@@ -497,7 +498,7 @@ export default function LoginPage() {
                       : "bg-white text-[#7a5a23] hover:bg-[#fffaf4]"
                       }`}
                   >
-                    Create Company
+                    {t("login.companyTab")}
                   </button>
                 </div>
               </div>
@@ -505,15 +506,15 @@ export default function LoginPage() {
               <div className="mt-6">
                 {authMode === "login" ? (
                   <section className="rounded-[28px] border border-[#e7ddd0] bg-[#fcfaf7] p-5 shadow-sm">
-                    <h2 className="text-2xl font-semibold tracking-tight">Login</h2>
-                    <p className="mt-1 text-sm text-[#7f7263]">Existing staff or admin account</p>
+                    <h2 className="text-2xl font-semibold tracking-tight">{t("login.loginHeading")}</h2>
+                    <p className="mt-1 text-sm text-[#7f7263]">{t("login.loginSubheading")}</p>
 
                     <div className="mt-4 rounded-[20px] border border-[#d8c7ab] bg-white px-4 py-3 text-sm text-[#5f5245]">
-                      <div className="font-medium text-[#241c15]">Owner trying to sign in?</div>
+                      <div className="font-medium text-[#241c15]">{t("login.ownerHelpTitle")}</div>
                       <div className="mt-1">
-                        Use the dedicated owner portal here:{" "}
+                        {t("login.ownerHelpBody")}{" "}
                         <Link href="/owner/login" className="font-medium text-[#7a5a23] underline underline-offset-2">
-                          Owner Login
+                          {t("login.ownerLink")}
                         </Link>
                       </div>
                     </div>
@@ -522,7 +523,7 @@ export default function LoginPage() {
                       <input
                         className="w-full rounded-[20px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
                         type="email"
-                        placeholder="Email"
+                        placeholder={t("login.email")}
                         autoComplete="email"
                         inputMode="email"
                         value={loginEmail}
@@ -534,7 +535,7 @@ export default function LoginPage() {
                         <input
                           className="w-full rounded-[20px] border border-[#d9ccbb] bg-white px-4 py-3 pr-12 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
                           type={showLoginPassword ? "text" : "password"}
-                          placeholder="Password"
+                          placeholder={t("login.password")}
                           autoComplete="current-password"
                           value={loginPassword}
                           onChange={(e) => setLoginPassword(e.target.value)}
@@ -555,7 +556,7 @@ export default function LoginPage() {
                           className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-3 text-sm font-medium text-[#f8f2e8] shadow-[0_10px_24px_rgba(36,28,21,0.18)] transition hover:bg-[#352a21] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
                           disabled={loadingLogin}
                         >
-                          {loadingLogin ? "Logging in..." : "Login"}
+                          {loadingLogin ? t("login.loggingIn") : t("login.loginTab")}
                         </button>
                       </div>
 
@@ -566,7 +567,7 @@ export default function LoginPage() {
                           onClick={handleResetPassword}
                           disabled={loadingReset}
                         >
-                          {loadingReset ? "Sending..." : "Forgot password?"}
+                          {loadingReset ? t("login.sending") : t("login.forgotPassword")}
                         </button>
 
                         <button
@@ -575,7 +576,7 @@ export default function LoginPage() {
                           onClick={handleResendConfirmation}
                           disabled={loadingResend}
                         >
-                          {loadingResend ? "Sending..." : "Resend confirmation"}
+                          {loadingResend ? t("login.sending") : t("login.resendConfirmation")}
                         </button>
                       </div>
                     </form>
@@ -584,20 +585,19 @@ export default function LoginPage() {
 
                 {authMode === "company" ? (
                   <section className="rounded-[28px] border border-[#e7ddd0] bg-white p-5 shadow-sm">
-                    <h2 className="text-2xl font-semibold tracking-tight">Create Company Account</h2>
+                    <h2 className="text-2xl font-semibold tracking-tight">{t("login.createCompanyHeading")}</h2>
                     <p className="mt-1 text-sm text-[#7f7263]">
-                      Start your own Gulera OS workspace as the first admin for your company
+                      {t("login.createCompanySubheading")}
                     </p>
                     <div className="mt-4 rounded-[20px] border border-[#efd8a8] bg-[#fff8e8] px-4 py-3 text-sm leading-6 text-[#6f5525]">
-                      Gulera OS is currently in a testing phase. Features may change, errors may occur,
-                      and important operational or invoice details should be reviewed before relying on them.
+                      {t("login.testingNotice")}
                     </div>
 
                     <form onSubmit={handleCompanySignup} className="mt-5 grid gap-3 md:grid-cols-2">
                       <input
                         className="md:col-span-2 w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e] focus:bg-white"
                         type="text"
-                        placeholder="Full name"
+                        placeholder={t("login.fullName")}
                         autoComplete="name"
                         value={signupName}
                         onChange={(e) => setSignupName(e.target.value)}
@@ -607,7 +607,7 @@ export default function LoginPage() {
                       <input
                         className="md:col-span-2 w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e] focus:bg-white"
                         type="text"
-                        placeholder="Phone number"
+                        placeholder={t("login.phoneNumber")}
                         autoComplete="tel"
                         inputMode="tel"
                         value={signupPhone}
@@ -618,7 +618,7 @@ export default function LoginPage() {
                       <input
                         className="md:col-span-2 w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e] focus:bg-white"
                         type="email"
-                        placeholder="Work email"
+                        placeholder={t("login.workEmail")}
                         autoComplete="email"
                         inputMode="email"
                         value={signupEmail}
@@ -629,7 +629,7 @@ export default function LoginPage() {
                       <input
                         className="md:col-span-2 w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e] focus:bg-white"
                         type="text"
-                        placeholder="Company name"
+                        placeholder={t("login.companyName")}
                         autoComplete="organization"
                         value={companyName}
                         onChange={(e) => setCompanyName(e.target.value)}
@@ -640,7 +640,7 @@ export default function LoginPage() {
                         <input
                           className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 pr-12 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e] focus:bg-white"
                           type={showSignupPassword ? "text" : "password"}
-                          placeholder="Password"
+                          placeholder={t("login.password")}
                           autoComplete="new-password"
                           value={signupPassword}
                           onChange={(e) => setSignupPassword(e.target.value)}
@@ -651,7 +651,7 @@ export default function LoginPage() {
                           className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8a7b68] hover:text-[#241c15]"
                           onClick={() => setShowSignupPassword(!showSignupPassword)}
                         >
-                          {showSignupPassword ? "Hide" : "Show"}
+                          {showSignupPassword ? t("login.hide") : t("login.show")}
                         </button>
                       </div>
 
@@ -659,7 +659,7 @@ export default function LoginPage() {
                         <input
                           className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 pr-12 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e] focus:bg-white"
                           type={showSignupConfirmPassword ? "text" : "password"}
-                          placeholder="Confirm password"
+                          placeholder={t("login.confirmPassword")}
                           autoComplete="new-password"
                           value={signupConfirmPassword}
                           onChange={(e) => setSignupConfirmPassword(e.target.value)}
@@ -670,7 +670,7 @@ export default function LoginPage() {
                           className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8a7b68] hover:text-[#241c15]"
                           onClick={() => setShowSignupConfirmPassword(!showSignupConfirmPassword)}
                         >
-                          {showSignupConfirmPassword ? "Hide" : "Show"}
+                          {showSignupConfirmPassword ? t("login.hide") : t("login.show")}
                         </button>
                       </div>
 
@@ -682,17 +682,17 @@ export default function LoginPage() {
                           className="mt-1 h-4 w-4 accent-[#b48d4e]"
                         />
                         <span>
-                          I understand Gulera OS is in testing and agree to the{" "}
+                          {t("login.testingAgreementPrefix")}{" "}
                           <Link href="/terms" className="font-semibold text-[#7d581b] underline">
-                            Terms
+                            {t("common.terms")}
                           </Link>
                           ,{" "}
                           <Link href="/privacy" className="font-semibold text-[#7d581b] underline">
-                            Privacy Policy
+                            {t("login.privacyPolicy")}
                           </Link>
                           , and{" "}
                           <Link href="/cookies" className="font-semibold text-[#7d581b] underline">
-                            Cookie Notice
+                            {t("login.cookieNotice")}
                           </Link>
                           .
                         </span>
@@ -704,24 +704,23 @@ export default function LoginPage() {
                           className="inline-flex items-center justify-center rounded-full bg-[#b48d4e] px-5 py-3 text-sm font-medium text-white shadow-[0_10px_24px_rgba(180,141,78,0.25)] transition hover:bg-[#a27d43] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
                           disabled={loadingSignup}
                         >
-                          {loadingSignup ? "Creating company..." : "Create Company Account"}
+                          {loadingSignup ? t("login.creatingCompany") : t("login.createCompanyButton")}
                         </button>
                       </div>
                     </form>
 
                     <p className="mt-4 text-xs leading-6 text-[#8a7b68]">
-                      This creates the first admin account for a new company workspace. Legal text is
-                      available anytime:{" "}
+                      {t("login.legalFooter")}{" "}
                       <Link href="/terms" className="font-semibold underline">
-                        Terms
+                        {t("common.terms")}
                       </Link>
                       ,{" "}
                       <Link href="/privacy" className="font-semibold underline">
-                        Privacy
+                        {t("common.privacy")}
                       </Link>
                       ,{" "}
                       <Link href="/cookies" className="font-semibold underline">
-                        Cookies
+                        {t("common.cookies")}
                       </Link>
                       .
                     </p>

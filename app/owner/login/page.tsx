@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useI18n } from "@/components/i18n-provider";
 import { supabase } from "@/lib/supabase";
 
 function getQueryParam(name: string) {
@@ -12,6 +13,7 @@ function getQueryParam(name: string) {
 
 export default function OwnerLoginPage() {
   const router = useRouter();
+  const { t } = useI18n();
 
   const [checkingSession, setCheckingSession] = useState(true);
   const [email, setEmail] = useState("");
@@ -144,7 +146,7 @@ export default function OwnerLoginPage() {
     return (
       <main className="owner-shell min-h-screen px-4 py-8 text-[#f7f1e8] sm:px-6">
         <div className="owner-card mx-auto max-w-md rounded-[32px] border border-white/8 p-8 shadow-[0_24px_80px_rgba(0,0,0,0.36)]">
-          <div className="text-sm text-[#e6d8bf]">Checking your owner session...</div>
+          <div className="text-sm text-[#e6d8bf]">{t("ownerLogin.checking")}</div>
         </div>
       </main>
     );
@@ -155,13 +157,13 @@ export default function OwnerLoginPage() {
       <div className="mx-auto max-w-md space-y-6">
         <section className="owner-hero rounded-[32px] border border-white/8 px-6 py-7 shadow-[0_24px_80px_rgba(0,0,0,0.36)] sm:px-8">
           <div className="text-[11px] uppercase tracking-[0.24em] text-[#e7c98a]">
-            Gulera OS Owner Portal
+            {t("ownerLogin.eyebrow")}
           </div>
           <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[#f7f1e8] sm:text-4xl">
-            Owner Login
+            {t("ownerLogin.title")}
           </h1>
           <p className="mt-3 text-base leading-relaxed text-[#e6d8bf]">
-            Sign in with your email and password. You can also request a fresh login link if needed.
+            {t("ownerLogin.intro")}
           </p>
         </section>
 
@@ -178,13 +180,13 @@ export default function OwnerLoginPage() {
         ) : null}
 
         <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3 text-sm text-[#e6d8bf]">
-          Already stuck in the wrong owner session?{" "}
+          {t("ownerLogin.stuck")}{" "}
           <button
             type="button"
             onClick={() => void handleSwitchAccount()}
             className="font-semibold text-[#e7c98a] underline"
           >
-            Sign out and switch account
+            {t("ownerLogin.switchAccount")}
           </button>
         </div>
 
@@ -197,7 +199,7 @@ export default function OwnerLoginPage() {
     }}
   >
     <div>
-      <label className="text-xs uppercase tracking-[0.18em] text-[#e7c98a]">Email</label>
+      <label className="text-xs uppercase tracking-[0.18em] text-[#e7c98a]">{t("ownerLogin.email")}</label>
       <input
         type="email"
         autoComplete="email"
@@ -209,7 +211,7 @@ export default function OwnerLoginPage() {
     </div>
 
     <div>
-      <label className="text-xs uppercase tracking-[0.18em] text-[#e7c98a]">Password</label>
+      <label className="text-xs uppercase tracking-[0.18em] text-[#e7c98a]">{t("ownerLogin.password")}</label>
       <div className="owner-field mt-2 flex rounded-2xl border border-white/8 focus-within:border-[#b08b47]">
         <input
           type={showPassword ? "text" : "password"}
@@ -217,14 +219,14 @@ export default function OwnerLoginPage() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           className="w-full rounded-l-2xl bg-transparent px-4 py-3 text-sm text-[#f7f1e8] outline-none"
-          placeholder="Enter your password"
+          placeholder={t("ownerLogin.passwordPlaceholder")}
         />
         <button
           type="button"
           onClick={() => setShowPassword((value) => !value)}
           className="rounded-r-2xl px-4 text-sm font-medium text-[#e6d8bf]"
         >
-          {showPassword ? "Hide" : "Show"}
+          {showPassword ? t("ownerLogin.hide") : t("ownerLogin.show")}
         </button>
       </div>
     </div>
@@ -235,7 +237,7 @@ export default function OwnerLoginPage() {
         disabled={signingIn || !canSubmitPassword}
         className="rounded-full bg-[#b08b47] px-5 py-2.5 text-sm font-semibold text-[#17120d] transition hover:brightness-110 disabled:opacity-60"
       >
-        {signingIn ? "Signing in..." : "Log In"}
+        {signingIn ? t("ownerLogin.signingIn") : t("ownerLogin.logIn")}
       </button>
 
       <button
@@ -244,23 +246,23 @@ export default function OwnerLoginPage() {
         disabled={sendingLink || !email.trim()}
         className="rounded-full border border-white/12 px-5 py-2.5 text-sm font-semibold text-[#f7f1e8] transition hover:bg-white/[0.05] disabled:opacity-60"
       >
-        {sendingLink ? "Sending..." : "Email Me a Login Link"}
+        {sendingLink ? t("ownerLogin.sending") : t("ownerLogin.emailLink")}
       </button>
     </div>
   </form>
 </section>
         <div className="text-center text-xs leading-6 text-[#ccb99a]">
-          By using the owner portal, you agree to the{" "}
+          {t("ownerLogin.legalPrefix")}{" "}
           <Link href="/terms" className="font-semibold text-[#e7c98a] underline">
             Terms
           </Link>
           ,{" "}
           <Link href="/privacy" className="font-semibold text-[#e7c98a] underline">
-            Privacy Policy
+            {t("ownerLogin.privacyPolicy")}
           </Link>
           , and{" "}
           <Link href="/cookies" className="font-semibold text-[#e7c98a] underline">
-            Cookie Notice
+            {t("ownerLogin.cookieNotice")}
           </Link>
           .
         </div>
