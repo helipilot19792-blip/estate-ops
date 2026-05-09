@@ -367,6 +367,9 @@ type MyOrganizationRow = {
   organization_slug: string;
   role: string;
 };
+
+const ADMIN_SELECTED_ORGANIZATION_KEY = "admin-current-organization-id";
+
 type OrganizationBillingRow = {
   id: string;
   name: string | null;
@@ -1207,10 +1210,53 @@ export default function AdminPage() {
         return;
       }
 
+      const organizationRows = orgRows as MyOrganizationRow[];
+      const savedOrganizationId =
+        typeof window !== "undefined" ? window.localStorage.getItem(ADMIN_SELECTED_ORGANIZATION_KEY) : null;
+      const savedOrganization = organizationRows.find((row) => row.organization_id === savedOrganizationId);
+      let nextOrganizationId = savedOrganization?.organization_id || organizationRows[0].organization_id;
+
+      if (!savedOrganization && organizationRows.length > 1) {
+        const organizationScores = await Promise.all(
+          organizationRows.map(async (organization) => {
+            const [propertiesCount, jobsCount, groundsJobsCount] = await Promise.all([
+              supabase
+                .from("properties")
+                .select("id", { count: "exact", head: true })
+                .eq("organization_id", organization.organization_id),
+              supabase
+                .from("turnover_jobs")
+                .select("id", { count: "exact", head: true })
+                .eq("organization_id", organization.organization_id),
+              supabase
+                .from("grounds_jobs")
+                .select("id", { count: "exact", head: true })
+                .eq("organization_id", organization.organization_id),
+            ]);
+
+            return {
+              organizationId: organization.organization_id,
+              score:
+                (propertiesCount.count || 0) +
+                (jobsCount.count || 0) +
+                (groundsJobsCount.count || 0),
+            };
+          })
+        );
+        const bestOrganization = organizationScores.sort((a, b) => b.score - a.score)[0];
+        if (bestOrganization?.score > 0) {
+          nextOrganizationId = bestOrganization.organizationId;
+        }
+      }
+
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(ADMIN_SELECTED_ORGANIZATION_KEY, nextOrganizationId);
+      }
+
       setCurrentPortalRole(profile.role);
       setCurrentAdminProfile(profile);
-      setMyOrganizations(orgRows as MyOrganizationRow[]);
-      setCurrentOrganizationId(orgRows[0].organization_id);
+      setMyOrganizations(organizationRows);
+      setCurrentOrganizationId(nextOrganizationId);
       setCurrentAdminUserId(user.id);
       setCheckingAuth(false);
     }
@@ -1662,7 +1708,13 @@ export default function AdminPage() {
       }
     }
 
-    setProperties((propertiesRes.data ?? []) as Property[]);
+    const loadedProperties = (propertiesRes.data ?? []) as Property[];
+    const loadedPropertyIds = new Set(loadedProperties.map((property) => property.id));
+    const loadedStrandedJobs = ((strandedJobsRes.data ?? []) as StrandedJob[]).filter(
+      (job) => !!job.property_id && loadedPropertyIds.has(job.property_id)
+    );
+
+    setProperties(loadedProperties);
     setCleanerAccounts((cleanerAccountsRes.data ?? []) as CleanerAccount[]);
     setCleanerAccountMembers((cleanerAccountMembersRes.data ?? []) as CleanerAccountMember[]);
     setAssignments((assignmentsRes.data ?? []) as Assignment[]);
@@ -1675,7 +1727,7 @@ export default function AdminPage() {
     setGroundsJobSlots((groundsJobSlotsRes.data ?? []) as GroundsJobSlot[]);
     setGroundsRecurringTasks((groundsRecurringTasksRes.data ?? []) as GroundsRecurringTask[]);
     setGroundsRecurringRules((groundsRecurringRulesRes.data ?? []) as GroundsRecurringRule[]);
-    setStrandedJobs((strandedJobsRes.data ?? []) as StrandedJob[]);
+    setStrandedJobs(loadedStrandedJobs);
     setAccessRows((accessRowsRes.data ?? []) as AccessRow[]);
     setSops((sopsRes.data ?? []) as SopRow[]);
     setSopImages((sopImagesRes.data ?? []) as SopImageRow[]);
@@ -1723,7 +1775,7 @@ export default function AdminPage() {
 
     setReassignSelections((prev) => {
       const next = { ...prev };
-      for (const job of (strandedJobsRes.data ?? []) as StrandedJob[]) {
+      for (const job of loadedStrandedJobs) {
         if (!next[job.id]) next[job.id] = "";
       }
       return next;
@@ -13823,6 +13875,28 @@ This removes its linked members and deletes the grounds account.`
                   >
                     SaaS Tower
                   </button>
+                ) : null}
+                {myOrganizations.length > 1 ? (
+                  <select
+                    value={currentOrganizationId || ""}
+                    onChange={(event) => {
+                      const nextOrganizationId = event.target.value;
+                      if (!nextOrganizationId) return;
+                      if (typeof window !== "undefined") {
+                        window.localStorage.setItem(ADMIN_SELECTED_ORGANIZATION_KEY, nextOrganizationId);
+                      }
+                      setAdminDataLoaded(false);
+                      setCurrentOrganizationId(nextOrganizationId);
+                    }}
+                    className="rounded-full border border-[#cbd5e1] bg-white/90 px-4 py-2.5 text-sm font-medium text-[#334155] shadow-sm outline-none transition hover:bg-white focus:border-[#38bdf8]"
+                    aria-label="Choose organization"
+                  >
+                    {myOrganizations.map((organization) => (
+                      <option key={organization.organization_id} value={organization.organization_id}>
+                        {organization.organization_name || organization.organization_slug || "Organization"}
+                      </option>
+                    ))}
+                  </select>
                 ) : null}
                 <button
                   onClick={() => setShowSupport(true)}
