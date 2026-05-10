@@ -34,8 +34,8 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
         <I18nProvider>
-          {children}
           <LanguageSwitcher />
+          {children}
           <LegalConsentBanner />
         </I18nProvider>
       </body>
