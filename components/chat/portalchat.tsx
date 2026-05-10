@@ -68,6 +68,7 @@ type PortalChatProps = {
   subtitle?: string;
   className?: string;
   onUnreadCountChange?: (count: number) => void;
+  onConversationRead?: (conversationId: string, readAt: string) => void;
 };
 
 function formatChatDate(value?: string | null) {
@@ -99,6 +100,7 @@ export default function PortalChat({
   subtitle = "Chat with property management without sending an email for every reply.",
   className = "",
   onUnreadCountChange,
+  onConversationRead,
 }: PortalChatProps) {
   const [authProfileId, setAuthProfileId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -252,10 +254,11 @@ export default function PortalChat({
     () => participants.filter((row) => row.conversation_id === activeConversationId),
     [activeConversationId, participants]
   );
-  const unreadCount = useMemo(() => {
-    if (!ownProfileId) return 0;
+  const unreadByConversation = useMemo(() => {
+    const counts: Record<string, number> = {};
+    if (!ownProfileId) return counts;
 
-    return visibleConversations.reduce((total, conversation) => {
+    for (const conversation of visibleConversations) {
       const myParticipant = participants.find((row) => {
         if (row.conversation_id !== conversation.id) return false;
         if (participantType === "profile") return row.participant_profile_id === participantProfileId;
@@ -263,25 +266,30 @@ export default function PortalChat({
         return false;
       });
       const lastReadAt = myParticipant?.last_read_at ? new Date(myParticipant.last_read_at).getTime() : 0;
-      if (Number.isNaN(lastReadAt)) return total;
+      if (Number.isNaN(lastReadAt)) continue;
 
-      return (
-        total +
+      counts[conversation.id] =
         messages.filter((message) => {
           if (message.conversation_id !== conversation.id) return false;
           if (isMessageHidden(message.id)) return false;
           if (message.sender_profile_id === ownProfileId) return false;
           const createdAt = message.created_at ? new Date(message.created_at).getTime() : 0;
           return createdAt > lastReadAt;
-        }).length
-      );
-    }, 0);
+        }).length;
+    }
+
+    return counts;
   }, [isMessageHidden, messages, ownProfileId, participantOwnerAccountId, participantProfileId, participantType, participants, visibleConversations]);
+  const unreadCount = useMemo(
+    () => Object.values(unreadByConversation).reduce((total, count) => total + count, 0),
+    [unreadByConversation]
+  );
 
   async function markConversationRead(conversationId: string) {
     if (!conversationId || !ownProfileId) return;
 
     const readAt = new Date().toISOString();
+    onConversationRead?.(conversationId, readAt);
     setParticipants((current) =>
       current.map((row) => {
         if (row.conversation_id !== conversationId) return row;
@@ -369,10 +377,9 @@ export default function PortalChat({
   }, [conversationIdsKey, loadChat, participantKey, participantOwnerAccountId, participantProfileId, participantType]);
 
   useEffect(() => {
-    const conversationId = selectedConversationId || conversations[0]?.id || "";
-    if (!conversationId) return;
-    void markConversationRead(conversationId);
-  }, [selectedConversationId, conversations, messages.length]);
+    if (!activeConversationId) return;
+    void markConversationRead(activeConversationId);
+  }, [activeConversationId, selectedMessages.length]);
 
   useEffect(() => {
     onUnreadCountChange?.(unreadCount);
@@ -585,6 +592,7 @@ export default function PortalChat({
               visibleConversations.map((conversation) => {
                 const selected = conversation.id === activeConversationId;
                 const otherSummary = getConversationOtherSummary(conversation);
+                const conversationUnreadCount = unreadByConversation[conversation.id] || 0;
                 const lastMessage = messages
                   .filter((message) => message.conversation_id === conversation.id && !isMessageHidden(message.id))
                   .at(-1);
@@ -595,6 +603,8 @@ export default function PortalChat({
                     className={`rounded-[18px] border transition ${
                       selected
                         ? "border-[#e3c177]/70 bg-[#e3c177]/16 text-[#fff8e8]"
+                        : conversationUnreadCount > 0
+                          ? "border-[#d3322b]/55 bg-[#d3322b]/12 text-[#f7f1e8]"
                         : "border-white/8 bg-black/15 text-[#f7f1e8] hover:bg-white/[0.05]"
                     }`}
                   >
@@ -603,7 +613,14 @@ export default function PortalChat({
                       onClick={() => setSelectedConversationId(conversation.id)}
                       className="block w-full px-3 pt-3 text-left"
                     >
-                      <div className="truncate text-sm font-semibold">{getConversationTitle(conversation)}</div>
+                      <div className="flex items-center gap-2">
+                        <div className="min-w-0 flex-1 truncate text-sm font-semibold">{getConversationTitle(conversation)}</div>
+                        {conversationUnreadCount > 0 ? (
+                          <span className="rounded-full bg-[#d3322b] px-2 py-0.5 text-[11px] font-bold text-white">
+                            {conversationUnreadCount > 99 ? "99+" : conversationUnreadCount}
+                          </span>
+                        ) : null}
+                      </div>
                       <div className="mt-1 text-xs font-medium text-[#f1d9a5]">
                         With: {otherSummary}
                       </div>

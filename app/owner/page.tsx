@@ -184,6 +184,15 @@ type BookingInsight = {
   nights: number;
 };
 
+type CurrentBooking = {
+  id: string;
+  sourceLabel: string | null;
+  guest: string | null;
+  summary: string | null;
+  checkinDate: string;
+  checkoutDate: string;
+};
+
 const ISSUE_CATEGORIES = [
   "General concern",
   "Damage",
@@ -249,6 +258,27 @@ function formatDateLabel(dateString: string | null | undefined) {
 function normalizeYmd(value?: string | null) {
   if (!value) return null;
   return value.slice(0, 10);
+}
+
+function getTodayYmd() {
+  const today = new Date();
+  return [
+    today.getFullYear(),
+    `${today.getMonth() + 1}`.padStart(2, "0"),
+    `${today.getDate()}`.padStart(2, "0"),
+  ].join("-");
+}
+
+function getGuestNameFromSummary(summary?: string | null) {
+  const cleaned = String(summary || "")
+    .replace(/\s+/g, " ")
+    .replace(/^(reserved|reservation|booking|booked)\s*[-:]\s*/i, "")
+    .trim();
+
+  if (!cleaned) return null;
+  if (/^(reserved|reservation|booking|booked|blocked|busy|not available|unavailable)$/i.test(cleaned)) return null;
+
+  return cleaned;
 }
 
 function parseBookingFromNotes(notes: string | null) {
@@ -1300,6 +1330,23 @@ export default function OwnerPage() {
           );
         }
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "chat_participants",
+          filter: `participant_owner_account_id=eq.${ownerAccount.id}`,
+        },
+        (payload) => {
+          const updated = payload.new as OwnerChatParticipantRow;
+          setOwnerChatParticipants((participants) =>
+            participants.map((participant) =>
+              participant.id === updated.id ? { ...participant, last_read_at: updated.last_read_at } : participant
+            )
+          );
+        }
+      )
       .subscribe();
 
     return () => {
@@ -1381,6 +1428,14 @@ export default function OwnerPage() {
       url.searchParams.delete("property");
     }
     window.history.replaceState(null, "", url.toString());
+  }
+
+  function handleOwnerChatConversationRead(conversationId: string, readAt: string) {
+    setOwnerChatParticipants((participants) =>
+      participants.map((participant) =>
+        participant.conversation_id === conversationId ? { ...participant, last_read_at: readAt } : participant
+      )
+    );
   }
 
   const propertyTurnoverJobs = useMemo(() => {
@@ -1468,16 +1523,6 @@ export default function OwnerPage() {
     void markInvoicesRead();
   }, [activeOwnerTab, unreadPropertyOwnerInvoices]);
 
-  useEffect(() => {
-    if (activeOwnerTab !== "chat" || ownerChatParticipants.length === 0) return;
-
-    const readAt = new Date().toISOString();
-    setOwnerChatParticipants((participants) =>
-      participants.map((participant) => ({ ...participant, last_read_at: readAt }))
-    );
-    setOwnerChatUnreadCount(0);
-  }, [activeOwnerTab, ownerChatParticipants.length]);
-
   const openFlags = useMemo(() => propertyFlags.filter((flag) => !isResolved(flag)), [propertyFlags]);
 
   const nextCleaning = useMemo(() => {
@@ -1538,6 +1583,48 @@ export default function OwnerPage() {
       })
       .filter((item) => !!item.booking.checkinDate && isFutureOrToday(item.booking.checkinDate))
       .sort((a, b) => (a.booking.checkinDate || "").localeCompare(b.booking.checkinDate || ""))[0] || null;
+  }, [propertyBookingEvents, propertyTurnoverJobs]);
+
+  const currentBooking = useMemo<CurrentBooking | null>(() => {
+    const todayYmd = getTodayYmd();
+    const eventBooking =
+      propertyBookingEvents
+        .filter((event) => event.checkin_date <= todayYmd && event.checkout_date > todayYmd)
+        .sort((a, b) => a.checkout_date.localeCompare(b.checkout_date))[0] || null;
+
+    if (eventBooking) {
+      return {
+        id: eventBooking.id,
+        sourceLabel: getBookingSourceLabel(eventBooking.source),
+        guest: getGuestNameFromSummary(eventBooking.summary),
+        summary: eventBooking.summary,
+        checkinDate: eventBooking.checkin_date,
+        checkoutDate: eventBooking.checkout_date,
+      };
+    }
+
+    const jobBooking =
+      propertyTurnoverJobs
+        .map((job) => ({ job, booking: parseBookingFromNotes(job.notes) }))
+        .filter(
+          (item) =>
+            !!item.booking.checkinDate &&
+            !!item.booking.checkoutDate &&
+            item.booking.checkinDate <= todayYmd &&
+            item.booking.checkoutDate > todayYmd
+        )
+        .sort((a, b) => (a.booking.checkoutDate || "").localeCompare(b.booking.checkoutDate || ""))[0] || null;
+
+    if (!jobBooking) return null;
+
+    return {
+      id: jobBooking.job.id,
+      sourceLabel: jobBooking.booking.sourceLabel,
+      guest: getGuestNameFromSummary(jobBooking.booking.guest),
+      summary: jobBooking.booking.guest,
+      checkinDate: jobBooking.booking.checkinDate || "",
+      checkoutDate: jobBooking.booking.checkoutDate || "",
+    };
   }, [propertyBookingEvents, propertyTurnoverJobs]);
 
   const timelineItems = useMemo<TimelineItem[]>(() => {
@@ -2030,7 +2117,7 @@ export default function OwnerPage() {
           </div>
         ) : null}
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <StatCard
             label={t("ownerPortal.overview.nextCleaning")}
             value={nextCleaning ? formatDateLabel(nextCleaning.scheduled_for) : t("ownerPortal.overview.notScheduled")}
@@ -2043,6 +2130,24 @@ export default function OwnerPage() {
               nextGrounds
                 ? `${nextGrounds.label}${nextGrounds.subtext ? ` | ${nextGrounds.subtext}` : ""}`
                 : t("ownerPortal.overview.noExteriorService")
+            }
+          />
+          <StatCard
+            label={t("ownerPortal.overview.currentBooking")}
+            value={
+              currentBooking
+                ? currentBooking.guest
+                  ? t("ownerPortal.overview.currentGuest").replace("{guest}", currentBooking.guest)
+                  : t("ownerPortal.overview.currentGuestUnknown")
+                : t("ownerPortal.overview.notCurrentlyBooked")
+            }
+            subtext={
+              currentBooking
+                ? t("ownerPortal.overview.currentStayDates")
+                    .replace("{source}", currentBooking.sourceLabel || t("ownerPortal.insights.sourceUnavailable"))
+                    .replace("{start}", formatDateLabel(currentBooking.checkinDate))
+                    .replace("{end}", formatDateLabel(currentBooking.checkoutDate))
+                : t("ownerPortal.overview.noActiveStay")
             }
           />
           <StatCard
@@ -2627,6 +2732,7 @@ export default function OwnerPage() {
             title={t("ownerPortal.chat.title")}
             subtitle={t("ownerPortal.chat.subtitle")}
             onUnreadCountChange={setOwnerChatUnreadCount}
+            onConversationRead={handleOwnerChatConversationRead}
           />
         )}
       </div>
