@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import PortalChat from "@/components/chat/portalchat";
 import { trackFeatureUsage } from "@/lib/feature-usage";
+import { useI18n } from "@/components/i18n-provider";
 
 type OwnerAccountRow = {
   id: string;
@@ -196,6 +197,33 @@ const ISSUE_CATEGORIES = [
   "Safety issue",
   "Other",
 ] as const;
+
+function getIssueCategoryLabel(category: string, t: ReturnType<typeof useI18n>["t"]) {
+  switch (category) {
+    case "General concern":
+      return t("ownerPortal.issue.categories.general");
+    case "Damage":
+      return t("ownerPortal.issue.categories.damage");
+    case "Cleaning issue":
+      return t("ownerPortal.issue.categories.cleaning");
+    case "Supplies":
+      return t("ownerPortal.issue.categories.supplies");
+    case "Lock / access":
+      return t("ownerPortal.issue.categories.access");
+    case "Plumbing":
+      return t("ownerPortal.issue.categories.plumbing");
+    case "Electrical":
+      return t("ownerPortal.issue.categories.electrical");
+    case "Lawn / exterior":
+      return t("ownerPortal.issue.categories.exterior");
+    case "Pest issue":
+      return t("ownerPortal.issue.categories.pest");
+    case "Safety issue":
+      return t("ownerPortal.issue.categories.safety");
+    default:
+      return t("ownerPortal.issue.categories.other");
+  }
+}
 
 function getCityFromAddress(address?: string | null) {
   if (!address) return "";
@@ -549,6 +577,7 @@ function ReportIssueModal({
   organizationId: string;
   onSubmitted: () => void;
 }) {
+  const { t } = useI18n();
   const [category, setCategory] = useState<string>("General concern");
   const [urgency, setUrgency] = useState<string>("normal");
   const [notes, setNotes] = useState("");
@@ -581,17 +610,17 @@ function ReportIssueModal({
 
   async function handleSubmit() {
     if (!propertyId) {
-      setError("Property not found.");
+      setError(t("ownerPortal.issue.propertyNotFound"));
       return;
     }
 
     if (!organizationId) {
-      setError("Organization not found.");
+      setError(t("ownerPortal.issue.organizationNotFound"));
       return;
     }
 
     if (!notes.trim()) {
-      setError("Please describe the issue.");
+      setError(t("ownerPortal.issue.describeIssue"));
       return;
     }
 
@@ -614,7 +643,7 @@ function ReportIssueModal({
       .single();
 
     if (insertError || !flag) {
-      setError(insertError?.message || "Could not submit issue.");
+      setError(insertError?.message || t("ownerPortal.issue.submitError"));
       setSaving(false);
       return;
     }
@@ -668,16 +697,16 @@ function ReportIssueModal({
       <div className="flex min-h-full items-start justify-center">
         <div className="my-auto w-full max-w-xl rounded-[28px] border border-white/10 bg-[#17120d] shadow-[0_30px_90px_rgba(0,0,0,0.45)] max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-h-[calc(100vh-3rem)]">
           <div className="border-b border-white/8 px-5 py-4 sm:px-6">
-            <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">Owner Portal</div>
-            <h3 className="mt-2 text-xl font-semibold text-[#f7f1e8]">Report an Issue</h3>
+            <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">{t("ownerPortal.hero.kicker")}</div>
+            <h3 className="mt-2 text-xl font-semibold text-[#f7f1e8]">{t("ownerPortal.issue.title")}</h3>
             <p className="mt-1 text-sm text-[#e6d8bf]">
-              Send us a concern and it will be added to the maintenance queue.
+              {t("ownerPortal.issue.body")}
             </p>
           </div>
 
           <div className="space-y-5 px-5 py-5 sm:px-6">
             <div>
-              <label className="text-xs uppercase tracking-[0.18em] text-[#e7c98a]">Category</label>
+              <label className="text-xs uppercase tracking-[0.18em] text-[#e7c98a]">{t("ownerPortal.issue.category")}</label>
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 {ISSUE_CATEGORIES.map((item) => {
                   const selected = item === category;
@@ -691,7 +720,7 @@ function ReportIssueModal({
                         : "border-white/8 bg-white/[0.03] text-[#e8ddca] hover:bg-white/[0.05]"
                         }`}
                     >
-                      {item}
+                      {getIssueCategoryLabel(item, t)}
                     </button>
                   );
                 })}
@@ -699,12 +728,12 @@ function ReportIssueModal({
             </div>
 
             <div>
-              <label className="text-xs uppercase tracking-[0.18em] text-[#e7c98a]">Priority</label>
+              <label className="text-xs uppercase tracking-[0.18em] text-[#e7c98a]">{t("ownerPortal.issue.priority")}</label>
               <div className="mt-2 flex flex-wrap gap-2">
                 {[
-                  { value: "low", label: "Low" },
-                  { value: "normal", label: "Normal" },
-                  { value: "urgent", label: "Urgent" },
+                  { value: "low", label: t("ownerPortal.issue.low") },
+                  { value: "normal", label: t("ownerPortal.issue.normal") },
+                  { value: "urgent", label: t("ownerPortal.issue.urgent") },
                 ].map((item) => (
                   <button
                     key={item.value}
@@ -724,17 +753,17 @@ function ReportIssueModal({
             </div>
 
             <div>
-              <label className="text-xs uppercase tracking-[0.18em] text-[#e7c98a]">Details</label>
+              <label className="text-xs uppercase tracking-[0.18em] text-[#e7c98a]">{t("ownerPortal.issue.details")}</label>
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Example: The kitchen sink is leaking under the cabinet."
+                placeholder={t("ownerPortal.issue.detailsPlaceholder")}
                 className="mt-2 min-h-[130px] w-full rounded-2xl border border-white/8 bg-[#100c08] px-4 py-3 text-sm text-[#f7f1e8] outline-none transition focus:border-[#b08b47]"
               />
             </div>
 
             <div>
-              <label className="text-xs uppercase tracking-[0.18em] text-[#e7c98a]">Photos</label>
+              <label className="text-xs uppercase tracking-[0.18em] text-[#e7c98a]">{t("ownerPortal.issue.photos")}</label>
 
               <input
                 ref={cameraInputRef}
@@ -760,7 +789,7 @@ function ReportIssueModal({
                   onClick={() => cameraInputRef.current?.click()}
                   className="rounded-full bg-[#b08b47] px-4 py-2.5 text-sm font-semibold text-[#17120d]"
                 >
-                  Take Photo
+                  {t("ownerPortal.issue.takePhoto")}
                 </button>
 
                 <button
@@ -768,18 +797,20 @@ function ReportIssueModal({
                   onClick={() => libraryInputRef.current?.click()}
                   className="rounded-full border border-white/12 px-4 py-2.5 text-sm font-semibold text-[#f7f1e8] transition hover:bg-white/[0.05]"
                 >
-                  Add Photos
+                  {t("ownerPortal.issue.addPhotos")}
                 </button>
               </div>
 
               <div className="mt-2 text-xs text-[#ccb99a]">
-                Use your camera or photo library to help explain the issue.
+                {t("ownerPortal.issue.photoHelp")}
               </div>
 
               {files.length > 0 ? (
                 <div className="mt-3 space-y-2">
                   <div className="text-sm text-[#e6d8bf]">
-                    {files.length} photo{files.length === 1 ? "" : "s"} selected
+                    {files.length === 1
+                      ? t("ownerPortal.issue.onePhotoSelected")
+                      : t("ownerPortal.issue.photosSelected").replace("{count}", String(files.length))}
                   </div>
 
                   <div className="flex flex-wrap gap-2">
@@ -809,7 +840,7 @@ function ReportIssueModal({
                 disabled={saving}
                 className="rounded-full bg-[#b08b47] px-5 py-2.5 text-sm font-semibold text-[#17120d] transition hover:brightness-110 disabled:opacity-60"
               >
-                {saving ? "Submitting..." : "Submit Issue"}
+                {saving ? t("ownerPortal.issue.submitting") : t("ownerPortal.issue.submit")}
               </button>
 
               <button
@@ -818,7 +849,7 @@ function ReportIssueModal({
                 disabled={saving}
                 className="rounded-full border border-white/12 px-5 py-2.5 text-sm font-semibold text-[#f7f1e8] transition hover:bg-white/[0.05]"
               >
-                Cancel
+                {t("ownerPortal.issue.cancel")}
               </button>
             </div>
           </div>
@@ -829,6 +860,7 @@ function ReportIssueModal({
 }
 
 export default function OwnerPage() {
+  const { t } = useI18n();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [ownerAccount, setOwnerAccount] = useState<OwnerAccountRow | null>(null);
@@ -935,7 +967,7 @@ export default function OwnerPage() {
           invoice.issue_date,
           invoice.due_date || "",
           invoice.status,
-          property?.name || property?.address || "All linked properties",
+          property?.name || property?.address || t("ownerPortal.invoices.allLinkedProperties"),
           item.description,
           quantity,
           rate.toFixed(2),
@@ -968,7 +1000,7 @@ export default function OwnerPage() {
     if (!ownerAccount) return;
 
     const confirmed = window.confirm(
-      `Delete invoice ${invoice.invoice_number} from your portal?\n\nThis only removes it from your view. Property management will still keep the invoice record.`
+      t("ownerPortal.invoices.deleteConfirm").replace("{invoice}", invoice.invoice_number)
     );
     if (!confirmed) return;
 
@@ -1039,7 +1071,7 @@ export default function OwnerPage() {
     }
 
     if (!ownerRes) {
-      setError("No owner account is linked to this sign-in.");
+      setError(t("ownerPortal.empty.noAccount"));
       setLoading(false);
       return;
     }
@@ -1471,13 +1503,13 @@ export default function OwnerPage() {
     ? {
       date: nextGroundsJob.scheduled_for,
       label: getGroundsLabel(nextGroundsJob.job_type),
-      subtext: "Upcoming exterior service",
+      subtext: t("ownerPortal.overview.upcomingExteriorService"),
     }
     : nextRecurringGroundsRule
       ? {
         date: nextRecurringGroundsRule.nextDate,
         label: formatRecurringGroundsLabel(nextRecurringGroundsRule.rule),
-        subtext: "Recurring grounds schedule",
+        subtext: t("ownerPortal.overview.recurringGroundsSchedule"),
       }
       : null;
 
@@ -1518,11 +1550,11 @@ export default function OwnerPage() {
         items.push({
           id: `cleaning-${job.id}`,
           type: "cleaning",
-          title: "Scheduled cleaning",
+          title: t("ownerPortal.timeline.scheduledCleaning"),
           date: normalizeYmd(job.scheduled_for),
           subtitle: booking.guest
-            ? `Prepared for ${booking.guest}${booking.sourceLabel ? ` | ${booking.sourceLabel}` : ""}`
-            : "Upcoming cleaning visit",
+            ? t("ownerPortal.timeline.preparedFor").replace("{guest}", booking.guest).replace("{source}", booking.sourceLabel ? ` | ${booking.sourceLabel}` : "")
+            : t("ownerPortal.timeline.upcomingCleaningVisit"),
           tone: "gold",
         });
       }
@@ -1531,12 +1563,12 @@ export default function OwnerPage() {
         items.push({
           id: `booking-${job.id}`,
           type: "booking",
-          title: "Upcoming booking",
+          title: t("ownerPortal.timeline.upcomingBooking"),
           date: booking.checkinDate,
           subtitle:
             booking.guest || booking.sourceLabel
               ? [booking.guest, booking.sourceLabel].filter(Boolean).join(" | ")
-              : "Upcoming reservation activity",
+              : t("ownerPortal.timeline.upcomingReservationActivity"),
           tone: "sky",
         });
       }
@@ -1551,12 +1583,12 @@ export default function OwnerPage() {
         items.push({
           id: `booking-event-${event.id}`,
           type: "booking",
-          title: "Upcoming booking",
+          title: t("ownerPortal.timeline.upcomingBooking"),
           date: event.checkin_date,
           subtitle:
             event.summary || sourceLabel
               ? [event.summary, sourceLabel].filter(Boolean).join(" | ")
-              : "Upcoming reservation activity",
+              : t("ownerPortal.timeline.upcomingReservationActivity"),
           tone: "sky",
         });
       }
@@ -1570,7 +1602,7 @@ export default function OwnerPage() {
         type: "grounds",
         title: getGroundsLabel(job.job_type),
         date: normalizeYmd(job.scheduled_for),
-        subtitle: job.notes?.trim() || "Upcoming exterior service",
+        subtitle: job.notes?.trim() || t("ownerPortal.overview.upcomingExteriorService"),
         tone: "emerald",
       });
     }
@@ -1582,9 +1614,9 @@ export default function OwnerPage() {
       items.push({
         id: `grounds-rule-${rule.id}`,
         type: "grounds",
-        title: `${formatRecurringGroundsLabel(rule)} | Recurring`,
+        title: `${formatRecurringGroundsLabel(rule)} | ${t("ownerPortal.timeline.recurring")}`,
         date: nextDate,
-        subtitle: rule.notes?.trim() || "Recurring grounds schedule",
+        subtitle: rule.notes?.trim() || t("ownerPortal.overview.recurringGroundsSchedule"),
         tone: "emerald",
       });
     }
@@ -1593,9 +1625,9 @@ export default function OwnerPage() {
       items.push({
         id: `issue-${flag.id}`,
         type: "issue",
-        title: `Open issue${flag.category ? ` | ${flag.category}` : ""}`,
+        title: `${t("ownerPortal.timeline.openIssue")}${flag.category ? ` | ${flag.category}` : ""}`,
         date: flag.flagged_at || flag.created_at || null,
-        subtitle: flag.notes || "Issue reported",
+        subtitle: flag.notes || t("ownerPortal.timeline.issueReported"),
         tone: "rose",
       });
     }
@@ -1607,7 +1639,7 @@ export default function OwnerPage() {
         return aDate.localeCompare(bDate);
       })
       .slice(0, 8);
-  }, [propertyTurnoverJobs, propertyBookingEvents, propertyGroundsJobs, propertyGroundsRecurringRules, openFlags]);
+  }, [propertyTurnoverJobs, propertyBookingEvents, propertyGroundsJobs, propertyGroundsRecurringRules, openFlags, t]);
 
   const bookingInsights = useMemo<BookingInsight[]>(() => {
     if (propertyBookingEvents.length > 0) {
@@ -1726,21 +1758,21 @@ export default function OwnerPage() {
       maxBookedNights,
       maxBookingCount,
       bookingPace: [
-        { label: "Next 30", days: 30, bookedNights: next30, percentage: Math.round((next30 / 30) * 100) },
-        { label: "Next 60", days: 60, bookedNights: next60, percentage: Math.round((next60 / 60) * 100) },
-        { label: "Next 90", days: 90, bookedNights: next90, percentage: Math.round((next90 / 90) * 100) },
+        { label: t("ownerPortal.insights.next30"), days: 30, bookedNights: next30, percentage: Math.round((next30 / 30) * 100) },
+        { label: t("ownerPortal.insights.next60"), days: 60, bookedNights: next60, percentage: Math.round((next60 / 60) * 100) },
+        { label: t("ownerPortal.insights.next90"), days: 90, bookedNights: next90, percentage: Math.round((next90 / 90) * 100) },
       ],
       sourceMix,
       gapBuckets,
       recentBookings: [...bookingInsights].reverse().slice(0, 6),
     };
-  }, [bookingInsights]);
+  }, [bookingInsights, t]);
 
   if (loading) {
     return (
     <main className="owner-shell min-h-screen bg-[#0f0d0a] px-4 py-10 text-[#f7f1e8]">
         <div className="mx-auto max-w-6xl rounded-[32px] border border-white/8 bg-[#15110d] p-8">
-          Loading owner dashboard...
+          {t("ownerPortal.loading")}
         </div>
       </main>
     );
@@ -1751,10 +1783,10 @@ export default function OwnerPage() {
     <main className="owner-shell min-h-screen bg-[#0f0d0a] px-4 py-10 text-[#f7f1e8]">
         <div className="mx-auto max-w-2xl rounded-[32px] border border-red-500/20 bg-red-950/20 p-8">
           <div className="text-[11px] uppercase tracking-[0.22em] text-red-200">
-            Owner access
+            {t("ownerPortal.empty.ownerAccess")}
           </div>
           <h1 className="mt-3 text-2xl font-semibold text-[#f7f1e8]">
-            We could not open this owner portal.
+            {t("ownerPortal.empty.couldNotOpen")}
           </h1>
           <p className="mt-3 text-sm leading-6 text-red-100">
             {error}
@@ -1765,14 +1797,14 @@ export default function OwnerPage() {
               onClick={() => void signOutOwner()}
               className="rounded-full bg-[#b08b47] px-5 py-2.5 text-sm font-semibold text-[#17120d] transition hover:brightness-110"
             >
-              Sign out and use a different email
+              {t("ownerPortal.empty.switchAccount")}
             </button>
             <button
               type="button"
               onClick={() => void loadData()}
               className="rounded-full border border-white/12 px-5 py-2.5 text-sm font-semibold text-[#f7f1e8] transition hover:bg-white/[0.05]"
             >
-              Try again
+              {t("ownerPortal.empty.tryAgain")}
             </button>
           </div>
         </div>
@@ -1784,16 +1816,16 @@ export default function OwnerPage() {
     return (
     <main className="owner-shell min-h-screen bg-[#0f0d0a] px-4 py-10 text-[#f7f1e8]">
         <div className="mx-auto max-w-2xl rounded-[32px] border border-white/8 bg-[#15110d] p-8">
-          <h1 className="text-2xl font-semibold text-[#f7f1e8]">No property found yet.</h1>
+          <h1 className="text-2xl font-semibold text-[#f7f1e8]">{t("ownerPortal.empty.noPropertyTitle")}</h1>
           <p className="mt-3 text-sm leading-6 text-[#e6d8bf]">
-            This owner account is active, but no properties are linked to it yet.
+            {t("ownerPortal.empty.noPropertyBody")}
           </p>
           <button
             type="button"
             onClick={() => void signOutOwner()}
             className="mt-6 rounded-full bg-[#b08b47] px-5 py-2.5 text-sm font-semibold text-[#17120d] transition hover:brightness-110"
           >
-            Sign out and use a different email
+            {t("ownerPortal.empty.switchAccount")}
           </button>
         </div>
       </main>
@@ -1810,20 +1842,20 @@ export default function OwnerPage() {
             <div className="relative h-64 overflow-hidden sm:h-80">
               <img
                 src={selectedProperty.cover_photo_url}
-                alt={selectedProperty.name || "Property cover photo"}
+                alt={selectedProperty.name || t("ownerPortal.hero.coverPhoto")}
                 className="h-full w-full object-cover"
               />
               <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(15,13,10,0.12)_0%,rgba(15,13,10,0.78)_100%)]" />
               <div className="absolute inset-x-0 bottom-0 px-6 py-6 sm:px-8">
                 <div className="max-w-2xl">
                   <div className="text-[11px] uppercase tracking-[0.24em] text-[#ead7b8]">
-                    Owner Dashboard
+                    {t("ownerPortal.hero.kicker")}
                   </div>
                   <h1 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-5xl">
-                    {selectedProperty.name || "Property Overview"}
+                    {selectedProperty.name || t("ownerPortal.hero.propertyOverview")}
                   </h1>
                   <p className="mt-2 text-base text-[#f2e5d0]">
-                    {getCityFromAddress(selectedProperty.address) || selectedProperty.address || "Location unavailable"}
+                    {getCityFromAddress(selectedProperty.address) || selectedProperty.address || t("ownerPortal.hero.locationUnavailable")}
                   </p>
                 </div>
               </div>
@@ -1835,18 +1867,18 @@ export default function OwnerPage() {
               {!selectedProperty.cover_photo_url ? (
                 <>
                   <div className="text-[11px] uppercase tracking-[0.24em] text-[#e7c98a]">
-                    Owner Dashboard
+                    {t("ownerPortal.hero.kicker")}
                   </div>
                   <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[#f7f1e8] sm:text-4xl">
-                    {selectedProperty.name || "Property Overview"}
+                    {selectedProperty.name || t("ownerPortal.hero.propertyOverview")}
                   </h1>
                   <p className="mt-2 text-base text-[#e6d8bf]">
-                    {getCityFromAddress(selectedProperty.address) || selectedProperty.address || "Location unavailable"}
+                    {getCityFromAddress(selectedProperty.address) || selectedProperty.address || t("ownerPortal.hero.locationUnavailable")}
                   </p>
                 </>
               ) : (
                 <div className="text-sm text-[#e6d8bf]">
-                  {getCityFromAddress(selectedProperty.address) || selectedProperty.address || "Location unavailable"}
+                  {getCityFromAddress(selectedProperty.address) || selectedProperty.address || t("ownerPortal.hero.locationUnavailable")}
                 </div>
               )}
 
@@ -1864,7 +1896,7 @@ export default function OwnerPage() {
                 >
                   {properties.map((property) => (
                     <option key={property.id} value={property.id}>
-                      {property.name || property.address || "Unnamed property"}
+                      {property.name || property.address || t("ownerPortal.hero.unnamedProperty")}
                     </option>
                   ))}
                 </select>
@@ -1875,7 +1907,7 @@ export default function OwnerPage() {
                 onClick={() => setReportOpen(true)}
                 className="rounded-full bg-[#b08b47] px-5 py-3 text-sm font-semibold text-[#17120d] transition hover:brightness-110"
               >
-                Report an Issue
+                {t("ownerPortal.issue.title")}
               </button>
 
               <button
@@ -1886,7 +1918,7 @@ export default function OwnerPage() {
                 }}
                 className="rounded-full border border-white/12 px-5 py-3 text-sm font-semibold text-[#f7f1e8] transition hover:bg-white/[0.05]"
               >
-                Logout
+                {t("ownerPortal.hero.logout")}
               </button>
             </div>
           </div>
@@ -1895,10 +1927,10 @@ export default function OwnerPage() {
         <section className="rounded-[26px] border border-white/8 bg-[#15110d] p-2">
           <div className="grid gap-2 lg:grid-cols-4">
             {[
-              { key: "overview" as OwnerTab, label: "Overview", subtext: "Operations and upcoming activity" },
-              { key: "insights" as OwnerTab, label: "Booking Insights", subtext: "Occupancy trends and booking history" },
-              { key: "invoices" as OwnerTab, label: "Invoices", subtext: "Statements and property charges" },
-              { key: "chat" as OwnerTab, label: "Chat", subtext: "Talk with property management" },
+              { key: "overview" as OwnerTab, label: t("ownerPortal.tabs.overview.label"), subtext: t("ownerPortal.tabs.overview.subtext") },
+              { key: "insights" as OwnerTab, label: t("ownerPortal.tabs.insights.label"), subtext: t("ownerPortal.tabs.insights.subtext") },
+              { key: "invoices" as OwnerTab, label: t("ownerPortal.tabs.invoices.label"), subtext: t("ownerPortal.tabs.invoices.subtext") },
+              { key: "chat" as OwnerTab, label: t("ownerPortal.tabs.chat.label"), subtext: t("ownerPortal.tabs.chat.subtext") },
             ].map((tab) => {
               const isActive = activeOwnerTab === tab.key;
               const unreadCount =
@@ -1920,7 +1952,7 @@ export default function OwnerPage() {
                     <span>{tab.label}</span>
                     {unreadCount > 0 ? (
                       <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${isActive ? "bg-[#17120d]/12 text-[#17120d]" : "bg-[#e3c177] text-[#17120d]"}`}>
-                        {unreadCount} unread
+                        {t("ownerPortal.common.unreadCount").replace("{count}", String(unreadCount))}
                       </span>
                     ) : null}
                   </div>
@@ -1940,14 +1972,14 @@ export default function OwnerPage() {
             <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">
-                  Properties
+                  {t("ownerPortal.properties.title")}
                 </div>
                 <h2 className="mt-2 text-xl font-semibold text-[#f7f1e8]">
-                  Switch by photo
+                  {t("ownerPortal.properties.switchByPhoto")}
                 </h2>
               </div>
               <div className="text-sm text-[#ccb99a]">
-                {properties.length} linked properties
+                {t("ownerPortal.properties.linkedCount").replace("{count}", String(properties.length))}
               </div>
             </div>
 
@@ -1968,21 +2000,21 @@ export default function OwnerPage() {
                     {property.cover_photo_url ? (
                       <img
                         src={property.cover_photo_url}
-                        alt={property.name || "Property cover photo"}
+                        alt={property.name || t("ownerPortal.hero.coverPhoto")}
                         className="h-32 w-full object-cover"
                       />
                     ) : (
                       <div className="flex h-32 items-center justify-center bg-[radial-gradient(circle_at_top,rgba(176,139,71,0.32),transparent_36%),linear-gradient(135deg,#2a2119,#14100c)] px-4 text-center text-xs uppercase tracking-[0.2em] text-[#e7c98a]">
-                        No photo
+                        {t("ownerPortal.properties.noPhoto")}
                       </div>
                     )}
 
                     <div className="px-4 py-3">
                       <div className="truncate text-sm font-semibold text-[#f7f1e8]">
-                        {property.name || "Unnamed property"}
+                        {property.name || t("ownerPortal.hero.unnamedProperty")}
                       </div>
                       <div className="mt-1 truncate text-xs text-[#ccb99a]">
-                        {getCityFromAddress(property.address) || property.address || "Location unavailable"}
+                        {getCityFromAddress(property.address) || property.address || t("ownerPortal.hero.locationUnavailable")}
                       </div>
                     </div>
                   </button>
@@ -2000,32 +2032,32 @@ export default function OwnerPage() {
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <StatCard
-            label="Next Cleaning"
-            value={nextCleaning ? formatDateLabel(nextCleaning.scheduled_for) : "Not scheduled"}
-            subtext="Upcoming interior turnover"
+            label={t("ownerPortal.overview.nextCleaning")}
+            value={nextCleaning ? formatDateLabel(nextCleaning.scheduled_for) : t("ownerPortal.overview.notScheduled")}
+            subtext={t("ownerPortal.overview.upcomingInteriorTurnover")}
           />
           <StatCard
-            label="Next Grounds Service"
-            value={nextGrounds ? formatDateLabel(nextGrounds.date) : "Not scheduled"}
+            label={t("ownerPortal.overview.nextGroundsService")}
+            value={nextGrounds ? formatDateLabel(nextGrounds.date) : t("ownerPortal.overview.notScheduled")}
             subtext={
               nextGrounds
                 ? `${nextGrounds.label}${nextGrounds.subtext ? ` | ${nextGrounds.subtext}` : ""}`
-                : "No exterior service scheduled"
+                : t("ownerPortal.overview.noExteriorService")
             }
           />
           <StatCard
-            label="Upcoming Booking"
-            value={bookingInfo?.checkinDate ? formatDateLabel(bookingInfo.checkinDate) : "Not available"}
+            label={t("ownerPortal.overview.upcomingBooking")}
+            value={bookingInfo?.checkinDate ? formatDateLabel(bookingInfo.checkinDate) : t("ownerPortal.overview.notAvailable")}
             subtext={
               bookingInfo
-                ? [bookingInfo.guest, bookingInfo.sourceLabel].filter(Boolean).join(" | ") || "Booking found from sync"
-                : "No synced upcoming booking found"
+                ? [bookingInfo.guest, bookingInfo.sourceLabel].filter(Boolean).join(" | ") || t("ownerPortal.overview.bookingFound")
+                : t("ownerPortal.overview.noUpcomingBooking")
             }
           />
           <StatCard
-            label="Active Issues"
+            label={t("ownerPortal.overview.activeIssues")}
             value={String(openFlags.length)}
-            subtext={openFlags.length > 0 ? "Maintenance items currently open" : "No active issues right now"}
+            subtext={openFlags.length > 0 ? t("ownerPortal.overview.openMaintenanceItems") : t("ownerPortal.overview.noActiveIssues")}
           />
         </section>
 
@@ -2034,12 +2066,12 @@ export default function OwnerPage() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">
-                  Today at a Glance
+                  {t("ownerPortal.overview.todayAtGlance")}
                 </div>
-                <h2 className="mt-2 text-xl font-semibold text-[#f7f1e8]">Upcoming Activity</h2>
+                <h2 className="mt-2 text-xl font-semibold text-[#f7f1e8]">{t("ownerPortal.overview.upcomingActivity")}</h2>
               </div>
               <div className="rounded-full border border-white/8 bg-white/[0.03] px-3 py-1 text-xs uppercase tracking-[0.18em] text-[#e7c98a]">
-                {Math.min(timelineItems.length, 4)} shown
+                {t("ownerPortal.common.shownCount").replace("{count}", String(Math.min(timelineItems.length, 4)))}
               </div>
             </div>
 
@@ -2075,15 +2107,15 @@ export default function OwnerPage() {
                 ))
               ) : (
                 <div className="rounded-2xl border border-white/7 bg-white/[0.02] px-4 py-5 text-sm text-[#e6d8bf] sm:col-span-2">
-                  Nothing upcoming has been scheduled yet.
+                  {t("ownerPortal.overview.nothingUpcoming")}
                 </div>
               )}
             </div>
           </div>
 
           <div className="rounded-[28px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
-            <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">Active Issues</div>
-            <h2 className="mt-2 text-xl font-semibold text-[#f7f1e8]">Maintenance Status</h2>
+            <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">{t("ownerPortal.overview.activeIssues")}</div>
+            <h2 className="mt-2 text-xl font-semibold text-[#f7f1e8]">{t("ownerPortal.overview.maintenanceStatus")}</h2>
 
             <div className="mt-5 space-y-3">
               {openFlags.length > 0 ? (
@@ -2094,7 +2126,7 @@ export default function OwnerPage() {
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className="text-sm font-semibold text-[#f7f1e8]">
-                        {flag.category || "Open issue"}
+                        {flag.category || t("ownerPortal.timeline.openIssue")}
                       </div>
                       <div className="rounded-full border border-red-400/30 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-red-200">
                         {flag.urgency || "open"}
@@ -2102,7 +2134,7 @@ export default function OwnerPage() {
                     </div>
 
                     <div className="mt-2 text-sm leading-relaxed text-[#d8c7ab]">
-                      {flag.notes || "Issue reported"}
+                      {flag.notes || t("ownerPortal.timeline.issueReported")}
                     </div>
 
                     {(flagImagesByFlagId.get(flag.id) || []).length > 0 ? (
@@ -2111,7 +2143,7 @@ export default function OwnerPage() {
                           <img
                             key={image.id}
                             src={image.image_url}
-                            alt="Issue attachment"
+                            alt={t("ownerPortal.issue.attachmentAlt")}
                             className="h-16 w-16 rounded-xl object-cover"
                           />
                         ))}
@@ -2119,13 +2151,13 @@ export default function OwnerPage() {
                     ) : null}
 
                     <div className="mt-3 text-xs uppercase tracking-[0.18em] text-[#e7c98a]">
-                      Reported {formatDateLabel(flag.flagged_at || flag.created_at)}
+                      {t("ownerPortal.overview.reportedDate").replace("{date}", formatDateLabel(flag.flagged_at || flag.created_at))}
                     </div>
                   </div>
                 ))
               ) : (
                 <div className="rounded-2xl border border-emerald-500/20 bg-emerald-950/15 px-4 py-5 text-sm text-emerald-200">
-                  No active issues at the moment.
+                  {t("ownerPortal.overview.noActiveIssuesMoment")}
                 </div>
               )}
             </div>
@@ -2138,41 +2170,41 @@ export default function OwnerPage() {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <div className="text-[11px] uppercase tracking-[0.24em] text-[#e7c98a]">
-                    Booking Performance
+                    {t("ownerPortal.insights.bookingPerformance")}
                   </div>
                   <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#f7f1e8] sm:text-3xl">
-                    Occupancy story for {selectedProperty.name || "this property"}
+                    {t("ownerPortal.insights.occupancyStory").replace("{property}", selectedProperty.name || t("ownerPortal.hero.thisProperty"))}
                   </h2>
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-[#e6d8bf]">
-                    Built from synced booking calendar data. Financial ROI can be added later once nightly rate and cost assumptions are available.
+                    {t("ownerPortal.insights.body")}
                   </p>
                 </div>
 
                 <div className="rounded-full border border-[#b08b47]/30 bg-[#b08b47]/10 px-4 py-2 text-sm font-semibold text-[#f1d9a5]">
-                  Last 12 months
+                  {t("ownerPortal.insights.last12Months")}
                 </div>
               </div>
 
               <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <StatCard
-                  label="Avg Occupancy"
+                  label={t("ownerPortal.insights.avgOccupancy")}
                   value={`${bookingInsightStats.averageOccupancy}%`}
-                  subtext="Average monthly booked-night coverage"
+                  subtext={t("ownerPortal.insights.avgOccupancySubtext")}
                 />
                 <StatCard
-                  label="Booked Nights"
+                  label={t("ownerPortal.insights.bookedNights")}
                   value={String(bookingInsightStats.totalBookedNights)}
-                  subtext="Total nights found in synced bookings"
+                  subtext={t("ownerPortal.insights.bookedNightsSubtext")}
                 />
                 <StatCard
-                  label="Reservations"
+                  label={t("ownerPortal.insights.reservations")}
                   value={String(bookingInsightStats.totalBookingCount)}
-                  subtext="Bookings with check-in dates in the period"
+                  subtext={t("ownerPortal.insights.reservationsSubtext")}
                 />
                 <StatCard
-                  label="Avg Stay"
-                  value={`${bookingInsightStats.averageStay.toFixed(1)} nights`}
-                  subtext={bookingInsightStats.bestMonth ? `Best month: ${bookingInsightStats.bestMonth.label}` : "Based on synced stays"}
+                  label={t("ownerPortal.insights.avgStay")}
+                  value={t("ownerPortal.insights.nightsCount").replace("{count}", bookingInsightStats.averageStay.toFixed(1))}
+                  subtext={bookingInsightStats.bestMonth ? t("ownerPortal.insights.bestMonth").replace("{month}", bookingInsightStats.bestMonth.label) : t("ownerPortal.insights.basedOnSyncedStays")}
                 />
               </div>
             </section>
@@ -2182,14 +2214,14 @@ export default function OwnerPage() {
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                   <div>
                     <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">
-                      Occupancy Trend
+                      {t("ownerPortal.insights.occupancyTrend")}
                     </div>
                     <h3 className="mt-2 text-xl font-semibold text-[#f7f1e8]">
-                      Monthly booked nights
+                      {t("ownerPortal.insights.monthlyBookedNights")}
                     </h3>
                   </div>
                   <div className="text-sm text-[#ccb99a]">
-                    Bars show occupied nights, labels show occupancy.
+                    {t("ownerPortal.insights.barsHelp")}
                   </div>
                 </div>
 
@@ -2217,19 +2249,19 @@ export default function OwnerPage() {
 
               <div className="rounded-[30px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
                 <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">
-                  Booking Pace
+                  {t("ownerPortal.insights.bookingPace")}
                 </div>
                 <h3 className="mt-2 text-xl font-semibold text-[#f7f1e8]">
-                  Future demand
+                  {t("ownerPortal.insights.futureDemand")}
                 </h3>
 
                 <div className="mt-6 space-y-5">
                   {bookingInsightStats.bookingPace.map((pace) => (
                     <div key={pace.label}>
                       <div className="flex items-center justify-between gap-3">
-                        <div className="text-sm font-semibold text-[#f7f1e8]">{pace.label} days</div>
+                        <div className="text-sm font-semibold text-[#f7f1e8]">{t("ownerPortal.insights.daysLabel").replace("{label}", pace.label)}</div>
                         <div className="text-sm text-[#e6d8bf]">
-                          {pace.bookedNights}/{pace.days} nights
+                          {t("ownerPortal.insights.nightsRatio").replace("{booked}", String(pace.bookedNights)).replace("{days}", String(pace.days))}
                         </div>
                       </div>
                       <div className="mt-2 h-3 overflow-hidden rounded-full bg-white/8">
@@ -2238,15 +2270,15 @@ export default function OwnerPage() {
                           style={{ width: `${Math.min(100, pace.percentage)}%` }}
                         />
                       </div>
-                      <div className="mt-1 text-xs text-[#ccb99a]">{pace.percentage}% booked</div>
+                      <div className="mt-1 text-xs text-[#ccb99a]">{t("ownerPortal.insights.percentBooked").replace("{percent}", String(pace.percentage))}</div>
                     </div>
                   ))}
                 </div>
 
                 <div className="mt-7 rounded-[22px] border border-[#b08b47]/20 bg-[#b08b47]/10 p-4">
-                  <div className="text-sm font-semibold text-[#f7f1e8]">Read this as booking pace</div>
+                  <div className="text-sm font-semibold text-[#f7f1e8]">{t("ownerPortal.insights.readPaceTitle")}</div>
                   <p className="mt-2 text-sm leading-6 text-[#e6d8bf]">
-                    A high next-30 score means the near-term calendar is filling. A low next-90 score can still be normal for slower seasons.
+                    {t("ownerPortal.insights.readPaceBody")}
                   </p>
                 </div>
               </div>
@@ -2255,9 +2287,9 @@ export default function OwnerPage() {
             <section className="grid gap-6 xl:grid-cols-3">
               <div className="rounded-[30px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
                 <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">
-                  Source Mix
+                  {t("ownerPortal.insights.sourceMix")}
                 </div>
-                <h3 className="mt-2 text-xl font-semibold text-[#f7f1e8]">Booked nights by source</h3>
+                <h3 className="mt-2 text-xl font-semibold text-[#f7f1e8]">{t("ownerPortal.insights.bookedNightsBySource")}</h3>
 
                 <div className="mt-6 space-y-4">
                   {bookingInsightStats.sourceMix.length > 0 ? (
@@ -2265,7 +2297,7 @@ export default function OwnerPage() {
                       <div key={source.label}>
                         <div className="flex items-center justify-between gap-3 text-sm">
                           <span className="font-semibold text-[#f7f1e8]">{source.label}</span>
-                          <span className="text-[#e6d8bf]">{source.nights} nights</span>
+                          <span className="text-[#e6d8bf]">{t("ownerPortal.insights.nightsCount").replace("{count}", String(source.nights))}</span>
                         </div>
                         <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-white/8">
                           <div
@@ -2277,7 +2309,7 @@ export default function OwnerPage() {
                     ))
                   ) : (
                     <div className="rounded-2xl border border-white/7 bg-white/[0.02] px-4 py-5 text-sm text-[#e6d8bf]">
-                      No booking source data found yet.
+                      {t("ownerPortal.insights.noSourceData")}
                     </div>
                   )}
                 </div>
@@ -2285,16 +2317,16 @@ export default function OwnerPage() {
 
               <div className="rounded-[30px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
                 <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">
-                  Gap Opportunities
+                  {t("ownerPortal.insights.gapOpportunities")}
                 </div>
-                <h3 className="mt-2 text-xl font-semibold text-[#f7f1e8]">Empty windows between stays</h3>
+                <h3 className="mt-2 text-xl font-semibold text-[#f7f1e8]">{t("ownerPortal.insights.emptyWindows")}</h3>
 
                 <div className="mt-6 grid grid-cols-4 gap-3">
                   {[
-                    { label: "1 night", value: bookingInsightStats.gapBuckets.oneNight },
-                    { label: "2 nights", value: bookingInsightStats.gapBuckets.twoNight },
-                    { label: "3 nights", value: bookingInsightStats.gapBuckets.threeNight },
-                    { label: "4+ nights", value: bookingInsightStats.gapBuckets.fourPlus },
+                    { label: t("ownerPortal.insights.oneNight"), value: bookingInsightStats.gapBuckets.oneNight },
+                    { label: t("ownerPortal.insights.twoNights"), value: bookingInsightStats.gapBuckets.twoNight },
+                    { label: t("ownerPortal.insights.threeNights"), value: bookingInsightStats.gapBuckets.threeNight },
+                    { label: t("ownerPortal.insights.fourPlusNights"), value: bookingInsightStats.gapBuckets.fourPlus },
                   ].map((bucket) => {
                     const maxGap = Math.max(
                       1,
@@ -2324,9 +2356,9 @@ export default function OwnerPage() {
 
               <div className="rounded-[30px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
                 <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">
-                  Reservation Volume
+                  {t("ownerPortal.insights.reservationVolume")}
                 </div>
-                <h3 className="mt-2 text-xl font-semibold text-[#f7f1e8]">Bookings by month</h3>
+                <h3 className="mt-2 text-xl font-semibold text-[#f7f1e8]">{t("ownerPortal.insights.bookingsByMonth")}</h3>
 
                 <div className="mt-6 space-y-3">
                   {bookingInsightStats.monthly.map((month) => (
@@ -2349,12 +2381,12 @@ export default function OwnerPage() {
               <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">
-                    Booking History
+                    {t("ownerPortal.insights.bookingHistory")}
                   </div>
-                  <h3 className="mt-2 text-xl font-semibold text-[#f7f1e8]">Recent synced stays</h3>
+                  <h3 className="mt-2 text-xl font-semibold text-[#f7f1e8]">{t("ownerPortal.insights.recentSyncedStays")}</h3>
                 </div>
                 <div className="text-sm text-[#ccb99a]">
-                  {bookingInsights.length} stays found
+                  {t("ownerPortal.insights.staysFound").replace("{count}", String(bookingInsights.length))}
                 </div>
               </div>
 
@@ -2365,24 +2397,24 @@ export default function OwnerPage() {
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="truncate text-sm font-semibold text-[#f7f1e8]">
-                            {booking.guest || "Guest stay"}
+                            {booking.guest || t("ownerPortal.insights.guestStay")}
                           </div>
                           <div className="mt-1 text-sm text-[#e6d8bf]">
-                            {formatDateLabel(booking.checkinDate)} to {formatDateLabel(booking.checkoutDate)}
+                            {t("ownerPortal.insights.dateRange").replace("{start}", formatDateLabel(booking.checkinDate)).replace("{end}", formatDateLabel(booking.checkoutDate))}
                           </div>
                         </div>
                         <div className="rounded-full border border-[#b08b47]/25 bg-[#b08b47]/10 px-3 py-1 text-xs font-semibold text-[#f1d9a5]">
-                          {booking.nights} nights
+                          {t("ownerPortal.insights.nightsCount").replace("{count}", String(booking.nights))}
                         </div>
                       </div>
                       <div className="mt-3 text-xs uppercase tracking-[0.18em] text-[#ccb99a]">
-                        {booking.sourceLabel || "Source unavailable"}
+                        {booking.sourceLabel || t("ownerPortal.insights.sourceUnavailable")}
                       </div>
                     </div>
                   ))
                 ) : (
                   <div className="rounded-2xl border border-white/7 bg-white/[0.02] px-4 py-5 text-sm text-[#e6d8bf] md:col-span-2">
-                    No synced booking history was found yet. Once calendar sync creates bookings with check-in and checkout dates, insights will populate here.
+                    {t("ownerPortal.insights.noBookingHistory")}
                   </div>
                 )}
               </div>
@@ -2393,16 +2425,16 @@ export default function OwnerPage() {
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">
-                  Owner Invoices
+                  {t("ownerPortal.invoices.title")}
                 </div>
                 <h2 className="mt-2 text-xl font-semibold text-[#f7f1e8]">
-                  Statements for {selectedProperty.name || "this property"}
+                  {t("ownerPortal.invoices.statementsFor").replace("{property}", selectedProperty.name || t("ownerPortal.hero.thisProperty"))}
                 </h2>
               </div>
               <div className="rounded-full border border-[#b08b47]/30 bg-[#b08b47]/10 px-4 py-2 text-sm font-semibold text-[#f1d9a5]">
                 {unreadPropertyOwnerInvoices.length > 0
-                  ? `${unreadPropertyOwnerInvoices.length} unread`
-                  : `${propertyOwnerInvoices.length} invoice${propertyOwnerInvoices.length === 1 ? "" : "s"}`}
+                  ? t("ownerPortal.common.unreadCount").replace("{count}", String(unreadPropertyOwnerInvoices.length))
+                  : t(propertyOwnerInvoices.length === 1 ? "ownerPortal.invoices.oneInvoice" : "ownerPortal.invoices.invoiceCount").replace("{count}", String(propertyOwnerInvoices.length))}
               </div>
             </div>
 
@@ -2430,30 +2462,30 @@ export default function OwnerPage() {
                               <img src={invoice.logo_url} alt="" className="mb-3 max-h-14 max-w-[180px] object-contain" />
                             ) : null}
                             <div className="text-lg font-semibold text-[#f7f1e8]">
-                              {invoice.company_name || "Property invoice"}
+                              {invoice.company_name || t("ownerPortal.invoices.propertyInvoice")}
                               {!invoice.owner_viewed_at ? (
                                 <span className="ml-2 rounded-full bg-[#e3c177] px-2 py-0.5 align-middle text-[11px] font-bold uppercase tracking-[0.08em] text-[#17120d]">
-                                  New
+                                  {t("ownerPortal.invoices.new")}
                                 </span>
                               ) : null}
                               {invoice.invoice_source === "uploaded" ? (
                                 <span className="ml-2 rounded-full border border-[#e3c177]/30 bg-[#e3c177]/10 px-2 py-0.5 align-middle text-[11px] font-bold uppercase tracking-[0.08em] text-[#f1d9a5]">
-                                  Uploaded
+                                  {t("ownerPortal.invoices.uploaded")}
                                 </span>
                               ) : null}
                             </div>
                             <div className="mt-1 text-sm text-[#ccb99a]">
-                              {invoice.invoice_number} · {invoiceProperty?.name || invoiceProperty?.address || "All linked properties"}
+                              {invoice.invoice_number} - {invoiceProperty?.name || invoiceProperty?.address || t("ownerPortal.invoices.allLinkedProperties")}
                             </div>
                           </div>
                           <div className="text-left md:text-right">
                             <div className="text-2xl font-semibold text-[#f7f1e8]">{formatCurrency(invoice.total)}</div>
                             <div className="mt-1 text-sm text-[#e6d8bf]">
-                              {invoice.status === "paid" ? "Paid" : "Due"} {invoice.due_date ? formatDateLabel(invoice.due_date) : "on receipt"}
+                              {invoice.status === "paid" ? t("ownerPortal.invoices.paid") : t("ownerPortal.invoices.due")} {invoice.due_date ? formatDateLabel(invoice.due_date) : t("ownerPortal.invoices.onReceipt")}
                             </div>
                             <div className="mt-3 md:text-right">
                               <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#ccb99a]">
-                                Download as:
+                                {t("ownerPortal.invoices.downloadAs")}
                               </div>
                               <div className="mt-2 flex flex-wrap gap-2 md:justify-end">
                                 <button
@@ -2463,9 +2495,9 @@ export default function OwnerPage() {
                                   className="rounded-full border border-[#b08b47]/35 bg-[#b08b47]/10 px-3 py-1.5 text-xs font-semibold text-[#f1d9a5] transition hover:bg-[#b08b47]/18 disabled:opacity-60"
                                 >
                                   {downloadingInvoiceId === invoice.id
-                                    ? "Downloading..."
+                                    ? t("ownerPortal.invoices.downloading")
                                     : invoice.invoice_source === "uploaded"
-                                      ? "File"
+                                      ? t("ownerPortal.invoices.file")
                                       : "PDF"}
                                 </button>
                                 <button
@@ -2473,14 +2505,14 @@ export default function OwnerPage() {
                                   onClick={() => downloadOwnerInvoiceCsv(invoice, invoiceProperty)}
                                   className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-semibold text-[#f7f1e8] transition hover:bg-white/[0.06]"
                                 >
-                                  CSV
+                                  {t("ownerPortal.invoices.csv")}
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => downloadOwnerInvoiceJson(invoice, invoiceProperty)}
                                   className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-semibold text-[#f7f1e8] transition hover:bg-white/[0.06]"
                                 >
-                                  JSON
+                                  {t("ownerPortal.invoices.json")}
                                 </button>
                                 <button
                                   type="button"
@@ -2488,7 +2520,7 @@ export default function OwnerPage() {
                                   disabled={deletingInvoiceId === invoice.id}
                                   className="rounded-full border border-red-300/30 bg-red-950/20 px-3 py-1.5 text-xs font-semibold text-red-100 transition hover:bg-red-950/30 disabled:opacity-60"
                                 >
-                                  {deletingInvoiceId === invoice.id ? "Deleting..." : "Delete"}
+                                  {deletingInvoiceId === invoice.id ? t("ownerPortal.invoices.deleting") : t("ownerPortal.invoices.delete")}
                                 </button>
                               </div>
                             </div>
@@ -2501,7 +2533,7 @@ export default function OwnerPage() {
 
                       {invoice.invoice_source === "uploaded" && invoice.uploaded_invoice_name ? (
                         <div className="border-b border-white/8 px-5 py-4 text-sm leading-6 text-[#e6d8bf]">
-                          Original invoice file: <span className="font-semibold text-[#f7f1e8]">{invoice.uploaded_invoice_name}</span>
+                          {t("ownerPortal.invoices.originalFile")} <span className="font-semibold text-[#f7f1e8]">{invoice.uploaded_invoice_name}</span>
                         </div>
                       ) : null}
 
@@ -2530,7 +2562,7 @@ export default function OwnerPage() {
                                   </div>
                                 ) : null}
                               </div>
-                              <div className="text-[#ccb99a] md:text-right">Qty {quantity}</div>
+                              <div className="text-[#ccb99a] md:text-right">{t("ownerPortal.invoices.qty").replace("{count}", String(quantity))}</div>
                               <div className="text-[#ccb99a] md:text-right">{formatCurrency(rate)}</div>
                               <div className="font-semibold text-[#f7f1e8] md:text-right">{formatCurrency(quantity * rate)}</div>
                             </div>
@@ -2542,7 +2574,7 @@ export default function OwnerPage() {
                       <div className="border-t border-white/8 px-5 py-4 text-sm text-[#e6d8bf]">
                         <div className="ml-auto max-w-xs space-y-2">
                           <div className="flex justify-between">
-                            <span>Subtotal</span>
+                            <span>{t("ownerPortal.invoices.subtotal")}</span>
                             <span>{formatCurrency(invoice.subtotal)}</span>
                           </div>
                           {taxLines.map((taxLine) => (
@@ -2552,7 +2584,7 @@ export default function OwnerPage() {
                             </div>
                           ))}
                           <div className="flex justify-between border-t border-white/8 pt-2 text-base font-semibold text-[#f7f1e8]">
-                            <span>Total</span>
+                            <span>{t("ownerPortal.invoices.total")}</span>
                             <span>{formatCurrency(invoice.total)}</span>
                           </div>
                         </div>
@@ -2563,7 +2595,7 @@ export default function OwnerPage() {
                           {invoice.notes ? <p>{invoice.notes}</p> : null}
                           {invoice.payment_instructions ? (
                             <p className="mt-2">
-                              <span className="font-semibold text-[#f7f1e8]">Payment:</span> {invoice.payment_instructions}
+                              <span className="font-semibold text-[#f7f1e8]">{t("ownerPortal.invoices.payment")}</span> {invoice.payment_instructions}
                             </p>
                           ) : null}
                         </div>
@@ -2573,7 +2605,7 @@ export default function OwnerPage() {
                 })
               ) : (
                 <div className="rounded-2xl border border-white/7 bg-white/[0.02] px-4 py-5 text-sm text-[#e6d8bf]">
-                  No invoices have been sent for this property yet.
+                  {t("ownerPortal.invoices.none")}
                 </div>
               )}
             </div>
@@ -2592,8 +2624,8 @@ export default function OwnerPage() {
                   }
                 : null
             }
-            title="Owner Chat"
-            subtitle="Chat with property management about bookings, invoices, maintenance, or anything tied to your property."
+            title={t("ownerPortal.chat.title")}
+            subtitle={t("ownerPortal.chat.subtitle")}
             onUnreadCountChange={setOwnerChatUnreadCount}
           />
         )}
@@ -2605,7 +2637,7 @@ export default function OwnerPage() {
         propertyId={selectedProperty.id}
         organizationId={selectedProperty.organization_id}
         onSubmitted={() => {
-          setReportSuccess("Issue submitted successfully.");
+          setReportSuccess(t("ownerPortal.issue.success"));
           setTimeout(() => setReportSuccess(""), 3500);
           void loadData();
         }}
