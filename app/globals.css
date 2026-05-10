@@ -70,6 +70,7 @@ body {
   --owner-accent-strong: #f1d9a5;
   background: var(--owner-page-bg) !important;
   color: var(--owner-text) !important;
+  color-scheme: dark;
 }
 
 .owner-shell .owner-hero {
@@ -147,61 +148,4 @@ body {
 
 .owner-shell .bg-black\/20 {
   background: var(--owner-dark-surface) !important;
-}
-
-@media (prefers-color-scheme: light) {
-  .owner-shell {
-    --owner-page-bg:
-      radial-gradient(circle at top, rgba(176, 139, 71, 0.18), transparent 30%),
-      linear-gradient(180deg, #fcf8f1 0%, #f3eadf 100%);
-    --owner-surface: rgba(255, 251, 245, 0.96);
-    --owner-surface-strong:
-      linear-gradient(180deg, rgba(255, 252, 248, 0.98) 0%, rgba(248, 241, 231, 1) 100%);
-    --owner-field: #fffdf9;
-    --owner-border: rgba(117, 87, 44, 0.16);
-    --owner-border-strong: rgba(117, 87, 44, 0.22);
-    --owner-subtle-surface: rgba(255, 255, 255, 0.72);
-    --owner-subtle-surface-2: rgba(255, 255, 255, 0.84);
-    --owner-dark-surface: rgba(117, 87, 44, 0.08);
-    --owner-text: #2c2116;
-    --owner-muted: #5a4833;
-    --owner-soft: #786452;
-    --owner-accent: #7d581b;
-    --owner-accent-strong: #694811;
-  }
-
-  .owner-shell {
-    color-scheme: light;
-  }
-
-  .owner-shell .bg-red-950\/20 {
-    background: rgba(185, 28, 28, 0.08) !important;
-  }
-
-  .owner-shell .bg-emerald-950\/20 {
-    background: rgba(5, 150, 105, 0.08) !important;
-  }
-
-  .owner-shell .bg-emerald-950\/15 {
-    background: rgba(5, 150, 105, 0.08) !important;
-  }
-
-  .owner-shell .bg-red-950\/15 {
-    background: rgba(185, 28, 28, 0.07) !important;
-  }
-
-  .owner-shell .text-white,
-  .owner-shell .text-\[\#ead7b8\],
-  .owner-shell .text-\[\#f2e5d0\] {
-    color: var(--owner-text) !important;
-  }
-
-  .owner-shell .bg-white\/8 {
-    background: rgba(117, 87, 44, 0.14) !important;
-  }
-
-  .owner-shell .hover\:bg-white\/\[0\.05\]:hover,
-  .owner-shell .hover\:bg-white\/\[0\.06\]:hover {
-    background: rgba(255, 255, 255, 0.92) !important;
-  }
 }
