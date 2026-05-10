@@ -27,6 +27,8 @@ type TurnoverJobRow = {
 type ParsedEvent = {
   uid: string;
   summary: string;
+  description: string;
+  guestCount: number | null;
   dtstartRaw: string | null;
   dtendRaw: string | null;
   checkinDate: string | null;
@@ -187,6 +189,26 @@ function parseIcsDate(rawValue: string | null): string | null {
   return null;
 }
 
+function parseGuestCountFromText(...values: Array<string | null | undefined>): number | null {
+  const text = values.filter(Boolean).join("\n");
+  if (!text.trim()) return null;
+
+  const patterns = [
+    /\b(?:guests?|guest count|number of guests|party size|occupants?|people)\s*[:=-]?\s*(\d{1,2})\b/i,
+    /\b(\d{1,2})\s*(?:guests?|people|occupants?)\b/i,
+    /\badults?\s*[:=-]?\s*(\d{1,2})\b/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (!match) continue;
+    const count = Number(match[1]);
+    if (Number.isFinite(count) && count > 0 && count < 100) return count;
+  }
+
+  return null;
+}
+
 function parseIcsEvents(icsText: string): ParsedEvent[] {
   const lines = unfoldIcsLines(icsText);
   const events: ParsedEvent[] = [];
@@ -204,6 +226,8 @@ function parseIcsEvents(icsText: string): ParsedEvent[] {
       if (inEvent) {
         const uid = current.UID?.[0] ?? "";
         const summary = unescapeIcsText(current.SUMMARY?.[0] ?? "Reservation");
+        const description = unescapeIcsText(current.DESCRIPTION?.join("\n") ?? "");
+        const guestCount = parseGuestCountFromText(summary, description);
         const dtstartRaw = current.DTSTART?.[0] ?? null;
         const dtendRaw = current.DTEND?.[0] ?? null;
         const checkinDate = parseIcsDate(dtstartRaw);
@@ -212,6 +236,8 @@ const checkoutDate = parseIcsDate(dtendRaw);
       events.push({
   uid,
   summary,
+  description,
+  guestCount,
   dtstartRaw,
   dtendRaw,
   checkinDate,
@@ -365,29 +391,45 @@ async function upsertBookingEvent(
 ) {
   if (!event.checkinDate || !event.checkoutDate) return;
 
+  const payload = {
+    organization_id: property.organization_id,
+    property_id: calendar.property_id,
+    property_calendar_id: calendar.id,
+    source: calendar.source,
+    external_uid: externalUid,
+    summary: event.summary || "Reservation",
+    guest_count: event.guestCount,
+    checkin_date: event.checkinDate,
+    checkout_date: event.checkoutDate,
+    raw_dtstart: event.dtstartRaw,
+    raw_dtend: event.dtendRaw,
+    last_seen_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
   const { error } = await supabase
     .from("property_booking_events")
-    .upsert(
-      {
-        organization_id: property.organization_id,
-        property_id: calendar.property_id,
-        property_calendar_id: calendar.id,
-        source: calendar.source,
-        external_uid: externalUid,
-        summary: event.summary || "Reservation",
-        checkin_date: event.checkinDate,
-        checkout_date: event.checkoutDate,
-        raw_dtstart: event.dtstartRaw,
-        raw_dtend: event.dtendRaw,
-        last_seen_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-      {
-        onConflict: "property_id,source,external_uid",
-      }
-    );
+    .upsert(payload, {
+      onConflict: "property_id,source,external_uid",
+    });
 
-  if (error) throw error;
+  if (!error) return;
+
+  const message = error.message || "";
+  if (message.includes("guest_count") || error.code === "PGRST204" || error.code === "PGRST205") {
+    const fallbackPayload = { ...payload };
+    delete (fallbackPayload as Partial<typeof payload>).guest_count;
+    const { error: fallbackError } = await supabase
+      .from("property_booking_events")
+      .upsert(fallbackPayload, {
+        onConflict: "property_id,source,external_uid",
+      });
+
+    if (fallbackError) throw fallbackError;
+    return;
+  }
+
+  throw error;
 }
 
 async function deleteStaleUpcomingBookingEvents(
@@ -576,6 +618,7 @@ export async function POST(request: Request) {
   `Auto-created from ${calendar.source.toUpperCase()} calendar sync.`,
   `Property: ${propertyName}`,
   `Guest / reservation: ${event.summary || "Reservation"}`,
+  event.guestCount ? `Guest count: ${event.guestCount}` : "Guest count: Not provided by calendar feed",
   `Check-in date: ${event.checkinDate || "Unknown"}`,
   `Checkout date: ${event.checkoutDate}`,
   "",

@@ -115,6 +115,7 @@ export async function GET(request: Request) {
       ownerAccountsRes,
       ownerPropertyAccessRes,
       propertyCalendarsRes,
+      propertyBookingEventsRes,
       maintenanceFlagsRes,
       maintenanceFlagImagesRes,
       organizationInvitesRes,
@@ -164,6 +165,13 @@ export async function GET(request: Request) {
       serviceClient.from("owner_accounts").select("*").order("created_at", { ascending: false }),
       serviceClient.from("owner_property_access").select("*").order("created_at", { ascending: false }),
       serviceClient.from("property_calendars").select("*").order("created_at", { ascending: false }),
+      serviceClient
+        .from("property_booking_events")
+        .select("*")
+        .eq("organization_id", organizationId)
+        .lte("checkin_date", new Date().toISOString().slice(0, 10))
+        .gt("checkout_date", new Date().toISOString().slice(0, 10))
+        .order("checkout_date", { ascending: true }),
       serviceClient.from("property_maintenance_flags").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
       serviceClient.from("property_maintenance_flag_images").select("*").order("sort_order", { ascending: true }),
       serviceClient.from("organization_invites").select("*").eq("organization_id", organizationId).in("role", ["cleaner", "grounds"]).order("created_at", { ascending: false }),
@@ -241,6 +249,7 @@ export async function GET(request: Request) {
         ownerAccounts: ownerAccountsRes.data ?? [],
         ownerPropertyAccess: ownerPropertyAccessRes.data ?? [],
         propertyCalendars: propertyCalendarsRes.data ?? [],
+        propertyBookingEvents: propertyBookingEventsRes.error && isOptionalTableError(propertyBookingEventsRes.error) ? [] : propertyBookingEventsRes.data ?? [],
         maintenanceFlags: maintenanceFlagsRes.data ?? [],
         maintenanceFlagImages: maintenanceFlagImagesRes.data ?? [],
         organizationInvites: organizationInvitesRes.data ?? [],

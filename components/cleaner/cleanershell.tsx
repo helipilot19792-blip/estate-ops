@@ -327,9 +327,11 @@ function parseJobNotes(notes: string | null): ParsedJobNotes {
             : null;
 
   const guestMatch = normalized.match(/Guest\s*\/\s*reservation\s*:\s*(.+)/i);
+  const guestCountMatch = normalized.match(/Guest count\s*:\s*(.+)/i);
   const checkoutMatch = normalized.match(/Checkout date\s*:\s*(\d{4}-\d{2}-\d{2})/i);
 
   const guest = guestMatch?.[1]?.trim() || null;
+  const guestCount = guestCountMatch?.[1]?.trim() || null;
   const checkoutDate = checkoutMatch?.[1] || null;
 
   const cleanedLines = normalized
@@ -340,11 +342,13 @@ function parseJobNotes(notes: string | null): ParsedJobNotes {
     .filter((line) => !/^Auto-created from .*calendar sync\.?$/i.test(line))
     .filter((line) => !/^Property\s*:/i.test(line))
     .filter((line) => !/^Guest\s*\/\s*reservation\s*:/i.test(line))
+    .filter((line) => !/^Guest count\s*:/i.test(line))
     .filter((line) => !/^Checkout date\s*:/i.test(line));
 
   const summaryLines: string[] = [];
   if (sourceLabel) summaryLines.push(`Imported from ${sourceLabel}`);
   if (guest) summaryLines.push(`Guest: ${guest}`);
+  if (guestCount) summaryLines.push(`Guest count: ${guestCount}`);
   if (checkoutDate) summaryLines.push(`Checkout: ${formatDateLabel(checkoutDate)}`);
   if (summaryLines.length === 0 && cleanedLines.length > 0) {
     summaryLines.push(...cleanedLines.slice(0, 3));

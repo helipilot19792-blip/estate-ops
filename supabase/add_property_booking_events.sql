@@ -6,6 +6,7 @@ create table if not exists public.property_booking_events (
   source text not null,
   external_uid text not null,
   summary text,
+  guest_count integer,
   checkin_date date not null,
   checkout_date date not null,
   raw_dtstart text,
@@ -13,6 +14,7 @@ create table if not exists public.property_booking_events (
   last_seen_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
+  constraint property_booking_events_guest_count_valid check (guest_count is null or (guest_count > 0 and guest_count < 100)),
   constraint property_booking_events_valid_dates check (checkout_date > checkin_date),
   constraint property_booking_events_unique_source_uid unique (property_id, source, external_uid)
 );

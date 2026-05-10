@@ -18,6 +18,15 @@ function getCityFromAddress(address?: string | null) {
   return address;
 }
 
+function getBookingSourceLabel(source?: string | null) {
+  const normalized = String(source || "").trim().toLowerCase();
+  if (!normalized) return "Calendar";
+  if (normalized === "airbnb") return "Airbnb";
+  if (normalized === "vrbo") return "VRBO";
+  if (normalized === "booking" || normalized === "booking.com") return "Booking.com";
+  return normalized.toUpperCase();
+}
+
 type Property = {
   id: string;
   name: string | null;
@@ -64,6 +73,20 @@ type Job = {
   cleaner_units_required_strict: boolean;
   show_team_status_to_cleaners: boolean;
   staffing_status: string | null;
+};
+
+type PropertyBookingEvent = {
+  id: string;
+  property_id: string;
+  property_calendar_id?: string | null;
+  source: string | null;
+  external_uid?: string | null;
+  summary: string | null;
+  guest_count?: number | null;
+  checkin_date: string;
+  checkout_date: string;
+  created_at?: string | null;
+  updated_at?: string | null;
 };
 
 type JobSlot = {
@@ -844,6 +867,7 @@ export default function AdminPage() {
   const [ownerAccounts, setOwnerAccounts] = useState<OwnerAccountRow[]>([]);
   const [ownerPropertyAccess, setOwnerPropertyAccess] = useState<OwnerPropertyAccessRow[]>([]);
   const [propertyCalendars, setPropertyCalendars] = useState<PropertyCalendarRow[]>([]);
+  const [propertyBookingEvents, setPropertyBookingEvents] = useState<PropertyBookingEvent[]>([]);
   const [maintenanceFlags, setMaintenanceFlags] = useState<MaintenanceFlagRow[]>([]);
   const [maintenanceFlagImages, setMaintenanceFlagImages] = useState<MaintenanceFlagImageRow[]>([]);
   const [organizationInvites, setOrganizationInvites] = useState<OrganizationInviteRow[]>([]);
@@ -1582,6 +1606,7 @@ export default function AdminPage() {
     setOwnerAccounts((data.ownerAccounts ?? []) as OwnerAccountRow[]);
     setOwnerPropertyAccess((data.ownerPropertyAccess ?? []) as OwnerPropertyAccessRow[]);
     setPropertyCalendars((data.propertyCalendars ?? []) as PropertyCalendarRow[]);
+    setPropertyBookingEvents((data.propertyBookingEvents ?? []) as PropertyBookingEvent[]);
     setMaintenanceFlags((data.maintenanceFlags ?? []) as MaintenanceFlagRow[]);
     setMaintenanceFlagImages((data.maintenanceFlagImages ?? []) as MaintenanceFlagImageRow[]);
     setOrganizationInvites((data.organizationInvites ?? []) as OrganizationInviteRow[]);
@@ -1668,6 +1693,7 @@ export default function AdminPage() {
       ownerAccountsRes,
       ownerPropertyAccessRes,
       propertyCalendarsRes,
+      propertyBookingEventsRes,
       maintenanceFlagsRes,
       maintenanceFlagImagesRes,
       organizationInvitesRes,
@@ -1754,6 +1780,13 @@ export default function AdminPage() {
       supabase.from("owner_property_access").select("*").order("created_at", { ascending: false }),
       supabase.from("property_calendars").select("*").order("created_at", { ascending: false }),
       supabase
+        .from("property_booking_events")
+        .select("*")
+        .eq("organization_id", currentOrganizationId)
+        .lte("checkin_date", todayYmd)
+        .gt("checkout_date", todayYmd)
+        .order("checkout_date", { ascending: true }),
+      supabase
         .from("property_maintenance_flags")
         .select("*")
         .eq("organization_id", currentOrganizationId)
@@ -1827,6 +1860,7 @@ export default function AdminPage() {
       ownerAccountsRes,
       ownerPropertyAccessRes,
       propertyCalendarsRes,
+      propertyBookingEventsRes,
       maintenanceFlagsRes,
       maintenanceFlagImagesRes,
       organizationInvitesRes,
@@ -1845,6 +1879,7 @@ export default function AdminPage() {
         response !== invoiceSettingsRes &&
         response !== propertyInvoiceRatesRes &&
         response !== documentVaultRes &&
+        response !== propertyBookingEventsRes &&
         response !== chatConversationsRes &&
         response !== chatParticipantsRes &&
         response !== chatMessagesRes &&
@@ -1901,6 +1936,9 @@ export default function AdminPage() {
     setOwnerAccounts((ownerAccountsRes.data ?? []) as OwnerAccountRow[]);
     setOwnerPropertyAccess((ownerPropertyAccessRes.data ?? []) as OwnerPropertyAccessRow[]);
     setPropertyCalendars((propertyCalendarsRes.data ?? []) as PropertyCalendarRow[]);
+    setPropertyBookingEvents(
+      propertyBookingEventsRes.error ? [] : ((propertyBookingEventsRes.data ?? []) as PropertyBookingEvent[])
+    );
     setMaintenanceFlags((maintenanceFlagsRes.data ?? []) as MaintenanceFlagRow[]);
     setMaintenanceFlagImages((maintenanceFlagImagesRes.data ?? []) as MaintenanceFlagImageRow[]);
     setOrganizationInvites((organizationInvitesRes.data ?? []) as OrganizationInviteRow[]);
@@ -5442,15 +5480,36 @@ This removes its linked members and deletes the grounds account.`
     );
   }, [jobs, groundsJobs, properties, todayYmd, jobSlotsByJobId, groundsJobSlots]);
 
+  const occupiedTodayProperties = useMemo(() => {
+    const propertyById = new Map(properties.map((property) => [property.id, property]));
+    return propertyBookingEvents
+      .filter((event) => event.checkin_date <= todayYmd && event.checkout_date > todayYmd)
+      .map((event) => {
+        const property = propertyById.get(event.property_id) || null;
+        return {
+          id: event.id,
+          propertyName: property?.name || property?.address || "Unknown property",
+          city: getCityFromAddress(property?.address),
+          source: getBookingSourceLabel(event.source),
+          summary: event.summary || "Reserved",
+          guestCount: Number.isFinite(Number(event.guest_count)) ? Number(event.guest_count) : null,
+          checkinDate: event.checkin_date,
+          checkoutDate: event.checkout_date,
+        };
+      })
+      .sort((a, b) => a.checkoutDate.localeCompare(b.checkoutDate) || a.propertyName.localeCompare(b.propertyName));
+  }, [properties, propertyBookingEvents, todayYmd]);
+
   const todayAtGlanceCounts = useMemo(() => {
     return {
       cleaning: todayAtGlanceItems.filter((item) => item.kind === "Cleaning").length,
       grounds: todayAtGlanceItems.filter((item) => item.kind === "Grounds").length,
+      occupied: occupiedTodayProperties.length,
       waiting: waitingJobs.length,
       overdue: overdueWaitingJobs.length,
       flags: openMaintenanceFlags.length,
     };
-  }, [todayAtGlanceItems, waitingJobs.length, overdueWaitingJobs.length, openMaintenanceFlags.length]);
+  }, [todayAtGlanceItems, occupiedTodayProperties.length, waitingJobs.length, overdueWaitingJobs.length, openMaintenanceFlags.length]);
 
 
   const resolvedMaintenanceFlags = useMemo(
@@ -6617,6 +6676,65 @@ This removes its linked members and deletes the grounds account.`
                 </div>
               </div>
 
+              <div className="rounded-[26px] border border-[#bde7cf] bg-[#eefcf3] p-4 shadow-[0_10px_30px_rgba(22,163,74,0.10)]">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#2f6b2f]">
+                      Occupied
+                    </p>
+                    <h3 className="mt-1 text-lg font-semibold text-[#20432f]">
+                      Properties with guests today
+                    </h3>
+                  </div>
+                  <div className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-[#218552]">
+                    {occupiedTodayProperties.length} occupied
+                  </div>
+                </div>
+
+                <div className="mt-4 space-y-3">
+                  {occupiedTodayProperties.length === 0 ? (
+                    <div className="rounded-[20px] border border-dashed border-[#bde7cf] bg-white/80 px-4 py-5 text-sm text-[#5d7767]">
+                      No properties are currently marked occupied from synced calendars.
+                    </div>
+                  ) : (
+                    occupiedTodayProperties.map((item) => (
+                      <div
+                        key={`occupied-${item.id}`}
+                        className="rounded-[18px] border border-[#bde7cf] bg-white px-4 py-3"
+                      >
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0">
+                            <div className="inline-flex items-center rounded-full bg-[#16a34a] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
+                              Occupied
+                            </div>
+                            <p className="mt-1 text-[15px] font-semibold text-[#20432f]">
+                              {item.propertyName}
+                            </p>
+                            <p className="mt-0.5 text-sm text-[#5d7767]">
+                              {item.city || item.source}
+                            </p>
+                            <p className="mt-1 text-sm text-[#456452]">
+                              {item.summary}
+                            </p>
+                          </div>
+                          <div className="shrink-0 text-left text-sm sm:text-right">
+                            <p className="font-semibold text-[#20432f]">
+                              {item.guestCount ? `${item.guestCount} guest${item.guestCount === 1 ? "" : "s"}` : "Guests unknown"}
+                            </p>
+                            <p className="mt-1 text-xs font-medium text-[#5d7767]">
+                              Out {formatDateLabel(item.checkoutDate)}
+                            </p>
+                            <p className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#2f6b2f]">
+                              {item.source}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
               <div className="rounded-[26px] border border-[#f6d7a8] bg-[#fff4dd] p-4 shadow-[0_10px_30px_rgba(245,158,11,0.10)]">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -6706,6 +6824,15 @@ This removes its linked members and deletes the grounds account.`
                   </p>
                   <p className="mt-2 text-2xl font-semibold text-[#241c15]">
                     {todaysGroundsJobs.length}
+                  </p>
+                </div>
+
+                <div className="rounded-[18px] border border-[#eadfce] bg-white px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
+                    Occupied today
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold text-[#241c15]">
+                    {occupiedTodayProperties.length}
                   </p>
                 </div>
 

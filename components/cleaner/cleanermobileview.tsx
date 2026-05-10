@@ -426,15 +426,19 @@ export default function CleanerMobileView({
     const guestLine =
       cleanedLines.find((line) => /^Guest\s*\/\s*reservation\s*:/i.test(line)) || null;
 
+    const guestCountLine =
+      cleanedLines.find((line) => /^Guest count\s*:/i.test(line)) || null;
+
     const checkoutLine =
       cleanedLines.find((line) => /^Checkout date\s*:/i.test(line)) || null;
 
     return {
-      summaryLines: [guestLine, checkoutLine].filter(Boolean) as string[],
+      summaryLines: [guestLine, guestCountLine, checkoutLine].filter(Boolean) as string[],
       detailLines: cleanedLines.filter(
         (line) =>
           !/^Property\s*:/i.test(line) &&
           !/^Guest\s*\/\s*reservation\s*:/i.test(line) &&
+          !/^Guest count\s*:/i.test(line) &&
           !/^Checkout date\s*:/i.test(line)
       ),
     };
