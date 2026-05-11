@@ -6596,9 +6596,9 @@ This removes its linked members and deletes the grounds account.`
             </div>
           </div>
 
-          <div className="mt-5 grid gap-5 lg:grid-cols-[1.4fr_0.9fr]">
-            <div className="space-y-5">
-              <div className="rounded-[26px] border border-[#cfe1ff] bg-[#eef5ff] p-4 shadow-[0_10px_30px_rgba(59,130,246,0.10)]">
+          <div className="mt-5 grid gap-4 xl:grid-cols-[1.05fr_0.9fr_0.62fr]">
+            <div className="space-y-4">
+              <div className="rounded-[24px] border border-[#cfe1ff] bg-[#eef5ff] p-4 shadow-[0_10px_30px_rgba(59,130,246,0.10)]">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#4f6ea8]">
@@ -6613,7 +6613,7 @@ This removes its linked members and deletes the grounds account.`
                   </div>
                 </div>
 
-                <div className="mt-4 space-y-3">
+                <div className="mt-3 space-y-2">
                   {todaysCleaningJobs.map((job) => {
                     const property = properties.find((p) => p.id === job.property_id);
                     return (
@@ -6669,73 +6669,14 @@ This removes its linked members and deletes the grounds account.`
                   })}
 
                   {todaysCleaningJobs.length === 0 && todaysGroundsJobs.length === 0 && (
-                    <div className="rounded-[20px] border border-dashed border-[#b9d1fb] bg-white/80 px-4 py-5 text-sm text-[#5f6f86]">
+                    <div className="rounded-[18px] border border-dashed border-[#b9d1fb] bg-white/80 px-4 py-4 text-sm text-[#5f6f86]">
                       No jobs scheduled for today.
                     </div>
                   )}
                 </div>
               </div>
 
-              <div className="rounded-[26px] border border-[#bde7cf] bg-[#eefcf3] p-4 shadow-[0_10px_30px_rgba(22,163,74,0.10)]">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#2f6b2f]">
-                      Occupied
-                    </p>
-                    <h3 className="mt-1 text-lg font-semibold text-[#20432f]">
-                      Properties with guests today
-                    </h3>
-                  </div>
-                  <div className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-[#218552]">
-                    {occupiedTodayProperties.length} occupied
-                  </div>
-                </div>
-
-                <div className="mt-4 space-y-3">
-                  {occupiedTodayProperties.length === 0 ? (
-                    <div className="rounded-[20px] border border-dashed border-[#bde7cf] bg-white/80 px-4 py-5 text-sm text-[#5d7767]">
-                      No properties are currently marked occupied from synced calendars.
-                    </div>
-                  ) : (
-                    occupiedTodayProperties.map((item) => (
-                      <div
-                        key={`occupied-${item.id}`}
-                        className="rounded-[18px] border border-[#bde7cf] bg-white px-4 py-3"
-                      >
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                          <div className="min-w-0">
-                            <div className="inline-flex items-center rounded-full bg-[#16a34a] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
-                              Occupied
-                            </div>
-                            <p className="mt-1 text-[15px] font-semibold text-[#20432f]">
-                              {item.propertyName}
-                            </p>
-                            <p className="mt-0.5 text-sm text-[#5d7767]">
-                              {item.city || item.source}
-                            </p>
-                            <p className="mt-1 text-sm text-[#456452]">
-                              {item.summary}
-                            </p>
-                          </div>
-                          <div className="shrink-0 text-left text-sm sm:text-right">
-                            <p className="font-semibold text-[#20432f]">
-                              {item.guestCount ? `${item.guestCount} guest${item.guestCount === 1 ? "" : "s"}` : "Guests unknown"}
-                            </p>
-                            <p className="mt-1 text-xs font-medium text-[#5d7767]">
-                              Out {formatDateLabel(item.checkoutDate)}
-                            </p>
-                            <p className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#2f6b2f]">
-                              {item.source}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              <div className="rounded-[26px] border border-[#f6d7a8] bg-[#fff4dd] p-4 shadow-[0_10px_30px_rgba(245,158,11,0.10)]">
+              <div className="rounded-[24px] border border-[#f6d7a8] bg-[#fff4dd] p-4 shadow-[0_10px_30px_rgba(245,158,11,0.10)]">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#a56a06]">
@@ -6750,13 +6691,13 @@ This removes its linked members and deletes the grounds account.`
                   </div>
                 </div>
 
-                <div className="mt-4 space-y-3">
+                <div className="mt-3 space-y-2">
                   {tomorrowsCleaningJobs.map((job) => {
                     const property = properties.find((p) => p.id === job.property_id);
                     return (
                       <div
                         key={`tomorrow-cleaning-${job.id}`}
-                        className="rounded-[18px] border border-[#f1cf8f] bg-white px-4 py-2.5"
+                        className="rounded-[16px] border border-[#f1cf8f] bg-white px-4 py-2.5"
                       >
                         <div className="inline-flex items-center rounded-full bg-[#2563eb] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
                           Cleaning
@@ -6776,7 +6717,7 @@ This removes its linked members and deletes the grounds account.`
                     return (
                       <div
                         key={`tomorrow-grounds-${job.id}`}
-                        className="rounded-[18px] border border-[#f1cf8f] bg-white px-4 py-2.5"
+                        className="rounded-[16px] border border-[#f1cf8f] bg-white px-4 py-2.5"
                       >
                         <div className="inline-flex items-center rounded-full bg-[#16a34a] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
                           Grounds
@@ -6792,11 +6733,11 @@ This removes its linked members and deletes the grounds account.`
                   })}
 
                   {!adminDataLoaded ? (
-                    <div className="rounded-[20px] border border-dashed border-[#f1cf8f] bg-white/80 px-4 py-5 text-sm text-[#8b6a32]">
+                    <div className="rounded-[18px] border border-dashed border-[#f1cf8f] bg-white/80 px-4 py-4 text-sm text-[#8b6a32]">
                       Loading tomorrow&apos;s schedule...
                     </div>
                   ) : tomorrowsCleaningJobs.length === 0 && tomorrowsGroundsJobs.length === 0 ? (
-                    <div className="rounded-[20px] border border-dashed border-[#f1cf8f] bg-white/80 px-4 py-5 text-sm text-[#8b6a32]">
+                    <div className="rounded-[18px] border border-dashed border-[#f1cf8f] bg-white/80 px-4 py-4 text-sm text-[#8b6a32]">
                       Nothing lined up for tomorrow yet.
                     </div>
                   ) : null}
@@ -6804,12 +6745,71 @@ This removes its linked members and deletes the grounds account.`
               </div>
             </div>
 
-            <div className="rounded-[26px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+            <div className="rounded-[24px] border border-[#bde7cf] bg-[#eefcf3] p-4 shadow-[0_10px_30px_rgba(22,163,74,0.10)]">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#2f6b2f]">
+                    Occupied
+                  </p>
+                  <h3 className="mt-1 text-lg font-semibold text-[#20432f]">
+                    Properties with guests today
+                  </h3>
+                </div>
+                <div className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-[#218552]">
+                  {occupiedTodayProperties.length} occupied
+                </div>
+              </div>
+
+              <div className="mt-3 space-y-2">
+                {occupiedTodayProperties.length === 0 ? (
+                  <div className="rounded-[18px] border border-dashed border-[#bde7cf] bg-white/80 px-4 py-4 text-sm text-[#5d7767]">
+                    No properties are currently marked occupied from synced calendars.
+                  </div>
+                ) : (
+                  occupiedTodayProperties.map((item) => (
+                    <div
+                      key={`occupied-${item.id}`}
+                      className="rounded-[16px] border border-[#bde7cf] bg-white px-4 py-3"
+                    >
+                      <div className="flex flex-col gap-3 sm:flex-row xl:flex-col sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <div className="inline-flex items-center rounded-full bg-[#16a34a] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
+                            Occupied
+                          </div>
+                          <p className="mt-1 text-[15px] font-semibold text-[#20432f]">
+                            {item.propertyName}
+                          </p>
+                          <p className="mt-0.5 text-sm text-[#5d7767]">
+                            {item.city || item.source}
+                          </p>
+                          <p className="mt-1 text-sm text-[#456452]">
+                            {item.summary}
+                          </p>
+                        </div>
+                        <div className="shrink-0 text-left text-sm">
+                          <p className="font-semibold text-[#20432f]">
+                            {item.guestCount ? `${item.guestCount} guest${item.guestCount === 1 ? "" : "s"}` : "Guests unknown"}
+                          </p>
+                          <p className="mt-1 text-xs font-medium text-[#5d7767]">
+                            Out {formatDateLabel(item.checkoutDate)}
+                          </p>
+                          <p className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#2f6b2f]">
+                            {item.source}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8a7b68]">
                 Snapshot
               </p>
-              <div className="mt-4 space-y-3">
-                <div className="rounded-[18px] border border-[#eadfce] bg-white px-4 py-3">
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                <div className="rounded-[16px] border border-[#eadfce] bg-white px-4 py-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
                     Cleaning today
                   </p>
@@ -6818,7 +6818,7 @@ This removes its linked members and deletes the grounds account.`
                   </p>
                 </div>
 
-                <div className="rounded-[18px] border border-[#eadfce] bg-white px-4 py-3">
+                <div className="rounded-[16px] border border-[#eadfce] bg-white px-4 py-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
                     Grounds today
                   </p>
@@ -6827,7 +6827,7 @@ This removes its linked members and deletes the grounds account.`
                   </p>
                 </div>
 
-                <div className="rounded-[18px] border border-[#eadfce] bg-white px-4 py-3">
+                <div className="rounded-[16px] border border-[#eadfce] bg-white px-4 py-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
                     Occupied today
                   </p>
@@ -6836,7 +6836,7 @@ This removes its linked members and deletes the grounds account.`
                   </p>
                 </div>
 
-                <div className="rounded-[18px] border border-[#eadfce] bg-white px-4 py-3">
+                <div className="rounded-[16px] border border-[#eadfce] bg-white px-4 py-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
                     Open flags
                   </p>
