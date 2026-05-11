@@ -486,6 +486,8 @@ type PropertyInvoiceRateRow = {
   property_id: string;
   turnover_rate: number | null;
   grounds_rate: number | null;
+  bill_turnover_to_owner?: boolean | null;
+  bill_grounds_to_owner?: boolean | null;
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -949,7 +951,7 @@ export default function AdminPage() {
     { id: "tax-1", label: "Tax", rate: "0", enabled: true },
   ]);
   const [invoiceCcEmails, setInvoiceCcEmails] = useState("");
-  const [propertyInvoiceRateDrafts, setPropertyInvoiceRateDrafts] = useState<Record<string, { turnover: string; grounds: string }>>({});
+  const [propertyInvoiceRateDrafts, setPropertyInvoiceRateDrafts] = useState<Record<string, { turnover: string; grounds: string; billTurnover: boolean; billGrounds: boolean }>>({});
   const [invoiceSettingsDirty, setInvoiceSettingsDirty] = useState(false);
   const [invoiceDraftDirty, setInvoiceDraftDirty] = useState(false);
   const [invoiceHistoryOpenSections, setInvoiceHistoryOpenSections] = useState({
@@ -1444,7 +1446,7 @@ export default function AdminPage() {
   useEffect(() => {
     const ratesByPropertyId = new Map(propertyInvoiceRates.map((rate) => [rate.property_id, rate]));
     setPropertyInvoiceRateDrafts((current) => {
-      const next: Record<string, { turnover: string; grounds: string }> = {};
+      const next: Record<string, { turnover: string; grounds: string; billTurnover: boolean; billGrounds: boolean }> = {};
 
       for (const property of properties) {
         const existing = ratesByPropertyId.get(property.id);
@@ -1453,6 +1455,8 @@ export default function AdminPage() {
           : {
           turnover: String(existing?.turnover_rate ?? invoiceSettings?.default_turnover_rate ?? 0),
           grounds: String(existing?.grounds_rate ?? invoiceSettings?.default_grounds_rate ?? 0),
+          billTurnover: existing?.bill_turnover_to_owner ?? false,
+          billGrounds: existing?.bill_grounds_to_owner ?? false,
         };
       }
 
@@ -7757,13 +7761,15 @@ This removes its linked members and deletes the grounds account.`
     return {
       turnover: Number(draft?.turnover ?? saved?.turnover_rate ?? invoiceSettings?.default_turnover_rate ?? 0),
       grounds: Number(draft?.grounds ?? saved?.grounds_rate ?? invoiceSettings?.default_grounds_rate ?? 0),
+      billTurnover: draft?.billTurnover ?? saved?.bill_turnover_to_owner ?? false,
+      billGrounds: draft?.billGrounds ?? saved?.bill_grounds_to_owner ?? false,
     };
   }
 
   function updatePropertyInvoiceRateDraft(
     propertyId: string,
-    field: "turnover" | "grounds",
-    value: string
+    field: "turnover" | "grounds" | "billTurnover" | "billGrounds",
+    value: string | boolean
   ) {
     setDirtyPropertyInvoiceRateIds((ids) => {
       const next = new Set(ids);
@@ -7775,6 +7781,8 @@ This removes its linked members and deletes the grounds account.`
       [propertyId]: {
         turnover: drafts[propertyId]?.turnover ?? "0",
         grounds: drafts[propertyId]?.grounds ?? "0",
+        billTurnover: drafts[propertyId]?.billTurnover ?? false,
+        billGrounds: drafts[propertyId]?.billGrounds ?? false,
         [field]: value,
       },
     }));
@@ -7786,6 +7794,8 @@ This removes its linked members and deletes the grounds account.`
     return {
       turnover: Number(saved?.turnover_rate ?? invoiceSettings?.default_turnover_rate ?? 0),
       grounds: Number(saved?.grounds_rate ?? invoiceSettings?.default_grounds_rate ?? 0),
+      billTurnover: saved?.bill_turnover_to_owner ?? false,
+      billGrounds: saved?.bill_grounds_to_owner ?? false,
     };
   }
 
@@ -7794,7 +7804,12 @@ This removes its linked members and deletes the grounds account.`
     if (!draft) return false;
 
     const saved = getSavedPropertyInvoiceRate(propertyId);
-    return Number(draft.turnover || 0) !== saved.turnover || Number(draft.grounds || 0) !== saved.grounds;
+    return (
+      Number(draft.turnover || 0) !== saved.turnover ||
+      Number(draft.grounds || 0) !== saved.grounds ||
+      draft.billTurnover !== saved.billTurnover ||
+      draft.billGrounds !== saved.billGrounds
+    );
   }
 
   function escapeCsvCell(value: string | number | null | undefined) {
@@ -8377,10 +8392,15 @@ This removes its linked members and deletes the grounds account.`
       return;
     }
 
-    const { turnover: turnoverRate, grounds: groundsRate } = getPropertyInvoiceRate(invoicePropertyId);
+    const {
+      turnover: turnoverRate,
+      grounds: groundsRate,
+      billTurnover,
+      billGrounds,
+    } = getPropertyInvoiceRate(invoicePropertyId);
     const generated: OwnerInvoiceLineItem[] = [];
 
-    if (invoiceAutoTurnover && turnoverRate > 0) {
+    if (invoiceAutoTurnover && billTurnover && turnoverRate > 0) {
       for (const job of jobs.filter((item) => item.property_id === invoicePropertyId)) {
         generated.push({
           id: `turnover-${job.id}`,
@@ -8393,7 +8413,7 @@ This removes its linked members and deletes the grounds account.`
       }
     }
 
-    if (invoiceAutoGrounds && groundsRate > 0) {
+    if (invoiceAutoGrounds && billGrounds && groundsRate > 0) {
       for (const job of groundsJobs.filter((item) => item.property_id === invoicePropertyId)) {
         generated.push({
           id: `grounds-${job.id}`,
@@ -8418,7 +8438,7 @@ This removes its linked members and deletes the grounds account.`
     setActionMessage(
       generated.length > 0
         ? `Added ${generated.length} job line item${generated.length === 1 ? "" : "s"} from this property.`
-        : "No matching jobs found for this property and rate setup."
+        : "No billable jobs found. Check that this property is set to bill the owner for cleaning or grounds, and that rates are saved."
     );
   }
 
@@ -8459,6 +8479,8 @@ This removes its linked members and deletes the grounds account.`
         property_id: property.id,
         turnover_rate: Number(propertyInvoiceRateDrafts[property.id]?.turnover || 0),
         grounds_rate: Number(propertyInvoiceRateDrafts[property.id]?.grounds || 0),
+        bill_turnover_to_owner: propertyInvoiceRateDrafts[property.id]?.billTurnover ?? false,
+        bill_grounds_to_owner: propertyInvoiceRateDrafts[property.id]?.billGrounds ?? false,
         updated_at: new Date().toISOString(),
       }));
 
@@ -8490,7 +8512,12 @@ This removes its linked members and deletes the grounds account.`
       return;
     }
 
-    const draft = propertyInvoiceRateDrafts[propertyId] || { turnover: "0", grounds: "0" };
+    const draft = propertyInvoiceRateDrafts[propertyId] || {
+      turnover: "0",
+      grounds: "0",
+      billTurnover: false,
+      billGrounds: false,
+    };
 
     setSavingPropertyRateId(propertyId);
     setError("");
@@ -8502,6 +8529,8 @@ This removes its linked members and deletes the grounds account.`
         property_id: propertyId,
         turnover_rate: Number(draft.turnover || 0),
         grounds_rate: Number(draft.grounds || 0),
+        bill_turnover_to_owner: draft.billTurnover,
+        bill_grounds_to_owner: draft.billGrounds,
         updated_at: new Date().toISOString(),
       };
 
@@ -9339,7 +9368,12 @@ This removes its linked members and deletes the grounds account.`
                   </div>
                 ) : (
                   properties.map((property) => {
-                    const draft = propertyInvoiceRateDrafts[property.id] || { turnover: "0", grounds: "0" };
+                    const draft = propertyInvoiceRateDrafts[property.id] || {
+                      turnover: "0",
+                      grounds: "0",
+                      billTurnover: false,
+                      billGrounds: false,
+                    };
                     const saved = getSavedPropertyInvoiceRate(property.id);
                     const hasUnsavedChanges = hasUnsavedPropertyInvoiceRate(property.id);
 
@@ -9352,6 +9386,9 @@ This removes its linked members and deletes the grounds account.`
                             </div>
                             <div className="mt-1 text-xs text-[#7f7263]">
                               Saved: turnover {formatCurrency(saved.turnover)} | grounds {formatCurrency(saved.grounds)}
+                            </div>
+                            <div className="mt-1 text-xs text-[#7f7263]">
+                              Auto-bill: cleaning {saved.billTurnover ? "on" : "off"} | grounds {saved.billGrounds ? "on" : "off"}
                             </div>
                           </div>
                           <button
@@ -9369,7 +9406,7 @@ This removes its linked members and deletes the grounds account.`
                         </div>
                         <div className="mt-3 grid gap-3 sm:grid-cols-2">
                           <label className="text-xs font-medium text-[#5f5245]">
-                            Turnover rate
+                            Cleaning rate
                             <input
                               type="number"
                               min="0"
@@ -9389,6 +9426,26 @@ This removes its linked members and deletes the grounds account.`
                               value={draft.grounds}
                               onChange={(e) => updatePropertyInvoiceRateDraft(property.id, "grounds", e.target.value)}
                             />
+                          </label>
+                        </div>
+                        <div className="mt-3 grid gap-2 text-sm text-[#5f5245] sm:grid-cols-2">
+                          <label className="flex items-center gap-2 rounded-[14px] border border-[#eadfce] bg-white px-3 py-2">
+                            <input
+                              type="checkbox"
+                              checked={draft.billTurnover}
+                              onChange={(e) => updatePropertyInvoiceRateDraft(property.id, "billTurnover", e.target.checked)}
+                              className="h-4 w-4 accent-[#b48d4e]"
+                            />
+                            Bill owner for cleanings
+                          </label>
+                          <label className="flex items-center gap-2 rounded-[14px] border border-[#eadfce] bg-white px-3 py-2">
+                            <input
+                              type="checkbox"
+                              checked={draft.billGrounds}
+                              onChange={(e) => updatePropertyInvoiceRateDraft(property.id, "billGrounds", e.target.checked)}
+                              className="h-4 w-4 accent-[#b48d4e]"
+                            />
+                            Bill owner for grounds
                           </label>
                         </div>
                       </div>
