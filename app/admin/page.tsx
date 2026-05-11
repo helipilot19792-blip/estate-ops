@@ -6596,7 +6596,7 @@ This removes its linked members and deletes the grounds account.`
             </div>
           </div>
 
-          <div className="mt-5 grid gap-4 xl:grid-cols-[1.05fr_0.9fr_0.62fr]">
+          <div className="mt-5 grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.9fr)_minmax(210px,0.52fr)]">
             <div className="space-y-4">
               <div className="rounded-[24px] border border-[#cfe1ff] bg-[#eef5ff] p-4 shadow-[0_10px_30px_rgba(59,130,246,0.10)]">
                 <div className="flex items-center justify-between gap-3">
@@ -6669,7 +6669,7 @@ This removes its linked members and deletes the grounds account.`
                   })}
 
                   {todaysCleaningJobs.length === 0 && todaysGroundsJobs.length === 0 && (
-                    <div className="rounded-[18px] border border-dashed border-[#b9d1fb] bg-white/80 px-4 py-4 text-sm text-[#5f6f86]">
+                    <div className="rounded-[16px] border border-dashed border-[#b9d1fb] bg-white/80 px-4 py-3 text-sm text-[#5f6f86]">
                       No jobs scheduled for today.
                     </div>
                   )}
@@ -6733,11 +6733,11 @@ This removes its linked members and deletes the grounds account.`
                   })}
 
                   {!adminDataLoaded ? (
-                    <div className="rounded-[18px] border border-dashed border-[#f1cf8f] bg-white/80 px-4 py-4 text-sm text-[#8b6a32]">
+                    <div className="rounded-[16px] border border-dashed border-[#f1cf8f] bg-white/80 px-4 py-3 text-sm text-[#8b6a32]">
                       Loading tomorrow&apos;s schedule...
                     </div>
                   ) : tomorrowsCleaningJobs.length === 0 && tomorrowsGroundsJobs.length === 0 ? (
-                    <div className="rounded-[18px] border border-dashed border-[#f1cf8f] bg-white/80 px-4 py-4 text-sm text-[#8b6a32]">
+                    <div className="rounded-[16px] border border-dashed border-[#f1cf8f] bg-white/80 px-4 py-3 text-sm text-[#8b6a32]">
                       Nothing lined up for tomorrow yet.
                     </div>
                   ) : null}
@@ -6762,7 +6762,7 @@ This removes its linked members and deletes the grounds account.`
 
               <div className="mt-3 space-y-2">
                 {occupiedTodayProperties.length === 0 ? (
-                  <div className="rounded-[18px] border border-dashed border-[#bde7cf] bg-white/80 px-4 py-4 text-sm text-[#5d7767]">
+                  <div className="rounded-[16px] border border-dashed border-[#bde7cf] bg-white/80 px-4 py-3 text-sm text-[#5d7767]">
                     No properties are currently marked occupied from synced calendars.
                   </div>
                 ) : (
@@ -6771,7 +6771,7 @@ This removes its linked members and deletes the grounds account.`
                       key={`occupied-${item.id}`}
                       className="rounded-[16px] border border-[#bde7cf] bg-white px-4 py-3"
                     >
-                      <div className="flex flex-col gap-3 sm:flex-row xl:flex-col sm:items-start sm:justify-between">
+                      <div className="flex flex-col gap-3 sm:flex-row lg:flex-col sm:items-start sm:justify-between">
                         <div className="min-w-0">
                           <div className="inline-flex items-center rounded-full bg-[#16a34a] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
                             Occupied
@@ -6808,7 +6808,7 @@ This removes its linked members and deletes the grounds account.`
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8a7b68]">
                 Snapshot
               </p>
-              <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
                 <div className="rounded-[16px] border border-[#eadfce] bg-white px-4 py-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
                     Cleaning today
