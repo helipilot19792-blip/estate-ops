@@ -6549,6 +6549,22 @@ This removes its linked members and deletes the grounds account.`
   }
 
   function renderHomeSection() {
+    const onboardingPropertyIds = new Set(properties.map((property) => property.id));
+    const onboardingPropertyCalendars = propertyCalendars.filter((calendar) =>
+      onboardingPropertyIds.has(calendar.property_id)
+    );
+    const onboardingBookingEvents = propertyBookingEvents.filter((event) =>
+      onboardingPropertyIds.has(event.property_id)
+    );
+    const onboardingOwnerAccountIds = new Set(
+      ownerPropertyAccess
+        .filter((access) => onboardingPropertyIds.has(access.property_id))
+        .map((access) => access.owner_account_id)
+    );
+    const onboardingOwnerAccounts = ownerAccounts.filter((owner) =>
+      onboardingOwnerAccountIds.has(owner.id)
+    );
+
     const adminOnboardingSteps: OnboardingStep[] = [
       {
         id: "property",
@@ -6562,7 +6578,7 @@ This removes its linked members and deletes the grounds account.`
         id: "calendar",
         title: "Connect a booking calendar",
         description: "Add an Airbnb, VRBO, or other iCal feed so the system can create schedule context automatically.",
-        complete: propertyCalendars.length > 0 || propertyBookingEvents.length > 0,
+        complete: properties.length > 0 && (onboardingPropertyCalendars.length > 0 || onboardingBookingEvents.length > 0),
         actionLabel: "Open calendar",
         onAction: () => setActiveSection("calendar"),
       },
@@ -6571,10 +6587,11 @@ This removes its linked members and deletes the grounds account.`
         title: "Invite your team",
         description: "Send cleaner, grounds, or owner invites so each person can use the right portal.",
         complete:
-          organizationInvites.length > 0 ||
-          cleanerAccounts.length > 0 ||
-          groundsAccounts.length > 0 ||
-          ownerAccounts.length > 0,
+          properties.length > 0 &&
+          (organizationInvites.length > 0 ||
+            cleanerAccounts.length > 0 ||
+            groundsAccounts.length > 0 ||
+            onboardingOwnerAccounts.length > 0),
         actionLabel: "Open invites",
         onAction: () => setActiveSection("invites"),
       },
@@ -6598,7 +6615,7 @@ This removes its linked members and deletes the grounds account.`
         id: "invoices",
         title: "Set invoice defaults and rates",
         description: "Add branding, taxes, payment instructions, and property-specific cleaning or grounds rates.",
-        complete: !!invoiceSettings || propertyInvoiceRates.length > 0 || ownerInvoices.length > 0,
+        complete: properties.length > 0 && (!!invoiceSettings || propertyInvoiceRates.length > 0 || ownerInvoices.length > 0),
         actionLabel: "Open invoices",
         onAction: () => setActiveSection("invoices"),
       },
