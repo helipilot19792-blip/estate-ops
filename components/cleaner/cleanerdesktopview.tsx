@@ -794,7 +794,7 @@ export default function CleanerDesktopView({
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-[#0f0d0a] text-[#f5efe4]">
+      <main className="staff-shell cleaner-shell min-h-screen bg-[#0f0d0a] text-[#f5efe4]">
         <div className="mx-auto w-full max-w-6xl overflow-x-hidden px-3 py-4 sm:px-6 sm:py-8">
           <div className="animate-pulse rounded-3xl border border-[#7a5c2e]/30 bg-[#17130f] p-8">
             <div className="h-8 w-48 rounded bg-[#2a2219]" />
@@ -811,7 +811,7 @@ export default function CleanerDesktopView({
 
   if (pageError) {
     return (
-      <main className="min-h-screen bg-[#0f0d0a] text-[#f5efe4]">
+      <main className="staff-shell cleaner-shell min-h-screen bg-[#0f0d0a] text-[#f5efe4]">
         <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
           <div className="rounded-3xl border border-red-500/30 bg-[#17130f] p-8">
             <div className="mb-4 flex items-center gap-4">
@@ -838,7 +838,7 @@ export default function CleanerDesktopView({
   }
 
   return (
-    <main className="min-h-screen bg-[#0f0d0a] text-[#f5efe4]">
+    <main className="staff-shell cleaner-shell min-h-screen bg-[#0f0d0a] text-[#f5efe4]">
       <div className="mx-auto w-full max-w-6xl overflow-x-hidden px-3 py-4 sm:px-6 sm:py-8">
         <div className="overflow-hidden rounded-3xl border border-[#7a5c2e]/35 bg-[linear-gradient(180deg,#17130f_0%,#100d09_100%)] shadow-2xl">
           <div className="border-b border-[#7a5c2e]/25 px-4 py-5 sm:px-6 sm:py-6 md:px-8">

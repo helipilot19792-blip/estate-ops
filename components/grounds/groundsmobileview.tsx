@@ -727,7 +727,7 @@ export default function GroundsMobileView({
   }
 
   return (
-    <main className="min-h-screen bg-[#0d1611] px-3 py-4 text-[#eef7ef]">
+    <main className="staff-shell staff-grounds-shell min-h-screen bg-[#0d1611] px-3 py-4 text-[#eef7ef]">
       <div className="mx-auto max-w-md space-y-4">
         <div className="rounded-2xl border border-[#356046]/30 bg-[#14221a] p-4">
           <div className="flex items-start justify-between gap-3">

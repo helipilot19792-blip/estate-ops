@@ -706,7 +706,7 @@ export default function CleanerMobileView({
   }
 
   return (
-    <main className="min-h-screen bg-[#0f0d0a] px-3 py-4 text-[#f5efe4]">
+    <main className="staff-shell cleaner-shell min-h-screen bg-[#0f0d0a] px-3 py-4 text-[#f5efe4]">
       <div className="mx-auto max-w-md space-y-4">
         <div className="rounded-2xl border border-[#7a5c2e]/30 bg-[#15110d] p-4">
           <div className="flex items-start justify-between gap-3">

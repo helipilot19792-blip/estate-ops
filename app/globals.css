@@ -149,3 +149,34 @@ body {
 .owner-shell .bg-black\/20 {
   background: var(--owner-dark-surface) !important;
 }
+
+.staff-shell {
+  background:
+    radial-gradient(circle at top, rgba(176, 139, 71, 0.14), transparent 28%),
+    #0f0d0a !important;
+  color: #f5efe4 !important;
+  color-scheme: dark;
+}
+
+.staff-shell.staff-grounds-shell {
+  background:
+    radial-gradient(circle at top, rgba(127, 182, 133, 0.14), transparent 28%),
+    #0d1611 !important;
+  color: #eef7ef !important;
+}
+
+.staff-shell input,
+.staff-shell select,
+.staff-shell textarea {
+  color-scheme: dark;
+}
+
+.staff-shell select option {
+  background: #15110d;
+  color: #f5efe4;
+}
+
+.staff-shell.staff-grounds-shell select option {
+  background: #14221a;
+  color: #eef7ef;
+}

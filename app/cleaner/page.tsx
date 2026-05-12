@@ -39,7 +39,7 @@ export default function CleanerPage() {
 
   if (!hasMounted) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-[#0f0d0a] text-[#f5efe4]">
+      <main className="staff-shell cleaner-shell flex min-h-screen items-center justify-center bg-[#0f0d0a] text-[#f5efe4]">
         <div className="text-sm text-[#cdbda0]">Loading cleaner dashboard...</div>
       </main>
     );
