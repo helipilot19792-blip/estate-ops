@@ -254,13 +254,13 @@ export default function OwnerLoginPage() {
         <div className="text-center text-xs leading-6 text-[#ccb99a]">
           {t("ownerLogin.legalPrefix")}{" "}
           <Link href="/terms" className="font-semibold text-[#e7c98a] underline">
-            Terms
+            {t("common.terms")}
           </Link>
           ,{" "}
           <Link href="/privacy" className="font-semibold text-[#e7c98a] underline">
             {t("ownerLogin.privacyPolicy")}
           </Link>
-          , and{" "}
+          , {t("ownerLogin.and")}{" "}
           <Link href="/cookies" className="font-semibold text-[#e7c98a] underline">
             {t("ownerLogin.cookieNotice")}
           </Link>

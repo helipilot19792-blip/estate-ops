@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import PortalChat from "@/components/chat/portalchat";
 import { trackFeatureUsage } from "@/lib/feature-usage";
 import { useI18n } from "@/components/i18n-provider";
+import type { TranslationPath } from "@/lib/i18n";
 
 type OwnerAccountRow = {
   id: string;
@@ -241,13 +242,13 @@ function getCityFromAddress(address?: string | null) {
   return address;
 }
 
-function formatDateLabel(dateString: string | null | undefined) {
-  if (!dateString) return "Not scheduled";
+function formatDateLabel(dateString: string | null | undefined, locale?: string, fallback = "Not scheduled") {
+  if (!dateString) return fallback;
   const hasTime = dateString.includes("T");
   const d = hasTime ? new Date(dateString) : new Date(`${dateString}T12:00:00`);
   if (Number.isNaN(d.getTime())) return dateString;
 
-  return d.toLocaleDateString(undefined, {
+  return d.toLocaleDateString(locale, {
     weekday: "short",
     month: "short",
     day: "numeric",
@@ -347,15 +348,15 @@ function getMonthKey(date: Date) {
   return `${date.getFullYear()}-${`${date.getMonth() + 1}`.padStart(2, "0")}`;
 }
 
-function getMonthLabel(monthKey: string) {
+function getMonthLabel(monthKey: string, locale?: string) {
   const [year, month] = monthKey.split("-").map(Number);
-  return new Date(year, month - 1, 1).toLocaleDateString(undefined, {
+  return new Date(year, month - 1, 1).toLocaleDateString(locale, {
     month: "short",
   });
 }
 
-function formatCurrency(value: number | null | undefined) {
-  return new Intl.NumberFormat(undefined, {
+function formatCurrency(value: number | null | undefined, locale?: string) {
+  return new Intl.NumberFormat(locale, {
     style: "currency",
     currency: "USD",
   }).format(Number(value || 0));
@@ -449,30 +450,35 @@ function countBookedNightsInWindow(bookings: BookingInsight[], days: number) {
   }, 0);
 }
 
-function getGroundsLabel(jobType?: string | null) {
+type OwnerTranslator = (path: TranslationPath) => string;
+
+function getGroundsLabel(jobType?: string | null, t?: OwnerTranslator) {
+  const service = t?.("ownerPortal.grounds.service") ?? "Grounds service";
+  const withService = (path: TranslationPath, fallback: string) => `${service} | ${t?.(path) ?? fallback}`;
+
   switch ((jobType || "").toLowerCase()) {
     case "lawn_cut":
-      return "Grounds service | Lawn cut";
+      return withService("ownerPortal.grounds.lawnCut", "Lawn cut");
     case "yard_cleanup":
-      return "Grounds service | Yard cleanup";
+      return withService("ownerPortal.grounds.yardCleanup", "Yard cleanup");
     case "snow_clear":
-      return "Grounds service | Snow clearing";
+      return withService("ownerPortal.grounds.snowClearing", "Snow clearing");
     case "salt":
-      return "Grounds service | Salt / ice";
+      return withService("ownerPortal.grounds.saltIce", "Salt / ice");
     case "garbage_out":
-      return "Grounds service | Garbage out";
+      return withService("ownerPortal.grounds.garbageOut", "Garbage out");
     case "recycling_out":
-      return "Grounds service | Recycling out";
+      return withService("ownerPortal.grounds.recyclingOut", "Recycling out");
     case "bulk_pickup_out":
-      return "Grounds service | Bulk pickup";
+      return withService("ownerPortal.grounds.bulkPickup", "Bulk pickup");
     default:
-      return "Grounds service";
+      return service;
   }
 }
 
-function formatRecurringGroundsLabel(rule: GroundsRecurringRule) {
+function formatRecurringGroundsLabel(rule: GroundsRecurringRule, t?: OwnerTranslator) {
   if (rule.label?.trim()) return rule.label.trim();
-  return getGroundsLabel(rule.task_type || "grounds");
+  return getGroundsLabel(rule.task_type || "grounds", t);
 }
 
 function getNextRecurringDate(rule: GroundsRecurringRule) {
@@ -890,7 +896,7 @@ function ReportIssueModal({
 }
 
 export default function OwnerPage() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [ownerAccount, setOwnerAccount] = useState<OwnerAccountRow | null>(null);
@@ -912,6 +918,24 @@ export default function OwnerPage() {
   const [ownerChatParticipants, setOwnerChatParticipants] = useState<OwnerChatParticipantRow[]>([]);
   const [ownerChatMessages, setOwnerChatMessages] = useState<OwnerChatMessageRow[]>([]);
   const [ownerChatUnreadCount, setOwnerChatUnreadCount] = useState(0);
+
+  const formatOwnerDateLabel = (dateString: string | null | undefined) =>
+    formatDateLabel(dateString, locale, t("ownerPortal.overview.notScheduled"));
+  const formatOwnerCurrency = (value: number | null | undefined) => formatCurrency(value, locale);
+  const getOwnerGroundsLabel = (jobType?: string | null) => getGroundsLabel(jobType, t);
+  const formatOwnerRecurringGroundsLabel = (rule: GroundsRecurringRule) => formatRecurringGroundsLabel(rule, t);
+  const getOwnerUrgencyLabel = (urgency?: string | null) => {
+    switch ((urgency || "").toLowerCase()) {
+      case "low":
+        return t("ownerPortal.issue.low");
+      case "urgent":
+        return t("ownerPortal.issue.urgent");
+      case "normal":
+        return t("ownerPortal.issue.normal");
+      default:
+        return t("ownerPortal.issue.open");
+    }
+  };
 
   async function signOutOwner() {
     await supabase.auth.signOut();
@@ -1002,7 +1026,7 @@ export default function OwnerPage() {
           quantity,
           rate.toFixed(2),
           (quantity * rate).toFixed(2),
-          getOwnerInvoiceTaxLines(invoice).map((line) => `${line.label} ${line.rate}% ${formatCurrency(line.amount)}`).join("; "),
+          getOwnerInvoiceTaxLines(invoice).map((line) => `${line.label} ${line.rate}% ${formatOwnerCurrency(line.amount)}`).join("; "),
           Number(invoice.tax_total || 0).toFixed(2),
           Number(invoice.total || 0).toFixed(2),
           (item.receipt_urls || []).join(" "),
@@ -1547,13 +1571,13 @@ export default function OwnerPage() {
   const nextGrounds = nextGroundsJob
     ? {
       date: nextGroundsJob.scheduled_for,
-      label: getGroundsLabel(nextGroundsJob.job_type),
+      label: getOwnerGroundsLabel(nextGroundsJob.job_type),
       subtext: t("ownerPortal.overview.upcomingExteriorService"),
     }
     : nextRecurringGroundsRule
       ? {
         date: nextRecurringGroundsRule.nextDate,
-        label: formatRecurringGroundsLabel(nextRecurringGroundsRule.rule),
+        label: formatOwnerRecurringGroundsLabel(nextRecurringGroundsRule.rule),
         subtext: t("ownerPortal.overview.recurringGroundsSchedule"),
       }
       : null;
@@ -1687,7 +1711,7 @@ export default function OwnerPage() {
       items.push({
         id: `grounds-${job.id}`,
         type: "grounds",
-        title: getGroundsLabel(job.job_type),
+        title: getOwnerGroundsLabel(job.job_type),
         date: normalizeYmd(job.scheduled_for),
         subtitle: job.notes?.trim() || t("ownerPortal.overview.upcomingExteriorService"),
         tone: "emerald",
@@ -1701,7 +1725,7 @@ export default function OwnerPage() {
       items.push({
         id: `grounds-rule-${rule.id}`,
         type: "grounds",
-        title: `${formatRecurringGroundsLabel(rule)} | ${t("ownerPortal.timeline.recurring")}`,
+        title: `${formatOwnerRecurringGroundsLabel(rule)} | ${t("ownerPortal.timeline.recurring")}`,
         date: nextDate,
         subtitle: rule.notes?.trim() || t("ownerPortal.overview.recurringGroundsSchedule"),
         tone: "emerald",
@@ -1781,7 +1805,7 @@ export default function OwnerPage() {
 
       return {
         monthKey,
-        label: getMonthLabel(monthKey),
+        label: getMonthLabel(monthKey, locale),
         bookedNights,
         bookingCount: bookings.length,
         occupancyRate: daysInMonth > 0 ? Math.round((bookedNights / daysInMonth) * 100) : 0,
@@ -1853,7 +1877,7 @@ export default function OwnerPage() {
       gapBuckets,
       recentBookings: [...bookingInsights].reverse().slice(0, 6),
     };
-  }, [bookingInsights, t]);
+  }, [bookingInsights, locale, t]);
 
   if (loading) {
     return (
@@ -2120,12 +2144,12 @@ export default function OwnerPage() {
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <StatCard
             label={t("ownerPortal.overview.nextCleaning")}
-            value={nextCleaning ? formatDateLabel(nextCleaning.scheduled_for) : t("ownerPortal.overview.notScheduled")}
+            value={nextCleaning ? formatOwnerDateLabel(nextCleaning.scheduled_for) : t("ownerPortal.overview.notScheduled")}
             subtext={t("ownerPortal.overview.upcomingInteriorTurnover")}
           />
           <StatCard
             label={t("ownerPortal.overview.nextGroundsService")}
-            value={nextGrounds ? formatDateLabel(nextGrounds.date) : t("ownerPortal.overview.notScheduled")}
+            value={nextGrounds ? formatOwnerDateLabel(nextGrounds.date) : t("ownerPortal.overview.notScheduled")}
             subtext={
               nextGrounds
                 ? `${nextGrounds.label}${nextGrounds.subtext ? ` | ${nextGrounds.subtext}` : ""}`
@@ -2145,14 +2169,14 @@ export default function OwnerPage() {
               currentBooking
                 ? t("ownerPortal.overview.currentStayDates")
                     .replace("{source}", currentBooking.sourceLabel || t("ownerPortal.insights.sourceUnavailable"))
-                    .replace("{start}", formatDateLabel(currentBooking.checkinDate))
-                    .replace("{end}", formatDateLabel(currentBooking.checkoutDate))
+                    .replace("{start}", formatOwnerDateLabel(currentBooking.checkinDate))
+                    .replace("{end}", formatOwnerDateLabel(currentBooking.checkoutDate))
                 : t("ownerPortal.overview.noActiveStay")
             }
           />
           <StatCard
             label={t("ownerPortal.overview.upcomingBooking")}
-            value={bookingInfo?.checkinDate ? formatDateLabel(bookingInfo.checkinDate) : t("ownerPortal.overview.notAvailable")}
+            value={bookingInfo?.checkinDate ? formatOwnerDateLabel(bookingInfo.checkinDate) : t("ownerPortal.overview.notAvailable")}
             subtext={
               bookingInfo
                 ? [bookingInfo.guest, bookingInfo.sourceLabel].filter(Boolean).join(" | ") || t("ownerPortal.overview.bookingFound")
@@ -2206,7 +2230,7 @@ export default function OwnerPage() {
                       />
                     </div>
                     <div className="mt-3 text-xs uppercase tracking-[0.18em] text-[#e7c98a]">
-                      {formatDateLabel(item.date)}
+                      {formatOwnerDateLabel(item.date)}
                     </div>
                   </div>
                 ))
@@ -2234,7 +2258,7 @@ export default function OwnerPage() {
                         {flag.category || t("ownerPortal.timeline.openIssue")}
                       </div>
                       <div className="rounded-full border border-red-400/30 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-red-200">
-                        {flag.urgency || "open"}
+                        {getOwnerUrgencyLabel(flag.urgency)}
                       </div>
                     </div>
 
@@ -2256,7 +2280,7 @@ export default function OwnerPage() {
                     ) : null}
 
                     <div className="mt-3 text-xs uppercase tracking-[0.18em] text-[#e7c98a]">
-                      {t("ownerPortal.overview.reportedDate").replace("{date}", formatDateLabel(flag.flagged_at || flag.created_at))}
+                      {t("ownerPortal.overview.reportedDate").replace("{date}", formatOwnerDateLabel(flag.flagged_at || flag.created_at))}
                     </div>
                   </div>
                 ))
@@ -2505,7 +2529,7 @@ export default function OwnerPage() {
                             {booking.guest || t("ownerPortal.insights.guestStay")}
                           </div>
                           <div className="mt-1 text-sm text-[#e6d8bf]">
-                            {t("ownerPortal.insights.dateRange").replace("{start}", formatDateLabel(booking.checkinDate)).replace("{end}", formatDateLabel(booking.checkoutDate))}
+                            {t("ownerPortal.insights.dateRange").replace("{start}", formatOwnerDateLabel(booking.checkinDate)).replace("{end}", formatOwnerDateLabel(booking.checkoutDate))}
                           </div>
                         </div>
                         <div className="rounded-full border border-[#b08b47]/25 bg-[#b08b47]/10 px-3 py-1 text-xs font-semibold text-[#f1d9a5]">
@@ -2584,9 +2608,9 @@ export default function OwnerPage() {
                             </div>
                           </div>
                           <div className="text-left md:text-right">
-                            <div className="text-2xl font-semibold text-[#f7f1e8]">{formatCurrency(invoice.total)}</div>
+                            <div className="text-2xl font-semibold text-[#f7f1e8]">{formatOwnerCurrency(invoice.total)}</div>
                             <div className="mt-1 text-sm text-[#e6d8bf]">
-                              {invoice.status === "paid" ? t("ownerPortal.invoices.paid") : t("ownerPortal.invoices.due")} {invoice.due_date ? formatDateLabel(invoice.due_date) : t("ownerPortal.invoices.onReceipt")}
+                              {invoice.status === "paid" ? t("ownerPortal.invoices.paid") : t("ownerPortal.invoices.due")} {invoice.due_date ? formatOwnerDateLabel(invoice.due_date) : t("ownerPortal.invoices.onReceipt")}
                             </div>
                             <div className="mt-3 md:text-right">
                               <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#ccb99a]">
@@ -2603,7 +2627,7 @@ export default function OwnerPage() {
                                     ? t("ownerPortal.invoices.downloading")
                                     : invoice.invoice_source === "uploaded"
                                       ? t("ownerPortal.invoices.file")
-                                      : "PDF"}
+                                      : t("ownerPortal.invoices.pdf")}
                                 </button>
                                 <button
                                   type="button"
@@ -2661,15 +2685,15 @@ export default function OwnerPage() {
                                         rel="noreferrer"
                                         className="rounded-full border border-[#b08b47]/25 bg-[#b08b47]/10 px-3 py-1 text-xs font-semibold text-[#f1d9a5]"
                                       >
-                                        {item.receipt_names?.[receiptIndex] || `Receipt ${receiptIndex + 1}`}
+                                        {item.receipt_names?.[receiptIndex] || t("ownerPortal.invoices.receipt").replace("{number}", String(receiptIndex + 1))}
                                       </a>
                                     ))}
                                   </div>
                                 ) : null}
                               </div>
                               <div className="text-[#ccb99a] md:text-right">{t("ownerPortal.invoices.qty").replace("{count}", String(quantity))}</div>
-                              <div className="text-[#ccb99a] md:text-right">{formatCurrency(rate)}</div>
-                              <div className="font-semibold text-[#f7f1e8] md:text-right">{formatCurrency(quantity * rate)}</div>
+                              <div className="text-[#ccb99a] md:text-right">{formatOwnerCurrency(rate)}</div>
+                              <div className="font-semibold text-[#f7f1e8] md:text-right">{formatOwnerCurrency(quantity * rate)}</div>
                             </div>
                           );
                         })}
@@ -2680,17 +2704,17 @@ export default function OwnerPage() {
                         <div className="ml-auto max-w-xs space-y-2">
                           <div className="flex justify-between">
                             <span>{t("ownerPortal.invoices.subtotal")}</span>
-                            <span>{formatCurrency(invoice.subtotal)}</span>
+                            <span>{formatOwnerCurrency(invoice.subtotal)}</span>
                           </div>
                           {taxLines.map((taxLine) => (
                             <div key={taxLine.id || taxLine.label} className="flex justify-between">
                               <span>{taxLine.label} ({taxLine.rate}%)</span>
-                              <span>{formatCurrency(taxLine.amount)}</span>
+                              <span>{formatOwnerCurrency(taxLine.amount)}</span>
                             </div>
                           ))}
                           <div className="flex justify-between border-t border-white/8 pt-2 text-base font-semibold text-[#f7f1e8]">
                             <span>{t("ownerPortal.invoices.total")}</span>
-                            <span>{formatCurrency(invoice.total)}</span>
+                            <span>{formatOwnerCurrency(invoice.total)}</span>
                           </div>
                         </div>
                       </div>

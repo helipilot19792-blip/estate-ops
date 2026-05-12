@@ -4,6 +4,8 @@ export const dynamic = "force-dynamic";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useI18n } from "@/components/i18n-provider";
+import type { TranslationPath } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase";
 
 type OwnerAccountRow = {
@@ -35,7 +37,7 @@ function getCityFromAddress(address?: string | null) {
   return address;
 }
 
-function getSupabaseInviteError() {
+function getSupabaseInviteError(t: (path: TranslationPath) => string) {
   if (typeof window === "undefined" || !window.location.hash) return "";
 
   const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
@@ -45,14 +47,15 @@ function getSupabaseInviteError() {
   if (!errorCode && !errorDescription) return "";
 
   if (errorCode === "otp_expired") {
-    return "This owner invite link is expired or has already been used. Please request a fresh owner login link, or resend the owner invite from admin.";
+    return t("ownerWelcome.errors.expiredInvite");
   }
 
-  return errorDescription || "We could not confirm this owner invite link.";
+  return errorDescription || t("ownerWelcome.errors.confirmInvite");
 }
 
 export default function OwnerWelcomePage() {
   const router = useRouter();
+  const { t } = useI18n();
 
   const [loading, setLoading] = useState(true);
   const [savingPassword, setSavingPassword] = useState(false);
@@ -84,7 +87,7 @@ export default function OwnerWelcomePage() {
         typeof window !== "undefined"
           ? new URLSearchParams(window.location.search).get("owner_email")?.trim().toLowerCase() || ""
           : "";
-      const inviteLinkError = getSupabaseInviteError();
+      const inviteLinkError = getSupabaseInviteError(t);
       const tokenHash =
         typeof window !== "undefined"
           ? new URLSearchParams(window.location.search).get("token_hash")?.trim() || ""
@@ -106,7 +109,7 @@ export default function OwnerWelcomePage() {
           if (!cancelled) {
             setError(
               verifyError.message ||
-                "This owner login link could not be confirmed. Please request a fresh link."
+                t("ownerWelcome.errors.loginLinkFailed")
             );
             setLoading(false);
           }
@@ -146,7 +149,7 @@ export default function OwnerWelcomePage() {
         if (!cancelled) {
           setError(
             inviteLinkError ||
-              "We could not confirm your invite session. Please open the newest link from your email again."
+              t("ownerWelcome.errors.inviteSession")
           );
           setLoading(false);
         }
@@ -165,7 +168,7 @@ export default function OwnerWelcomePage() {
 
       if (!resolvedOwnerEmail) {
         if (!cancelled) {
-          setError("We could not determine which owner account this invite belongs to.");
+          setError(t("ownerWelcome.errors.noOwnerEmail"));
           setLoading(false);
         }
         return;
@@ -189,7 +192,7 @@ export default function OwnerWelcomePage() {
         if (!cancelled) {
           setOwnerAccount(null);
           setProperties([]);
-          setError("No owner account was found for this invite email.");
+          setError(t("ownerWelcome.errors.noOwnerAccount"));
           setLoading(false);
         }
         return;
@@ -269,10 +272,10 @@ export default function OwnerWelcomePage() {
 
         if (authEmail && resolvedOwnerEmail && authEmail !== resolvedOwnerEmail) {
           setStatusMessage(
-            `This invite is for ${resolvedOwnerEmail}, but this browser is currently signed in as ${authEmail}. Please sign out and use the invited email.`
+            t("ownerWelcome.errors.wrongEmail").replace("{expected}", resolvedOwnerEmail).replace("{actual}", authEmail)
           );
         } else if (accessToken) {
-          setStatusMessage("Your access has been confirmed.");
+          setStatusMessage(t("ownerWelcome.errors.confirmed"));
         } else {
           setStatusMessage("");
         }
@@ -286,7 +289,7 @@ export default function OwnerWelcomePage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [t]);
 
   const passwordReady = useMemo(() => {
     return password.trim().length >= 8 && password === confirmPassword;
@@ -299,27 +302,27 @@ export default function OwnerWelcomePage() {
 
   async function handleSetPassword() {
     if (!hasInviteSession) {
-      setError("This owner invite session is not active anymore. Please request a fresh owner login link, then set the password from the newest email.");
+      setError(t("ownerWelcome.errors.inactiveInvite"));
       return;
     }
 
     if (wrongSignedInUser) {
-      setError("This browser is signed in under a different email than the owner invite. Please sign out and open the invite with the invited email.");
+      setError(t("ownerWelcome.errors.differentEmail"));
       return;
     }
 
     if (!ownerMatched) {
-      setError("Please use the correct invited email before setting a password.");
+      setError(t("ownerWelcome.errors.correctEmail"));
       return;
     }
 
     if (!passwordReady) {
-      setError("Use a password with at least 8 characters, and make sure both fields match.");
+      setError(t("ownerWelcome.errors.passwordMismatch"));
       return;
     }
 
     if (!acceptedTerms) {
-      setError("Please accept the testing terms and privacy policy before setting a password.");
+      setError(t("ownerWelcome.errors.acceptTerms"));
       return;
     }
 
@@ -347,17 +350,17 @@ export default function OwnerWelcomePage() {
 
   async function handleContinue() {
     if (!hasInviteSession) {
-      setError("Please request a fresh owner login link before continuing.");
+      setError(t("ownerWelcome.errors.freshBeforeContinue"));
       return;
     }
 
     if (!ownerMatched) {
-      setError("We could not match this session to an owner account yet.");
+      setError(t("ownerWelcome.errors.noMatch"));
       return;
     }
 
     if (!acceptedTerms) {
-      setError("Please accept the testing terms and privacy policy before continuing.");
+      setError(t("ownerWelcome.errors.acceptBeforeContinue"));
       return;
     }
 
@@ -411,14 +414,14 @@ async function handleFreshLoginLink() {
 
   if (!response.ok) {
     setError(
-      `${payload?.error || "Could not send a fresh owner login link."} If this keeps happening, resend the owner invite from admin first.`
+      `${payload?.error || t("ownerWelcome.errors.freshLinkFailed")} ${t("ownerWelcome.errors.resendInvite")}`
     );
     setRequestingFreshLink(false);
     return;
   }
 
-  const deliveryId = payload?.emailId ? ` Delivery ID: ${payload.emailId}.` : "";
-  setStatusMessage(`Fresh owner login link sent to ${loginEmail}.${deliveryId} Open the newest email, then set the password from that link.`);
+  const deliveryId = payload?.emailId ? t("ownerWelcome.errors.deliveryId").replace("{id}", payload.emailId) : "";
+  setStatusMessage(t("ownerWelcome.errors.freshLinkSent").replace("{email}", loginEmail).replace("{delivery}", deliveryId));
   setRequestingFreshLink(false);
 }
 
@@ -426,7 +429,7 @@ async function handleFreshLoginLink() {
     return (
       <main className="owner-shell min-h-screen px-4 py-8 text-[#f7f1e8] sm:px-6">
         <div className="owner-card mx-auto max-w-3xl rounded-[32px] border border-white/8 p-8 shadow-[0_24px_80px_rgba(0,0,0,0.36)]">
-          <div className="text-sm text-[#e6d8bf]">Confirming your owner access...</div>
+          <div className="text-sm text-[#e6d8bf]">{t("ownerWelcome.loading")}</div>
         </div>
       </main>
     );
@@ -437,24 +440,23 @@ async function handleFreshLoginLink() {
       <div className="mx-auto max-w-3xl space-y-6">
         <section className="owner-hero rounded-[32px] border border-white/8 px-6 py-7 shadow-[0_24px_80px_rgba(0,0,0,0.36)] sm:px-8">
           <div className="text-[11px] uppercase tracking-[0.24em] text-[#e7c98a]">
-            Gulera OS Owner Portal
+            {t("ownerWelcome.eyebrow")}
           </div>
           <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[#f7f1e8] sm:text-4xl">
-            Welcome{ownerAccount?.full_name ? `, ${ownerAccount.full_name}` : ""}
+            {t("ownerWelcome.title").replace("{suffix}", ownerAccount?.full_name ? `, ${ownerAccount.full_name}` : "")}
           </h1>
           <p className="mt-3 max-w-2xl text-base leading-relaxed text-[#e6d8bf]">
-            This is your private owner setup page where you can confirm your properties, set a
-            password, and continue into your dashboard.
+            {t("ownerWelcome.intro")}
           </p>
         </section>
 
         {(error || wrongSignedInUser) ? (
           <div className="rounded-2xl border border-red-500/25 bg-red-950/20 px-4 py-3 text-sm text-red-200">
-            <div>{error || "This invite appears to be open under the wrong signed-in account."}</div>
+            <div>{error || t("ownerWelcome.wrongAccount")}</div>
             {(signedInEmail || expectedOwnerEmail) ? (
               <div className="mt-2 space-y-1 text-xs text-red-100/90">
-                {expectedOwnerEmail ? <div>Invited email: {expectedOwnerEmail}</div> : null}
-                {signedInEmail ? <div>Signed in as: {signedInEmail}</div> : null}
+                {expectedOwnerEmail ? <div>{t("ownerWelcome.invitedEmail")} {expectedOwnerEmail}</div> : null}
+                {signedInEmail ? <div>{t("ownerWelcome.signedInAs")} {signedInEmail}</div> : null}
               </div>
             ) : null}
 
@@ -465,7 +467,7 @@ async function handleFreshLoginLink() {
                 disabled={requestingFreshLink}
                 className="rounded-full bg-[#b08b47] px-4 py-2 text-xs font-semibold text-[#17120d] transition hover:brightness-110 disabled:opacity-60"
               >
-                {requestingFreshLink ? "Sending link..." : "Email me a fresh link"}
+                {requestingFreshLink ? t("ownerWelcome.sendingLink") : t("ownerWelcome.freshLink")}
               </button>
               <button
                 type="button"
@@ -473,7 +475,7 @@ async function handleFreshLoginLink() {
                 disabled={signingOut}
                 className="rounded-full border border-white/12 px-4 py-2 text-xs font-semibold text-[#f7f1e8] transition hover:bg-white/[0.05] disabled:opacity-60"
               >
-                {signingOut ? "Signing out..." : "Sign out and try again"}
+                {signingOut ? t("ownerWelcome.signingOut") : t("ownerWelcome.signOutTryAgain")}
               </button>
             </div>
           </div>
@@ -486,60 +488,58 @@ async function handleFreshLoginLink() {
         ) : null}
 
         <section className="owner-card rounded-[28px] border border-white/8 p-5 sm:p-6">
-          <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">Owner Access</div>
-          <h2 className="mt-2 text-xl font-semibold text-[#f7f1e8]">Set your password or log in</h2>
+          <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">{t("ownerWelcome.accessTitle")}</div>
+          <h2 className="mt-2 text-xl font-semibold text-[#f7f1e8]">{t("ownerWelcome.passwordTitle")}</h2>
           <p className="mt-2 text-sm leading-relaxed text-[#e6d8bf]">
-            Start here. If this is your first time, set a password from the newest email link.
-            If your password is already set, go straight to owner login.
+            {t("ownerWelcome.passwordIntro")}
           </p>
           {!hasInviteSession ? (
             <div className="mt-4 rounded-2xl border border-amber-400/25 bg-amber-950/20 px-4 py-3 text-sm text-amber-100">
-              Password setup needs an active email-link session. Click &quot;Email me a fresh link&quot; above, then open the newest email.
+              {t("ownerWelcome.activeSessionHelp")}
             </div>
           ) : null}
 
           <div className="mt-4 rounded-2xl border border-[#b08b47]/35 bg-[#b08b47]/12 px-4 py-3 text-sm leading-6 text-[#ead8b8]">
-            Gulera OS is currently in a testing phase. Features may change, errors may occur,
-            and important operational or invoice details should be reviewed before relying on them.
+            {t("ownerWelcome.testingNotice")}
           </div>
 
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="text-xs uppercase tracking-[0.18em] text-[#e7c98a]">New password</label>
+              <label className="text-xs uppercase tracking-[0.18em] text-[#e7c98a]">{t("ownerWelcome.newPassword")}</label>
               <div className="owner-field mt-2 flex rounded-2xl border border-white/8 focus-within:border-[#b08b47]">
                 <input
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full rounded-l-2xl bg-transparent px-4 py-3 text-sm text-[#f7f1e8] outline-none"
-                  placeholder="Minimum 8 characters"
+                  placeholder={t("ownerWelcome.minimumPassword")}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword((value) => !value)}
                   className="rounded-r-2xl px-4 text-sm font-medium text-[#e6d8bf]"
                 >
-                  {showPassword ? "Hide" : "Show"}
+                  {showPassword ? t("ownerWelcome.hide") : t("ownerWelcome.show")}
                 </button>
               </div>
             </div>
 
             <div>
-              <label className="text-xs uppercase tracking-[0.18em] text-[#e7c98a]">Confirm password</label>
+              <label className="text-xs uppercase tracking-[0.18em] text-[#e7c98a]">{t("ownerWelcome.confirmPassword")}</label>
               <div className="owner-field mt-2 flex rounded-2xl border border-white/8 focus-within:border-[#b08b47]">
                 <input
                   type={showConfirmPassword ? "text" : "password"}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   className="w-full rounded-l-2xl bg-transparent px-4 py-3 text-sm text-[#f7f1e8] outline-none"
-                  placeholder="Repeat password"
+                  placeholder={t("ownerWelcome.repeatPassword")}
                 />
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword((value) => !value)}
                   className="rounded-r-2xl px-4 text-sm font-medium text-[#e6d8bf]"
                 >
-                  {showConfirmPassword ? "Hide" : "Show"}
+                  {showConfirmPassword ? t("ownerWelcome.hide") : t("ownerWelcome.show")}
                 </button>
               </div>
             </div>
@@ -553,17 +553,17 @@ async function handleFreshLoginLink() {
               className="mt-1 h-4 w-4 accent-[#b08b47]"
             />
             <span>
-              I understand Gulera OS is in testing and agree to the{" "}
+              {t("ownerWelcome.consentPrefix")}{" "}
               <Link href="/terms" className="font-semibold text-[#e7c98a] underline">
-                Terms
+                {t("ownerWelcome.terms")}
               </Link>
               ,{" "}
               <Link href="/privacy" className="font-semibold text-[#e7c98a] underline">
-                Privacy Policy
+                {t("ownerWelcome.privacyPolicy")}
               </Link>
-              , and{" "}
+              , {t("ownerLogin.and")}{" "}
               <Link href="/cookies" className="font-semibold text-[#e7c98a] underline">
-                Cookie Notice
+                {t("ownerWelcome.cookieNotice")}
               </Link>
               .
             </span>
@@ -576,7 +576,7 @@ async function handleFreshLoginLink() {
               disabled={savingPassword || !canUseSetupActions}
               className="rounded-full bg-[#b08b47] px-5 py-2.5 text-sm font-semibold text-[#17120d] transition hover:brightness-110 disabled:opacity-60"
             >
-              {savingPassword ? "Saving..." : "Set Password"}
+              {savingPassword ? t("ownerWelcome.saving") : t("ownerWelcome.setPassword")}
             </button>
 
             <button
@@ -585,7 +585,7 @@ async function handleFreshLoginLink() {
               disabled={continuing || !canUseSetupActions}
               className="rounded-full border border-white/12 px-5 py-2.5 text-sm font-semibold text-[#f7f1e8] transition hover:bg-white/[0.05] disabled:opacity-60"
             >
-              {continuing ? "Opening..." : "Continue to Dashboard"}
+              {continuing ? t("ownerWelcome.opening") : t("ownerWelcome.continueDashboard")}
             </button>
 
             <button
@@ -596,32 +596,32 @@ async function handleFreshLoginLink() {
               }}
               className="rounded-full border border-[#b08b47]/50 px-5 py-2.5 text-sm font-semibold text-[#f7f1e8] transition hover:bg-[#b08b47]/10"
             >
-              Already have a password? Log in
+              {t("ownerWelcome.alreadyHavePassword")}
             </button>
           </div>
         </section>
 
         <section className="owner-card rounded-[28px] border border-white/8 p-5 sm:p-6">
-          <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">Confirmed Account</div>
+          <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">{t("ownerWelcome.confirmedAccount")}</div>
 
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <div>
-              <div className="text-sm text-[#e6d8bf]">Signed-in email</div>
+              <div className="text-sm text-[#e6d8bf]">{t("ownerWelcome.signedInEmail")}</div>
               <div className="mt-1 text-lg font-semibold text-[#f7f1e8]">
-                {signedInEmail || "Unknown"}
+                {signedInEmail || t("ownerWelcome.unknown")}
               </div>
             </div>
 
             <div>
-              <div className="text-sm text-[#e6d8bf]">Invite email</div>
+              <div className="text-sm text-[#e6d8bf]">{t("ownerWelcome.inviteEmail")}</div>
               <div className="mt-1 text-lg font-semibold text-[#f7f1e8]">
-                {expectedOwnerEmail || ownerAccount?.email || "Unknown"}
+                {expectedOwnerEmail || ownerAccount?.email || t("ownerWelcome.unknown")}
               </div>
             </div>
           </div>
 
           <div className="mt-6">
-            <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">Assigned Properties</div>
+            <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">{t("ownerWelcome.assignedProperties")}</div>
             <div className="mt-3 space-y-3">
               {properties.length > 0 ? (
                 properties.map((property) => (
@@ -630,16 +630,16 @@ async function handleFreshLoginLink() {
                     className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-4"
                   >
                     <div className="text-sm font-semibold text-[#f7f1e8]">
-                      {property.name || "Property"}
+                      {property.name || t("ownerWelcome.property")}
                     </div>
                     <div className="mt-1 text-sm text-[#e6d8bf]">
-                      {getCityFromAddress(property.address) || property.address || "Location unavailable"}
+                      {getCityFromAddress(property.address) || property.address || t("ownerWelcome.locationUnavailable")}
                     </div>
                   </div>
                 ))
               ) : (
                 <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-4 text-sm text-[#e6d8bf]">
-                  No properties are linked yet.
+                  {t("ownerWelcome.noProperties")}
                 </div>
               )}
             </div>
