@@ -34,6 +34,10 @@ type Property = {
   address: string | null;
   notes?: string | null;
   cover_photo_url?: string | null;
+  wifi_network?: string | null;
+  wifi_password?: string | null;
+  garbage_day?: string | null;
+  garbage_notes?: string | null;
   default_cleaner_units_needed: number;
   cleaner_units_required_strict: boolean;
   show_team_status_to_cleaners: boolean;
@@ -347,6 +351,47 @@ type MaintenanceFlagImageRow = {
   created_at?: string | null;
 };
 
+type PropertyInspectionRule = {
+  id: string;
+  organization_id: string;
+  property_id: string;
+  title: string;
+  frequency_type: string;
+  interval_count: number;
+  next_due_date: string;
+  active: boolean;
+  checks: Array<string | { label?: string; title?: string; required?: boolean }>;
+  notes?: string | null;
+  created_by_profile_id?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+type PropertyInspectionLog = {
+  id: string;
+  organization_id: string;
+  property_id: string;
+  rule_id?: string | null;
+  inspection_title: string;
+  inspected_at: string;
+  inspected_by_profile_id?: string | null;
+  status: string;
+  check_results: Array<{ label: string; status: string; notes?: string | null }>;
+  notes?: string | null;
+  next_due_date?: string | null;
+  created_at?: string | null;
+};
+
+type PropertyInspectionPhoto = {
+  id: string;
+  organization_id: string;
+  inspection_log_id: string;
+  image_url: string;
+  caption?: string | null;
+  sort_order: number;
+  created_at?: string | null;
+};
+
 type AdminSection =
   | "home"
   | "notifications"
@@ -358,6 +403,7 @@ type AdminSection =
   | "jobs"
   | "calendar"
   | "maintenance"
+  | "inspections"
   | "invites"
   | "chat"
   | "documents"
@@ -380,6 +426,7 @@ const ADMIN_FEATURE_LABELS: Record<AdminSection, string> = {
   jobs: "Jobs",
   calendar: "Calendar",
   maintenance: "Maintenance Flags",
+  inspections: "Property Inspections",
   invites: "Invites",
   chat: "Chat",
   documents: "Document Vault",
@@ -874,6 +921,9 @@ export default function AdminPage() {
   const [propertyBookingEvents, setPropertyBookingEvents] = useState<PropertyBookingEvent[]>([]);
   const [maintenanceFlags, setMaintenanceFlags] = useState<MaintenanceFlagRow[]>([]);
   const [maintenanceFlagImages, setMaintenanceFlagImages] = useState<MaintenanceFlagImageRow[]>([]);
+  const [inspectionRules, setInspectionRules] = useState<PropertyInspectionRule[]>([]);
+  const [inspectionLogs, setInspectionLogs] = useState<PropertyInspectionLog[]>([]);
+  const [inspectionPhotos, setInspectionPhotos] = useState<PropertyInspectionPhoto[]>([]);
   const [organizationInvites, setOrganizationInvites] = useState<OrganizationInviteRow[]>([]);
   const [invoiceSettings, setInvoiceSettings] = useState<InvoiceSettingsRow | null>(null);
   const [propertyInvoiceRates, setPropertyInvoiceRates] = useState<PropertyInvoiceRateRow[]>([]);
@@ -989,6 +1039,10 @@ export default function AdminPage() {
   const [propertyUnitsNeeded, setPropertyUnitsNeeded] = useState("1");
   const [propertyUnitsStrict, setPropertyUnitsStrict] = useState(false);
   const [propertyShowTeamStatus, setPropertyShowTeamStatus] = useState(true);
+  const [propertyWifiNetwork, setPropertyWifiNetwork] = useState("");
+  const [propertyWifiPassword, setPropertyWifiPassword] = useState("");
+  const [propertyGarbageDay, setPropertyGarbageDay] = useState("");
+  const [propertyGarbageNotes, setPropertyGarbageNotes] = useState("");
   const [importingAirbnbProperty, setImportingAirbnbProperty] = useState(false);
   const [airbnbImportName, setAirbnbImportName] = useState("");
   const [airbnbImportAddress, setAirbnbImportAddress] = useState("");
@@ -1068,6 +1122,12 @@ export default function AdminPage() {
   const [selectedPropertyUnitsNeeded, setSelectedPropertyUnitsNeeded] = useState("1");
   const [selectedPropertyUnitsStrict, setSelectedPropertyUnitsStrict] = useState(false);
   const [selectedPropertyShowTeamStatus, setSelectedPropertyShowTeamStatus] = useState(true);
+  const [selectedPropertyWifiNetwork, setSelectedPropertyWifiNetwork] = useState("");
+  const [selectedPropertyWifiPassword, setSelectedPropertyWifiPassword] = useState("");
+  const [selectedPropertyGarbageDay, setSelectedPropertyGarbageDay] = useState("");
+  const [selectedPropertyGarbageNotes, setSelectedPropertyGarbageNotes] = useState("");
+  const [savingSelectedPropertyManualDetails, setSavingSelectedPropertyManualDetails] = useState(false);
+  const [propertyManualDetailsDirty, setPropertyManualDetailsDirty] = useState(false);
   const [savingSelectedPropertyDefaults, setSavingSelectedPropertyDefaults] = useState(false);
   const [doorCode, setDoorCode] = useState("");
   const [alarmCode, setAlarmCode] = useState("");
@@ -1090,6 +1150,20 @@ export default function AdminPage() {
   const [uploadingDocumentVaultFiles, setUploadingDocumentVaultFiles] = useState(false);
   const [openingDocumentVaultId, setOpeningDocumentVaultId] = useState<string | null>(null);
   const [deletingDocumentVaultId, setDeletingDocumentVaultId] = useState<string | null>(null);
+  const [inspectionPropertyId, setInspectionPropertyId] = useState("");
+  const [inspectionRuleTitle, setInspectionRuleTitle] = useState("Monthly safety inspection");
+  const [inspectionRuleFrequency, setInspectionRuleFrequency] = useState("monthly");
+  const [inspectionRuleInterval, setInspectionRuleInterval] = useState("1");
+  const [inspectionRuleNextDueDate, setInspectionRuleNextDueDate] = useState("");
+  const [inspectionRuleChecksText, setInspectionRuleChecksText] = useState("Fire extinguishers\nSmoke alarms");
+  const [inspectionRuleNotes, setInspectionRuleNotes] = useState("");
+  const [savingInspectionRule, setSavingInspectionRule] = useState(false);
+  const [inspectionLogRuleId, setInspectionLogRuleId] = useState("");
+  const [inspectionLogNotes, setInspectionLogNotes] = useState("");
+  const [inspectionLogStatus, setInspectionLogStatus] = useState("completed");
+  const [inspectionLogFiles, setInspectionLogFiles] = useState<File[]>([]);
+  const [savingInspectionLog, setSavingInspectionLog] = useState(false);
+  const [inspectionHistoryExpanded, setInspectionHistoryExpanded] = useState(false);
 
 
   const [linkSelections, setLinkSelections] = useState<Record<string, string>>({});
@@ -1427,6 +1501,7 @@ export default function AdminPage() {
     setCalendarDraftDirty(false);
     setAccessDirty(false);
     setPropertyDefaultsDirty(false);
+    setPropertyManualDetailsDirty(false);
     setPropertySetupTab("overview");
     setOwnerLinkTargetPropertyId("");
     setPropertyCoverMessage("");
@@ -1483,6 +1558,7 @@ export default function AdminPage() {
       setCalendarDraftDirty(false);
       setAccessDirty(false);
       setPropertyDefaultsDirty(false);
+      setPropertyManualDetailsDirty(false);
       return;
     }
 
@@ -1519,6 +1595,13 @@ export default function AdminPage() {
       setSelectedPropertyUnitsStrict(!!selectedProperty?.cleaner_units_required_strict);
       setSelectedPropertyShowTeamStatus(selectedProperty?.show_team_status_to_cleaners !== false);
     }
+
+    if (!propertyManualDetailsDirty) {
+      setSelectedPropertyWifiNetwork(selectedProperty?.wifi_network || "");
+      setSelectedPropertyWifiPassword(selectedProperty?.wifi_password || "");
+      setSelectedPropertyGarbageDay(selectedProperty?.garbage_day || "");
+      setSelectedPropertyGarbageNotes(selectedProperty?.garbage_notes || "");
+    }
   }, [
     selectedPropertyId,
     accessRows,
@@ -1527,6 +1610,7 @@ export default function AdminPage() {
     calendarDraftDirty,
     accessDirty,
     propertyDefaultsDirty,
+    propertyManualDetailsDirty,
     selectedPropertyOwnerDirty,
   ]);
   async function handleSubmitSupportTicket() {
@@ -1620,6 +1704,9 @@ export default function AdminPage() {
     setPropertyBookingEvents((data.propertyBookingEvents ?? []) as PropertyBookingEvent[]);
     setMaintenanceFlags((data.maintenanceFlags ?? []) as MaintenanceFlagRow[]);
     setMaintenanceFlagImages((data.maintenanceFlagImages ?? []) as MaintenanceFlagImageRow[]);
+    setInspectionRules((data.inspectionRules ?? []) as PropertyInspectionRule[]);
+    setInspectionLogs((data.inspectionLogs ?? []) as PropertyInspectionLog[]);
+    setInspectionPhotos((data.inspectionPhotos ?? []) as PropertyInspectionPhoto[]);
     setOrganizationInvites((data.organizationInvites ?? []) as OrganizationInviteRow[]);
     setInvoiceSettings((data.invoiceSettings ?? null) as InvoiceSettingsRow | null);
     setPropertyInvoiceRates((data.propertyInvoiceRates ?? []) as PropertyInvoiceRateRow[]);
@@ -1707,6 +1794,9 @@ export default function AdminPage() {
       propertyBookingEventsRes,
       maintenanceFlagsRes,
       maintenanceFlagImagesRes,
+      inspectionRulesRes,
+      inspectionLogsRes,
+      inspectionPhotosRes,
       organizationInvitesRes,
       invoiceSettingsRes,
       propertyInvoiceRatesRes,
@@ -1808,6 +1898,21 @@ export default function AdminPage() {
         .order("created_at", { ascending: false }),
       supabase.from("property_maintenance_flag_images").select("*").order("sort_order", { ascending: true }),
       supabase
+        .from("property_inspection_rules")
+        .select("*")
+        .eq("organization_id", currentOrganizationId)
+        .order("next_due_date", { ascending: true }),
+      supabase
+        .from("property_inspection_logs")
+        .select("*")
+        .eq("organization_id", currentOrganizationId)
+        .order("inspected_at", { ascending: false }),
+      supabase
+        .from("property_inspection_photos")
+        .select("*")
+        .eq("organization_id", currentOrganizationId)
+        .order("sort_order", { ascending: true }),
+      supabase
         .from("organization_invites")
         .select("*")
         .eq("organization_id", currentOrganizationId)
@@ -1878,6 +1983,9 @@ export default function AdminPage() {
       propertyBookingEventsRes,
       maintenanceFlagsRes,
       maintenanceFlagImagesRes,
+      inspectionRulesRes,
+      inspectionLogsRes,
+      inspectionPhotosRes,
       organizationInvitesRes,
       invoiceSettingsRes,
       propertyInvoiceRatesRes,
@@ -1895,6 +2003,9 @@ export default function AdminPage() {
         response !== propertyInvoiceRatesRes &&
         response !== documentVaultRes &&
         response !== propertyBookingEventsRes &&
+        response !== inspectionRulesRes &&
+        response !== inspectionLogsRes &&
+        response !== inspectionPhotosRes &&
         response !== chatConversationsRes &&
         response !== chatParticipantsRes &&
         response !== chatMessagesRes &&
@@ -1999,6 +2110,9 @@ export default function AdminPage() {
     );
     setMaintenanceFlags((maintenanceFlagsRes.data ?? []) as MaintenanceFlagRow[]);
     setMaintenanceFlagImages(loadedMaintenanceFlagImages);
+    setInspectionRules(inspectionRulesRes.error ? [] : ((inspectionRulesRes.data ?? []) as PropertyInspectionRule[]));
+    setInspectionLogs(inspectionLogsRes.error ? [] : ((inspectionLogsRes.data ?? []) as PropertyInspectionLog[]));
+    setInspectionPhotos(inspectionPhotosRes.error ? [] : ((inspectionPhotosRes.data ?? []) as PropertyInspectionPhoto[]));
     setOrganizationInvites((organizationInvitesRes.data ?? []) as OrganizationInviteRow[]);
     setInvoiceSettings((invoiceSettingsRes.data ?? null) as InvoiceSettingsRow | null);
     setPropertyInvoiceRates(
@@ -2307,6 +2421,8 @@ export default function AdminPage() {
 
       const cleanupTables = [
         ["property_calendars", "property_id"],
+        ["property_inspection_rules", "property_id"],
+        ["property_inspection_logs", "property_id"],
         ["property_access", "property_id"],
         ["property_cleaner_account_assignments", "property_id"],
       ] as const;
@@ -2349,6 +2465,10 @@ export default function AdminPage() {
     setPropertyNotes("");
     setPropertyOwnerName("");
     setPropertyOwnerEmail("");
+    setPropertyWifiNetwork("");
+    setPropertyWifiPassword("");
+    setPropertyGarbageDay("");
+    setPropertyGarbageNotes("");
     setPropertyUnitsNeeded("1");
     setPropertyUnitsStrict(false);
     setPropertyShowTeamStatus(true);
@@ -2472,6 +2592,10 @@ export default function AdminPage() {
           propertyPostal,
         ]),
         notes: propertyNotes.trim() || null,
+        wifi_network: propertyWifiNetwork.trim() || null,
+        wifi_password: propertyWifiPassword.trim() || null,
+        garbage_day: propertyGarbageDay.trim() || null,
+        garbage_notes: propertyGarbageNotes.trim() || null,
         default_cleaner_units_needed: Number(propertyUnitsNeeded),
         cleaner_units_required_strict: propertyUnitsStrict,
         show_team_status_to_cleaners: propertyShowTeamStatus,
@@ -4307,6 +4431,191 @@ This removes its linked members and deletes the grounds account.`
     }
   }
 
+  async function saveSelectedPropertyManualDetails() {
+    if (!selectedPropertyId) return;
+    setError("");
+    setSavingSelectedPropertyManualDetails(true);
+
+    try {
+      const { error } = await supabase
+        .from("properties")
+        .update({
+          wifi_network: selectedPropertyWifiNetwork.trim() || null,
+          wifi_password: selectedPropertyWifiPassword.trim() || null,
+          garbage_day: selectedPropertyGarbageDay.trim() || null,
+          garbage_notes: selectedPropertyGarbageNotes.trim() || null,
+        })
+        .eq("id", selectedPropertyId);
+
+      if (error) throw error;
+      setPropertyManualDetailsDirty(false);
+      setActionMessage("Property WiFi and garbage details saved.");
+      await loadData();
+    } catch (err: any) {
+      const message = String(err?.message || "Could not save property manual details.");
+      setError(message.includes("wifi_network") ? `${message} Run supabase/add_property_inspections.sql first.` : message);
+    } finally {
+      setSavingSelectedPropertyManualDetails(false);
+    }
+  }
+
+  function normalizeInspectionChecks(text: string) {
+    return text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((label) => ({ label, required: true }));
+  }
+
+  function getInspectionCheckLabel(check: string | { label?: string; title?: string }) {
+    return typeof check === "string" ? check : check.label || check.title || "Inspection item";
+  }
+
+  function getNextInspectionDueDate(rule: PropertyInspectionRule, fromDate = new Date()) {
+    const next = new Date(fromDate);
+    const interval = Math.max(1, Number(rule.interval_count || 1));
+
+    if (rule.frequency_type === "weekly") next.setDate(next.getDate() + interval * 7);
+    else if (rule.frequency_type === "quarterly") next.setMonth(next.getMonth() + interval * 3);
+    else if (rule.frequency_type === "yearly") next.setFullYear(next.getFullYear() + interval);
+    else if (rule.frequency_type === "custom_days") next.setDate(next.getDate() + interval);
+    else next.setMonth(next.getMonth() + interval);
+
+    return toYmd(next);
+  }
+
+  async function saveInspectionRule() {
+    if (!currentOrganizationId || !inspectionPropertyId) {
+      setError("Choose a property for this inspection rule.");
+      return;
+    }
+
+    const checks = normalizeInspectionChecks(inspectionRuleChecksText);
+    if (!inspectionRuleTitle.trim() || checks.length === 0) {
+      setError("Inspection title and at least one check are required.");
+      return;
+    }
+
+    setError("");
+    setSavingInspectionRule(true);
+
+    try {
+      const { error } = await supabase.from("property_inspection_rules").insert({
+        organization_id: currentOrganizationId,
+        property_id: inspectionPropertyId,
+        title: inspectionRuleTitle.trim(),
+        frequency_type: inspectionRuleFrequency,
+        interval_count: Number(inspectionRuleInterval || "1"),
+        next_due_date: inspectionRuleNextDueDate || todayYmd,
+        checks,
+        notes: inspectionRuleNotes.trim() || null,
+        created_by_profile_id: currentAdminUserId || null,
+      });
+
+      if (error) throw error;
+      setActionMessage("Inspection rule saved.");
+      setInspectionRuleTitle("Monthly safety inspection");
+      setInspectionRuleFrequency("monthly");
+      setInspectionRuleInterval("1");
+      setInspectionRuleNextDueDate("");
+      setInspectionRuleChecksText("Fire extinguishers\nSmoke alarms");
+      setInspectionRuleNotes("");
+      await loadData();
+    } catch (err: any) {
+      const message = String(err?.message || "Could not save inspection rule.");
+      setError(message.includes("property_inspection_rules") ? `${message} Run supabase/add_property_inspections.sql first.` : message);
+    } finally {
+      setSavingInspectionRule(false);
+    }
+  }
+
+  async function toggleInspectionRuleActive(rule: PropertyInspectionRule) {
+    const { error } = await supabase
+      .from("property_inspection_rules")
+      .update({ active: !rule.active })
+      .eq("id", rule.id);
+
+    if (error) {
+      setError(error.message);
+      return;
+    }
+
+    setActionMessage(rule.active ? "Inspection rule paused." : "Inspection rule activated.");
+    await loadData();
+  }
+
+  async function completeInspectionRule(rule: PropertyInspectionRule) {
+    if (!currentOrganizationId) return;
+    setError("");
+    setSavingInspectionLog(true);
+
+    try {
+      const checkResults = (rule.checks || []).map((check) => ({
+        label: getInspectionCheckLabel(check),
+        status: inspectionLogStatus === "needs_attention" ? "needs_attention" : "ok",
+        notes: null,
+      }));
+      const nextDueDate = getNextInspectionDueDate(rule);
+
+      const { data: insertedLog, error: logError } = await supabase
+        .from("property_inspection_logs")
+        .insert({
+          organization_id: currentOrganizationId,
+          property_id: rule.property_id,
+          rule_id: rule.id,
+          inspection_title: rule.title,
+          inspected_by_profile_id: currentAdminUserId || null,
+          status: inspectionLogStatus,
+          check_results: checkResults,
+          notes: inspectionLogNotes.trim() || null,
+          next_due_date: nextDueDate,
+        })
+        .select()
+        .single();
+
+      if (logError || !insertedLog) throw logError || new Error("Could not create inspection log.");
+
+      for (let index = 0; index < inspectionLogFiles.length; index += 1) {
+        const file = inspectionLogFiles[index];
+        if (!file.type.startsWith("image/")) continue;
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const filePath = `${rule.property_id}/inspections/${insertedLog.id}/${Date.now()}-${index}-${safeName}`;
+        const { error: uploadError } = await supabase.storage
+          .from("property-sop-images")
+          .upload(filePath, file, { cacheControl: "3600", upsert: false });
+        if (uploadError) throw uploadError;
+        const {
+          data: { publicUrl },
+        } = supabase.storage.from("property-sop-images").getPublicUrl(filePath);
+        const { error: photoError } = await supabase.from("property_inspection_photos").insert({
+          organization_id: currentOrganizationId,
+          inspection_log_id: insertedLog.id,
+          image_url: publicUrl,
+          sort_order: index,
+        });
+        if (photoError) throw photoError;
+      }
+
+      const { error: ruleError } = await supabase
+        .from("property_inspection_rules")
+        .update({ next_due_date: nextDueDate })
+        .eq("id", rule.id);
+      if (ruleError) throw ruleError;
+
+      setInspectionLogRuleId("");
+      setInspectionLogNotes("");
+      setInspectionLogStatus("completed");
+      setInspectionLogFiles([]);
+      setActionMessage("Inspection logged and next due date updated.");
+      await loadData();
+    } catch (err: any) {
+      const message = String(err?.message || "Could not complete inspection.");
+      setError(message.includes("property_inspection") ? `${message} Run supabase/add_property_inspections.sql first.` : message);
+    } finally {
+      setSavingInspectionLog(false);
+    }
+  }
+
   async function removeSelectedPropertyCoverPhoto() {
     if (!selectedPropertyId) return;
 
@@ -5829,6 +6138,10 @@ This removes its linked members and deletes the grounds account.`
     };
   }, [propertyHealthRows]);
 
+  const dueInspectionRules = useMemo(() => {
+    return inspectionRules.filter((rule) => rule.active !== false && (!rule.next_due_date || rule.next_due_date <= todayYmd));
+  }, [inspectionRules, todayYmd]);
+
   const operationsAlerts = useMemo(() => {
     const alerts: Array<{
       key: string;
@@ -5892,8 +6205,17 @@ This removes its linked members and deletes the grounds account.`
       });
     }
 
+    if (dueInspectionRules.length > 0) {
+      alerts.push({
+        key: "inspections-due",
+        label: `${dueInspectionRules.length} inspection${dueInspectionRules.length === 1 ? "" : "s"} due`,
+        tone: "amber",
+        onClick: () => setActiveSection("inspections"),
+      });
+    }
+
     return alerts;
-  }, [waitingJobs.length, overdueWaitingJobs.length, strandedJobs.length, maintenanceFlagCounts.open, maintenanceFlagCounts.urgent]);
+  }, [waitingJobs.length, overdueWaitingJobs.length, strandedJobs.length, maintenanceFlagCounts.open, maintenanceFlagCounts.urgent, dueInspectionRules.length]);
 
   function selectAdminCalendarDate(dateYmd: string) {
     setAdminSelectedDate(dateYmd);
@@ -6003,6 +6325,13 @@ This removes its linked members and deletes the grounds account.`
           hint: "Open issues",
           accent: "bg-[#ef4444]",
           activeClass: "border-[#fecaca] bg-[#fff1f2] text-[#b91c1c]",
+        },
+        {
+          key: "inspections",
+          label: "Inspections",
+          hint: "Safety checks",
+          accent: "bg-[#f59e0b]",
+          activeClass: "border-[#fde68a] bg-[#fffbeb] text-[#b45309]",
         },
       ],
     },
@@ -6189,6 +6518,18 @@ This removes its linked members and deletes the grounds account.`
       });
     }
 
+    if (dueInspectionRules.length > 0) {
+      items.push({
+        key: "property-inspections",
+        title: "Property inspections due",
+        detail: "Admin-only safety and property checks need to be completed.",
+        count: dueInspectionRules.length,
+        tone: "amber",
+        actionLabel: "Open inspections",
+        onClick: () => setActiveSection("inspections"),
+      });
+    }
+
     if (recentlyAcceptedInvites.length > 0) {
       items.push({
         key: "invites",
@@ -6257,6 +6598,7 @@ This removes its linked members and deletes the grounds account.`
     strandedJobs.length,
     maintenanceFlagCounts.open,
     maintenanceFlagCounts.urgent,
+    dueInspectionRules.length,
     recentlyAcceptedInvites.length,
     ownerInvoices,
     propertyHealthRows,
@@ -6272,6 +6614,7 @@ This removes its linked members and deletes the grounds account.`
     if (section === "chat" && unreadChatCount > 0) return unreadChatCount > 99 ? "99+" : String(unreadChatCount);
     if (section === "jobs" && strandedJobs.length > 0) return String(strandedJobs.length);
     if (section === "maintenance" && maintenanceFlagCounts.urgent > 0) return String(maintenanceFlagCounts.urgent);
+    if (section === "inspections" && dueInspectionRules.length > 0) return String(dueInspectionRules.length);
     if (section === "invites" && recentlyAcceptedInvites.length > 0) return String(recentlyAcceptedInvites.length);
     if (section === "invoices" && ownerInvoices.length > 0) return String(ownerInvoices.length);
     return "";
@@ -8175,6 +8518,25 @@ This removes its linked members and deletes the grounds account.`
     }
 
     setActionMessage("CSV export downloaded.");
+  }
+
+  function downloadInspectionLogCsv() {
+    const rows: Array<Array<string | number | null | undefined>> = [
+      ["Inspection", "Property", "Status", "Inspected At", "Inspected By", "Next Due", "Checks", "Notes"],
+      ...inspectionLogs.map((log) => [
+        log.inspection_title,
+        getPropertyName(log.property_id),
+        log.status,
+        log.inspected_at ? new Date(log.inspected_at).toLocaleString() : "",
+        getProfileDisplayName(log.inspected_by_profile_id),
+        log.next_due_date ? formatDateLabel(log.next_due_date) : "",
+        (log.check_results || []).map((check) => `${check.label}: ${check.status}${check.notes ? ` (${check.notes})` : ""}`).join("; "),
+        log.notes || "",
+      ]),
+    ];
+
+    downloadCsvFile(`${getBackupBaseName("inspection-log")}.csv`, rows);
+    setActionMessage("Inspection log CSV downloaded.");
   }
 
   function downloadInvoiceCsv(
@@ -10109,6 +10471,39 @@ This removes its linked members and deletes the grounds account.`
                 value={propertyNotes}
                 onChange={(e) => setPropertyNotes(e.target.value)}
               />
+
+              <div className="rounded-[22px] border border-[#eadfce] bg-[#fffaf4] p-4">
+                <div className="text-sm font-medium text-[#5f5245]">Home manual details</div>
+                <p className="mt-1 text-xs text-[#8a7b68]">
+                  Saved now for the future property guide/manual builder.
+                </p>
+                <div className="mt-3 grid gap-2 md:grid-cols-2">
+                  <input
+                    className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                    placeholder="WiFi network"
+                    value={propertyWifiNetwork}
+                    onChange={(e) => setPropertyWifiNetwork(e.target.value)}
+                  />
+                  <input
+                    className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                    placeholder="WiFi password"
+                    value={propertyWifiPassword}
+                    onChange={(e) => setPropertyWifiPassword(e.target.value)}
+                  />
+                  <input
+                    className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                    placeholder="Garbage day"
+                    value={propertyGarbageDay}
+                    onChange={(e) => setPropertyGarbageDay(e.target.value)}
+                  />
+                  <input
+                    className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                    placeholder="Garbage notes"
+                    value={propertyGarbageNotes}
+                    onChange={(e) => setPropertyGarbageNotes(e.target.value)}
+                  />
+                </div>
+              </div>
             </div>
 
             <div className="space-y-3">
@@ -12920,6 +13315,59 @@ This removes its linked members and deletes the grounds account.`
                     ) : null}
                   </div>
 
+                  <div className="rounded-[24px] border border-[#d7e6df] bg-[#f6fbf8] p-5">
+                    <h3 className="text-base font-semibold text-[#17382d]">Home Manual Details</h3>
+                    <p className="mt-1 text-sm text-[#5e7469]">
+                      WiFi and garbage information is saved here now, and can feed the future custom home manual builder later.
+                    </p>
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      <input
+                        value={selectedPropertyWifiNetwork}
+                        onChange={(e) => {
+                          setSelectedPropertyWifiNetwork(e.target.value);
+                          setPropertyManualDetailsDirty(true);
+                        }}
+                        placeholder="WiFi network"
+                        className="w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
+                      />
+                      <input
+                        value={selectedPropertyWifiPassword}
+                        onChange={(e) => {
+                          setSelectedPropertyWifiPassword(e.target.value);
+                          setPropertyManualDetailsDirty(true);
+                        }}
+                        placeholder="WiFi password"
+                        className="w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
+                      />
+                      <input
+                        value={selectedPropertyGarbageDay}
+                        onChange={(e) => {
+                          setSelectedPropertyGarbageDay(e.target.value);
+                          setPropertyManualDetailsDirty(true);
+                        }}
+                        placeholder="Garbage day"
+                        className="w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
+                      />
+                      <input
+                        value={selectedPropertyGarbageNotes}
+                        onChange={(e) => {
+                          setSelectedPropertyGarbageNotes(e.target.value);
+                          setPropertyManualDetailsDirty(true);
+                        }}
+                        placeholder="Garbage notes"
+                        className="w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void saveSelectedPropertyManualDetails()}
+                      disabled={savingSelectedPropertyManualDetails}
+                      className="mt-4 rounded-full bg-[#17382d] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#245444] disabled:opacity-60"
+                    >
+                      {savingSelectedPropertyManualDetails ? "Saving..." : "Save manual details"}
+                    </button>
+                  </div>
+
                   <div className="rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] p-5">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                       <div>
@@ -14206,6 +14654,303 @@ This removes its linked members and deletes the grounds account.`
     );
   }
 
+  function renderInspectionsSection() {
+    const activeRules = inspectionRules.filter((rule) => rule.active !== false);
+    const selectedLogRule = inspectionRules.find((rule) => rule.id === inspectionLogRuleId) || null;
+    const rulesToShow = inspectionPropertyId
+      ? inspectionRules.filter((rule) => rule.property_id === inspectionPropertyId)
+      : inspectionRules;
+
+    return (
+      <div className="space-y-6">
+        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#b45309]">Admin-only reminders</div>
+              <h2 className="mt-2 text-xl font-semibold tracking-tight text-[#241c15]">Property inspections</h2>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-[#7f7263]">
+                Set recurring checks for fire extinguishers, smoke alarms, or any custom item. Logs stay downloadable for records.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={downloadInspectionLogCsv}
+              className="rounded-full border border-[#d8c7ab] bg-white px-5 py-2.5 text-sm font-medium text-[#5f5245] transition hover:bg-[#fcfaf7]"
+            >
+              Download inspection CSV
+            </button>
+          </div>
+
+          <div className="mt-5 grid gap-3 md:grid-cols-4">
+            {[
+              { label: "Active rules", value: activeRules.length, tone: "border-[#fde68a] bg-[#fffbeb]" },
+              { label: "Due now", value: dueInspectionRules.length, tone: dueInspectionRules.length ? "border-[#fbbf24] bg-[#fff7ed]" : "border-[#bbdfc0] bg-[#f0fbf2]" },
+              { label: "Logs", value: inspectionLogs.length, tone: "border-[#bfdbfe] bg-[#eff6ff]" },
+              { label: "Photos", value: inspectionPhotos.length, tone: "border-[#ddd6fe] bg-[#f5f3ff]" },
+            ].map((item) => (
+              <div key={item.label} className={`rounded-[22px] border px-4 py-4 ${item.tone}`}>
+                <div className="text-[11px] uppercase tracking-[0.18em] text-[#6f6255]">{item.label}</div>
+                <div className="mt-2 text-3xl font-semibold text-[#241c15]">{item.value}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
+          <div className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+            <h3 className="text-lg font-semibold text-[#241c15]">Create inspection rule</h3>
+            <div className="mt-4 space-y-3">
+              <select
+                value={inspectionPropertyId}
+                onChange={(e) => setInspectionPropertyId(e.target.value)}
+                className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+              >
+                <option value="">Choose property</option>
+                {properties.map((property) => (
+                  <option key={property.id} value={property.id}>
+                    {property.name || property.address || property.id}
+                  </option>
+                ))}
+              </select>
+              <input
+                value={inspectionRuleTitle}
+                onChange={(e) => setInspectionRuleTitle(e.target.value)}
+                placeholder="Inspection title"
+                className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+              />
+              <div className="grid gap-3 md:grid-cols-3">
+                <select
+                  value={inspectionRuleFrequency}
+                  onChange={(e) => setInspectionRuleFrequency(e.target.value)}
+                  className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                >
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="quarterly">Quarterly</option>
+                  <option value="yearly">Yearly</option>
+                  <option value="custom_days">Custom days</option>
+                </select>
+                <input
+                  type="number"
+                  min="1"
+                  value={inspectionRuleInterval}
+                  onChange={(e) => setInspectionRuleInterval(e.target.value)}
+                  className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                  placeholder="Every"
+                />
+                <input
+                  type="date"
+                  value={inspectionRuleNextDueDate}
+                  onChange={(e) => setInspectionRuleNextDueDate(e.target.value)}
+                  className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                />
+              </div>
+              <textarea
+                value={inspectionRuleChecksText}
+                onChange={(e) => setInspectionRuleChecksText(e.target.value)}
+                placeholder="One check per line"
+                className="min-h-[130px] w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+              />
+              <textarea
+                value={inspectionRuleNotes}
+                onChange={(e) => setInspectionRuleNotes(e.target.value)}
+                placeholder="Internal notes"
+                className="min-h-[90px] w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+              />
+              <button
+                type="button"
+                onClick={() => void saveInspectionRule()}
+                disabled={savingInspectionRule}
+                className="w-full rounded-full bg-[#241c15] px-5 py-3 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60"
+              >
+                {savingInspectionRule ? "Saving..." : "Save inspection rule"}
+              </button>
+            </div>
+          </div>
+
+          <div className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+            <h3 className="text-lg font-semibold text-[#241c15]">Due inspections</h3>
+            <div className="mt-4 space-y-3">
+              {dueInspectionRules.length === 0 ? (
+                <div className="rounded-[22px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-4 py-5 text-sm text-[#8a7b68]">
+                  No inspections are due right now.
+                </div>
+              ) : null}
+              {dueInspectionRules.map((rule) => (
+                <div key={rule.id} className="rounded-[22px] border border-[#f2d49b] bg-[#fff8e8] p-4">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="text-base font-semibold text-[#241c15]">{rule.title}</div>
+                      <div className="mt-1 text-sm text-[#6f6255]">{getPropertyName(rule.property_id)}</div>
+                      <div className="mt-2 text-xs font-semibold uppercase tracking-[0.16em] text-[#8a6112]">
+                        Due {formatDateLabel(rule.next_due_date)}
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {(rule.checks || []).map((check, index) => (
+                          <span key={`${rule.id}-${index}`} className="rounded-full border border-[#ecd7a8] bg-white px-3 py-1 text-xs text-[#6f6255]">
+                            {getInspectionCheckLabel(check)}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setInspectionLogRuleId(rule.id)}
+                      className="rounded-full bg-[#241c15] px-4 py-2 text-sm font-semibold text-white"
+                    >
+                      Log inspection
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <h3 className="text-lg font-semibold text-[#241c15]">Log completed inspection</h3>
+          <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_180px]">
+            <select
+              value={inspectionLogRuleId}
+              onChange={(e) => setInspectionLogRuleId(e.target.value)}
+              className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+            >
+              <option value="">Choose inspection rule</option>
+              {activeRules.map((rule) => (
+                <option key={rule.id} value={rule.id}>
+                  {getPropertyName(rule.property_id)} - {rule.title}
+                </option>
+              ))}
+            </select>
+            <select
+              value={inspectionLogStatus}
+              onChange={(e) => setInspectionLogStatus(e.target.value)}
+              className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+            >
+              <option value="completed">Completed</option>
+              <option value="needs_attention">Needs attention</option>
+            </select>
+          </div>
+          {selectedLogRule ? (
+            <div className="mt-3 rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3 text-sm text-[#6f6255]">
+              Next due after completion: {formatDateLabel(getNextInspectionDueDate(selectedLogRule))}
+            </div>
+          ) : null}
+          <textarea
+            value={inspectionLogNotes}
+            onChange={(e) => setInspectionLogNotes(e.target.value)}
+            placeholder="Inspection notes, problems found, replacement details, etc."
+            className="mt-3 min-h-[110px] w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+          />
+          <div className="mt-3 rounded-[20px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] p-4">
+            <label className="block text-sm font-medium text-[#5f5245]">Optional inspection photos</label>
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              className="mt-2 block w-full text-sm text-[#6c5f51]"
+              onChange={(e) => setInspectionLogFiles(Array.from(e.target.files || []))}
+            />
+            <div className="mt-2 text-xs text-[#8a7b68]">
+              {inspectionLogFiles.length ? `${inspectionLogFiles.length} photo${inspectionLogFiles.length === 1 ? "" : "s"} selected` : "No photos selected."}
+            </div>
+          </div>
+          <button
+            type="button"
+            disabled={!selectedLogRule || savingInspectionLog}
+            onClick={() => selectedLogRule && void completeInspectionRule(selectedLogRule)}
+            className="mt-4 rounded-full bg-[#241c15] px-5 py-3 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60"
+          >
+            {savingInspectionLog ? "Saving..." : "Complete and update next due date"}
+          </button>
+        </section>
+
+        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-[#241c15]">Inspection rules and history</h3>
+              <p className="mt-1 text-sm text-[#7f7263]">Rules stay active until paused. History is downloadable as CSV.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setInspectionHistoryExpanded((current) => !current)}
+              className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-medium text-[#5f5245]"
+            >
+              {inspectionHistoryExpanded ? "Hide history" : "Show history"}
+            </button>
+          </div>
+
+          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+            {rulesToShow.length === 0 ? (
+              <div className="rounded-[22px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-4 py-5 text-sm text-[#8a7b68]">
+                No inspection rules yet.
+              </div>
+            ) : null}
+            {rulesToShow.map((rule) => (
+              <div key={rule.id} className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="font-semibold text-[#241c15]">{rule.title}</div>
+                    <div className="mt-1 text-sm text-[#6f6255]">{getPropertyName(rule.property_id)}</div>
+                    <div className="mt-2 text-xs text-[#8a7b68]">
+                      {rule.frequency_type.replace("_", " ")} every {rule.interval_count} | next due {formatDateLabel(rule.next_due_date)}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void toggleInspectionRuleActive(rule)}
+                    className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1.5 text-xs font-semibold text-[#5f5245]"
+                  >
+                    {rule.active === false ? "Activate" : "Pause"}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {inspectionHistoryExpanded ? (
+            <div className="mt-5 space-y-3">
+              {inspectionLogs.length === 0 ? (
+                <div className="rounded-[22px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-4 py-5 text-sm text-[#8a7b68]">
+                  No inspections logged yet.
+                </div>
+              ) : null}
+              {inspectionLogs.map((log) => {
+                const photos = inspectionPhotos.filter((photo) => photo.inspection_log_id === log.id);
+                return (
+                  <div key={log.id} className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+                    <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                      <div>
+                        <div className="font-semibold text-[#241c15]">{log.inspection_title}</div>
+                        <div className="mt-1 text-sm text-[#6f6255]">{getPropertyName(log.property_id)}</div>
+                        <div className="mt-1 text-xs text-[#8a7b68]">
+                          {log.inspected_at ? new Date(log.inspected_at).toLocaleString() : "No date"} by {getProfileDisplayName(log.inspected_by_profile_id)}
+                        </div>
+                      </div>
+                      <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${log.status === "needs_attention" ? "border-[#fecaca] bg-[#fff1f2] text-[#b91c1c]" : "border-[#bbdfc0] bg-[#f0fbf2] text-[#236b30]"}`}>
+                        {log.status === "needs_attention" ? "Needs attention" : "Completed"}
+                      </span>
+                    </div>
+                    {log.notes ? <div className="mt-3 whitespace-pre-wrap text-sm text-[#6f6255]">{log.notes}</div> : null}
+                    {photos.length > 0 ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {photos.map((photo) => (
+                          <a key={photo.id} href={photo.image_url} target="_blank" rel="noreferrer" className="overflow-hidden rounded-[14px] border border-[#eadfce] bg-white">
+                            <img src={photo.image_url} alt={photo.caption || log.inspection_title} className="h-20 w-28 object-cover" />
+                          </a>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+        </section>
+      </div>
+    );
+  }
+
   function renderActiveSection() {
     switch (activeSection) {
       case "home":
@@ -14240,6 +14985,8 @@ This removes its linked members and deletes the grounds account.`
         return renderCalendarSection();
       case "maintenance":
         return renderMaintenanceSection();
+      case "inspections":
+        return renderInspectionsSection();
       case "documents":
         return renderDocumentVaultSection();
       case "backup":

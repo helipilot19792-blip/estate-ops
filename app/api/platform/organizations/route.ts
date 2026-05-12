@@ -495,6 +495,9 @@ async function deleteOrganizationWorkspace(
   await track("document_vault_files", deleteRowsByOrganization(serviceClient, "document_vault_files", organizationId));
   await track("property_maintenance_flag_images", deleteRowsByIds(serviceClient, "property_maintenance_flag_images", "flag_id", maintenanceFlagIds));
   await track("property_maintenance_flags", deleteRowsByOrganization(serviceClient, "property_maintenance_flags", organizationId));
+  await track("property_inspection_photos", deleteRowsByOrganization(serviceClient, "property_inspection_photos", organizationId));
+  await track("property_inspection_logs", deleteRowsByOrganization(serviceClient, "property_inspection_logs", organizationId));
+  await track("property_inspection_rules", deleteRowsByOrganization(serviceClient, "property_inspection_rules", organizationId));
   await track("property_calendars", deleteRowsByIds(serviceClient, "property_calendars", "property_id", propertyIds));
   await track("property_booking_events", deleteRowsByOrganization(serviceClient, "property_booking_events", organizationId));
   await track("turnover_job_slots", deleteRowsByIds(serviceClient, "turnover_job_slots", "job_id", turnoverJobIds));
