@@ -81,6 +81,10 @@ export const dictionaries = {
       cookieNotice: "Cookie Notice",
       creatingCompany: "Creating company...",
       createCompanyButton: "Create Company Account",
+      wrongEmailTitle: "Entered the wrong email?",
+      wrongEmailBody: "If you notice a typo before confirming the account, clear the pending signup and start again with the correct email.",
+      wrongEmailButton: "Clear pending signup",
+      clearingSignup: "Clearing...",
       legalFooter: "This creates the first admin account for a new company workspace. Legal text is available anytime:",
     },
     ownerLogin: {
@@ -436,6 +440,10 @@ export const dictionaries = {
       cookieNotice: "Avis sur les témoins",
       creatingCompany: "Creation de l'entreprise...",
       createCompanyButton: "Creer le compte d'entreprise",
+      wrongEmailTitle: "Mauvaise adresse courriel?",
+      wrongEmailBody: "Si vous voyez une faute avant de confirmer le compte, effacez l'inscription en attente et recommencez avec la bonne adresse.",
+      wrongEmailButton: "Effacer l'inscription",
+      clearingSignup: "Effacement...",
       legalFooter: "Cela cree le premier compte administrateur pour un nouvel espace d'entreprise. Le texte legal est disponible en tout temps:",
     },
     ownerLogin: {
@@ -788,6 +796,10 @@ export const dictionaries = {
       cookieNotice: "Aviso de cookies",
       creatingCompany: "Creando empresa...",
       createCompanyButton: "Crear cuenta de empresa",
+      wrongEmailTitle: "Ingresaste el correo incorrecto?",
+      wrongEmailBody: "Si notas un error antes de confirmar la cuenta, borra el registro pendiente y empieza de nuevo con el correo correcto.",
+      wrongEmailButton: "Borrar registro pendiente",
+      clearingSignup: "Borrando...",
       legalFooter: "Esto crea la primera cuenta de administrador para un nuevo espacio de empresa. El texto legal esta disponible en cualquier momento:",
     },
     ownerLogin: {

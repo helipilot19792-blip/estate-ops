@@ -93,6 +93,7 @@ export default function LoginPage() {
   const [signupConfirmPassword, setSignupConfirmPassword] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [signupAcceptedTerms, setSignupAcceptedTerms] = useState(false);
+  const [pendingSignupUserId, setPendingSignupUserId] = useState("");
 
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [showSignupPassword, setShowSignupPassword] = useState(false);
@@ -105,6 +106,7 @@ export default function LoginPage() {
   const [loadingSignup, setLoadingSignup] = useState(false);
   const [loadingResend, setLoadingResend] = useState(false);
   const [loadingReset, setLoadingReset] = useState(false);
+  const [loadingCancelSignup, setLoadingCancelSignup] = useState(false);
 
   async function handleLogin(e?: FormEvent) {
     e?.preventDefault();
@@ -253,6 +255,7 @@ export default function LoginPage() {
       }
 
       const userId = data.user?.id;
+      setPendingSignupUserId(userId || "");
       const accessToken =
         data.session?.access_token ||
         (await supabase.auth.getSession()).data.session?.access_token;
@@ -292,8 +295,62 @@ export default function LoginPage() {
       setSignupPassword("");
       setSignupConfirmPassword("");
       setCompanyName("");
+      setPendingSignupUserId("");
     } finally {
       setLoadingSignup(false);
+    }
+  }
+
+  async function handleWrongSignupEmail() {
+    setError("");
+    setMessage("");
+
+    const email = signupEmail.trim().toLowerCase();
+
+    if (!email) {
+      setMessage("Enter the correct email and continue creating the company account.");
+      return;
+    }
+
+    if (!pendingSignupUserId) {
+      setSignupEmail("");
+      setSignupPassword("");
+      setSignupConfirmPassword("");
+      setMessage(
+        "The email field has been cleared. If a confirmation email was already sent to the wrong address, contact support so the pending account can be removed."
+      );
+      return;
+    }
+
+    setLoadingCancelSignup(true);
+
+    try {
+      const response = await fetch("/api/company-signup/cancel", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: pendingSignupUserId,
+          email,
+        }),
+      });
+
+      const result = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        setError(result?.error || "Could not clear the pending signup.");
+        return;
+      }
+
+      await supabase.auth.signOut();
+      setPendingSignupUserId("");
+      setSignupEmail("");
+      setSignupPassword("");
+      setSignupConfirmPassword("");
+      setMessage("Pending signup cleared. Enter the correct email and create the company account again.");
+    } finally {
+      setLoadingCancelSignup(false);
     }
   }
 
@@ -637,6 +694,19 @@ export default function LoginPage() {
                           disabled={loadingSignup}
                         >
                           {loadingSignup ? t("login.creatingCompany") : t("login.createCompanyButton")}
+                        </button>
+                      </div>
+
+                      <div className="md:col-span-2 rounded-[20px] border border-[#e7ddd0] bg-[#fcfaf7] px-4 py-3 text-sm leading-6 text-[#5f5245]">
+                        <div className="font-medium text-[#241c15]">{t("login.wrongEmailTitle")}</div>
+                        <div className="mt-1">{t("login.wrongEmailBody")}</div>
+                        <button
+                          type="button"
+                          className="mt-3 inline-flex items-center justify-center rounded-full border border-[#d8c7ab] px-4 py-2 text-sm font-medium text-[#7a5a23] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                          onClick={handleWrongSignupEmail}
+                          disabled={loadingSignup || loadingCancelSignup}
+                        >
+                          {loadingCancelSignup ? t("login.clearingSignup") : t("login.wrongEmailButton")}
                         </button>
                       </div>
                     </form>
