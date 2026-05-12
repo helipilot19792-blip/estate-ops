@@ -109,6 +109,7 @@ export default function PlatformPage() {
   const [organizationStatusFilter, setOrganizationStatusFilter] = useState("all");
   const [expandedOrganizationIds, setExpandedOrganizationIds] = useState<Set<string>>(() => new Set());
   const [deleteConfirmByOrg, setDeleteConfirmByOrg] = useState<Record<string, string>>({});
+  const [auditLogExpanded, setAuditLogExpanded] = useState(false);
 
   async function loadPlatformData() {
     setError("");
@@ -706,11 +707,21 @@ export default function PlatformPage() {
                   : "Run the audit log SQL migration in Supabase to turn this on."}
               </p>
             </div>
-            <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">
-              {auditLogs.length}
-            </span>
+            <div className="flex shrink-0 items-center gap-2">
+              <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#7f7263]">
+                {auditLogs.length}
+              </span>
+              <button
+                type="button"
+                onClick={() => setAuditLogExpanded((current) => !current)}
+                className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-medium text-[#5f5245] transition hover:bg-[#fcfaf7]"
+              >
+                {auditLogExpanded ? "Hide" : "Show"}
+              </button>
+            </div>
           </div>
 
+          {auditLogExpanded ? (
           <div className="mt-5 space-y-3">
             {!auditLogAvailable ? (
               <div className="rounded-[22px] border border-[#ecd7a8] bg-[#fff8e8] px-4 py-5 text-sm text-[#8a6112]">
@@ -757,6 +768,7 @@ export default function PlatformPage() {
               );
             })}
           </div>
+          ) : null}
         </section>
       </div>
     </main>
