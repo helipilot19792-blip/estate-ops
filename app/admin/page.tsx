@@ -1204,6 +1204,7 @@ export default function AdminPage() {
   const [inspectionLogStatus, setInspectionLogStatus] = useState("completed");
   const [inspectionLogFiles, setInspectionLogFiles] = useState<File[]>([]);
   const [savingInspectionLog, setSavingInspectionLog] = useState(false);
+  const [deletingInspectionLogId, setDeletingInspectionLogId] = useState<string | null>(null);
   const [inspectionHistoryExpanded, setInspectionHistoryExpanded] = useState(false);
 
 
@@ -4625,6 +4626,13 @@ This removes its linked members and deletes the grounds account.`
     await loadData();
   }
 
+  function startInspectionLog(ruleId: string) {
+    setInspectionLogRuleId(ruleId);
+    setTimeout(() => {
+      document.getElementById("inspection-log-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
+  }
+
   async function completeInspectionRule(rule: PropertyInspectionRule) {
     if (!currentOrganizationId) return;
     setError("");
@@ -4694,6 +4702,43 @@ This removes its linked members and deletes the grounds account.`
       setError(message.includes("property_inspection") ? `${message} Run supabase/add_property_inspections.sql first.` : message);
     } finally {
       setSavingInspectionLog(false);
+    }
+  }
+
+  async function deleteInspectionLog(log: PropertyInspectionLog) {
+    if (!currentOrganizationId) return;
+    const confirmed = window.confirm(`Delete this inspection log for ${getPropertyName(log.property_id)}? This removes the log entry and photo records from the portal.`);
+    if (!confirmed) return;
+
+    setError("");
+    setActionMessage("");
+    setDeletingInspectionLogId(log.id);
+
+    try {
+      const { error: photoError } = await supabase
+        .from("property_inspection_photos")
+        .delete()
+        .eq("inspection_log_id", log.id)
+        .eq("organization_id", currentOrganizationId);
+
+      if (photoError) throw photoError;
+
+      const { error: logError } = await supabase
+        .from("property_inspection_logs")
+        .delete()
+        .eq("id", log.id)
+        .eq("organization_id", currentOrganizationId);
+
+      if (logError) throw logError;
+
+      setInspectionLogs((logs) => logs.filter((item) => item.id !== log.id));
+      setInspectionPhotos((photos) => photos.filter((photo) => photo.inspection_log_id !== log.id));
+      setActionMessage("Inspection log deleted.");
+    } catch (err: any) {
+      const message = String(err?.message || "Could not delete inspection log.");
+      setError(message.includes("property_inspection") ? `${message} Run supabase/add_property_inspections.sql first.` : message);
+    } finally {
+      setDeletingInspectionLogId(null);
     }
   }
 
@@ -7437,6 +7482,40 @@ This removes its linked members and deletes the grounds account.`
             </div>
 
             <div className="space-y-4">
+              {dueInspectionRules.length > 0 ? (
+                <div className="rounded-[24px] border border-[#f4cf8d] bg-[#fff7e8] p-4 shadow-[0_10px_30px_rgba(245,158,11,0.10)]">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#9a6206]">
+                        Inspections
+                      </p>
+                      <h3 className="mt-1 text-base font-semibold text-[#6f4300]">
+                        Due now
+                      </h3>
+                    </div>
+                    <div className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-[#9a6206]">
+                      {dueInspectionRules.length}
+                    </div>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {dueInspectionRules.slice(0, 3).map((rule) => (
+                      <button
+                        key={`home-inspection-${rule.id}`}
+                        type="button"
+                        onClick={() => {
+                          setActiveSection("inspections");
+                          startInspectionLog(rule.id);
+                        }}
+                        className="w-full rounded-[16px] border border-[#f1cf8f] bg-white px-4 py-3 text-left transition hover:bg-[#fffaf0]"
+                      >
+                        <p className="text-sm font-semibold text-[#6f4300]">{rule.title}</p>
+                        <p className="mt-0.5 text-xs text-[#8b6a32]">{getPropertyName(rule.property_id)}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
               <div className="rounded-[24px] border border-[#c7ead7] bg-[#f0fbf5] p-4 shadow-[0_10px_30px_rgba(20,184,166,0.08)]">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -14989,7 +15068,7 @@ This removes its linked members and deletes the grounds account.`
               <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#b45309]">Admin-only reminders</div>
               <h2 className="mt-2 text-xl font-semibold tracking-tight text-[#241c15]">Property inspections</h2>
               <p className="mt-1 max-w-3xl text-sm leading-6 text-[#7f7263]">
-                Set recurring checks for fire extinguishers, smoke alarms, or any custom item. Logs stay downloadable for records.
+                Set recurring admin-only inspection schedules, complete due checks with notes and photos, and keep a downloadable inspection log.
               </p>
             </div>
             <button
@@ -15018,7 +15097,10 @@ This removes its linked members and deletes the grounds account.`
 
         <section className="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
           <div className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-            <h3 className="text-lg font-semibold text-[#241c15]">Create inspection rule</h3>
+            <h3 className="text-lg font-semibold text-[#241c15]">Add inspection schedule</h3>
+            <p className="mt-1 text-sm leading-6 text-[#7f7263]">
+              The start date is the first due date. After each completed inspection, the next due date advances by the frequency.
+            </p>
             <div className="mt-4 space-y-3">
               <select
                 value={inspectionPropertyId}
@@ -15039,31 +15121,40 @@ This removes its linked members and deletes the grounds account.`
                 className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
               />
               <div className="grid gap-3 md:grid-cols-3">
-                <select
-                  value={inspectionRuleFrequency}
-                  onChange={(e) => setInspectionRuleFrequency(e.target.value)}
-                  className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                >
-                  <option value="weekly">Weekly</option>
-                  <option value="monthly">Monthly</option>
-                  <option value="quarterly">Quarterly</option>
-                  <option value="yearly">Yearly</option>
-                  <option value="custom_days">Custom days</option>
-                </select>
-                <input
-                  type="number"
-                  min="1"
-                  value={inspectionRuleInterval}
-                  onChange={(e) => setInspectionRuleInterval(e.target.value)}
-                  className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                  placeholder="Every"
-                />
-                <input
-                  type="date"
-                  value={inspectionRuleNextDueDate}
-                  onChange={(e) => setInspectionRuleNextDueDate(e.target.value)}
-                  className="w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                />
+                <label className="text-xs font-medium text-[#6f6255]">
+                  Frequency
+                  <select
+                    value={inspectionRuleFrequency}
+                    onChange={(e) => setInspectionRuleFrequency(e.target.value)}
+                    className="mt-1 w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                  >
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                    <option value="quarterly">Quarterly</option>
+                    <option value="yearly">Yearly</option>
+                    <option value="custom_days">Custom days</option>
+                  </select>
+                </label>
+                <label className="text-xs font-medium text-[#6f6255]">
+                  Repeat every
+                  <input
+                    type="number"
+                    min="1"
+                    value={inspectionRuleInterval}
+                    onChange={(e) => setInspectionRuleInterval(e.target.value)}
+                    className="mt-1 w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                    placeholder="Every"
+                  />
+                </label>
+                <label className="text-xs font-medium text-[#6f6255]">
+                  Start date
+                  <input
+                    type="date"
+                    value={inspectionRuleNextDueDate}
+                    onChange={(e) => setInspectionRuleNextDueDate(e.target.value)}
+                    className="mt-1 w-full rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                  />
+                </label>
               </div>
               <textarea
                 value={inspectionRuleChecksText}
@@ -15090,6 +15181,9 @@ This removes its linked members and deletes the grounds account.`
 
           <div className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
             <h3 className="text-lg font-semibold text-[#241c15]">Due inspections</h3>
+            <p className="mt-1 text-sm text-[#7f7263]">
+              These also appear in Operations Alerts and Today at a Glance.
+            </p>
             <div className="mt-4 space-y-3">
               {dueInspectionRules.length === 0 ? (
                 <div className="rounded-[22px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-4 py-5 text-sm text-[#8a7b68]">
@@ -15115,7 +15209,7 @@ This removes its linked members and deletes the grounds account.`
                     </div>
                     <button
                       type="button"
-                      onClick={() => setInspectionLogRuleId(rule.id)}
+                      onClick={() => startInspectionLog(rule.id)}
                       className="rounded-full bg-[#241c15] px-4 py-2 text-sm font-semibold text-white"
                     >
                       Log inspection
@@ -15127,8 +15221,11 @@ This removes its linked members and deletes the grounds account.`
           </div>
         </section>
 
-        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-          <h3 className="text-lg font-semibold text-[#241c15]">Log completed inspection</h3>
+        <section id="inspection-log-form" className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <h3 className="text-lg font-semibold text-[#241c15]">Complete and log inspection</h3>
+          <p className="mt-1 text-sm text-[#7f7263]">
+            Pick the schedule, add notes and photos, then save the log. Saving moves that schedule to its next due date.
+          </p>
           <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_180px]">
             <select
               value={inspectionLogRuleId}
@@ -15164,14 +15261,29 @@ This removes its linked members and deletes the grounds account.`
           />
           <div className="mt-3 rounded-[20px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] p-4">
             <label className="block text-sm font-medium text-[#5f5245]">Optional inspection photos</label>
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              multiple
-              className="mt-2 block w-full text-sm text-[#6c5f51]"
-              onChange={(e) => setInspectionLogFiles(Array.from(e.target.files || []))}
-            />
+            <div className="mt-3 flex flex-wrap gap-2">
+              <label className="inline-flex cursor-pointer items-center rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-medium text-[#5f4c3b] hover:bg-[#f7f1e8]">
+                Choose photos
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => setInspectionLogFiles(Array.from(e.target.files || []))}
+                />
+              </label>
+              <label className="inline-flex cursor-pointer items-center rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-medium text-[#5f4c3b] hover:bg-[#f7f1e8]">
+                Take photo
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => setInspectionLogFiles(Array.from(e.target.files || []))}
+                />
+              </label>
+            </div>
             <div className="mt-2 text-xs text-[#8a7b68]">
               {inspectionLogFiles.length ? `${inspectionLogFiles.length} photo${inspectionLogFiles.length === 1 ? "" : "s"} selected` : "No photos selected."}
             </div>
@@ -15182,7 +15294,7 @@ This removes its linked members and deletes the grounds account.`
             onClick={() => selectedLogRule && void completeInspectionRule(selectedLogRule)}
             className="mt-4 rounded-full bg-[#241c15] px-5 py-3 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60"
           >
-            {savingInspectionLog ? "Saving..." : "Complete and update next due date"}
+            {savingInspectionLog ? "Saving..." : "Save inspection log"}
           </button>
         </section>
 
@@ -15190,7 +15302,9 @@ This removes its linked members and deletes the grounds account.`
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <h3 className="text-lg font-semibold text-[#241c15]">Inspection rules and history</h3>
-              <p className="mt-1 text-sm text-[#7f7263]">Rules stay active until paused. History is downloadable as CSV.</p>
+              <p className="mt-1 text-sm text-[#7f7263]">
+                Active schedules create reminders. Paused schedules stay saved but stop appearing as due until reactivated.
+              </p>
             </div>
             <button
               type="button"
@@ -15245,12 +15359,22 @@ This removes its linked members and deletes the grounds account.`
                         <div className="font-semibold text-[#241c15]">{log.inspection_title}</div>
                         <div className="mt-1 text-sm text-[#6f6255]">{getPropertyName(log.property_id)}</div>
                         <div className="mt-1 text-xs text-[#8a7b68]">
-                          {log.inspected_at ? new Date(log.inspected_at).toLocaleString() : "No date"} by {getProfileDisplayName(log.inspected_by_profile_id)}
-                        </div>
+                        {log.inspected_at ? new Date(log.inspected_at).toLocaleString() : "No date"} by {getProfileDisplayName(log.inspected_by_profile_id)}
                       </div>
-                      <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${log.status === "needs_attention" ? "border-[#fecaca] bg-[#fff1f2] text-[#b91c1c]" : "border-[#bbdfc0] bg-[#f0fbf2] text-[#236b30]"}`}>
-                        {log.status === "needs_attention" ? "Needs attention" : "Completed"}
-                      </span>
+                    </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${log.status === "needs_attention" ? "border-[#fecaca] bg-[#fff1f2] text-[#b91c1c]" : "border-[#bbdfc0] bg-[#f0fbf2] text-[#236b30]"}`}>
+                          {log.status === "needs_attention" ? "Needs attention" : "Completed"}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => void deleteInspectionLog(log)}
+                          disabled={deletingInspectionLogId === log.id}
+                          className="rounded-full border border-[#efc6c6] bg-white px-3 py-1 text-xs font-semibold text-[#8a2e22] transition hover:bg-[#fff5f5] disabled:opacity-60"
+                        >
+                          {deletingInspectionLogId === log.id ? "Deleting..." : "Delete log"}
+                        </button>
+                      </div>
                     </div>
                     {log.notes ? <div className="mt-3 whitespace-pre-wrap text-sm text-[#6f6255]">{log.notes}</div> : null}
                     {photos.length > 0 ? (
