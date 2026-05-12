@@ -308,6 +308,10 @@ export default function LoginPage() {
             setError(
               "The organization trial fields are not in Supabase yet. Run supabase/add_organization_trial_fields.sql, then try creating the company again."
             );
+          } else if (message.includes("row-level security") && message.includes("organizations")) {
+            setError(
+              "Company signup is blocked by the organization security policy. Run supabase/fix_company_signup_rls.sql in Supabase, then try creating the company again."
+            );
           } else {
             setError(message);
           }
