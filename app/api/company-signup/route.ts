@@ -20,15 +20,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing access token." }, { status: 401 });
     }
 
-    const body = await req.json().catch(() => null);
-    const fullName = typeof body?.fullName === "string" ? body.fullName.trim() : "";
-    const phone = typeof body?.phone === "string" ? body.phone.trim() : "";
-    const companyName = typeof body?.companyName === "string" ? body.companyName.trim() : "";
-
-    if (!fullName || !phone || !companyName) {
-      return NextResponse.json({ error: "Missing company signup details." }, { status: 400 });
-    }
-
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const anonKey =
       process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
@@ -58,6 +49,22 @@ export async function POST(req: NextRequest) {
 
     if (userError || !user) {
       return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
+    }
+
+    const body = await req.json().catch(() => null);
+    const metadata = user.user_metadata || {};
+    const fullName =
+      (typeof body?.fullName === "string" ? body.fullName.trim() : "") ||
+      (typeof metadata.full_name === "string" ? metadata.full_name.trim() : "");
+    const phone =
+      (typeof body?.phone === "string" ? body.phone.trim() : "") ||
+      (typeof metadata.phone === "string" ? metadata.phone.trim() : "");
+    const companyName =
+      (typeof body?.companyName === "string" ? body.companyName.trim() : "") ||
+      (typeof metadata.company_name === "string" ? metadata.company_name.trim() : "");
+
+    if (!fullName || !phone || !companyName) {
+      return NextResponse.json({ error: "Missing company signup details." }, { status: 400 });
     }
 
     const service = createClient(supabaseUrl, serviceRoleKey, {

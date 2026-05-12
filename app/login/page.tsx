@@ -77,6 +77,33 @@ async function getPortalDestinationForUser(userId: string, role: string | null |
   return "/login";
 }
 
+async function finishCompanySignup(accessToken: string, details?: {
+  fullName?: string;
+  phone?: string;
+  companyName?: string;
+}) {
+  const response = await fetch("/api/company-signup", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      fullName: details?.fullName || "",
+      phone: details?.phone || "",
+      companyName: details?.companyName || "",
+    }),
+  });
+
+  const result = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(result?.error || "Failed to create company workspace.");
+  }
+
+  return result;
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const { t } = useI18n();
@@ -146,14 +173,33 @@ export default function LoginPage() {
         return;
       }
 
-      const destination = await getPortalDestinationForUser(user.id, profile.role);
-
       const {
         data: { session },
       } = await supabase.auth.getSession();
 
       if (!session) {
         setError("Login succeeded, but no session was ready yet. Please try again.");
+        return;
+      }
+
+      const metadata = user.user_metadata || {};
+
+      if (profile.role === "pending" && metadata.signup_kind === "company_admin") {
+        try {
+          await finishCompanySignup(session.access_token);
+          window.location.href = "/admin";
+          return;
+        } catch (signupError) {
+          const message = signupError instanceof Error ? signupError.message : "Could not finish company setup.";
+          setError(message);
+          return;
+        }
+      }
+
+      const destination = await getPortalDestinationForUser(user.id, profile.role);
+
+      if (destination === "/login") {
+        setError("This sign-in is not linked to a company, cleaner, grounds, or owner account yet. If you were invited, use the newest invite email. If you were creating a company, start the company signup again.");
         return;
       }
 
@@ -246,6 +292,12 @@ export default function LoginPage() {
         password: signupPassword,
         options: {
           emailRedirectTo: `${window.location.origin}/auth/confirm?next=/login`,
+          data: {
+            full_name: signupName.trim(),
+            phone: signupPhone.trim(),
+            company_name: companyName.trim(),
+            signup_kind: "company_admin",
+          },
         },
       });
 
@@ -260,28 +312,27 @@ export default function LoginPage() {
         data.session?.access_token ||
         (await supabase.auth.getSession()).data.session?.access_token;
 
-      if (!userId || !accessToken) {
-        setError("Account created, but no active session was available to create the company. Confirm your email, then log in.");
+      if (!userId) {
+        setError("Account created, but no user id was returned. Confirm your email, then log in.");
         return;
       }
 
-      const signupResponse = await fetch("/api/company-signup", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
+      if (!accessToken) {
+        setMessage("Account created. Check your email to confirm it, then log in here to finish creating the company workspace.");
+        setSignupPassword("");
+        setSignupConfirmPassword("");
+        return;
+      }
+
+      try {
+        await finishCompanySignup(accessToken, {
           fullName: signupName.trim(),
           phone: signupPhone.trim(),
           companyName: companyName.trim(),
-        }),
-      });
-
-      const signupResult = await signupResponse.json().catch(() => null);
-
-      if (!signupResponse.ok) {
-        setError(signupResult?.error || "Failed to create company workspace.");
+        });
+      } catch (signupError) {
+        const message = signupError instanceof Error ? signupError.message : "Failed to create company workspace.";
+        setError(message);
         return;
       }
 
