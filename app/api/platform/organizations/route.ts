@@ -6,7 +6,8 @@ export const dynamic = "force-dynamic";
 
 type PlatformAction =
   | { type: "extend_trial"; organizationId: string; days?: number }
-  | { type: "set_status"; organizationId: string; status: "trialing" | "active" | "past_due" | "canceled" | "suspended" };
+  | { type: "set_status"; organizationId: string; status: "trialing" | "active" | "past_due" | "canceled" | "suspended" }
+  | { type: "delete_organization"; organizationId: string; confirmName: string };
 
 type OrganizationRow = {
   id: string;
@@ -382,6 +383,157 @@ async function loadFeatureUsageSummary(serviceClient: ReturnType<typeof getClien
   return summarizeFeatureUsage((data ?? []) as FeatureUsageEventRow[]);
 }
 
+async function deleteRowsByOrganization(
+  serviceClient: ReturnType<typeof getClients>["serviceClient"],
+  table: string,
+  organizationId: string
+) {
+  const { count, error } = await serviceClient
+    .from(table)
+    .delete({ count: "exact" })
+    .eq("organization_id", organizationId);
+
+  if (error) {
+    if (error.code === "42P01" || error.code === "42703") return 0;
+    throw new Error(`${table}: ${error.message}`);
+  }
+
+  return count ?? 0;
+}
+
+async function deleteRowsByIds(
+  serviceClient: ReturnType<typeof getClients>["serviceClient"],
+  table: string,
+  column: string,
+  ids: string[]
+) {
+  if (ids.length === 0) return 0;
+
+  const { count, error } = await serviceClient
+    .from(table)
+    .delete({ count: "exact" })
+    .in(column, ids);
+
+  if (error) {
+    if (error.code === "42P01" || error.code === "42703") return 0;
+    throw new Error(`${table}: ${error.message}`);
+  }
+
+  return count ?? 0;
+}
+
+async function loadIdsByOrganization(
+  serviceClient: ReturnType<typeof getClients>["serviceClient"],
+  table: string,
+  organizationId: string
+) {
+  const { data, error } = await serviceClient
+    .from(table)
+    .select("id")
+    .eq("organization_id", organizationId);
+
+  if (error) {
+    if (error.code === "42P01" || error.code === "42703") return [];
+    throw new Error(`${table}: ${error.message}`);
+  }
+
+  return (data ?? []).map((row: { id: string }) => row.id);
+}
+
+async function loadIdsByColumn(
+  serviceClient: ReturnType<typeof getClients>["serviceClient"],
+  table: string,
+  column: string,
+  ids: string[]
+) {
+  if (ids.length === 0) return [];
+
+  const { data, error } = await serviceClient
+    .from(table)
+    .select("id")
+    .in(column, ids);
+
+  if (error) {
+    if (error.code === "42P01" || error.code === "42703") return [];
+    throw new Error(`${table}: ${error.message}`);
+  }
+
+  return (data ?? []).map((row: { id: string }) => row.id);
+}
+
+async function deleteOrganizationWorkspace(
+  serviceClient: ReturnType<typeof getClients>["serviceClient"],
+  organizationId: string
+) {
+  const propertyIds = await loadIdsByOrganization(serviceClient, "properties", organizationId);
+  const turnoverJobIds = await loadIdsByOrganization(serviceClient, "turnover_jobs", organizationId);
+  const groundsJobIds = await loadIdsByOrganization(serviceClient, "grounds_jobs", organizationId);
+  const maintenanceFlagIds = await loadIdsByOrganization(serviceClient, "property_maintenance_flags", organizationId);
+  const cleanerAccountIds = await loadIdsByOrganization(serviceClient, "cleaner_accounts", organizationId);
+  const groundsAccountIds = await loadIdsByOrganization(serviceClient, "grounds_accounts", organizationId);
+  const ownerAccountIds = await loadIdsByOrganization(serviceClient, "owner_accounts", organizationId);
+  const ownerInvoiceIds = await loadIdsByOrganization(serviceClient, "owner_invoices", organizationId);
+  const sopIds = await loadIdsByColumn(serviceClient, "property_sops", "property_id", propertyIds);
+
+  let deleted = 0;
+  const summary: Record<string, number> = {};
+  const track = async (table: string, action: Promise<number>) => {
+    const count = await action;
+    summary[table] = count;
+    deleted += count;
+  };
+
+  await track("chat_hidden_items", deleteRowsByOrganization(serviceClient, "chat_hidden_items", organizationId));
+  await track("chat_messages", deleteRowsByOrganization(serviceClient, "chat_messages", organizationId));
+  await track("chat_participants", deleteRowsByOrganization(serviceClient, "chat_participants", organizationId));
+  await track("chat_conversations", deleteRowsByOrganization(serviceClient, "chat_conversations", organizationId));
+  await track("owner_invoice_hidden_items", deleteRowsByIds(serviceClient, "owner_invoice_hidden_items", "invoice_id", ownerInvoiceIds));
+  await track("owner_invoices", deleteRowsByOrganization(serviceClient, "owner_invoices", organizationId));
+  await track("property_invoice_rates", deleteRowsByOrganization(serviceClient, "property_invoice_rates", organizationId));
+  await track("organization_invoice_settings", deleteRowsByOrganization(serviceClient, "organization_invoice_settings", organizationId));
+  await track("feature_usage_events", deleteRowsByOrganization(serviceClient, "feature_usage_events", organizationId));
+  await track("document_vault_files", deleteRowsByOrganization(serviceClient, "document_vault_files", organizationId));
+  await track("property_maintenance_flag_images", deleteRowsByIds(serviceClient, "property_maintenance_flag_images", "flag_id", maintenanceFlagIds));
+  await track("property_maintenance_flags", deleteRowsByOrganization(serviceClient, "property_maintenance_flags", organizationId));
+  await track("property_calendars", deleteRowsByIds(serviceClient, "property_calendars", "property_id", propertyIds));
+  await track("property_booking_events", deleteRowsByOrganization(serviceClient, "property_booking_events", organizationId));
+  await track("turnover_job_slots", deleteRowsByIds(serviceClient, "turnover_job_slots", "job_id", turnoverJobIds));
+  await track("grounds_job_slots", deleteRowsByIds(serviceClient, "grounds_job_slots", "job_id", groundsJobIds));
+  await track("turnover_jobs", deleteRowsByOrganization(serviceClient, "turnover_jobs", organizationId));
+  await track("grounds_jobs", deleteRowsByOrganization(serviceClient, "grounds_jobs", organizationId));
+  await track("property_access", deleteRowsByIds(serviceClient, "property_access", "property_id", propertyIds));
+  await track("property_cleaner_account_assignments", deleteRowsByIds(serviceClient, "property_cleaner_account_assignments", "property_id", propertyIds));
+  await track("property_grounds_account_assignments", deleteRowsByIds(serviceClient, "property_grounds_account_assignments", "property_id", propertyIds));
+  await track("property_grounds_recurring_tasks", deleteRowsByIds(serviceClient, "property_grounds_recurring_tasks", "property_id", propertyIds));
+  await track("property_grounds_recurring_rules", deleteRowsByIds(serviceClient, "property_grounds_recurring_rules", "property_id", propertyIds));
+  await track("property_sop_images", deleteRowsByIds(serviceClient, "property_sop_images", "sop_id", sopIds));
+  await track("property_sops", deleteRowsByIds(serviceClient, "property_sops", "property_id", propertyIds));
+  await track("owner_property_access_by_property", deleteRowsByIds(serviceClient, "owner_property_access", "property_id", propertyIds));
+  await track("owner_property_access_by_owner", deleteRowsByIds(serviceClient, "owner_property_access", "owner_account_id", ownerAccountIds));
+  await track("owner_accounts", deleteRowsByOrganization(serviceClient, "owner_accounts", organizationId));
+  await track("cleaner_account_members", deleteRowsByIds(serviceClient, "cleaner_account_members", "cleaner_account_id", cleanerAccountIds));
+  await track("grounds_account_members", deleteRowsByIds(serviceClient, "grounds_account_members", "grounds_account_id", groundsAccountIds));
+  await track("cleaner_accounts", deleteRowsByOrganization(serviceClient, "cleaner_accounts", organizationId));
+  await track("grounds_accounts", deleteRowsByOrganization(serviceClient, "grounds_accounts", organizationId));
+  await track("organization_invites", deleteRowsByOrganization(serviceClient, "organization_invites", organizationId));
+  await track("support_tickets", deleteRowsByOrganization(serviceClient, "support_tickets", organizationId));
+  await track("support_requests", deleteRowsByOrganization(serviceClient, "support_requests", organizationId));
+  await track("properties", deleteRowsByOrganization(serviceClient, "properties", organizationId));
+  await track("organization_members", deleteRowsByOrganization(serviceClient, "organization_members", organizationId));
+
+  const { count: organizationCount, error: organizationDeleteError } = await serviceClient
+    .from("organizations")
+    .delete({ count: "exact" })
+    .eq("id", organizationId);
+
+  if (organizationDeleteError) {
+    throw new Error(`organizations: ${organizationDeleteError.message}`);
+  }
+
+  summary.organizations = organizationCount ?? 0;
+  return { deletedRows: deleted + (organizationCount ?? 0), summary };
+}
+
 export async function GET(req: NextRequest) {
   try {
     const authHeader = req.headers.get("authorization");
@@ -491,6 +643,58 @@ export async function POST(req: NextRequest) {
         targetId: body.organizationId,
         metadata: {
           status: body.status,
+        },
+      });
+    } else if (body.type === "delete_organization") {
+      const { data: organization, error: orgError } = await serviceClient
+        .from("organizations")
+        .select("id,name,slug")
+        .eq("id", body.organizationId)
+        .single();
+
+      if (orgError || !organization) {
+        return NextResponse.json({ ok: false, error: orgError?.message || "Organization not found." }, { status: 404 });
+      }
+
+      const expectedName = String(organization.name || organization.slug || organization.id).trim();
+      const confirmedName = String(body.confirmName || "").trim();
+
+      if (!confirmedName || confirmedName !== expectedName) {
+        return NextResponse.json(
+          { ok: false, error: `Type "${expectedName}" to confirm this deletion.` },
+          { status: 400 }
+        );
+      }
+
+      await writeAuditLog(serviceClient, {
+        actorProfileId: profile.id,
+        actorEmail: profile.email,
+        actorRole: profile.role,
+        organizationId: body.organizationId,
+        actionType: "platform.delete_organization_requested",
+        targetType: "organization",
+        targetId: body.organizationId,
+        metadata: {
+          name: organization.name,
+          slug: organization.slug,
+        },
+      });
+
+      const deletion = await deleteOrganizationWorkspace(serviceClient, body.organizationId);
+
+      await writeAuditLog(serviceClient, {
+        actorProfileId: profile.id,
+        actorEmail: profile.email,
+        actorRole: profile.role,
+        organizationId: null,
+        actionType: "platform.delete_organization_completed",
+        targetType: "organization",
+        targetId: body.organizationId,
+        metadata: {
+          name: organization.name,
+          slug: organization.slug,
+          deleted_rows: deletion.deletedRows,
+          summary: deletion.summary,
         },
       });
     } else {

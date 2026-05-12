@@ -105,6 +105,10 @@ export default function PlatformPage() {
   const [error, setError] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [actingOrganizationId, setActingOrganizationId] = useState<string | null>(null);
+  const [organizationSearch, setOrganizationSearch] = useState("");
+  const [organizationStatusFilter, setOrganizationStatusFilter] = useState("all");
+  const [expandedOrganizationIds, setExpandedOrganizationIds] = useState<Set<string>>(() => new Set());
+  const [deleteConfirmByOrg, setDeleteConfirmByOrg] = useState<Record<string, string>>({});
 
   async function loadPlatformData() {
     setError("");
@@ -157,6 +161,38 @@ export default function PlatformPage() {
     );
   }, [organizations]);
 
+  const filteredOrganizations = useMemo(() => {
+    const query = organizationSearch.trim().toLowerCase();
+
+    return organizations.filter((organization) => {
+      const status = (organization.subscription_status || "trialing").toLowerCase();
+      const admins = organization.admins
+        .map((admin) => `${admin.full_name || ""} ${admin.email || ""}`)
+        .join(" ")
+        .toLowerCase();
+      const haystack = `${organization.name || ""} ${organization.slug || ""} ${admins}`.toLowerCase();
+      const matchesQuery = !query || haystack.includes(query);
+      const matchesStatus = organizationStatusFilter === "all" || status === organizationStatusFilter;
+      return matchesQuery && matchesStatus;
+    });
+  }, [organizations, organizationSearch, organizationStatusFilter]);
+
+  function getDeleteConfirmationText(organization: PlatformOrganization) {
+    return String(organization.name || organization.slug || organization.id).trim();
+  }
+
+  function toggleOrganizationExpanded(organizationId: string) {
+    setExpandedOrganizationIds((current) => {
+      const next = new Set(current);
+      if (next.has(organizationId)) {
+        next.delete(organizationId);
+      } else {
+        next.add(organizationId);
+      }
+      return next;
+    });
+  }
+
   async function handleAction(body: Record<string, unknown>, message: string) {
     try {
       setError("");
@@ -191,11 +227,45 @@ export default function PlatformPage() {
       setAuditLogAvailable(payload.auditLogAvailable !== false);
       setFeatureUsage((payload.featureUsage || null) as FeatureUsageSummary | null);
       setStatusMessage(message);
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Platform action failed.");
+      return false;
     } finally {
       setActingOrganizationId(null);
     }
+  }
+
+  async function handleDeleteOrganization(organization: PlatformOrganization) {
+    const expectedText = getDeleteConfirmationText(organization);
+    const confirmedText = String(deleteConfirmByOrg[organization.id] || "").trim();
+
+    if (confirmedText !== expectedText) {
+      setError(`Type "${expectedText}" to confirm this company deletion.`);
+      return;
+    }
+
+    const deleted = await handleAction(
+      {
+        type: "delete_organization",
+        organizationId: organization.id,
+        confirmName: confirmedText,
+      },
+      `${organization.name || "Company"} and its company data were removed.`
+    );
+
+    if (!deleted) return;
+
+    setExpandedOrganizationIds((current) => {
+      const next = new Set(current);
+      next.delete(organization.id);
+      return next;
+    });
+    setDeleteConfirmByOrg((current) => {
+      const next = { ...current };
+      delete next[organization.id];
+      return next;
+    });
   }
 
   if (loading) {
@@ -334,18 +404,82 @@ export default function PlatformPage() {
           )}
         </section>
 
+        <section className="mt-6 rounded-[28px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8a7b68]">Company Directory</div>
+              <h2 className="mt-2 text-xl font-semibold tracking-tight text-[#241c15]">Manage companies</h2>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-[#6f6255]">
+                Search, filter, expand only the tenant you need, and remove test companies when they are no longer useful.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setExpandedOrganizationIds(new Set(filteredOrganizations.map((organization) => organization.id)))}
+                className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-medium text-[#5f5245] transition hover:bg-[#fcfaf7]"
+              >
+                Expand shown
+              </button>
+              <button
+                type="button"
+                onClick={() => setExpandedOrganizationIds(new Set())}
+                className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-medium text-[#5f5245] transition hover:bg-[#fcfaf7]"
+              >
+                Collapse all
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_240px_120px]">
+            <input
+              type="search"
+              value={organizationSearch}
+              onChange={(event) => setOrganizationSearch(event.target.value)}
+              placeholder="Search company, slug, or admin"
+              className="w-full rounded-full border border-[#d8c7ab] bg-[#fffdf9] px-4 py-3 text-sm outline-none transition focus:border-[#b99349] focus:ring-4 focus:ring-[#f0dfbc]"
+            />
+            <select
+              value={organizationStatusFilter}
+              onChange={(event) => setOrganizationStatusFilter(event.target.value)}
+              className="w-full rounded-full border border-[#d8c7ab] bg-[#fffdf9] px-4 py-3 text-sm outline-none transition focus:border-[#b99349] focus:ring-4 focus:ring-[#f0dfbc]"
+            >
+              <option value="all">All statuses</option>
+              <option value="trialing">Trialing</option>
+              <option value="active">Active</option>
+              <option value="past_due">Past due</option>
+              <option value="suspended">Suspended</option>
+              <option value="canceled">Canceled</option>
+            </select>
+            <div className="flex items-center justify-center rounded-full border border-[#eadfce] bg-[#fcfaf7] px-4 py-3 text-sm font-semibold text-[#5f5245]">
+              {filteredOrganizations.length} shown
+            </div>
+          </div>
+        </section>
+
         <section className="mt-6 space-y-4">
-          {organizations.map((organization) => {
+          {filteredOrganizations.length === 0 ? (
+            <div className="rounded-[28px] border border-dashed border-[#d8c7ab] bg-white px-5 py-8 text-sm text-[#7f7263]">
+              No companies match the current search and status filter.
+            </div>
+          ) : null}
+
+          {filteredOrganizations.map((organization) => {
             const daysRemaining = getTrialDaysRemaining(organization.trial_ends_at);
             const isActing = actingOrganizationId === organization.id;
             const usage = featureUsage?.byOrganization?.[organization.id] || null;
+            const isExpanded = expandedOrganizationIds.has(organization.id);
+            const deleteConfirmationText = getDeleteConfirmationText(organization);
+            const deleteValue = deleteConfirmByOrg[organization.id] || "";
+            const jobCount = organization.cleaning_job_count + organization.grounds_job_count;
 
             return (
               <div
                 key={organization.id}
                 className="rounded-[28px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]"
               >
-                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-3">
                       <h2 className="text-xl font-semibold tracking-tight text-[#241c15]">
@@ -361,7 +495,34 @@ export default function PlatformPage() {
                       {organization.created_at ? new Date(organization.created_at).toLocaleDateString() : "Unknown"}
                     </div>
 
-                    <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-[#5f5245]">
+                      <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1">
+                        {organization.property_count} properties
+                      </span>
+                      <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1">
+                        {jobCount} jobs
+                      </span>
+                      <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1">
+                        {organization.member_count} members
+                      </span>
+                      <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1">
+                        {usage ? `${usage.total_events} feature events` : "No feature usage"}
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => toggleOrganizationExpanded(organization.id)}
+                    className="rounded-full border border-[#d8c7ab] bg-[#241c15] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#3a2d23]"
+                  >
+                    {isExpanded ? "Collapse" : "Manage"}
+                  </button>
+                </div>
+
+                {isExpanded ? (
+                  <div className="mt-5 border-t border-[#efe6dc] pt-5">
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                       <div className="rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3">
                         <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Trial</div>
                         <div className="mt-2 text-sm font-semibold text-[#241c15]">
@@ -380,7 +541,7 @@ export default function PlatformPage() {
                       <div className="rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3">
                         <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Usage</div>
                         <div className="mt-2 text-sm font-semibold text-[#241c15]">
-                          {organization.property_count} properties | {organization.cleaning_job_count + organization.grounds_job_count} jobs
+                          {organization.property_count} properties | {jobCount} jobs
                         </div>
                       </div>
 
@@ -438,66 +599,98 @@ export default function PlatformPage() {
                         </div>
                       ) : null}
                     </div>
+
+                    <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
+                      <div className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-4">
+                        <div className="text-sm font-semibold text-[#241c15]">Status controls</div>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                          <button
+                            type="button"
+                            disabled={isActing}
+                            onClick={() =>
+                              void handleAction(
+                                { type: "extend_trial", organizationId: organization.id, days: 30 },
+                                `Extended ${organization.name || "organization"} trial by 30 days.`
+                              )
+                            }
+                            className="rounded-full border border-[#d8c7ab] bg-[#fff8e8] px-4 py-2.5 text-sm font-medium text-[#8a6112] transition hover:bg-[#fff2cf] disabled:opacity-60"
+                          >
+                            {isActing ? "Working..." : "Extend 30 days"}
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={isActing}
+                            onClick={() =>
+                              void handleAction(
+                                { type: "set_status", organizationId: organization.id, status: "active" },
+                                `${organization.name || "Organization"} marked active.`
+                              )
+                            }
+                            className="rounded-full border border-[#cfe4cf] bg-[#f4fbf4] px-4 py-2.5 text-sm font-medium text-[#2f6b2f] transition hover:bg-[#e8f7e8] disabled:opacity-60"
+                          >
+                            Mark active
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={isActing}
+                            onClick={() =>
+                              void handleAction(
+                                { type: "set_status", organizationId: organization.id, status: "trialing" },
+                                `${organization.name || "Organization"} moved back to trialing.`
+                              )
+                            }
+                            className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2.5 text-sm font-medium text-[#5f5245] transition hover:bg-white disabled:opacity-60"
+                          >
+                            Set trialing
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={isActing}
+                            onClick={() =>
+                              void handleAction(
+                                { type: "set_status", organizationId: organization.id, status: "suspended" },
+                                `${organization.name || "Organization"} marked suspended.`
+                              )
+                            }
+                            className="rounded-full border border-[#efc6c6] bg-[#fff5f5] px-4 py-2.5 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-60"
+                          >
+                            Suspend
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="rounded-[22px] border border-[#efc6c6] bg-[#fff5f5] px-4 py-4">
+                        <div className="text-sm font-semibold text-[#8a2e22]">Delete company data</div>
+                        <p className="mt-1 text-xs leading-5 text-[#8a2e22]">
+                          Removes this company workspace and tenant records. Auth user accounts are left alone.
+                        </p>
+                        <input
+                          type="text"
+                          value={deleteValue}
+                          onChange={(event) =>
+                            setDeleteConfirmByOrg((current) => ({
+                              ...current,
+                              [organization.id]: event.target.value,
+                            }))
+                          }
+                          placeholder={`Type ${deleteConfirmationText}`}
+                          className="mt-3 w-full rounded-full border border-[#efc6c6] bg-white px-4 py-2.5 text-sm outline-none transition focus:border-[#d94a4a] focus:ring-4 focus:ring-[#ffe0e0]"
+                        />
+                        <button
+                          type="button"
+                          disabled={isActing || deleteValue.trim() !== deleteConfirmationText}
+                          onClick={() => void handleDeleteOrganization(organization)}
+                          className="mt-3 w-full rounded-full border border-[#e08b8b] bg-[#d93d3d] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#b72f2f] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {isActing ? "Deleting..." : "Delete company"}
+                        </button>
+                      </div>
+                    </div>
                   </div>
-
-                  <div className="w-full space-y-2 xl:w-[240px]">
-                    <button
-                      type="button"
-                      disabled={isActing}
-                      onClick={() =>
-                        void handleAction(
-                          { type: "extend_trial", organizationId: organization.id, days: 30 },
-                          `Extended ${organization.name || "organization"} trial by 30 days.`
-                        )
-                      }
-                      className="w-full rounded-full border border-[#d8c7ab] bg-[#fff8e8] px-4 py-2.5 text-sm font-medium text-[#8a6112] transition hover:bg-[#fff2cf] disabled:opacity-60"
-                    >
-                      {isActing ? "Working..." : "Extend trial 30 days"}
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={isActing}
-                      onClick={() =>
-                        void handleAction(
-                          { type: "set_status", organizationId: organization.id, status: "active" },
-                          `${organization.name || "Organization"} marked active.`
-                        )
-                      }
-                      className="w-full rounded-full border border-[#cfe4cf] bg-[#f4fbf4] px-4 py-2.5 text-sm font-medium text-[#2f6b2f] transition hover:bg-[#e8f7e8] disabled:opacity-60"
-                    >
-                      Mark active
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={isActing}
-                      onClick={() =>
-                        void handleAction(
-                          { type: "set_status", organizationId: organization.id, status: "trialing" },
-                          `${organization.name || "Organization"} moved back to trialing.`
-                        )
-                      }
-                      className="w-full rounded-full border border-[#d8c7ab] bg-white px-4 py-2.5 text-sm font-medium text-[#5f5245] transition hover:bg-[#fcfaf7] disabled:opacity-60"
-                    >
-                      Set trialing
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={isActing}
-                      onClick={() =>
-                        void handleAction(
-                          { type: "set_status", organizationId: organization.id, status: "suspended" },
-                          `${organization.name || "Organization"} marked suspended.`
-                        )
-                      }
-                      className="w-full rounded-full border border-[#efc6c6] bg-[#fff5f5] px-4 py-2.5 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-60"
-                    >
-                      Suspend org
-                    </button>
-                  </div>
-                </div>
+                ) : null}
               </div>
             );
           })}
