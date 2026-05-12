@@ -811,6 +811,28 @@ const WEEKDAY_OPTIONS = [
   { value: "6", label: "Saturday" },
 ];
 
+const WASTE_PICKUP_TYPE_OPTIONS = ["Garbage", "Recycling", "Compost", "Yard waste", "Bulk items"];
+
+function getWastePickupTypes(value: string | null | undefined) {
+  const normalized = (value || "").toLowerCase();
+  return WASTE_PICKUP_TYPE_OPTIONS.filter((option) =>
+    normalized.includes(option.toLowerCase())
+  );
+}
+
+function getWastePickupLabel(value: string | null | undefined) {
+  const selected = getWastePickupTypes(value);
+  return selected.length > 0 ? selected.join(", ") : value || "";
+}
+
+function toggleWastePickupType(currentValue: string, option: string) {
+  const current = new Set(getWastePickupTypes(currentValue));
+  if (current.has(option)) current.delete(option);
+  else current.add(option);
+
+  return WASTE_PICKUP_TYPE_OPTIONS.filter((item) => current.has(item)).join(", ");
+}
+
 function getPropertyColor(propertyId: string | null) {
   if (!propertyId) {
     return { bg: "#f4efe8", text: "#6f6255", border: "#d8c7ab" };
@@ -4526,6 +4548,11 @@ This removes its linked members and deletes the grounds account.`
 
   async function saveSelectedPropertyManualDetails() {
     if (!selectedPropertyId) return;
+    if (!currentOrganizationId) {
+      setError("Choose an organization before saving property details.");
+      return;
+    }
+
     setError("");
     setSavingSelectedPropertyManualDetails(true);
     const savedAnchorDate =
@@ -4534,21 +4561,48 @@ This removes its linked members and deletes the grounds account.`
         : null;
 
     try {
-      const { error } = await supabase
-        .from("properties")
-        .update({
-          wifi_network: selectedPropertyWifiNetwork.trim() || null,
-          wifi_password: selectedPropertyWifiPassword.trim() || null,
-          garbage_day: selectedPropertyGarbageDay.trim() || null,
-          garbage_notes: selectedPropertyGarbageNotes.trim() || null,
-          garbage_pickup_weekday: selectedPropertyGarbagePickupWeekday === "" ? null : Number(selectedPropertyGarbagePickupWeekday),
-          garbage_rotation_anchor_date: savedAnchorDate,
-          garbage_week_a_label: selectedPropertyGarbageWeekALabel.trim() || "Garbage + recycling",
-          garbage_week_b_label: selectedPropertyGarbageWeekBLabel.trim() || "Recycling only",
-        })
-        .eq("id", selectedPropertyId);
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
 
-      if (error) throw error;
+      if (sessionError || !session?.access_token) {
+        throw new Error("No active admin session was found.");
+      }
+
+      const response = await fetch("/api/admin/property-details", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          organizationId: currentOrganizationId,
+          propertyId: selectedPropertyId,
+          wifiNetwork: selectedPropertyWifiNetwork,
+          wifiPassword: selectedPropertyWifiPassword,
+          garbageDay: selectedPropertyGarbageDay,
+          garbageNotes: selectedPropertyGarbageNotes,
+          garbagePickupWeekday: selectedPropertyGarbagePickupWeekday,
+          garbageRotationAnchorDate: savedAnchorDate,
+          garbageWeekALabel: selectedPropertyGarbageWeekALabel,
+          garbageWeekBLabel: selectedPropertyGarbageWeekBLabel,
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || "Could not save property details.");
+      }
+
+      if (payload.property) {
+        setProperties((current) =>
+          current.map((property) =>
+            property.id === selectedPropertyId ? { ...property, ...payload.property } : property
+          )
+        );
+      }
+
       setPropertyManualDetailsDirty(false);
       setActionMessage("Property WiFi and garbage details saved.");
       await loadData();
@@ -6100,7 +6154,7 @@ This removes its linked members and deletes the grounds account.`
         const pickupDate = ymdToLocalDate(dateYmd);
         if (pickupDate.getDay() !== pickupWeekday) continue;
 
-        let pickupLabel = property.garbage_day?.trim() || "Waste pickup";
+        let pickupLabel = getWastePickupLabel(property.garbage_day) || "Waste pickup";
         const weekALabel = property.garbage_week_a_label?.trim() || "Garbage + recycling";
         const weekBLabel = property.garbage_week_b_label?.trim() || "Recycling only";
 
@@ -10842,12 +10896,23 @@ This removes its linked members and deletes the grounds account.`
                     value={propertyWifiPassword}
                     onChange={(e) => setPropertyWifiPassword(e.target.value)}
                   />
-                  <input
-                    className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                    placeholder="Pickup description"
-                    value={propertyGarbageDay}
-                    onChange={(e) => setPropertyGarbageDay(e.target.value)}
-                  />
+                  <div className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
+                      Pickup contents
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      {WASTE_PICKUP_TYPE_OPTIONS.map((option) => (
+                        <label key={option} className="flex items-center gap-2 text-sm text-[#5f5245]">
+                          <input
+                            type="checkbox"
+                            checked={getWastePickupTypes(propertyGarbageDay).includes(option)}
+                            onChange={() => setPropertyGarbageDay((current) => toggleWastePickupType(current, option))}
+                          />
+                          {option}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
                   <input
                     className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
                     placeholder="Garbage notes"
@@ -11438,8 +11503,8 @@ This removes its linked members and deletes the grounds account.`
                           </div>
                         </div>
                         <div>
-                          <div className="text-xs font-semibold text-[#17382d]">Pickup detail</div>
-                          <div className="mt-0.5">{p.garbage_day || "Not saved"}</div>
+                          <div className="text-xs font-semibold text-[#17382d]">Pickup contents</div>
+                          <div className="mt-0.5">{getWastePickupLabel(p.garbage_day) || "Not saved"}</div>
                         </div>
                       </div>
                       {p.garbage_rotation_anchor_date ? (
@@ -13782,15 +13847,26 @@ This removes its linked members and deletes the grounds account.`
                         placeholder="WiFi password"
                         className="w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
                       />
-                      <input
-                        value={selectedPropertyGarbageDay}
-                        onChange={(e) => {
-                          setSelectedPropertyGarbageDay(e.target.value);
-                          setPropertyManualDetailsDirty(true);
-                        }}
-                        placeholder="Pickup description"
-                        className="w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
-                      />
+                      <div className="rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3">
+                        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#5e7469]">
+                          Pickup contents
+                        </div>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                          {WASTE_PICKUP_TYPE_OPTIONS.map((option) => (
+                            <label key={option} className="flex items-center gap-2 text-sm text-[#17382d]">
+                              <input
+                                type="checkbox"
+                                checked={getWastePickupTypes(selectedPropertyGarbageDay).includes(option)}
+                                onChange={() => {
+                                  setSelectedPropertyGarbageDay((current) => toggleWastePickupType(current, option));
+                                  setPropertyManualDetailsDirty(true);
+                                }}
+                              />
+                              {option}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
                       <input
                         value={selectedPropertyGarbageNotes}
                         onChange={(e) => {
