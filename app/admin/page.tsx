@@ -288,6 +288,7 @@ type ProfileRow = {
 
 type OwnerAccountRow = {
   id: string;
+  organization_id?: string | null;
   email: string;
   full_name: string | null;
   profile_id?: string | null;
@@ -1177,6 +1178,11 @@ export default function AdminPage() {
   }, [maintenanceFlags]);
 
   const currentTrialStatus = (currentOrganizationBilling?.subscription_status || "trialing").toLowerCase();
+  const currentOrganizationLabel =
+    currentOrganizationBilling?.name ||
+    myOrganizations.find((organization) => organization.organization_id === currentOrganizationId)?.organization_name ||
+    myOrganizations.find((organization) => organization.organization_id === currentOrganizationId)?.organization_slug ||
+    "Current company";
   const trialDaysRemaining = getTrialDaysRemaining(currentOrganizationBilling?.trial_ends_at, now);
   const trialExpired = currentTrialStatus === "trialing" && trialDaysRemaining !== null && trialDaysRemaining < 0;
   const trialEndingSoon =
@@ -1781,7 +1787,11 @@ export default function AdminPage() {
   `)
         .eq("organization_id", currentOrganizationId)
         .order("created_at", { ascending: false }),
-      supabase.from("owner_accounts").select("*").order("created_at", { ascending: false }),
+      supabase
+        .from("owner_accounts")
+        .select("*")
+        .eq("organization_id", currentOrganizationId)
+        .order("created_at", { ascending: false }),
       supabase.from("owner_property_access").select("*").order("created_at", { ascending: false }),
       supabase.from("property_calendars").select("*").order("created_at", { ascending: false }),
       supabase
@@ -1897,27 +1907,70 @@ export default function AdminPage() {
 
     const loadedProperties = (propertiesRes.data ?? []) as Property[];
     const loadedPropertyIds = new Set(loadedProperties.map((property) => property.id));
+    const loadedCleanerAccountIds = new Set(((cleanerAccountsRes.data ?? []) as CleanerAccount[]).map((account) => account.id));
+    const loadedGroundsAccountIds = new Set(((groundsAccountsRes.data ?? []) as GroundsAccount[]).map((account) => account.id));
+    const loadedJobIds = new Set(((jobsRes.data ?? []) as Job[]).map((job) => job.id));
+    const loadedGroundsJobIds = new Set(((groundsJobsRes.data ?? []) as GroundsJob[]).map((job) => job.id));
+    const loadedOwnerAccountIds = new Set(((ownerAccountsRes.data ?? []) as OwnerAccountRow[]).map((owner) => owner.id));
     const loadedStrandedJobs = ((strandedJobsRes.data ?? []) as StrandedJob[]).filter(
       (job) => !!job.property_id && loadedPropertyIds.has(job.property_id)
+    );
+    const loadedOwnerPropertyAccess = ((ownerPropertyAccessRes.data ?? []) as OwnerPropertyAccessRow[]).filter(
+      (access) => loadedPropertyIds.has(access.property_id) && loadedOwnerAccountIds.has(access.owner_account_id)
+    );
+    const loadedPropertyCalendars = ((propertyCalendarsRes.data ?? []) as PropertyCalendarRow[]).filter((calendar) =>
+      loadedPropertyIds.has(calendar.property_id)
+    );
+    const loadedAccessRows = ((accessRowsRes.data ?? []) as AccessRow[]).filter((row) =>
+      loadedPropertyIds.has(row.property_id)
+    );
+    const loadedAssignments = ((assignmentsRes.data ?? []) as Assignment[]).filter(
+      (assignment) => loadedPropertyIds.has(assignment.property_id) && loadedCleanerAccountIds.has(assignment.cleaner_account_id)
+    );
+    const loadedGroundsAssignments = ((groundsAssignmentsRes.data ?? []) as GroundsAssignment[]).filter(
+      (assignment) => loadedPropertyIds.has(assignment.property_id) && loadedGroundsAccountIds.has(assignment.grounds_account_id)
+    );
+    const loadedCleanerAccountMembers = ((cleanerAccountMembersRes.data ?? []) as CleanerAccountMember[]).filter((member) =>
+      loadedCleanerAccountIds.has(member.cleaner_account_id)
+    );
+    const loadedGroundsAccountMembers = ((groundsAccountMembersRes.data ?? []) as GroundsAccountMember[]).filter((member) =>
+      loadedGroundsAccountIds.has(member.grounds_account_id)
+    );
+    const loadedJobSlots = ((jobSlotsRes.data ?? []) as JobSlot[]).filter((slot) => loadedJobIds.has(slot.job_id));
+    const loadedGroundsJobSlots = ((groundsJobSlotsRes.data ?? []) as GroundsJobSlot[]).filter((slot) =>
+      loadedGroundsJobIds.has(slot.job_id)
+    );
+    const loadedGroundsRecurringTasks = ((groundsRecurringTasksRes.data ?? []) as GroundsRecurringTask[]).filter((task) =>
+      loadedPropertyIds.has(task.property_id)
+    );
+    const loadedGroundsRecurringRules = ((groundsRecurringRulesRes.data ?? []) as GroundsRecurringRule[]).filter((rule) =>
+      loadedPropertyIds.has(rule.property_id)
+    );
+    const loadedSops = ((sopsRes.data ?? []) as SopRow[]).filter((sop) => loadedPropertyIds.has(sop.property_id));
+    const loadedSopIds = new Set(loadedSops.map((sop) => sop.id));
+    const loadedSopImages = ((sopImagesRes.data ?? []) as SopImageRow[]).filter((image) => loadedSopIds.has(image.sop_id));
+    const loadedMaintenanceFlagIds = new Set(((maintenanceFlagsRes.data ?? []) as MaintenanceFlagRow[]).map((flag) => flag.id));
+    const loadedMaintenanceFlagImages = ((maintenanceFlagImagesRes.data ?? []) as MaintenanceFlagImageRow[]).filter((image) =>
+      loadedMaintenanceFlagIds.has(image.flag_id)
     );
 
     setProperties(loadedProperties);
     setCleanerAccounts((cleanerAccountsRes.data ?? []) as CleanerAccount[]);
-    setCleanerAccountMembers((cleanerAccountMembersRes.data ?? []) as CleanerAccountMember[]);
-    setAssignments((assignmentsRes.data ?? []) as Assignment[]);
+    setCleanerAccountMembers(loadedCleanerAccountMembers);
+    setAssignments(loadedAssignments);
     setJobs((jobsRes.data ?? []) as Job[]);
-    setJobSlots((jobSlotsRes.data ?? []) as JobSlot[]);
+    setJobSlots(loadedJobSlots);
     setGroundsAccounts((groundsAccountsRes.data ?? []) as GroundsAccount[]);
-    setGroundsAccountMembers((groundsAccountMembersRes.data ?? []) as GroundsAccountMember[]);
-    setGroundsAssignments((groundsAssignmentsRes.data ?? []) as GroundsAssignment[]);
+    setGroundsAccountMembers(loadedGroundsAccountMembers);
+    setGroundsAssignments(loadedGroundsAssignments);
     setGroundsJobs((groundsJobsRes.data ?? []) as GroundsJob[]);
-    setGroundsJobSlots((groundsJobSlotsRes.data ?? []) as GroundsJobSlot[]);
-    setGroundsRecurringTasks((groundsRecurringTasksRes.data ?? []) as GroundsRecurringTask[]);
-    setGroundsRecurringRules((groundsRecurringRulesRes.data ?? []) as GroundsRecurringRule[]);
+    setGroundsJobSlots(loadedGroundsJobSlots);
+    setGroundsRecurringTasks(loadedGroundsRecurringTasks);
+    setGroundsRecurringRules(loadedGroundsRecurringRules);
     setStrandedJobs(loadedStrandedJobs);
-    setAccessRows((accessRowsRes.data ?? []) as AccessRow[]);
-    setSops((sopsRes.data ?? []) as SopRow[]);
-    setSopImages((sopImagesRes.data ?? []) as SopImageRow[]);
+    setAccessRows(loadedAccessRows);
+    setSops(loadedSops);
+    setSopImages(loadedSopImages);
     setDocumentVaultRows(
       documentVaultRes.error ? [] : ((documentVaultRes.data ?? []) as DocumentVaultRow[])
     );
@@ -1939,13 +1992,13 @@ export default function AdminPage() {
         .filter(Boolean) as ProfileRow[]
     );
     setOwnerAccounts((ownerAccountsRes.data ?? []) as OwnerAccountRow[]);
-    setOwnerPropertyAccess((ownerPropertyAccessRes.data ?? []) as OwnerPropertyAccessRow[]);
-    setPropertyCalendars((propertyCalendarsRes.data ?? []) as PropertyCalendarRow[]);
+    setOwnerPropertyAccess(loadedOwnerPropertyAccess);
+    setPropertyCalendars(loadedPropertyCalendars);
     setPropertyBookingEvents(
       propertyBookingEventsRes.error ? [] : ((propertyBookingEventsRes.data ?? []) as PropertyBookingEvent[])
     );
     setMaintenanceFlags((maintenanceFlagsRes.data ?? []) as MaintenanceFlagRow[]);
-    setMaintenanceFlagImages((maintenanceFlagImagesRes.data ?? []) as MaintenanceFlagImageRow[]);
+    setMaintenanceFlagImages(loadedMaintenanceFlagImages);
     setOrganizationInvites((organizationInvitesRes.data ?? []) as OrganizationInviteRow[]);
     setInvoiceSettings((invoiceSettingsRes.data ?? null) as InvoiceSettingsRow | null);
     setPropertyInvoiceRates(
@@ -14275,6 +14328,10 @@ This removes its linked members and deletes the grounds account.`
                 </div>
                 <div className="max-w-3xl">
                   <div className="admin-kicker text-xs font-semibold uppercase text-[#0f766e]">GULERAOS</div>
+                  <div className="mt-1 inline-flex max-w-full items-center rounded-full border border-[#cbd5e1] bg-white/85 px-3 py-1 text-sm font-semibold text-[#334155] shadow-sm">
+                    <span className="mr-1 text-[#64748b]">Company:</span>
+                    <span className="truncate">{currentOrganizationLabel}</span>
+                  </div>
                   <h1 className="mt-2 text-3xl font-semibold tracking-tight text-[#17202a] md:text-5xl">
                     Property operations, elevated.
                   </h1>
