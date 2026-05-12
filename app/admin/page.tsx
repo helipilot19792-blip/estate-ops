@@ -6046,6 +6046,102 @@ This removes its linked members and deletes the grounds account.`
     return pickups.sort((a, b) => a.dateYmd.localeCompare(b.dateYmd) || a.propertyName.localeCompare(b.propertyName));
   }, [properties, serviceLookaheadYmds, todayYmd, tomorrowYmd]);
 
+  const upcomingHomeHappenings = useMemo(() => {
+    const dateSet = new Set(serviceLookaheadYmds);
+    const horizonEndYmd = serviceLookaheadYmds[serviceLookaheadYmds.length - 1] || todayYmd;
+    const propertyById = new Map(properties.map((property) => [property.id, property]));
+    const labelDate = (dateYmd: string) => {
+      if (dateYmd === todayYmd) return "Today";
+      if (dateYmd === tomorrowYmd) return "Tomorrow";
+      return ymdToLocalDate(dateYmd).toLocaleDateString(undefined, {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+      });
+    };
+
+    const cleaningItems = jobs
+      .map((job) => {
+        const dateYmd = job.scheduled_for || extractCheckoutDate(job.notes) || "";
+        const property = propertyById.get(job.property_id);
+        return {
+          id: `cleaning-${job.id}`,
+          dateYmd,
+          sortKey: `${dateYmd}-10-${property?.name || job.property_id}`,
+          kind: "Cleaning",
+          tone: "blue" as const,
+          label: labelDate(dateYmd),
+          title: property?.name || property?.address || "Unknown property",
+          detail: getCityFromAddress(property?.address) || "Turnover cleaning",
+        };
+      })
+      .filter((item) => dateSet.has(item.dateYmd));
+
+    const groundsItems = groundsJobs
+      .map((job) => {
+        const property = propertyById.get(job.property_id);
+        return {
+          id: `grounds-${job.id}`,
+          dateYmd: job.scheduled_for || "",
+          sortKey: `${job.scheduled_for || ""}-20-${property?.name || job.property_id}`,
+          kind: "Grounds",
+          tone: "green" as const,
+          label: labelDate(job.scheduled_for || ""),
+          title: property?.name || property?.address || "Unknown property",
+          detail:
+            GROUNDS_JOB_TYPE_OPTIONS.find((option) => option.value === job.job_type)?.label ||
+            job.job_type ||
+            "Grounds service",
+        };
+      })
+      .filter((item) => dateSet.has(item.dateYmd));
+
+    const wasteItems = upcomingWastePickups.map((pickup) => ({
+      id: `waste-${pickup.id}`,
+      dateYmd: pickup.dateYmd,
+      sortKey: `${pickup.dateYmd}-30-${pickup.propertyName}`,
+      kind: "Waste",
+      tone: "teal" as const,
+      label: pickup.dateLabel,
+      title: pickup.propertyName,
+      detail: pickup.notes ? `${pickup.pickupLabel} - ${pickup.notes}` : pickup.pickupLabel,
+    }));
+
+    const inspectionItems = inspectionRules
+      .filter((rule) => rule.active !== false && (!rule.next_due_date || rule.next_due_date <= horizonEndYmd))
+      .map((rule) => {
+        const effectiveDate = rule.next_due_date && rule.next_due_date > todayYmd ? rule.next_due_date : todayYmd;
+        const isOverdue = Boolean(rule.next_due_date && rule.next_due_date < todayYmd);
+        return {
+          id: `inspection-${rule.id}`,
+          dateYmd: effectiveDate,
+          sortKey: `${effectiveDate}-40-${rule.title}`,
+          kind: "Inspection",
+          tone: "amber" as const,
+          label: isOverdue ? "Overdue" : labelDate(effectiveDate),
+          title: rule.title,
+          detail: getPropertyName(rule.property_id),
+          onClick: () => {
+            setActiveSection("inspections");
+            startInspectionLog(rule.id);
+          },
+        };
+      });
+
+    return [...cleaningItems, ...groundsItems, ...wasteItems, ...inspectionItems].sort((a, b) =>
+      a.sortKey.localeCompare(b.sortKey)
+    );
+  }, [
+    jobs,
+    groundsJobs,
+    properties,
+    serviceLookaheadYmds,
+    upcomingWastePickups,
+    inspectionRules,
+    todayYmd,
+    tomorrowYmd,
+  ]);
+
   const todayAtGlanceCounts = useMemo(() => {
     return {
       cleaning: todayAtGlanceItems.filter((item) => item.kind === "Cleaning").length,
@@ -7274,148 +7370,92 @@ This removes its linked members and deletes the grounds account.`
           </div>
 
           <div className="mt-5 grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.9fr)_minmax(210px,0.52fr)]">
-            <div className="space-y-4">
+            <div>
               <div className="rounded-[24px] border border-[#cfe1ff] bg-[#eef5ff] p-4 shadow-[0_10px_30px_rgba(59,130,246,0.10)]">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#4f6ea8]">
-                      Today
+                      Happenings
                     </p>
                     <h3 className="mt-1 text-lg font-semibold text-[#1f3b63]">
-                      Today&apos;s schedule
+                      Today + next 2 days
                     </h3>
                   </div>
                   <div className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-[#2957a4]">
-                    {todaysCleaningJobs.length + todaysGroundsJobs.length} jobs
+                    {upcomingHomeHappenings.length} item{upcomingHomeHappenings.length === 1 ? "" : "s"}
                   </div>
                 </div>
 
                 <div className="mt-3 space-y-2">
-                  {todaysCleaningJobs.map((job) => {
-                    const property = properties.find((p) => p.id === job.property_id);
-                    return (
-                      <div
-                        key={`today-cleaning-${job.id}`}
-                        className="rounded-[18px] border border-[#b9d1fb] bg-white px-4 py-2.5"
-                      >
+                  {upcomingHomeHappenings.map((item) => {
+                    const badgeClass =
+                      item.tone === "green"
+                        ? "bg-[#16a34a] text-white"
+                        : item.tone === "teal"
+                          ? "bg-[#0f766e] text-white"
+                          : item.tone === "amber"
+                            ? "bg-[#b45309] text-white"
+                            : "bg-[#2563eb] text-white";
+                    const dateClass =
+                      item.tone === "green"
+                        ? "bg-[#e9f9ef] text-[#218552]"
+                        : item.tone === "teal"
+                          ? "bg-[#dcfce7] text-[#166534]"
+                          : item.tone === "amber"
+                            ? "bg-[#fff7ed] text-[#9a6206]"
+                            : "bg-[#e8f1ff] text-[#2f62b6]";
+                    const borderClass =
+                      item.tone === "green"
+                        ? "border-[#bde7cf]"
+                        : item.tone === "teal"
+                          ? "border-[#bfe7cf]"
+                          : item.tone === "amber"
+                            ? "border-[#f1cf8f]"
+                            : "border-[#b9d1fb]";
+                    const content = (
+                      <div className={`rounded-[18px] border ${borderClass} bg-white px-4 py-2.5`}>
                         <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="inline-flex items-center rounded-full bg-[#2563eb] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
-                              Cleaning
+                          <div className="min-w-0">
+                            <div className={`inline-flex items-center rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${badgeClass}`}>
+                              {item.kind}
                             </div>
                             <p className="mt-1 text-[15px] font-semibold text-[#1c2b45]">
-                              {property?.name || property?.address || "Unknown property"}
+                              {item.title}
                             </p>
                             <p className="mt-0.5 text-sm text-[#5f6f86]">
-                              {getCityFromAddress(property?.address)}
+                              {item.detail}
                             </p>
                           </div>
-                          <div className="rounded-full bg-[#e8f1ff] px-3 py-1 text-xs font-semibold text-[#2f62b6]">
-                            Cleaning
+                          <div className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${dateClass}`}>
+                            {item.label}
                           </div>
                         </div>
                       </div>
                     );
-                  })}
 
-                  {todaysGroundsJobs.map((job) => {
-                    const property = properties.find((p) => p.id === job.property_id);
-                    return (
-                      <div
-                        key={`today-grounds-${job.id}`}
-                        className="rounded-[18px] border border-[#bde7cf] bg-white px-4 py-2.5"
+                    const onClick = "onClick" in item ? item.onClick : undefined;
+
+                    return onClick ? (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={onClick}
+                        className="block w-full text-left"
                       >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="inline-flex items-center rounded-full bg-[#16a34a] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
-                              Grounds
-                            </div>
-                            <p className="mt-1 text-[15px] font-semibold text-[#20432f]">
-                              {property?.name || property?.address || "Unknown property"}
-                            </p>
-                            <p className="mt-0.5 text-sm text-[#5d7767]">
-                              {getCityFromAddress(property?.address)}
-                            </p>
-                          </div>
-                          <div className="rounded-full bg-[#e9f9ef] px-3 py-1 text-xs font-semibold text-[#218552]">
-                            Grounds
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-
-                  {todaysCleaningJobs.length === 0 && todaysGroundsJobs.length === 0 && (
-                    <div className="rounded-[16px] border border-dashed border-[#b9d1fb] bg-white/80 px-4 py-3 text-sm text-[#5f6f86]">
-                      No jobs scheduled for today.
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="rounded-[24px] border border-[#f6d7a8] bg-[#fff4dd] p-4 shadow-[0_10px_30px_rgba(245,158,11,0.10)]">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#a56a06]">
-                      Tomorrow
-                    </p>
-                    <h3 className="mt-1 text-lg font-semibold text-[#7a4b00]">
-                      Coming up next
-                    </h3>
-                  </div>
-                  <div className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-[#9a6206]">
-                    {adminDataLoaded ? `${tomorrowsCleaningJobs.length + tomorrowsGroundsJobs.length} jobs` : "Loading"}
-                  </div>
-                </div>
-
-                <div className="mt-3 space-y-2">
-                  {tomorrowsCleaningJobs.map((job) => {
-                    const property = properties.find((p) => p.id === job.property_id);
-                    return (
-                      <div
-                        key={`tomorrow-cleaning-${job.id}`}
-                        className="rounded-[16px] border border-[#f1cf8f] bg-white px-4 py-2.5"
-                      >
-                        <div className="inline-flex items-center rounded-full bg-[#2563eb] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
-                          Cleaning
-                        </div>
-                        <p className="mt-1 text-[15px] font-semibold text-[#5f3a00]">
-                          {property?.name || property?.address || "Unknown property"}
-                        </p>
-                        <p className="mt-0.5 text-sm text-[#8b6a32]">
-                          {getCityFromAddress(property?.address)}
-                        </p>
-                      </div>
-                    );
-                  })}
-
-                  {tomorrowsGroundsJobs.map((job) => {
-                    const property = properties.find((p) => p.id === job.property_id);
-                    return (
-                      <div
-                        key={`tomorrow-grounds-${job.id}`}
-                        className="rounded-[16px] border border-[#f1cf8f] bg-white px-4 py-2.5"
-                      >
-                        <div className="inline-flex items-center rounded-full bg-[#16a34a] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
-                          Grounds
-                        </div>
-                        <p className="mt-1 text-[15px] font-semibold text-[#5f3a00]">
-                          {property?.name || property?.address || "Unknown property"}
-                        </p>
-                        <p className="mt-0.5 text-sm text-[#8b6a32]">
-                          {getCityFromAddress(property?.address)}
-                        </p>
-                      </div>
+                        {content}
+                      </button>
+                    ) : (
+                      <div key={item.id}>{content}</div>
                     );
                   })}
 
                   {!adminDataLoaded ? (
-                    <div className="rounded-[16px] border border-dashed border-[#f1cf8f] bg-white/80 px-4 py-3 text-sm text-[#8b6a32]">
-                      Loading tomorrow&apos;s schedule...
+                    <div className="rounded-[16px] border border-dashed border-[#b9d1fb] bg-white/80 px-4 py-3 text-sm text-[#5f6f86]">
+                      Loading the next two days...
                     </div>
-                  ) : tomorrowsCleaningJobs.length === 0 && tomorrowsGroundsJobs.length === 0 ? (
-                    <div className="rounded-[16px] border border-dashed border-[#f1cf8f] bg-white/80 px-4 py-3 text-sm text-[#8b6a32]">
-                      Nothing lined up for tomorrow yet.
+                  ) : upcomingHomeHappenings.length === 0 ? (
+                    <div className="rounded-[16px] border border-dashed border-[#b9d1fb] bg-white/80 px-4 py-3 text-sm text-[#5f6f86]">
+                      No cleaning, grounds, waste pickup, or inspections due in this window.
                     </div>
                   ) : null}
                 </div>
@@ -7482,87 +7522,6 @@ This removes its linked members and deletes the grounds account.`
             </div>
 
             <div className="space-y-4">
-              {dueInspectionRules.length > 0 ? (
-                <div className="rounded-[24px] border border-[#f4cf8d] bg-[#fff7e8] p-4 shadow-[0_10px_30px_rgba(245,158,11,0.10)]">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#9a6206]">
-                        Inspections
-                      </p>
-                      <h3 className="mt-1 text-base font-semibold text-[#6f4300]">
-                        Due now
-                      </h3>
-                    </div>
-                    <div className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-[#9a6206]">
-                      {dueInspectionRules.length}
-                    </div>
-                  </div>
-                  <div className="mt-3 space-y-2">
-                    {dueInspectionRules.slice(0, 3).map((rule) => (
-                      <button
-                        key={`home-inspection-${rule.id}`}
-                        type="button"
-                        onClick={() => {
-                          setActiveSection("inspections");
-                          startInspectionLog(rule.id);
-                        }}
-                        className="w-full rounded-[16px] border border-[#f1cf8f] bg-white px-4 py-3 text-left transition hover:bg-[#fffaf0]"
-                      >
-                        <p className="text-sm font-semibold text-[#6f4300]">{rule.title}</p>
-                        <p className="mt-0.5 text-xs text-[#8b6a32]">{getPropertyName(rule.property_id)}</p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="rounded-[24px] border border-[#c7ead7] bg-[#f0fbf5] p-4 shadow-[0_10px_30px_rgba(20,184,166,0.08)]">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#176c4b]">
-                      Waste
-                    </p>
-                    <h3 className="mt-1 text-base font-semibold text-[#174234]">
-                      Next 2 days
-                    </h3>
-                  </div>
-                  <div className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-[#176c4b]">
-                    {upcomingWastePickups.length}
-                  </div>
-                </div>
-                <div className="mt-3 space-y-2">
-                  {upcomingWastePickups.length === 0 ? (
-                    <div className="rounded-[16px] border border-dashed border-[#a8dfc2] bg-white/80 px-4 py-3 text-sm text-[#4f7461]">
-                      No waste pickup due in the next two days.
-                    </div>
-                  ) : (
-                    upcomingWastePickups.map((pickup) => (
-                      <div key={pickup.id} className="rounded-[16px] border border-[#bfe7cf] bg-white px-4 py-3">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-[13px] font-semibold text-[#174234]">
-                              {pickup.propertyName}
-                            </p>
-                            <p className="mt-0.5 text-xs text-[#5d7767]">
-                              {pickup.city || pickup.dateLabel}
-                            </p>
-                          </div>
-                          <span className="shrink-0 rounded-full bg-[#dcfce7] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#166534]">
-                            {pickup.dateLabel}
-                          </span>
-                        </div>
-                        <p className="mt-2 text-sm font-semibold text-[#176c4b]">
-                          {pickup.pickupLabel}
-                        </p>
-                        {pickup.notes ? (
-                          <p className="mt-1 text-xs text-[#5d7767]">{pickup.notes}</p>
-                        ) : null}
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
               <div className="rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8a7b68]">
                   Snapshot
@@ -7588,10 +7547,10 @@ This removes its linked members and deletes the grounds account.`
 
                   <div className="rounded-[16px] border border-[#eadfce] bg-white px-4 py-3">
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
-                      Waste soon
+                      Occupied today
                     </p>
                     <p className="mt-2 text-2xl font-semibold text-[#241c15]">
-                      {upcomingWastePickups.length}
+                      {occupiedTodayProperties.length}
                     </p>
                   </div>
 
