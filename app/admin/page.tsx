@@ -4271,39 +4271,52 @@ This removes its linked members and deletes the grounds account.`
 
   async function saveAccess() {
     if (!selectedPropertyId) return;
-    const existing = accessRows.find((x) => x.property_id === selectedPropertyId);
-
-    if (existing) {
-      const { error } = await supabase
-        .from("property_access")
-        .update({
-          door_code: doorCode.trim() || null,
-          alarm_code: alarmCode.trim() || null,
-          notes: accessNotes.trim() || null,
-        })
-        .eq("id", existing.id);
-
-      if (error) {
-        setError(error.message);
-        return;
-      }
-    } else {
-      const { error } = await supabase.from("property_access").insert({
-        property_id: selectedPropertyId,
-        door_code: doorCode.trim() || null,
-        alarm_code: alarmCode.trim() || null,
-        notes: accessNotes.trim() || null,
-      });
-
-      if (error) {
-        setError(error.message);
-        return;
-      }
+    if (!currentOrganizationId) {
+      setError("Choose an organization before saving access notes.");
+      return;
     }
 
-    setAccessDirty(false);
-    setActionMessage("Access saved.");
-    await loadData();
+    setError("");
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        setError("No active admin session was found.");
+        return;
+      }
+
+      const response = await fetch("/api/admin/property-access", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          organizationId: currentOrganizationId,
+          propertyId: selectedPropertyId,
+          doorCode,
+          alarmCode,
+          notes: accessNotes,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || !payload?.ok) {
+        setError(payload?.error || "Could not save access notes.");
+        return;
+      }
+
+      setAccessDirty(false);
+      setActionMessage("Access saved.");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Could not save access notes.");
+    }
   }
 
   async function saveSelectedPropertyDefaults() {
