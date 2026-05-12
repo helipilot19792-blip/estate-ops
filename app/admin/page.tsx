@@ -9932,6 +9932,17 @@ This removes its linked members and deletes the grounds account.`
                             onChange={(e) => void uploadInvoiceLogo(e)}
                           />
                         </label>
+                        <label className="inline-flex cursor-pointer items-center justify-center rounded-full border border-[#d8c7ab] bg-white px-3 py-1.5 text-xs font-medium text-[#5f4c3b] transition hover:bg-[#f7f1e8]">
+                          Take photo
+                          <input
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            className="hidden"
+                            disabled={uploadingInvoiceLogo}
+                            onChange={(e) => void uploadInvoiceLogo(e)}
+                          />
+                        </label>
                         <button
                           type="button"
                           onClick={() => {
@@ -9946,16 +9957,29 @@ This removes its linked members and deletes the grounds account.`
                     </div>
                   </div>
                 ) : (
-                  <label className="inline-flex cursor-pointer items-center justify-center rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#f7f1e8]">
-                    {uploadingInvoiceLogo ? "Uploading logo..." : "Upload logo"}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      disabled={uploadingInvoiceLogo}
-                      onChange={(e) => void uploadInvoiceLogo(e)}
-                    />
-                  </label>
+                  <>
+                    <label className="inline-flex cursor-pointer items-center justify-center rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#f7f1e8]">
+                      {uploadingInvoiceLogo ? "Uploading logo..." : "Upload logo"}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        disabled={uploadingInvoiceLogo}
+                        onChange={(e) => void uploadInvoiceLogo(e)}
+                      />
+                    </label>
+                    <label className="inline-flex cursor-pointer items-center justify-center rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#f7f1e8]">
+                      Take logo photo
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        className="hidden"
+                        disabled={uploadingInvoiceLogo}
+                        onChange={(e) => void uploadInvoiceLogo(e)}
+                      />
+                    </label>
+                  </>
                 )}
                 <input
                   className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
@@ -10212,6 +10236,17 @@ This removes its linked members and deletes the grounds account.`
                   onChange={(e) => void uploadExternalInvoiceFile(e.target.files)}
                 />
               </label>
+              <label className="inline-flex cursor-pointer items-center justify-center rounded-full border border-[#d4c2ea] bg-white px-4 py-2.5 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#f6efff]">
+                Take invoice photo
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  disabled={uploadingExternalInvoice}
+                  onChange={(e) => void uploadExternalInvoiceFile(e.target.files)}
+                />
+              </label>
 
               <input
                 className="rounded-[18px] border border-[#d4c2ea] bg-white px-4 py-3 text-sm outline-none focus:border-[#6f4b9a]"
@@ -10459,6 +10494,17 @@ This removes its linked members and deletes the grounds account.`
                           type="file"
                           multiple
                           accept="image/*,.pdf"
+                          className="hidden"
+                          disabled={uploadingReceiptLineItemId === item.id}
+                          onChange={(e) => void uploadInvoiceReceipts(item.id, e.target.files)}
+                        />
+                      </label>
+                      <label className="inline-flex cursor-pointer items-center rounded-full border border-[#d8c7ab] bg-white px-3 py-1.5 text-xs font-medium text-[#5f4c3b] hover:bg-[#f7f1e8]">
+                        Take receipt photo
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
                           className="hidden"
                           disabled={uploadingReceiptLineItemId === item.id}
                           onChange={(e) => void uploadInvoiceReceipts(item.id, e.target.files)}
@@ -13726,6 +13772,17 @@ This removes its linked members and deletes the grounds account.`
                           onChange={(e) => void uploadSelectedPropertyCoverPhoto(e)}
                         />
                       </label>
+                      <label className="inline-flex cursor-pointer items-center justify-center rounded-full border border-[#d8c7ab] bg-white px-5 py-2.5 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#f7f1e8]">
+                        Take photo
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          className="sr-only"
+                          disabled={uploadingPropertyCover}
+                          onChange={(e) => void uploadSelectedPropertyCoverPhoto(e)}
+                        />
+                      </label>
 
                       {selectedProperty?.cover_photo_url ? (
                         <button
@@ -14023,7 +14080,7 @@ This removes its linked members and deletes the grounds account.`
 
                     <div className="rounded-[20px] border border-dashed border-[#d8c7ab] bg-white p-4">
                       <label className="mb-2 block text-sm font-medium text-[#5f5245]">SOP photos</label>
-                      <input type="file" accept="image/*" multiple onChange={handleSopFilesChange} className="block w-full text-sm text-[#6c5f51]" />
+                      <input type="file" accept="image/*" capture="environment" multiple onChange={handleSopFilesChange} className="block w-full text-sm text-[#6c5f51]" />
                       <div className="mt-3 text-sm text-[#7f7263]">
                         {sopFiles.length > 0 ? `${sopFiles.length} image${sopFiles.length === 1 ? "" : "s"} selected` : "No images selected yet."}
                       </div>
@@ -15110,6 +15167,7 @@ This removes its linked members and deletes the grounds account.`
             <input
               type="file"
               accept="image/*"
+              capture="environment"
               multiple
               className="mt-2 block w-full text-sm text-[#6c5f51]"
               onChange={(e) => setInspectionLogFiles(Array.from(e.target.files || []))}
