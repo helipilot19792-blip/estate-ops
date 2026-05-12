@@ -1164,6 +1164,7 @@ export default function AdminPage() {
   const [selectedPropertyGarbageDay, setSelectedPropertyGarbageDay] = useState("");
   const [selectedPropertyGarbageNotes, setSelectedPropertyGarbageNotes] = useState("");
   const [selectedPropertyGarbagePickupWeekday, setSelectedPropertyGarbagePickupWeekday] = useState("");
+  const [selectedPropertyWastePattern, setSelectedPropertyWastePattern] = useState<"weekly" | "biweekly">("weekly");
   const [selectedPropertyGarbageRotationAnchorDate, setSelectedPropertyGarbageRotationAnchorDate] = useState("");
   const [selectedPropertyGarbageWeekALabel, setSelectedPropertyGarbageWeekALabel] = useState("Garbage + recycling");
   const [selectedPropertyGarbageWeekBLabel, setSelectedPropertyGarbageWeekBLabel] = useState("Recycling only");
@@ -1205,6 +1206,10 @@ export default function AdminPage() {
   const [inspectionLogFiles, setInspectionLogFiles] = useState<File[]>([]);
   const [savingInspectionLog, setSavingInspectionLog] = useState(false);
   const [deletingInspectionLogId, setDeletingInspectionLogId] = useState<string | null>(null);
+  const [editingInspectionLogId, setEditingInspectionLogId] = useState<string | null>(null);
+  const [editingInspectionLogStatus, setEditingInspectionLogStatus] = useState("completed");
+  const [editingInspectionLogNotes, setEditingInspectionLogNotes] = useState("");
+  const [savingEditedInspectionLog, setSavingEditedInspectionLog] = useState(false);
   const [inspectionHistoryExpanded, setInspectionHistoryExpanded] = useState(false);
 
 
@@ -1659,6 +1664,7 @@ export default function AdminPage() {
           ? String(selectedProperty.garbage_pickup_weekday)
           : ""
       );
+      setSelectedPropertyWastePattern(selectedProperty?.garbage_rotation_anchor_date ? "biweekly" : "weekly");
       setSelectedPropertyGarbageRotationAnchorDate(selectedProperty?.garbage_rotation_anchor_date || "");
       setSelectedPropertyGarbageWeekALabel(selectedProperty?.garbage_week_a_label || "Garbage + recycling");
       setSelectedPropertyGarbageWeekBLabel(selectedProperty?.garbage_week_b_label || "Recycling only");
@@ -4522,6 +4528,10 @@ This removes its linked members and deletes the grounds account.`
     if (!selectedPropertyId) return;
     setError("");
     setSavingSelectedPropertyManualDetails(true);
+    const savedAnchorDate =
+      selectedPropertyWastePattern === "biweekly"
+        ? selectedPropertyGarbageRotationAnchorDate || null
+        : null;
 
     try {
       const { error } = await supabase
@@ -4532,7 +4542,7 @@ This removes its linked members and deletes the grounds account.`
           garbage_day: selectedPropertyGarbageDay.trim() || null,
           garbage_notes: selectedPropertyGarbageNotes.trim() || null,
           garbage_pickup_weekday: selectedPropertyGarbagePickupWeekday === "" ? null : Number(selectedPropertyGarbagePickupWeekday),
-          garbage_rotation_anchor_date: selectedPropertyGarbageRotationAnchorDate || null,
+          garbage_rotation_anchor_date: savedAnchorDate,
           garbage_week_a_label: selectedPropertyGarbageWeekALabel.trim() || "Garbage + recycling",
           garbage_week_b_label: selectedPropertyGarbageWeekBLabel.trim() || "Recycling only",
         })
@@ -4752,6 +4762,58 @@ This removes its linked members and deletes the grounds account.`
       setError(message.includes("property_inspection") ? `${message} Run supabase/add_property_inspections.sql first.` : message);
     } finally {
       setDeletingInspectionLogId(null);
+    }
+  }
+
+  function startEditingInspectionLog(log: PropertyInspectionLog) {
+    setEditingInspectionLogId(log.id);
+    setEditingInspectionLogStatus(log.status || "completed");
+    setEditingInspectionLogNotes(log.notes || "");
+  }
+
+  function cancelEditingInspectionLog() {
+    setEditingInspectionLogId(null);
+    setEditingInspectionLogStatus("completed");
+    setEditingInspectionLogNotes("");
+  }
+
+  async function saveEditedInspectionLog(log: PropertyInspectionLog) {
+    if (!currentOrganizationId) return;
+
+    setError("");
+    setActionMessage("");
+    setSavingEditedInspectionLog(true);
+
+    try {
+      const { error: logError } = await supabase
+        .from("property_inspection_logs")
+        .update({
+          status: editingInspectionLogStatus,
+          notes: editingInspectionLogNotes.trim() || null,
+        })
+        .eq("id", log.id)
+        .eq("organization_id", currentOrganizationId);
+
+      if (logError) throw logError;
+
+      setInspectionLogs((logs) =>
+        logs.map((item) =>
+          item.id === log.id
+            ? {
+                ...item,
+                status: editingInspectionLogStatus,
+                notes: editingInspectionLogNotes.trim() || null,
+              }
+            : item
+        )
+      );
+      cancelEditingInspectionLog();
+      setActionMessage("Inspection log updated.");
+    } catch (err: any) {
+      const message = String(err?.message || "Could not update inspection log.");
+      setError(message.includes("property_inspection") ? `${message} Run supabase/add_property_inspections.sql first.` : message);
+    } finally {
+      setSavingEditedInspectionLog(false);
     }
   }
 
@@ -5155,6 +5217,15 @@ This removes its linked members and deletes the grounds account.`
   function getPropertyName(id: string | null) {
     if (!id) return "Unknown property";
     return properties.find((p) => p.id === id)?.name || id;
+  }
+
+  function getWeekdayLabel(value: number | null | undefined) {
+    if (typeof value !== "number") return "No pickup day saved";
+    return WEEKDAY_OPTIONS.find((option) => option.value === String(value))?.label || "Unknown weekday";
+  }
+
+  function getWastePatternLabel(property: Property) {
+    return property.garbage_rotation_anchor_date ? "Bi-weekly / alternating" : "Weekly";
   }
 
   function getCleanerAccountName(id: string | null) {
@@ -11233,6 +11304,7 @@ This removes its linked members and deletes the grounds account.`
             ).length;
             const owner = getOwnerForProperty(p.id);
             const ownerStatus = getOwnerInviteStatus(owner);
+            const access = accessRows.find((row) => row.property_id === p.id);
 
             const assignedCleanerNames = assignments
               .filter((assignment) => assignment.property_id === p.id)
@@ -11343,6 +11415,62 @@ This removes its linked members and deletes the grounds account.`
                       </div>
                       <div className="mt-1 text-sm text-[#8a7b68]">
                         {owner?.email || "No owner email linked yet"}
+                      </div>
+                    </div>
+
+                    <div className="rounded-[18px] border border-[#cfe4d9] bg-[#f6fbf8] p-3">
+                      <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#4f7c6b]">
+                        WiFi and waste
+                      </div>
+                      <div className="grid gap-2 text-sm text-[#5f5245] sm:grid-cols-2">
+                        <div>
+                          <div className="text-xs font-semibold text-[#17382d]">WiFi network</div>
+                          <div className="mt-0.5">{p.wifi_network || "Not saved"}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs font-semibold text-[#17382d]">WiFi password</div>
+                          <div className="mt-0.5">{p.wifi_password || "Not saved"}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs font-semibold text-[#17382d]">Waste schedule</div>
+                          <div className="mt-0.5">
+                            {getWastePatternLabel(p)}{p.garbage_pickup_weekday !== null && p.garbage_pickup_weekday !== undefined ? ` on ${getWeekdayLabel(p.garbage_pickup_weekday)}` : ""}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs font-semibold text-[#17382d]">Pickup detail</div>
+                          <div className="mt-0.5">{p.garbage_day || "Not saved"}</div>
+                        </div>
+                      </div>
+                      {p.garbage_rotation_anchor_date ? (
+                        <div className="mt-2 text-xs text-[#5e7469]">
+                          Week A starts {formatDateLabel(p.garbage_rotation_anchor_date)}: {p.garbage_week_a_label || "Garbage + recycling"} | Week B: {p.garbage_week_b_label || "Recycling only"}
+                        </div>
+                      ) : null}
+                      {p.garbage_notes ? (
+                        <div className="mt-2 whitespace-pre-wrap text-sm text-[#5e7469]">{p.garbage_notes}</div>
+                      ) : null}
+                    </div>
+
+                    <div className="rounded-[18px] border border-[#eadfce] bg-white/80 p-3">
+                      <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#8a7b68]">
+                        Access details
+                      </div>
+                      <div className="grid gap-2 text-sm text-[#5f5245] sm:grid-cols-2">
+                        <div>
+                          <div className="text-xs font-semibold text-[#241c15]">Door code</div>
+                          <div className="mt-0.5">{access?.door_code || "Not saved"}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs font-semibold text-[#241c15]">Alarm code</div>
+                          <div className="mt-0.5">{access?.alarm_code || "Not saved"}</div>
+                        </div>
+                      </div>
+                      <div className="mt-2">
+                        <div className="text-xs font-semibold text-[#241c15]">Access notes</div>
+                        <div className="mt-0.5 whitespace-pre-wrap text-sm text-[#6f6255]">
+                          {access?.notes || "No access notes saved"}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -13673,6 +13801,21 @@ This removes its linked members and deletes the grounds account.`
                         className="w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
                       />
                       <select
+                        value={selectedPropertyWastePattern}
+                        onChange={(e) => {
+                          const nextPattern = e.target.value === "biweekly" ? "biweekly" : "weekly";
+                          setSelectedPropertyWastePattern(nextPattern);
+                          if (nextPattern === "weekly") {
+                            setSelectedPropertyGarbageRotationAnchorDate("");
+                          }
+                          setPropertyManualDetailsDirty(true);
+                        }}
+                        className="w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition focus:border-[#4f7c6b]"
+                      >
+                        <option value="weekly">Weekly pickup</option>
+                        <option value="biweekly">Bi-weekly / alternating pickup</option>
+                      </select>
+                      <select
                         value={selectedPropertyGarbagePickupWeekday}
                         onChange={(e) => {
                           setSelectedPropertyGarbagePickupWeekday(e.target.value);
@@ -13687,36 +13830,40 @@ This removes its linked members and deletes the grounds account.`
                           </option>
                         ))}
                       </select>
-                      <label className="text-xs font-medium text-[#5e7469]">
-                        Week A anchor date
-                        <input
-                          type="date"
-                          value={selectedPropertyGarbageRotationAnchorDate}
-                          onChange={(e) => {
-                            setSelectedPropertyGarbageRotationAnchorDate(e.target.value);
-                            setPropertyManualDetailsDirty(true);
-                          }}
-                          className="mt-1 w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition focus:border-[#4f7c6b]"
-                        />
-                      </label>
-                      <input
-                        value={selectedPropertyGarbageWeekALabel}
-                        onChange={(e) => {
-                          setSelectedPropertyGarbageWeekALabel(e.target.value);
-                          setPropertyManualDetailsDirty(true);
-                        }}
-                        placeholder="Week A label"
-                        className="w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
-                      />
-                      <input
-                        value={selectedPropertyGarbageWeekBLabel}
-                        onChange={(e) => {
-                          setSelectedPropertyGarbageWeekBLabel(e.target.value);
-                          setPropertyManualDetailsDirty(true);
-                        }}
-                        placeholder="Week B label"
-                        className="w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
-                      />
+                      {selectedPropertyWastePattern === "biweekly" ? (
+                        <>
+                          <label className="text-xs font-medium text-[#5e7469]">
+                            Week A start date
+                            <input
+                              type="date"
+                              value={selectedPropertyGarbageRotationAnchorDate}
+                              onChange={(e) => {
+                                setSelectedPropertyGarbageRotationAnchorDate(e.target.value);
+                                setPropertyManualDetailsDirty(true);
+                              }}
+                              className="mt-1 w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition focus:border-[#4f7c6b]"
+                            />
+                          </label>
+                          <input
+                            value={selectedPropertyGarbageWeekALabel}
+                            onChange={(e) => {
+                              setSelectedPropertyGarbageWeekALabel(e.target.value);
+                              setPropertyManualDetailsDirty(true);
+                            }}
+                            placeholder="Week A label"
+                            className="w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
+                          />
+                          <input
+                            value={selectedPropertyGarbageWeekBLabel}
+                            onChange={(e) => {
+                              setSelectedPropertyGarbageWeekBLabel(e.target.value);
+                              setPropertyManualDetailsDirty(true);
+                            }}
+                            placeholder="Week B label"
+                            className="w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
+                          />
+                        </>
+                      ) : null}
                     </div>
                     <button
                       type="button"
@@ -15324,6 +15471,7 @@ This removes its linked members and deletes the grounds account.`
               ) : null}
               {inspectionLogs.map((log) => {
                 const photos = inspectionPhotos.filter((photo) => photo.inspection_log_id === log.id);
+                const isEditing = editingInspectionLogId === log.id;
                 return (
                   <div key={log.id} className="rounded-[22px] border border-[#eadfce] bg-[#fcfaf7] p-4">
                     <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
@@ -15340,6 +15488,14 @@ This removes its linked members and deletes the grounds account.`
                         </span>
                         <button
                           type="button"
+                          onClick={() => startEditingInspectionLog(log)}
+                          disabled={savingEditedInspectionLog && isEditing}
+                          className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-semibold text-[#5f5245] transition hover:bg-[#fffaf4] disabled:opacity-60"
+                        >
+                          Edit log
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => void deleteInspectionLog(log)}
                           disabled={deletingInspectionLogId === log.id}
                           className="rounded-full border border-[#efc6c6] bg-white px-3 py-1 text-xs font-semibold text-[#8a2e22] transition hover:bg-[#fff5f5] disabled:opacity-60"
@@ -15348,7 +15504,46 @@ This removes its linked members and deletes the grounds account.`
                         </button>
                       </div>
                     </div>
-                    {log.notes ? <div className="mt-3 whitespace-pre-wrap text-sm text-[#6f6255]">{log.notes}</div> : null}
+                    {isEditing ? (
+                      <div className="mt-4 rounded-[18px] border border-[#eadfce] bg-white p-3">
+                        <div className="grid gap-3 md:grid-cols-[220px_minmax(0,1fr)]">
+                          <select
+                            value={editingInspectionLogStatus}
+                            onChange={(e) => setEditingInspectionLogStatus(e.target.value)}
+                            className="w-full rounded-[14px] border border-[#d8c7ab] bg-white px-3 py-2 text-sm outline-none"
+                          >
+                            <option value="completed">Completed</option>
+                            <option value="needs_attention">Needs attention</option>
+                          </select>
+                          <textarea
+                            value={editingInspectionLogNotes}
+                            onChange={(e) => setEditingInspectionLogNotes(e.target.value)}
+                            placeholder="Inspection notes"
+                            className="min-h-24 w-full rounded-[14px] border border-[#d8c7ab] bg-white px-3 py-2 text-sm outline-none"
+                          />
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void saveEditedInspectionLog(log)}
+                            disabled={savingEditedInspectionLog}
+                            className="rounded-full bg-[#241c15] px-4 py-2 text-sm font-medium text-[#f8f2e8] disabled:opacity-60"
+                          >
+                            {savingEditedInspectionLog ? "Saving..." : "Save changes"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={cancelEditingInspectionLog}
+                            disabled={savingEditedInspectionLog}
+                            className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-medium text-[#5f5245] disabled:opacity-60"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : log.notes ? (
+                      <div className="mt-3 whitespace-pre-wrap text-sm text-[#6f6255]">{log.notes}</div>
+                    ) : null}
                     {photos.length > 0 ? (
                       <div className="mt-3 flex flex-wrap gap-2">
                         {photos.map((photo) => (
