@@ -5,6 +5,7 @@ import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "re
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { trackFeatureUsage } from "@/lib/feature-usage";
+import OnboardingChecklist, { type OnboardingStep } from "@/components/onboarding-checklist";
 
 function getCityFromAddress(address?: string | null) {
   if (!address) return "";
@@ -6548,8 +6549,87 @@ This removes its linked members and deletes the grounds account.`
   }
 
   function renderHomeSection() {
+    const adminOnboardingSteps: OnboardingStep[] = [
+      {
+        id: "property",
+        title: "Add your first property",
+        description: "Create the property record that jobs, calendars, invoices, access notes, and owners will connect to.",
+        complete: properties.length > 0,
+        actionLabel: "Open properties",
+        onAction: () => setActiveSection("properties"),
+      },
+      {
+        id: "calendar",
+        title: "Connect a booking calendar",
+        description: "Add an Airbnb, VRBO, or other iCal feed so the system can create schedule context automatically.",
+        complete: propertyCalendars.length > 0 || propertyBookingEvents.length > 0,
+        actionLabel: "Open calendar",
+        onAction: () => setActiveSection("calendar"),
+      },
+      {
+        id: "invites",
+        title: "Invite your team",
+        description: "Send cleaner, grounds, or owner invites so each person can use the right portal.",
+        complete:
+          organizationInvites.length > 0 ||
+          cleanerAccounts.length > 0 ||
+          groundsAccounts.length > 0 ||
+          ownerAccounts.length > 0,
+        actionLabel: "Open invites",
+        onAction: () => setActiveSection("invites"),
+      },
+      {
+        id: "assignments",
+        title: "Assign cleaner and grounds coverage",
+        description: "Link staff accounts to properties so job offers can go to the right people.",
+        complete: assignments.length > 0 || groundsAssignments.length > 0,
+        actionLabel: "Open assignments",
+        onAction: () => setActiveSection("assignments"),
+      },
+      {
+        id: "jobs",
+        title: "Review jobs and exceptions",
+        description: "Check active cleaning and grounds work, then clear stranded jobs or staffing issues.",
+        complete: jobs.length > 0 || groundsJobs.length > 0,
+        actionLabel: "Open jobs",
+        onAction: () => setActiveSection("jobs"),
+      },
+      {
+        id: "invoices",
+        title: "Set invoice defaults and rates",
+        description: "Add branding, taxes, payment instructions, and property-specific cleaning or grounds rates.",
+        complete: !!invoiceSettings || propertyInvoiceRates.length > 0 || ownerInvoices.length > 0,
+        actionLabel: "Open invoices",
+        onAction: () => setActiveSection("invoices"),
+      },
+      {
+        id: "documents",
+        title: "Add documents or SOP details",
+        description: "Store instructions, photos, and files that help staff do the work consistently.",
+        complete: documentVaultRows.length > 0 || sops.length > 0 || sopImages.length > 0,
+        actionLabel: "Open documents",
+        onAction: () => setActiveSection("documents"),
+      },
+      {
+        id: "chat",
+        title: "Try chat",
+        description: "Start a chat with staff or owners so communication stays in the portal.",
+        complete: chatConversations.length > 0,
+        actionLabel: "Open chat",
+        onAction: () => setActiveSection("chat"),
+      },
+    ];
+
     return (
       <div className="space-y-6">
+        <OnboardingChecklist
+          storageKey={`admin-onboarding:${currentOrganizationId || "default"}`}
+          eyebrow="Getting started"
+          title="Set up your workspace"
+          description="Work through these once for a new organization. Each step opens the area where the setup happens, and you can hide or dismiss this card anytime."
+          steps={adminOnboardingSteps}
+        />
+
         <div className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>

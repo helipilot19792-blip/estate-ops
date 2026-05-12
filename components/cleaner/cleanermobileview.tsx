@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import OnboardingChecklist, { type OnboardingStep } from "@/components/onboarding-checklist";
 import type { CleanerJob, CleanerViewProps } from "@/components/cleaner/cleanershell";
 
 const MAINTENANCE_CATEGORIES = [
@@ -373,6 +374,45 @@ export default function CleanerMobileView({
       : selectedDate
         ? activeJobs.filter((item) => normalizeJobDate(item.jobDate) === selectedDate)
         : activeJobs;
+
+  const onboardingSteps: OnboardingStep[] = [
+    {
+      id: "profile",
+      title: "Confirm your cleaner profile",
+      description: "Make sure you are signed into the correct cleaner account before accepting work.",
+      complete: !!cleanerAccount && profile?.role !== "pending",
+    },
+    {
+      id: "jobs",
+      title: "Review assigned jobs",
+      description: "Check Active Jobs for work waiting on your response.",
+      complete: activeJobs.length > 0 || historyJobs.length > 0,
+    },
+    {
+      id: "accept",
+      title: "Accept or decline work",
+      description: "Open a job card and respond so management knows your availability.",
+      complete: activeJobs.some((item) => ["accepted", "declined"].includes(String(item.slot.status || "").toLowerCase())),
+    },
+    {
+      id: "details",
+      title: "Check notes and SOPs",
+      description: "Review access notes, property details, SOPs, and photos before arrival.",
+      complete: !!selectedJobAccess || selectedJobSops.length > 0 || sopImagesBySopId.size > 0,
+    },
+    {
+      id: "issue",
+      title: "Report issues when needed",
+      description: "Use report issue for damage, missing supplies, access trouble, or safety concerns.",
+      complete: false,
+    },
+    {
+      id: "chat",
+      title: "Use chat for questions",
+      description: "Chat keeps quick questions inside the portal without extra email noise.",
+      complete: false,
+    },
+  ];
 
   function formatShort(ymd: string) {
     const [year, month, day] = ymd.split("-").map(Number);
@@ -752,6 +792,15 @@ export default function CleanerMobileView({
             ) : null}
           </div>
         </div>
+
+        <OnboardingChecklist
+          storageKey={`cleaner-onboarding:${profile?.id || "guest"}`}
+          eyebrow="First time setup"
+          title="Cleaner quick start"
+          description="A short checklist for your first few visits. Hide it, dismiss it, or mark steps complete as you learn the flow."
+          steps={onboardingSteps}
+          tone="staff"
+        />
 
         {canSwitchToGrounds ? (
           <div className="rounded-2xl border border-[#356046]/35 bg-[#112018] p-3 text-[#e8f6eb]">

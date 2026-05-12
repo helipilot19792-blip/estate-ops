@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { supabase } from "@/lib/supabase";
+import OnboardingChecklist, { type OnboardingStep } from "@/components/onboarding-checklist";
 import type { CleanerJob, CleanerViewProps } from "@/components/cleaner/cleanershell";
 
 
@@ -737,6 +738,48 @@ export default function CleanerDesktopView({
 }: CleanerViewProps) {
   const [jobView, setJobView] = useState<"active" | "history">("active");
   const visibleJobs = jobView === "history" ? historyJobs : activeJobs;
+  const onboardingSteps: OnboardingStep[] = [
+    {
+      id: "profile",
+      title: "Confirm your cleaner profile",
+      description: "Make sure you are signed into the correct cleaner account before accepting work.",
+      complete: !!cleanerAccount && profile?.role !== "pending",
+    },
+    {
+      id: "jobs",
+      title: "Review assigned jobs",
+      description: "Open the jobs list or calendar and check the work waiting for you.",
+      complete: filteredJobs.length > 0 || activeJobs.length > 0 || historyJobs.length > 0,
+      actionLabel: "View jobs",
+      onAction: scrollToJobsSection,
+    },
+    {
+      id: "accept",
+      title: "Accept or decline work",
+      description: "Use the job details panel to accept work you can do, or decline if you are unavailable.",
+      complete: activeJobs.some((item) => ["accepted", "declined"].includes(String(item.slot.status || "").toLowerCase())),
+      actionLabel: "Open jobs",
+      onAction: scrollToJobsSection,
+    },
+    {
+      id: "details",
+      title: "Check access notes and SOPs",
+      description: "Before going to the property, review door codes, notes, SOPs, and photos if they are available.",
+      complete: !!selectedJobAccess || selectedJobSops.length > 0 || sopImagesBySopId.size > 0,
+    },
+    {
+      id: "issue",
+      title: "Know where to report issues",
+      description: "If you find damage, missing supplies, access trouble, or a safety concern, report it from the portal.",
+      complete: false,
+    },
+    {
+      id: "chat",
+      title: "Use chat for questions",
+      description: "Chat keeps quick questions inside the app without sending an email for every message.",
+      complete: false,
+    },
+  ];
 
   function renderJobList(items: CleanerJob[], emptyText: string) {
     if (items.length === 0) {
@@ -906,6 +949,15 @@ export default function CleanerDesktopView({
                 {accountWarning}
               </section>
             )}
+
+            <OnboardingChecklist
+              storageKey={`cleaner-onboarding:${profile?.id || "guest"}`}
+              eyebrow="First time setup"
+              title="Cleaner quick start"
+              description="A short checklist for your first few visits. You can hide it, dismiss it, or mark steps complete as you learn the flow."
+              steps={onboardingSteps}
+              tone="staff"
+            />
 
             {canSwitchToGrounds ? (
               <section className="rounded-2xl border border-[#356046]/35 bg-[#112018] p-4 text-[#e8f6eb]">

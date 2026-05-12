@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { supabase } from "@/lib/supabase";
+import OnboardingChecklist, { type OnboardingStep } from "@/components/onboarding-checklist";
 import type { GroundsJob, GroundsViewProps } from "@/components/grounds/groundsshell";
 
 
@@ -764,6 +765,48 @@ export default function GroundsDesktopView({
   const [jobView, setJobView] = useState<"active" | "history">("active");
 
   const visibleJobs = jobView === "history" ? historyJobs : activeJobs;
+  const onboardingSteps: OnboardingStep[] = [
+    {
+      id: "profile",
+      title: "Confirm your grounds profile",
+      description: "Make sure you are signed into the correct grounds account before accepting exterior work.",
+      complete: !!groundsAccount && profile?.role !== "pending",
+    },
+    {
+      id: "jobs",
+      title: "Review grounds jobs",
+      description: "Open the jobs list or calendar and check exterior work waiting for you.",
+      complete: filteredJobs.length > 0 || activeJobs.length > 0 || historyJobs.length > 0,
+      actionLabel: "View jobs",
+      onAction: scrollToJobsSection,
+    },
+    {
+      id: "accept",
+      title: "Accept or decline work",
+      description: "Use the job details panel to accept work you can do, or decline if you are unavailable.",
+      complete: activeJobs.some((item) => ["accepted", "declined"].includes(String(item.slot.status || "").toLowerCase())),
+      actionLabel: "Open jobs",
+      onAction: scrollToJobsSection,
+    },
+    {
+      id: "details",
+      title: "Check notes and photos",
+      description: "Review property notes, exterior instructions, SOPs, and photos before arrival.",
+      complete: !!selectedJobAccess || selectedJobSops.length > 0 || sopImagesBySopId.size > 0,
+    },
+    {
+      id: "issue",
+      title: "Know where to report issues",
+      description: "If you find damage, access trouble, hazards, or exterior concerns, report it from the portal.",
+      complete: false,
+    },
+    {
+      id: "chat",
+      title: "Use chat for questions",
+      description: "Chat keeps quick questions inside the app without sending an email for every message.",
+      complete: false,
+    },
+  ];
 
   function renderJobList(items: GroundsJob[], emptyText: string) {
     if (items.length === 0) {
@@ -933,6 +976,15 @@ export default function GroundsDesktopView({
                 {accountWarning}
               </section>
             )}
+
+            <OnboardingChecklist
+              storageKey={`grounds-onboarding:${profile?.id || "guest"}`}
+              eyebrow="First time setup"
+              title="Grounds quick start"
+              description="A short checklist for your first few exterior jobs. You can hide it, dismiss it, or mark steps complete as you learn the flow."
+              steps={onboardingSteps}
+              tone="staff"
+            />
 
             {canSwitchToCleaner ? (
               <section className="rounded-2xl border border-[#b08b47]/30 bg-[#1b1611] p-4 text-[#f5efe4]">

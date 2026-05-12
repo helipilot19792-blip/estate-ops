@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import OnboardingChecklist, { type OnboardingStep } from "@/components/onboarding-checklist";
 import type { GroundsJob, GroundsViewProps } from "@/components/grounds/groundsshell";
 
 const MAINTENANCE_CATEGORIES = [
@@ -391,6 +392,45 @@ export default function GroundsMobileView({
         ? activeJobs.filter((item) => normalizeJobDate(item.jobDate) === selectedDate)
         : activeJobs;
 
+  const onboardingSteps: OnboardingStep[] = [
+    {
+      id: "profile",
+      title: "Confirm your grounds profile",
+      description: "Make sure you are signed into the correct grounds account before accepting work.",
+      complete: !!groundsAccount && profile?.role !== "pending",
+    },
+    {
+      id: "jobs",
+      title: "Review grounds jobs",
+      description: "Check Active Jobs for exterior work waiting on your response.",
+      complete: activeJobs.length > 0 || historyJobs.length > 0,
+    },
+    {
+      id: "accept",
+      title: "Accept or decline work",
+      description: "Open a job card and respond so management knows your availability.",
+      complete: activeJobs.some((item) => ["accepted", "declined"].includes(String(item.slot.status || "").toLowerCase())),
+    },
+    {
+      id: "details",
+      title: "Check notes and photos",
+      description: "Review property details, exterior instructions, SOPs, and photos before arrival.",
+      complete: !!selectedJobAccess || selectedJobSops.length > 0 || sopImagesBySopId.size > 0,
+    },
+    {
+      id: "issue",
+      title: "Report issues when needed",
+      description: "Use report issue for damage, hazards, access trouble, or exterior concerns.",
+      complete: false,
+    },
+    {
+      id: "chat",
+      title: "Use chat for questions",
+      description: "Chat keeps quick questions inside the portal without extra email noise.",
+      complete: false,
+    },
+  ];
+
   function formatShort(ymd: string) {
     const [year, month, day] = ymd.split("-").map(Number);
     const d = new Date(year, month - 1, day);
@@ -773,6 +813,15 @@ export default function GroundsMobileView({
             ) : null}
           </div>
         </div>
+
+        <OnboardingChecklist
+          storageKey={`grounds-onboarding:${profile?.id || "guest"}`}
+          eyebrow="First time setup"
+          title="Grounds quick start"
+          description="A short checklist for your first few exterior jobs. Hide it, dismiss it, or mark steps complete as you learn the flow."
+          steps={onboardingSteps}
+          tone="staff"
+        />
 
         {canSwitchToCleaner ? (
           <div className="rounded-2xl border border-[#b08b47]/30 bg-[#1b1611] p-3 text-[#f5efe4]">
