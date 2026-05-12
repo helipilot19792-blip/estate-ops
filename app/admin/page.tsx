@@ -812,6 +812,7 @@ const WEEKDAY_OPTIONS = [
 ];
 
 const WASTE_PICKUP_TYPE_OPTIONS = ["Garbage", "Recycling", "Compost", "Yard waste", "Bulk items"];
+type WastePattern = "weekly" | "biweekly_same" | "alternating";
 
 function getWastePickupTypes(value: string | null | undefined) {
   const normalized = (value || "").toLowerCase();
@@ -831,6 +832,16 @@ function toggleWastePickupType(currentValue: string, option: string) {
   else current.add(option);
 
   return WASTE_PICKUP_TYPE_OPTIONS.filter((item) => current.has(item)).join(", ");
+}
+
+function isNoWastePickupLabel(value: string | null | undefined) {
+  return (value || "").trim().toLowerCase() === "no pickup";
+}
+
+function inferWastePattern(property: Property | null | undefined): WastePattern {
+  if (!property?.garbage_rotation_anchor_date) return "weekly";
+  if (isNoWastePickupLabel(property.garbage_week_b_label)) return "biweekly_same";
+  return "alternating";
 }
 
 function getPropertyColor(propertyId: string | null) {
@@ -1186,7 +1197,7 @@ export default function AdminPage() {
   const [selectedPropertyGarbageDay, setSelectedPropertyGarbageDay] = useState("");
   const [selectedPropertyGarbageNotes, setSelectedPropertyGarbageNotes] = useState("");
   const [selectedPropertyGarbagePickupWeekday, setSelectedPropertyGarbagePickupWeekday] = useState("");
-  const [selectedPropertyWastePattern, setSelectedPropertyWastePattern] = useState<"weekly" | "biweekly">("weekly");
+  const [selectedPropertyWastePattern, setSelectedPropertyWastePattern] = useState<WastePattern>("weekly");
   const [selectedPropertyGarbageRotationAnchorDate, setSelectedPropertyGarbageRotationAnchorDate] = useState("");
   const [selectedPropertyGarbageWeekALabel, setSelectedPropertyGarbageWeekALabel] = useState("Garbage + recycling");
   const [selectedPropertyGarbageWeekBLabel, setSelectedPropertyGarbageWeekBLabel] = useState("Recycling only");
@@ -1686,7 +1697,7 @@ export default function AdminPage() {
           ? String(selectedProperty.garbage_pickup_weekday)
           : ""
       );
-      setSelectedPropertyWastePattern(selectedProperty?.garbage_rotation_anchor_date ? "biweekly" : "weekly");
+      setSelectedPropertyWastePattern(inferWastePattern(selectedProperty));
       setSelectedPropertyGarbageRotationAnchorDate(selectedProperty?.garbage_rotation_anchor_date || "");
       setSelectedPropertyGarbageWeekALabel(selectedProperty?.garbage_week_a_label || "Garbage + recycling");
       setSelectedPropertyGarbageWeekBLabel(selectedProperty?.garbage_week_b_label || "Recycling only");
@@ -1837,6 +1848,7 @@ export default function AdminPage() {
       const response = await fetch(
         `/api/admin/dashboard-data?organizationId=${encodeURIComponent(currentOrganizationId)}`,
         {
+          cache: "no-store",
           headers: {
             Authorization: `Bearer ${session.access_token}`,
           },
@@ -4556,9 +4568,23 @@ This removes its linked members and deletes the grounds account.`
     setError("");
     setSavingSelectedPropertyManualDetails(true);
     const savedAnchorDate =
-      selectedPropertyWastePattern === "biweekly"
+      selectedPropertyWastePattern === "biweekly_same" || selectedPropertyWastePattern === "alternating"
         ? selectedPropertyGarbageRotationAnchorDate || null
         : null;
+    const savedGarbageDay =
+      selectedPropertyWastePattern === "alternating"
+        ? null
+        : selectedPropertyGarbageDay.trim() || null;
+    const savedWeekALabel =
+      selectedPropertyWastePattern === "alternating"
+        ? selectedPropertyGarbageWeekALabel.trim() || "Garbage + recycling"
+        : selectedPropertyGarbageDay.trim() || "Waste pickup";
+    const savedWeekBLabel =
+      selectedPropertyWastePattern === "alternating"
+        ? selectedPropertyGarbageWeekBLabel.trim() || "Recycling only"
+        : selectedPropertyWastePattern === "biweekly_same"
+          ? "No pickup"
+          : "No pickup";
 
     try {
       const {
@@ -4572,6 +4598,7 @@ This removes its linked members and deletes the grounds account.`
 
       const response = await fetch("/api/admin/property-details", {
         method: "POST",
+        cache: "no-store",
         headers: {
           Authorization: `Bearer ${session.access_token}`,
           "Content-Type": "application/json",
@@ -4581,12 +4608,12 @@ This removes its linked members and deletes the grounds account.`
           propertyId: selectedPropertyId,
           wifiNetwork: selectedPropertyWifiNetwork,
           wifiPassword: selectedPropertyWifiPassword,
-          garbageDay: selectedPropertyGarbageDay,
+          garbageDay: savedGarbageDay,
           garbageNotes: selectedPropertyGarbageNotes,
           garbagePickupWeekday: selectedPropertyGarbagePickupWeekday,
           garbageRotationAnchorDate: savedAnchorDate,
-          garbageWeekALabel: selectedPropertyGarbageWeekALabel,
-          garbageWeekBLabel: selectedPropertyGarbageWeekBLabel,
+          garbageWeekALabel: savedWeekALabel,
+          garbageWeekBLabel: savedWeekBLabel,
         }),
       });
       const payload = await response.json().catch(() => null);
@@ -5279,7 +5306,10 @@ This removes its linked members and deletes the grounds account.`
   }
 
   function getWastePatternLabel(property: Property) {
-    return property.garbage_rotation_anchor_date ? "Bi-weekly / alternating" : "Weekly";
+    const pattern = inferWastePattern(property);
+    if (pattern === "biweekly_same") return "Every 2 weeks";
+    if (pattern === "alternating") return "Alternating weeks";
+    return "Every week";
   }
 
   function getCleanerAccountName(id: string | null) {
@@ -6163,6 +6193,8 @@ This removes its linked members and deletes the grounds account.`
           const rotationIndex = ((weeksFromAnchor % 2) + 2) % 2;
           pickupLabel = rotationIndex === 0 ? weekALabel : weekBLabel;
         }
+
+        if (isNoWastePickupLabel(pickupLabel)) continue;
 
         pickups.push({
           id: `${property.id}-${dateYmd}`,
@@ -11504,12 +11536,16 @@ This removes its linked members and deletes the grounds account.`
                         </div>
                         <div>
                           <div className="text-xs font-semibold text-[#17382d]">Pickup contents</div>
-                          <div className="mt-0.5">{getWastePickupLabel(p.garbage_day) || "Not saved"}</div>
+                          <div className="mt-0.5">
+                            {inferWastePattern(p) === "alternating"
+                              ? `Week A: ${p.garbage_week_a_label || "Not saved"} | Week B: ${p.garbage_week_b_label || "Not saved"}`
+                              : getWastePickupLabel(p.garbage_day || p.garbage_week_a_label) || "Not saved"}
+                          </div>
                         </div>
                       </div>
                       {p.garbage_rotation_anchor_date ? (
                         <div className="mt-2 text-xs text-[#5e7469]">
-                          Week A starts {formatDateLabel(p.garbage_rotation_anchor_date)}: {p.garbage_week_a_label || "Garbage + recycling"} | Week B: {p.garbage_week_b_label || "Recycling only"}
+                          Week A starts {formatDateLabel(p.garbage_rotation_anchor_date)}
                         </div>
                       ) : null}
                       {p.garbage_notes ? (
@@ -13847,26 +13883,6 @@ This removes its linked members and deletes the grounds account.`
                         placeholder="WiFi password"
                         className="w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
                       />
-                      <div className="rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3">
-                        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#5e7469]">
-                          Pickup contents
-                        </div>
-                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                          {WASTE_PICKUP_TYPE_OPTIONS.map((option) => (
-                            <label key={option} className="flex items-center gap-2 text-sm text-[#17382d]">
-                              <input
-                                type="checkbox"
-                                checked={getWastePickupTypes(selectedPropertyGarbageDay).includes(option)}
-                                onChange={() => {
-                                  setSelectedPropertyGarbageDay((current) => toggleWastePickupType(current, option));
-                                  setPropertyManualDetailsDirty(true);
-                                }}
-                              />
-                              {option}
-                            </label>
-                          ))}
-                        </div>
-                      </div>
                       <input
                         value={selectedPropertyGarbageNotes}
                         onChange={(e) => {
@@ -13879,17 +13895,20 @@ This removes its linked members and deletes the grounds account.`
                       <select
                         value={selectedPropertyWastePattern}
                         onChange={(e) => {
-                          const nextPattern = e.target.value === "biweekly" ? "biweekly" : "weekly";
+                          const nextPattern = e.target.value as WastePattern;
                           setSelectedPropertyWastePattern(nextPattern);
                           if (nextPattern === "weekly") {
                             setSelectedPropertyGarbageRotationAnchorDate("");
+                          } else if (!selectedPropertyGarbageRotationAnchorDate) {
+                            setSelectedPropertyGarbageRotationAnchorDate(todayYmd);
                           }
                           setPropertyManualDetailsDirty(true);
                         }}
                         className="w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition focus:border-[#4f7c6b]"
                       >
-                        <option value="weekly">Weekly pickup</option>
-                        <option value="biweekly">Bi-weekly / alternating pickup</option>
+                        <option value="weekly">Every week - same contents</option>
+                        <option value="biweekly_same">Every 2 weeks - same contents</option>
+                        <option value="alternating">Alternating weeks - different contents</option>
                       </select>
                       <select
                         value={selectedPropertyGarbagePickupWeekday}
@@ -13906,10 +13925,35 @@ This removes its linked members and deletes the grounds account.`
                           </option>
                         ))}
                       </select>
-                      {selectedPropertyWastePattern === "biweekly" ? (
+                      {selectedPropertyWastePattern !== "alternating" ? (
+                        <div className="rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 md:col-span-2">
+                          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#5e7469]">
+                            Pickup contents
+                          </div>
+                          <p className="mt-1 text-xs text-[#5e7469]">
+                            Use this when the same things are picked up every service day.
+                          </p>
+                          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                            {WASTE_PICKUP_TYPE_OPTIONS.map((option) => (
+                              <label key={option} className="flex items-center gap-2 text-sm text-[#17382d]">
+                                <input
+                                  type="checkbox"
+                                  checked={getWastePickupTypes(selectedPropertyGarbageDay).includes(option)}
+                                  onChange={() => {
+                                    setSelectedPropertyGarbageDay((current) => toggleWastePickupType(current, option));
+                                    setPropertyManualDetailsDirty(true);
+                                  }}
+                                />
+                                {option}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                      {selectedPropertyWastePattern !== "weekly" ? (
                         <>
                           <label className="text-xs font-medium text-[#5e7469]">
-                            Week A start date
+                            First Week A pickup date
                             <input
                               type="date"
                               value={selectedPropertyGarbageRotationAnchorDate}
@@ -13919,25 +13963,54 @@ This removes its linked members and deletes the grounds account.`
                               }}
                               className="mt-1 w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition focus:border-[#4f7c6b]"
                             />
+                            <span className="mt-1 block text-[11px] leading-4 text-[#5e7469]">
+                              For alternating weeks, Week A is this date. The following week is Week B.
+                            </span>
                           </label>
-                          <input
-                            value={selectedPropertyGarbageWeekALabel}
-                            onChange={(e) => {
-                              setSelectedPropertyGarbageWeekALabel(e.target.value);
-                              setPropertyManualDetailsDirty(true);
-                            }}
-                            placeholder="Week A label"
-                            className="w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
-                          />
-                          <input
-                            value={selectedPropertyGarbageWeekBLabel}
-                            onChange={(e) => {
-                              setSelectedPropertyGarbageWeekBLabel(e.target.value);
-                              setPropertyManualDetailsDirty(true);
-                            }}
-                            placeholder="Week B label"
-                            className="w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
-                          />
+                          {selectedPropertyWastePattern === "alternating" ? (
+                            <div className="rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3">
+                              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#5e7469]">
+                                Week A contents
+                              </div>
+                              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                                {WASTE_PICKUP_TYPE_OPTIONS.map((option) => (
+                                  <label key={option} className="flex items-center gap-2 text-sm text-[#17382d]">
+                                    <input
+                                      type="checkbox"
+                                      checked={getWastePickupTypes(selectedPropertyGarbageWeekALabel).includes(option)}
+                                      onChange={() => {
+                                        setSelectedPropertyGarbageWeekALabel((current) => toggleWastePickupType(current, option));
+                                        setPropertyManualDetailsDirty(true);
+                                      }}
+                                    />
+                                    {option}
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+                          {selectedPropertyWastePattern === "alternating" ? (
+                            <div className="rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 md:col-span-2">
+                              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#5e7469]">
+                                Week B contents
+                              </div>
+                              <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                                {WASTE_PICKUP_TYPE_OPTIONS.map((option) => (
+                                  <label key={option} className="flex items-center gap-2 text-sm text-[#17382d]">
+                                    <input
+                                      type="checkbox"
+                                      checked={getWastePickupTypes(selectedPropertyGarbageWeekBLabel).includes(option)}
+                                      onChange={() => {
+                                        setSelectedPropertyGarbageWeekBLabel((current) => toggleWastePickupType(current, option));
+                                        setPropertyManualDetailsDirty(true);
+                                      }}
+                                    />
+                                    {option}
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
                         </>
                       ) : null}
                     </div>
