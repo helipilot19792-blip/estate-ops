@@ -4529,7 +4529,7 @@ This removes its linked members and deletes the grounds account.`
       setActionMessage("Property WiFi and garbage details saved.");
       await loadData();
     } catch (err: any) {
-      const message = String(err?.message || "Could not save property manual details.");
+      const message = String(err?.message || "Could not save property details.");
       setError(
         message.includes("wifi_network") || message.includes("garbage_")
           ? `${message} Run supabase/add_property_inspections.sql first.`
@@ -10657,9 +10657,9 @@ This removes its linked members and deletes the grounds account.`
               />
 
               <div className="rounded-[22px] border border-[#eadfce] bg-[#fffaf4] p-4">
-                <div className="text-sm font-medium text-[#5f5245]">Home manual details</div>
+                <div className="text-sm font-medium text-[#5f5245]">WiFi and waste details</div>
                 <p className="mt-1 text-xs text-[#8a7b68]">
-                  Saved now for the future property guide/manual builder.
+                  Store access details the team may need for this property.
                 </p>
                 <div className="mt-3 grid gap-2 md:grid-cols-2">
                   <input
@@ -13534,9 +13534,9 @@ This removes its linked members and deletes the grounds account.`
                   </div>
 
                   <div className="rounded-[24px] border border-[#d7e6df] bg-[#f6fbf8] p-5">
-                    <h3 className="text-base font-semibold text-[#17382d]">Home Manual Details</h3>
+                    <h3 className="text-base font-semibold text-[#17382d]">WiFi and Waste Details</h3>
                     <p className="mt-1 text-sm text-[#5e7469]">
-                      WiFi and garbage information is saved here now, and can feed the future custom home manual builder later.
+                      Capture the WiFi and pickup schedule details for this property.
                     </p>
                     <div className="mt-4 grid gap-3 md:grid-cols-2">
                       <input
@@ -13627,7 +13627,7 @@ This removes its linked members and deletes the grounds account.`
                       disabled={savingSelectedPropertyManualDetails}
                       className="mt-4 rounded-full bg-[#17382d] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#245444] disabled:opacity-60"
                     >
-                      {savingSelectedPropertyManualDetails ? "Saving..." : "Save manual details"}
+                      {savingSelectedPropertyManualDetails ? "Saving..." : "Save details"}
                     </button>
                   </div>
 
