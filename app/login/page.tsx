@@ -18,14 +18,6 @@ type ProfileRow = {
 type AuthMode = "login" | "company";
 const ORGANIZATION_TRIAL_DAYS = 30;
 
-function slugifyCompanyName(value: string) {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
 function scrollInputIntoView(target: EventTarget | null) {
   if (typeof window === "undefined") return;
   const element = target as HTMLElement | null;
@@ -247,8 +239,6 @@ export default function LoginPage() {
     setLoadingSignup(true);
 
     try {
-      let createdOrganizationId: string | null = null;
-      let promotedToAdmin = false;
       const { data, error } = await supabase.auth.signUp({
         email: signupEmail.trim().toLowerCase(),
         password: signupPassword,
@@ -263,95 +253,33 @@ export default function LoginPage() {
       }
 
       const userId = data.user?.id;
+      const accessToken =
+        data.session?.access_token ||
+        (await supabase.auth.getSession()).data.session?.access_token;
 
-      if (userId) {
-        const { error: profileError } = await supabase
-          .from("profiles")
-          .update({
-            full_name: signupName.trim(),
-            phone: signupPhone.trim(),
-            role: "admin",
-          })
-          .eq("id", userId);
+      if (!userId || !accessToken) {
+        setError("Account created, but no active session was available to create the company. Confirm your email, then log in.");
+        return;
+      }
 
-        if (profileError) {
-          setError(profileError.message);
-          return;
-        }
+      const signupResponse = await fetch("/api/company-signup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          fullName: signupName.trim(),
+          phone: signupPhone.trim(),
+          companyName: companyName.trim(),
+        }),
+      });
 
-        promotedToAdmin = true;
+      const signupResult = await signupResponse.json().catch(() => null);
 
-        const baseSlug = slugifyCompanyName(companyName);
-        const uniqueSlug = `${baseSlug || "company"}-${Date.now().toString().slice(-6)}`;
-
-        const trialStartedAt = new Date();
-        const trialEndsAt = new Date(trialStartedAt);
-        trialEndsAt.setDate(trialEndsAt.getDate() + ORGANIZATION_TRIAL_DAYS);
-
-        const { data: org, error: orgError } = await supabase
-          .from("organizations")
-          .insert({
-            name: companyName.trim(),
-            slug: uniqueSlug,
-            created_by: userId,
-            subscription_status: "trialing",
-            trial_started_at: trialStartedAt.toISOString(),
-            trial_ends_at: trialEndsAt.toISOString(),
-            billing_enabled: false,
-          })
-          .select("id")
-          .single();
-
-        if (orgError || !org) {
-          const message = orgError?.message || "Failed to create organization.";
-          if (message.includes("subscription_status") || message.includes("trial_ends_at")) {
-            setError(
-              "The organization trial fields are not in Supabase yet. Run supabase/add_organization_trial_fields.sql, then try creating the company again."
-            );
-          } else if (message.includes("row-level security") && message.includes("organizations")) {
-            setError(
-              "Company signup is blocked by the organization security policy. Run supabase/fix_company_signup_rls.sql in Supabase, then try creating the company again."
-            );
-          } else {
-            setError(message);
-          }
-
-          if (promotedToAdmin) {
-            await supabase
-              .from("profiles")
-              .update({ role: "pending" })
-              .eq("id", userId);
-          }
-
-          return;
-        }
-
-        createdOrganizationId = org.id;
-
-        const { error: memberError } = await supabase.from("organization_members").insert({
-          organization_id: org.id,
-          profile_id: userId,
-          role: "admin",
-        });
-
-        if (memberError) {
-          if (createdOrganizationId) {
-            await supabase
-              .from("organizations")
-              .delete()
-              .eq("id", createdOrganizationId);
-          }
-
-          if (promotedToAdmin) {
-            await supabase
-              .from("profiles")
-              .update({ role: "pending" })
-              .eq("id", userId);
-          }
-
-          setError(memberError.message);
-          return;
-        }
+      if (!signupResponse.ok) {
+        setError(signupResult?.error || "Failed to create company workspace.");
+        return;
       }
 
       setMessage(
