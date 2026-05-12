@@ -2,7 +2,17 @@ alter table public.properties
   add column if not exists wifi_network text,
   add column if not exists wifi_password text,
   add column if not exists garbage_day text,
-  add column if not exists garbage_notes text;
+  add column if not exists garbage_notes text,
+  add column if not exists garbage_pickup_weekday integer,
+  add column if not exists garbage_rotation_anchor_date date,
+  add column if not exists garbage_week_a_label text default 'Garbage + recycling',
+  add column if not exists garbage_week_b_label text default 'Recycling only';
+
+comment on column public.properties.garbage_pickup_weekday is
+  'Waste pickup day as 0 Sunday through 6 Saturday.';
+
+comment on column public.properties.garbage_rotation_anchor_date is
+  'A known pickup date for week A. Week A/B alternates every 7 days from this date.';
 
 create table if not exists public.property_inspection_rules (
   id uuid primary key default gen_random_uuid(),

@@ -38,6 +38,10 @@ type Property = {
   wifi_password?: string | null;
   garbage_day?: string | null;
   garbage_notes?: string | null;
+  garbage_pickup_weekday?: number | null;
+  garbage_rotation_anchor_date?: string | null;
+  garbage_week_a_label?: string | null;
+  garbage_week_b_label?: string | null;
   default_cleaner_units_needed: number;
   cleaner_units_required_strict: boolean;
   show_team_status_to_cleaners: boolean;
@@ -608,10 +612,29 @@ function toYmd(date: Date) {
   const day = `${date.getDate()}`.padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
+
+function ymdToLocalDate(dateString: string) {
+  const [year, month, day] = dateString.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function addDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function diffDays(startYmd: string, endYmd: string) {
+  const start = ymdToLocalDate(startYmd);
+  const end = ymdToLocalDate(endYmd);
+  start.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+  return Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+}
+
 function formatDateLabel(dateString: string | null) {
   if (!dateString) return "Not set";
-  const [year, month, day] = dateString.split("-").map(Number);
-  const d = new Date(year, month - 1, day);
+  const d = ymdToLocalDate(dateString);
   return d.toLocaleDateString(undefined, {
     weekday: "long",
     month: "long",
@@ -776,6 +799,16 @@ const PROPERTY_CALENDAR_COLORS = [
 const PROPERTY_CALENDAR_SOURCE_OPTIONS = [
   { value: "airbnb", label: "Airbnb" },
   { value: "vrbo", label: "VRBO" },
+];
+
+const WEEKDAY_OPTIONS = [
+  { value: "0", label: "Sunday" },
+  { value: "1", label: "Monday" },
+  { value: "2", label: "Tuesday" },
+  { value: "3", label: "Wednesday" },
+  { value: "4", label: "Thursday" },
+  { value: "5", label: "Friday" },
+  { value: "6", label: "Saturday" },
 ];
 
 function getPropertyColor(propertyId: string | null) {
@@ -1043,6 +1076,10 @@ export default function AdminPage() {
   const [propertyWifiPassword, setPropertyWifiPassword] = useState("");
   const [propertyGarbageDay, setPropertyGarbageDay] = useState("");
   const [propertyGarbageNotes, setPropertyGarbageNotes] = useState("");
+  const [propertyGarbagePickupWeekday, setPropertyGarbagePickupWeekday] = useState("");
+  const [propertyGarbageRotationAnchorDate, setPropertyGarbageRotationAnchorDate] = useState("");
+  const [propertyGarbageWeekALabel, setPropertyGarbageWeekALabel] = useState("Garbage + recycling");
+  const [propertyGarbageWeekBLabel, setPropertyGarbageWeekBLabel] = useState("Recycling only");
   const [importingAirbnbProperty, setImportingAirbnbProperty] = useState(false);
   const [airbnbImportName, setAirbnbImportName] = useState("");
   const [airbnbImportAddress, setAirbnbImportAddress] = useState("");
@@ -1126,6 +1163,10 @@ export default function AdminPage() {
   const [selectedPropertyWifiPassword, setSelectedPropertyWifiPassword] = useState("");
   const [selectedPropertyGarbageDay, setSelectedPropertyGarbageDay] = useState("");
   const [selectedPropertyGarbageNotes, setSelectedPropertyGarbageNotes] = useState("");
+  const [selectedPropertyGarbagePickupWeekday, setSelectedPropertyGarbagePickupWeekday] = useState("");
+  const [selectedPropertyGarbageRotationAnchorDate, setSelectedPropertyGarbageRotationAnchorDate] = useState("");
+  const [selectedPropertyGarbageWeekALabel, setSelectedPropertyGarbageWeekALabel] = useState("Garbage + recycling");
+  const [selectedPropertyGarbageWeekBLabel, setSelectedPropertyGarbageWeekBLabel] = useState("Recycling only");
   const [savingSelectedPropertyManualDetails, setSavingSelectedPropertyManualDetails] = useState(false);
   const [propertyManualDetailsDirty, setPropertyManualDetailsDirty] = useState(false);
   const [savingSelectedPropertyDefaults, setSavingSelectedPropertyDefaults] = useState(false);
@@ -1190,10 +1231,13 @@ export default function AdminPage() {
       });
   }, [groundsJobs, todayYmd]);
   const tomorrowYmd = useMemo(() => {
-    const tomorrow = new Date(now);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    return toYmd(tomorrow);
+    return toYmd(addDays(now, 1));
   }, [now]);
+
+  const serviceLookaheadYmds = useMemo(
+    () => [0, 1, 2].map((offset) => toYmd(addDays(now, offset))),
+    [now]
+  );
 
   const tomorrowsCleaningJobs = useMemo(() => {
     return jobs.filter(
@@ -1556,6 +1600,14 @@ export default function AdminPage() {
       setSelectedPropertyOwnerDirty(false);
       setCalendarRowsDraft([]);
       setCalendarDraftDirty(false);
+      setSelectedPropertyWifiNetwork("");
+      setSelectedPropertyWifiPassword("");
+      setSelectedPropertyGarbageDay("");
+      setSelectedPropertyGarbageNotes("");
+      setSelectedPropertyGarbagePickupWeekday("");
+      setSelectedPropertyGarbageRotationAnchorDate("");
+      setSelectedPropertyGarbageWeekALabel("Garbage + recycling");
+      setSelectedPropertyGarbageWeekBLabel("Recycling only");
       setAccessDirty(false);
       setPropertyDefaultsDirty(false);
       setPropertyManualDetailsDirty(false);
@@ -1601,6 +1653,14 @@ export default function AdminPage() {
       setSelectedPropertyWifiPassword(selectedProperty?.wifi_password || "");
       setSelectedPropertyGarbageDay(selectedProperty?.garbage_day || "");
       setSelectedPropertyGarbageNotes(selectedProperty?.garbage_notes || "");
+      setSelectedPropertyGarbagePickupWeekday(
+        typeof selectedProperty?.garbage_pickup_weekday === "number"
+          ? String(selectedProperty.garbage_pickup_weekday)
+          : ""
+      );
+      setSelectedPropertyGarbageRotationAnchorDate(selectedProperty?.garbage_rotation_anchor_date || "");
+      setSelectedPropertyGarbageWeekALabel(selectedProperty?.garbage_week_a_label || "Garbage + recycling");
+      setSelectedPropertyGarbageWeekBLabel(selectedProperty?.garbage_week_b_label || "Recycling only");
     }
   }, [
     selectedPropertyId,
@@ -2469,6 +2529,10 @@ export default function AdminPage() {
     setPropertyWifiPassword("");
     setPropertyGarbageDay("");
     setPropertyGarbageNotes("");
+    setPropertyGarbagePickupWeekday("");
+    setPropertyGarbageRotationAnchorDate("");
+    setPropertyGarbageWeekALabel("Garbage + recycling");
+    setPropertyGarbageWeekBLabel("Recycling only");
     setPropertyUnitsNeeded("1");
     setPropertyUnitsStrict(false);
     setPropertyShowTeamStatus(true);
@@ -2596,6 +2660,10 @@ export default function AdminPage() {
         wifi_password: propertyWifiPassword.trim() || null,
         garbage_day: propertyGarbageDay.trim() || null,
         garbage_notes: propertyGarbageNotes.trim() || null,
+        garbage_pickup_weekday: propertyGarbagePickupWeekday === "" ? null : Number(propertyGarbagePickupWeekday),
+        garbage_rotation_anchor_date: propertyGarbageRotationAnchorDate || null,
+        garbage_week_a_label: propertyGarbageWeekALabel.trim() || "Garbage + recycling",
+        garbage_week_b_label: propertyGarbageWeekBLabel.trim() || "Recycling only",
         default_cleaner_units_needed: Number(propertyUnitsNeeded),
         cleaner_units_required_strict: propertyUnitsStrict,
         show_team_status_to_cleaners: propertyShowTeamStatus,
@@ -2604,7 +2672,12 @@ export default function AdminPage() {
       .single();
 
     if (propertyError || !insertedProperty) {
-      setError(propertyError?.message || "Could not create property.");
+      const message = propertyError?.message || "Could not create property.";
+      setError(
+        message.includes("wifi_network") || message.includes("garbage_")
+          ? `${message} Run supabase/add_property_inspections.sql first.`
+          : message
+      );
       return;
     }
 
@@ -4444,6 +4517,10 @@ This removes its linked members and deletes the grounds account.`
           wifi_password: selectedPropertyWifiPassword.trim() || null,
           garbage_day: selectedPropertyGarbageDay.trim() || null,
           garbage_notes: selectedPropertyGarbageNotes.trim() || null,
+          garbage_pickup_weekday: selectedPropertyGarbagePickupWeekday === "" ? null : Number(selectedPropertyGarbagePickupWeekday),
+          garbage_rotation_anchor_date: selectedPropertyGarbageRotationAnchorDate || null,
+          garbage_week_a_label: selectedPropertyGarbageWeekALabel.trim() || "Garbage + recycling",
+          garbage_week_b_label: selectedPropertyGarbageWeekBLabel.trim() || "Recycling only",
         })
         .eq("id", selectedPropertyId);
 
@@ -4453,7 +4530,11 @@ This removes its linked members and deletes the grounds account.`
       await loadData();
     } catch (err: any) {
       const message = String(err?.message || "Could not save property manual details.");
-      setError(message.includes("wifi_network") ? `${message} Run supabase/add_property_inspections.sql first.` : message);
+      setError(
+        message.includes("wifi_network") || message.includes("garbage_")
+          ? `${message} Run supabase/add_property_inspections.sql first.`
+          : message
+      );
     } finally {
       setSavingSelectedPropertyManualDetails(false);
     }
@@ -5867,16 +5948,70 @@ This removes its linked members and deletes the grounds account.`
       .sort((a, b) => a.checkoutDate.localeCompare(b.checkoutDate) || a.propertyName.localeCompare(b.propertyName));
   }, [properties, propertyBookingEvents, todayYmd]);
 
+  const upcomingWastePickups = useMemo(() => {
+    const pickups: Array<{
+      id: string;
+      propertyName: string;
+      city: string;
+      dateYmd: string;
+      dateLabel: string;
+      pickupLabel: string;
+      notes: string;
+    }> = [];
+
+    for (const property of properties) {
+      const pickupWeekday =
+        typeof property.garbage_pickup_weekday === "number"
+          ? property.garbage_pickup_weekday
+          : null;
+
+      if (pickupWeekday === null) continue;
+
+      for (const dateYmd of serviceLookaheadYmds) {
+        const pickupDate = ymdToLocalDate(dateYmd);
+        if (pickupDate.getDay() !== pickupWeekday) continue;
+
+        let pickupLabel = property.garbage_day?.trim() || "Waste pickup";
+        const weekALabel = property.garbage_week_a_label?.trim() || "Garbage + recycling";
+        const weekBLabel = property.garbage_week_b_label?.trim() || "Recycling only";
+
+        if (property.garbage_rotation_anchor_date) {
+          const weeksFromAnchor = Math.floor(diffDays(property.garbage_rotation_anchor_date, dateYmd) / 7);
+          const rotationIndex = ((weeksFromAnchor % 2) + 2) % 2;
+          pickupLabel = rotationIndex === 0 ? weekALabel : weekBLabel;
+        }
+
+        pickups.push({
+          id: `${property.id}-${dateYmd}`,
+          propertyName: property.name || property.address || "Unknown property",
+          city: getCityFromAddress(property.address),
+          dateYmd,
+          dateLabel:
+            dateYmd === todayYmd
+              ? "Today"
+              : dateYmd === tomorrowYmd
+                ? "Tomorrow"
+                : ymdToLocalDate(dateYmd).toLocaleDateString(undefined, { weekday: "long" }),
+          pickupLabel,
+          notes: property.garbage_notes?.trim() || "",
+        });
+      }
+    }
+
+    return pickups.sort((a, b) => a.dateYmd.localeCompare(b.dateYmd) || a.propertyName.localeCompare(b.propertyName));
+  }, [properties, serviceLookaheadYmds, todayYmd, tomorrowYmd]);
+
   const todayAtGlanceCounts = useMemo(() => {
     return {
       cleaning: todayAtGlanceItems.filter((item) => item.kind === "Cleaning").length,
       grounds: todayAtGlanceItems.filter((item) => item.kind === "Grounds").length,
       occupied: occupiedTodayProperties.length,
+      waste: upcomingWastePickups.length,
       waiting: waitingJobs.length,
       overdue: overdueWaitingJobs.length,
       flags: openMaintenanceFlags.length,
     };
-  }, [todayAtGlanceItems, occupiedTodayProperties.length, waitingJobs.length, overdueWaitingJobs.length, openMaintenanceFlags.length]);
+  }, [todayAtGlanceItems, occupiedTodayProperties.length, upcomingWastePickups.length, waitingJobs.length, overdueWaitingJobs.length, openMaintenanceFlags.length]);
 
 
   const resolvedMaintenanceFlags = useMemo(
@@ -7301,45 +7436,94 @@ This removes its linked members and deletes the grounds account.`
               </div>
             </div>
 
-            <div className="rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8a7b68]">
-                Snapshot
-              </p>
-              <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
-                <div className="rounded-[16px] border border-[#eadfce] bg-white px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
-                    Cleaning today
-                  </p>
-                  <p className="mt-2 text-2xl font-semibold text-[#241c15]">
-                    {todaysCleaningJobs.length}
-                  </p>
+            <div className="space-y-4">
+              <div className="rounded-[24px] border border-[#c7ead7] bg-[#f0fbf5] p-4 shadow-[0_10px_30px_rgba(20,184,166,0.08)]">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#176c4b]">
+                      Waste
+                    </p>
+                    <h3 className="mt-1 text-base font-semibold text-[#174234]">
+                      Next 2 days
+                    </h3>
+                  </div>
+                  <div className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-[#176c4b]">
+                    {upcomingWastePickups.length}
+                  </div>
                 </div>
-
-                <div className="rounded-[16px] border border-[#eadfce] bg-white px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
-                    Grounds today
-                  </p>
-                  <p className="mt-2 text-2xl font-semibold text-[#241c15]">
-                    {todaysGroundsJobs.length}
-                  </p>
+                <div className="mt-3 space-y-2">
+                  {upcomingWastePickups.length === 0 ? (
+                    <div className="rounded-[16px] border border-dashed border-[#a8dfc2] bg-white/80 px-4 py-3 text-sm text-[#4f7461]">
+                      No waste pickup due in the next two days.
+                    </div>
+                  ) : (
+                    upcomingWastePickups.map((pickup) => (
+                      <div key={pickup.id} className="rounded-[16px] border border-[#bfe7cf] bg-white px-4 py-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-[13px] font-semibold text-[#174234]">
+                              {pickup.propertyName}
+                            </p>
+                            <p className="mt-0.5 text-xs text-[#5d7767]">
+                              {pickup.city || pickup.dateLabel}
+                            </p>
+                          </div>
+                          <span className="shrink-0 rounded-full bg-[#dcfce7] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#166534]">
+                            {pickup.dateLabel}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-sm font-semibold text-[#176c4b]">
+                          {pickup.pickupLabel}
+                        </p>
+                        {pickup.notes ? (
+                          <p className="mt-1 text-xs text-[#5d7767]">{pickup.notes}</p>
+                        ) : null}
+                      </div>
+                    ))
+                  )}
                 </div>
+              </div>
 
-                <div className="rounded-[16px] border border-[#eadfce] bg-white px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
-                    Occupied today
-                  </p>
-                  <p className="mt-2 text-2xl font-semibold text-[#241c15]">
-                    {occupiedTodayProperties.length}
-                  </p>
-                </div>
+              <div className="rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8a7b68]">
+                  Snapshot
+                </p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+                  <div className="rounded-[16px] border border-[#eadfce] bg-white px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
+                      Cleaning today
+                    </p>
+                    <p className="mt-2 text-2xl font-semibold text-[#241c15]">
+                      {todaysCleaningJobs.length}
+                    </p>
+                  </div>
 
-                <div className="rounded-[16px] border border-[#eadfce] bg-white px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
-                    Open flags
-                  </p>
-                  <p className="mt-2 text-2xl font-semibold text-[#241c15]">
-                    {openMaintenanceFlagsCount}
-                  </p>
+                  <div className="rounded-[16px] border border-[#eadfce] bg-white px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
+                      Grounds today
+                    </p>
+                    <p className="mt-2 text-2xl font-semibold text-[#241c15]">
+                      {todaysGroundsJobs.length}
+                    </p>
+                  </div>
+
+                  <div className="rounded-[16px] border border-[#eadfce] bg-white px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
+                      Waste soon
+                    </p>
+                    <p className="mt-2 text-2xl font-semibold text-[#241c15]">
+                      {upcomingWastePickups.length}
+                    </p>
+                  </div>
+
+                  <div className="rounded-[16px] border border-[#eadfce] bg-white px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
+                      Open flags
+                    </p>
+                    <p className="mt-2 text-2xl font-semibold text-[#241c15]">
+                      {openMaintenanceFlagsCount}
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -10492,7 +10676,7 @@ This removes its linked members and deletes the grounds account.`
                   />
                   <input
                     className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                    placeholder="Garbage day"
+                    placeholder="Pickup description"
                     value={propertyGarbageDay}
                     onChange={(e) => setPropertyGarbageDay(e.target.value)}
                   />
@@ -10501,6 +10685,40 @@ This removes its linked members and deletes the grounds account.`
                     placeholder="Garbage notes"
                     value={propertyGarbageNotes}
                     onChange={(e) => setPropertyGarbageNotes(e.target.value)}
+                  />
+                  <select
+                    className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                    value={propertyGarbagePickupWeekday}
+                    onChange={(e) => setPropertyGarbagePickupWeekday(e.target.value)}
+                  >
+                    <option value="">Pickup weekday</option>
+                    {WEEKDAY_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <label className="text-xs font-medium text-[#6f6255]">
+                    Week A anchor date
+                    <input
+                      type="date"
+                      className="mt-1 w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                      value={propertyGarbageRotationAnchorDate}
+                      onChange={(e) => setPropertyGarbageRotationAnchorDate(e.target.value)}
+                      title="Pick a known Garbage + recycling date so the app can alternate weeks."
+                    />
+                  </label>
+                  <input
+                    className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                    placeholder="Week A label"
+                    value={propertyGarbageWeekALabel}
+                    onChange={(e) => setPropertyGarbageWeekALabel(e.target.value)}
+                  />
+                  <input
+                    className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                    placeholder="Week B label"
+                    value={propertyGarbageWeekBLabel}
+                    onChange={(e) => setPropertyGarbageWeekBLabel(e.target.value)}
                   />
                 </div>
               </div>
@@ -13345,7 +13563,7 @@ This removes its linked members and deletes the grounds account.`
                           setSelectedPropertyGarbageDay(e.target.value);
                           setPropertyManualDetailsDirty(true);
                         }}
-                        placeholder="Garbage day"
+                        placeholder="Pickup description"
                         className="w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
                       />
                       <input
@@ -13355,6 +13573,51 @@ This removes its linked members and deletes the grounds account.`
                           setPropertyManualDetailsDirty(true);
                         }}
                         placeholder="Garbage notes"
+                        className="w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
+                      />
+                      <select
+                        value={selectedPropertyGarbagePickupWeekday}
+                        onChange={(e) => {
+                          setSelectedPropertyGarbagePickupWeekday(e.target.value);
+                          setPropertyManualDetailsDirty(true);
+                        }}
+                        className="w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition focus:border-[#4f7c6b]"
+                      >
+                        <option value="">Pickup weekday</option>
+                        {WEEKDAY_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      <label className="text-xs font-medium text-[#5e7469]">
+                        Week A anchor date
+                        <input
+                          type="date"
+                          value={selectedPropertyGarbageRotationAnchorDate}
+                          onChange={(e) => {
+                            setSelectedPropertyGarbageRotationAnchorDate(e.target.value);
+                            setPropertyManualDetailsDirty(true);
+                          }}
+                          className="mt-1 w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition focus:border-[#4f7c6b]"
+                        />
+                      </label>
+                      <input
+                        value={selectedPropertyGarbageWeekALabel}
+                        onChange={(e) => {
+                          setSelectedPropertyGarbageWeekALabel(e.target.value);
+                          setPropertyManualDetailsDirty(true);
+                        }}
+                        placeholder="Week A label"
+                        className="w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
+                      />
+                      <input
+                        value={selectedPropertyGarbageWeekBLabel}
+                        onChange={(e) => {
+                          setSelectedPropertyGarbageWeekBLabel(e.target.value);
+                          setPropertyManualDetailsDirty(true);
+                        }}
+                        placeholder="Week B label"
                         className="w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
                       />
                     </div>
