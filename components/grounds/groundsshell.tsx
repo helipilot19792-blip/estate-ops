@@ -197,6 +197,17 @@ type GroundsShellProps = {
   mode: "desktop" | "mobile";
 };
 
+type GroundsDashboardPayload = {
+  profile: Profile;
+  account: GroundsAccount | null;
+  warning: string | null;
+  jobs: GroundsJob[];
+  properties: Property[];
+  accessRows: AccessRow[];
+  sops: Sop[];
+  sopImages: SopImage[];
+};
+
 function formatMonthLabel(date: Date) {
   return date.toLocaleDateString(undefined, {
     month: "long",
@@ -556,65 +567,40 @@ export default function GroundsShell({ mode }: GroundsShellProps) {
         setPageError(null);
 
         const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser();
+          data: { session },
+        } = await supabase.auth.getSession();
 
-        if (userError) throw userError;
-
-        if (!user) {
-          router.replace("/login");
+        if (!session?.access_token) {
+          setPageError("No signed-in grounds account was found. Please log in again.");
+          setLoading(false);
           return;
         }
 
-        const { data: profileData, error: profileError } = await supabase
-          .from("profiles")
-          .select("id, email, full_name, phone, role, created_at")
-          .eq("id", user.id)
-          .single();
-
-        if (profileError) throw profileError;
+        const dashboard = await loadGroundsDashboardFromServer(session.access_token);
         if (!mounted) return;
 
-        setProfile(profileData);
+        setProfile(dashboard.profile);
 
-        if (profileData.role === "admin") {
+        if (dashboard.profile.role === "admin") {
           router.replace("/admin");
           return;
         }
 
-        const accountData = await loadGroundsAccount(profileData.id);
-        if (!mounted) return;
+        setGroundsAccount(dashboard.account);
+        setAccountWarning(dashboard.warning);
+        setGroundsJobs(dashboard.jobs);
+        setProperties(dashboard.properties);
+        setAccessRows(dashboard.accessRows);
+        setSops(dashboard.sops);
+        setSopImages(dashboard.sopImages);
 
-        setGroundsAccount(accountData.account);
-        setAccountWarning(accountData.warning);
-
-        if (!accountData.account) {
-          setProperties([]);
-          setGroundsJobs([]);
-          setAccessRows([]);
-          setSops([]);
-          setSopImages([]);
+        if (!dashboard.account) {
+          setPageError(
+            dashboard.warning || "This sign-in is not linked to a grounds account yet. Ask an admin to connect your profile."
+          );
+          setLoading(false);
           return;
         }
-
-        const loadedGroundsJobs = await loadGroundsJobs(accountData.account.id);
-        if (!mounted) return;
-        setGroundsJobs(loadedGroundsJobs);
-
-        const propertyIds = [...new Set(loadedGroundsJobs.map((item) => item.job.property_id))];
-        const loadedProperties = await loadProperties(propertyIds);
-        if (!mounted) return;
-        setProperties(loadedProperties);
-
-        const loadedAccess = await loadAccess(propertyIds);
-        if (!mounted) return;
-        setAccessRows(loadedAccess);
-
-        const { sopRows, sopImageRows } = await loadSops(propertyIds);
-        if (!mounted) return;
-        setSops(sopRows);
-        setSopImages(sopImageRows);
       } catch (error: any) {
         if (!mounted) return;
         setPageError(error?.message || "Something went wrong loading the Gulera OS grounds dashboard.");
@@ -631,6 +617,30 @@ export default function GroundsShell({ mode }: GroundsShellProps) {
       mounted = false;
     };
   }, [router]);
+
+  async function loadGroundsDashboardFromServer(accessToken: string): Promise<GroundsDashboardPayload> {
+    const response = await fetch("/api/staff-dashboard?portal=grounds", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+    const result = await response.json().catch(() => null);
+
+    if (!response.ok || !result?.ok) {
+      throw new Error(result?.error || "Grounds dashboard could not be loaded yet.");
+    }
+
+    return {
+      profile: result.profile as Profile,
+      account: (result.account ?? null) as GroundsAccount | null,
+      warning: (result.warning ?? null) as string | null,
+      jobs: (result.jobs ?? []) as GroundsJob[],
+      properties: (result.properties ?? []) as Property[],
+      accessRows: (result.accessRows ?? []) as AccessRow[],
+      sops: (result.sops ?? []) as Sop[],
+      sopImages: (result.sopImages ?? []) as SopImage[],
+    };
+  }
 
   useEffect(() => {
     if (!groundsAccount?.id) return;
@@ -664,22 +674,13 @@ export default function GroundsShell({ mode }: GroundsShellProps) {
             {
               event: "*",
               schema: "public",
-              table: "grounds_account_members",
-              filter: `profile_id=eq.${profile.id}`,
-            },
-            async () => {
-              const accountData = await loadGroundsAccount(profile.id);
-              setGroundsAccount(accountData.account);
-              setAccountWarning(accountData.warning);
-
-              if (accountData.account) {
-                const loadedJobs = await loadGroundsJobs(accountData.account.id);
-                setGroundsJobs(loadedJobs);
-              } else {
-                setGroundsJobs([]);
-              }
-            }
-          )
+            table: "grounds_account_members",
+            filter: `profile_id=eq.${profile.id}`,
+          },
+          async () => {
+              await refreshGroundsJobs();
+          }
+        )
           .subscribe()
       : null;
 
@@ -917,21 +918,24 @@ export default function GroundsShell({ mode }: GroundsShellProps) {
   }
 
   async function refreshGroundsJobs() {
-    if (!groundsAccount?.id) return;
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
 
-    const loadedJobs = await loadGroundsJobs(groundsAccount.id);
-    setGroundsJobs(loadedJobs);
+    if (!session?.access_token) {
+      setPageError("Your login session expired. Please log in again.");
+      return;
+    }
 
-    const propertyIds = [...new Set(loadedJobs.map((item) => item.job.property_id))];
-    const loadedProperties = await loadProperties(propertyIds);
-    setProperties(loadedProperties);
-
-    const loadedAccess = await loadAccess(propertyIds);
-    setAccessRows(loadedAccess);
-
-    const { sopRows, sopImageRows } = await loadSops(propertyIds);
-    setSops(sopRows);
-    setSopImages(sopImageRows);
+    const dashboard = await loadGroundsDashboardFromServer(session.access_token);
+    setProfile(dashboard.profile);
+    setGroundsAccount(dashboard.account);
+    setAccountWarning(dashboard.warning);
+    setGroundsJobs(dashboard.jobs);
+    setProperties(dashboard.properties);
+    setAccessRows(dashboard.accessRows);
+    setSops(dashboard.sops);
+    setSopImages(dashboard.sopImages);
   }
 
   function handleCloseDetails() {

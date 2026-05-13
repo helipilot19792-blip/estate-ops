@@ -194,6 +194,17 @@ type CleanerShellProps = {
   mode: "desktop" | "mobile";
 };
 
+type CleanerDashboardPayload = {
+  profile: Profile;
+  account: CleanerAccount | null;
+  warning: string | null;
+  jobs: CleanerJob[];
+  properties: Property[];
+  accessRows: AccessRow[];
+  sops: Sop[];
+  sopImages: SopImage[];
+};
+
 function formatMonthLabel(date: Date) {
   return date.toLocaleDateString(undefined, {
     month: "long",
@@ -578,80 +589,41 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
         setPageError(null);
 
         const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser();
+          data: { session },
+        } = await supabase.auth.getSession();
 
-        if (userError) throw userError;
-
-        if (!user) {
+        if (!session?.access_token) {
           setPageError("No signed-in cleaner account was found. Please log in again.");
           setLoading(false);
           return;
         }
 
-        const { data: profileData, error: profileError } = await supabase
-          .from("profiles")
-          .select("id, email, full_name, phone, role, created_at")
-          .eq("id", user.id)
-          .single();
-
-        if (profileError) {
-          setPageError(`Your cleaner profile could not be loaded. ${profileError.message}`);
-          setLoading(false);
-          return;
-        }
+        const dashboard = await loadCleanerDashboardFromServer(session.access_token);
         if (!mounted) return;
 
-        if (!profileData) {
-          setPageError("No profile is linked to this sign-in yet. Ask an admin to send or accept your invite.");
-          setLoading(false);
-          return;
-        }
+        setProfile(dashboard.profile);
 
-        setProfile(profileData);
-
-        if (profileData.role === "admin") {
+        if (dashboard.profile.role === "admin") {
           setPageError("This sign-in belongs to an admin account. Please use the admin workspace or log in with a cleaner account.");
           setLoading(false);
           return;
         }
-        const accountData = await loadCleanerAccount(profileData.id);
-        if (!mounted) return;
 
-        setCleanerAccount(accountData.account);
-        setAccountWarning(accountData.warning);
+        setCleanerAccount(dashboard.account);
+        setAccountWarning(dashboard.warning);
+        setCleanerJobs(dashboard.jobs);
+        setProperties(dashboard.properties);
+        setAccessRows(dashboard.accessRows);
+        setSops(dashboard.sops);
+        setSopImages(dashboard.sopImages);
 
-        if (!accountData.account) {
+        if (!dashboard.account) {
           setPageError(
-            accountData.warning || "This sign-in is not linked to a cleaner account yet. Ask an admin to connect your profile."
+            dashboard.warning || "This sign-in is not linked to a cleaner account yet. Ask an admin to connect your profile."
           );
-          setProperties([]);
-          setCleanerJobs([]);
-          setAccessRows([]);
-          setSops([]);
-          setSopImages([]);
           setLoading(false);
           return;
         }
-
-        const loadedCleanerJobs = await loadCleanerJobs(accountData.account.id);
-        if (!mounted) return;
-        setCleanerJobs(loadedCleanerJobs);
-
-        const propertyIds = [...new Set(loadedCleanerJobs.map((item) => item.job.property_id))];
-        const loadedProperties = await loadProperties(propertyIds);
-        if (!mounted) return;
-        setProperties(loadedProperties);
-
-        const loadedAccess = await loadAccess(propertyIds);
-        if (!mounted) return;
-        setAccessRows(loadedAccess);
-
-        const { sopRows, sopImageRows } = await loadSops(propertyIds);
-        if (!mounted) return;
-        setSops(sopRows);
-        setSopImages(sopImageRows);
       } catch (error: any) {
         if (!mounted) return;
         setPageError(error?.message || "Something went wrong loading the cleaner dashboard.");
@@ -668,6 +640,30 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
       mounted = false;
     };
   }, [router]);
+
+  async function loadCleanerDashboardFromServer(accessToken: string): Promise<CleanerDashboardPayload> {
+    const response = await fetch("/api/staff-dashboard?portal=cleaner", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+    const result = await response.json().catch(() => null);
+
+    if (!response.ok || !result?.ok) {
+      throw new Error(result?.error || "Cleaner dashboard could not be loaded yet.");
+    }
+
+    return {
+      profile: result.profile as Profile,
+      account: (result.account ?? null) as CleanerAccount | null,
+      warning: (result.warning ?? null) as string | null,
+      jobs: (result.jobs ?? []) as CleanerJob[],
+      properties: (result.properties ?? []) as Property[],
+      accessRows: (result.accessRows ?? []) as AccessRow[],
+      sops: (result.sops ?? []) as Sop[],
+      sopImages: (result.sopImages ?? []) as SopImage[],
+    };
+  }
 
   useEffect(() => {
     if (!cleanerAccount?.id) return;
@@ -701,22 +697,13 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
           {
             event: "*",
             schema: "public",
-            table: "cleaner_account_members",
-            filter: `profile_id=eq.${profile.id}`,
-          },
-          async () => {
-            const accountData = await loadCleanerAccount(profile.id);
-            setCleanerAccount(accountData.account);
-            setAccountWarning(accountData.warning);
-
-            if (accountData.account) {
-              const loadedJobs = await loadCleanerJobs(accountData.account.id);
-              setCleanerJobs(loadedJobs);
-            } else {
-              setCleanerJobs([]);
-            }
-          }
-        )
+          table: "cleaner_account_members",
+          filter: `profile_id=eq.${profile.id}`,
+        },
+        async () => {
+            await refreshCleanerJobs();
+        }
+      )
         .subscribe()
       : null;
 
@@ -954,21 +941,24 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
   }
 
   async function refreshCleanerJobs() {
-    if (!cleanerAccount?.id) return;
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
 
-    const loadedJobs = await loadCleanerJobs(cleanerAccount.id);
-    setCleanerJobs(loadedJobs);
+    if (!session?.access_token) {
+      setPageError("Your login session expired. Please log in again.");
+      return;
+    }
 
-    const propertyIds = [...new Set(loadedJobs.map((item) => item.job.property_id))];
-    const loadedProperties = await loadProperties(propertyIds);
-    setProperties(loadedProperties);
-
-    const loadedAccess = await loadAccess(propertyIds);
-    setAccessRows(loadedAccess);
-
-    const { sopRows, sopImageRows } = await loadSops(propertyIds);
-    setSops(sopRows);
-    setSopImages(sopImageRows);
+    const dashboard = await loadCleanerDashboardFromServer(session.access_token);
+    setProfile(dashboard.profile);
+    setCleanerAccount(dashboard.account);
+    setAccountWarning(dashboard.warning);
+    setCleanerJobs(dashboard.jobs);
+    setProperties(dashboard.properties);
+    setAccessRows(dashboard.accessRows);
+    setSops(dashboard.sops);
+    setSopImages(dashboard.sopImages);
   }
 
   function handleCloseDetails() {
