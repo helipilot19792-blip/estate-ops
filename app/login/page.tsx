@@ -42,39 +42,19 @@ function scrollFeedbackIntoView() {
   }, 100);
 }
 
-async function getPortalDestinationForUser(userId: string, role: string | null | undefined) {
-  if (role === "platform_admin") {
-    return "/platform";
+async function getPortalDestinationFromServer(accessToken: string) {
+  const response = await fetch("/api/portal-destination", {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+  const result = await response.json().catch(() => null);
+
+  if (!response.ok || !result?.ok) {
+    throw new Error(result?.error || "Could not check which portal this account can use.");
   }
 
-  if (role === "admin") {
-    return "/admin";
-  }
-
-  const [
-    { data: cleanerMemberships, error: cleanerError },
-    { data: groundsMemberships, error: groundsError },
-  ] = await Promise.all([
-    supabase
-      .from("cleaner_account_members")
-      .select("id, profile_id")
-      .eq("profile_id", userId)
-      .limit(1),
-    supabase
-      .from("grounds_account_members")
-      .select("id, profile_id")
-      .eq("profile_id", userId)
-      .limit(1),
-  ]);
-
-
-  const hasCleaner = !!cleanerMemberships?.length;
-  const hasGrounds = !!groundsMemberships?.length;
-
-  if (hasCleaner && hasGrounds) return "/choose-portal";
-  if (hasCleaner) return "/cleaner";
-  if (hasGrounds) return "/grounds";
-  return "/login";
+  return result.destination as string;
 }
 
 async function finishCompanySignup(accessToken: string, details?: {
@@ -196,7 +176,17 @@ export default function LoginPage() {
         }
       }
 
-      const destination = await getPortalDestinationForUser(user.id, profile.role);
+      let destination = "/login";
+      try {
+        destination = await getPortalDestinationFromServer(session.access_token);
+      } catch (destinationError) {
+        const message =
+          destinationError instanceof Error
+            ? destinationError.message
+            : "Could not check which portal this account can use.";
+        setError(message);
+        return;
+      }
 
       if (destination === "/login") {
         setError("This sign-in is not linked to a company, cleaner, grounds, or owner account yet. If you were invited, use the newest invite email. If you were creating a company, start the company signup again.");

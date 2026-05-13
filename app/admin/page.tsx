@@ -1989,9 +1989,9 @@ export default function AdminPage() {
         .from("property_booking_events")
         .select("*")
         .eq("organization_id", currentOrganizationId)
-        .lte("checkin_date", todayYmd)
+        .lte("checkin_date", serviceLookaheadYmds[serviceLookaheadYmds.length - 1] || todayYmd)
         .gt("checkout_date", todayYmd)
-        .order("checkout_date", { ascending: true }),
+        .order("checkin_date", { ascending: true }),
       supabase
         .from("property_maintenance_flags")
         .select("*")
@@ -6277,6 +6277,27 @@ This removes its linked members and deletes the grounds account.`
       detail: pickup.notes ? `${pickup.pickupLabel} - ${pickup.notes}` : pickup.pickupLabel,
     }));
 
+    const checkInItems = propertyBookingEvents
+      .map((event) => {
+        const property = propertyById.get(event.property_id);
+        const guestCount = Number.isFinite(Number(event.guest_count)) ? Number(event.guest_count) : null;
+        const sourceLabel = getBookingSourceLabel(event.source);
+        const guestDetail = guestCount ? `${guestCount} guest${guestCount === 1 ? "" : "s"}` : "Guests unknown";
+        const summary = event.summary?.trim();
+
+        return {
+          id: `checkin-${event.id}`,
+          dateYmd: event.checkin_date || "",
+          sortKey: `${event.checkin_date || ""}-35-${property?.name || event.property_id}`,
+          kind: "Check-in",
+          tone: "purple" as const,
+          label: labelDate(event.checkin_date || ""),
+          title: property?.name || property?.address || "Unknown property",
+          detail: [summary, guestDetail, sourceLabel].filter(Boolean).join(" - "),
+        };
+      })
+      .filter((item) => dateSet.has(item.dateYmd));
+
     const inspectionItems = inspectionRules
       .filter((rule) => rule.active !== false && (!rule.next_due_date || rule.next_due_date <= horizonEndYmd))
       .map((rule) => {
@@ -6298,13 +6319,14 @@ This removes its linked members and deletes the grounds account.`
         };
       });
 
-    return [...cleaningItems, ...groundsItems, ...wasteItems, ...inspectionItems].sort((a, b) =>
+    return [...cleaningItems, ...groundsItems, ...wasteItems, ...checkInItems, ...inspectionItems].sort((a, b) =>
       a.sortKey.localeCompare(b.sortKey)
     );
   }, [
     jobs,
     groundsJobs,
     properties,
+    propertyBookingEvents,
     serviceLookaheadYmds,
     upcomingWastePickups,
     inspectionRules,
@@ -7563,6 +7585,8 @@ This removes its linked members and deletes the grounds account.`
                         ? "bg-[#16a34a] text-white"
                         : item.tone === "teal"
                           ? "bg-[#0f766e] text-white"
+                          : item.tone === "purple"
+                            ? "bg-[#7c3aed] text-white"
                           : item.tone === "amber"
                             ? "bg-[#b45309] text-white"
                             : "bg-[#2563eb] text-white";
@@ -7571,6 +7595,8 @@ This removes its linked members and deletes the grounds account.`
                         ? "bg-[#e9f9ef] text-[#218552]"
                         : item.tone === "teal"
                           ? "bg-[#dcfce7] text-[#166534]"
+                          : item.tone === "purple"
+                            ? "bg-[#f3e8ff] text-[#6d28d9]"
                           : item.tone === "amber"
                             ? "bg-[#fff7ed] text-[#9a6206]"
                             : "bg-[#e8f1ff] text-[#2f62b6]";
@@ -7579,6 +7605,8 @@ This removes its linked members and deletes the grounds account.`
                         ? "border-[#bde7cf]"
                         : item.tone === "teal"
                           ? "border-[#bfe7cf]"
+                          : item.tone === "purple"
+                            ? "border-[#d8b4fe]"
                           : item.tone === "amber"
                             ? "border-[#f1cf8f]"
                             : "border-[#b9d1fb]";
@@ -7625,7 +7653,7 @@ This removes its linked members and deletes the grounds account.`
                     </div>
                   ) : upcomingHomeHappenings.length === 0 ? (
                     <div className="rounded-[16px] border border-dashed border-[#b9d1fb] bg-white/80 px-4 py-3 text-sm text-[#5f6f86]">
-                      No cleaning, grounds, waste pickup, or inspections due in this window.
+                      No cleaning, grounds, check-ins, waste pickup, or inspections due in this window.
                     </div>
                   ) : null}
                 </div>

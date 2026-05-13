@@ -10,6 +10,25 @@ type ProfileRow = {
   role: string;
 };
 
+async function loadPortalDestination(accessToken: string) {
+  const response = await fetch("/api/portal-destination", {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+  const result = await response.json().catch(() => null);
+
+  if (!response.ok || !result?.ok) {
+    throw new Error(result?.error || "Could not check your portal access.");
+  }
+
+  return result as {
+    destination: string;
+    profile: ProfileRow | null;
+    access: { cleaner: boolean; grounds: boolean };
+  };
+}
+
 export default function ChoosePortalPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -22,68 +41,51 @@ export default function ChoosePortalPage() {
     let active = true;
 
     async function loadAccess() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
 
-      if (!user) {
+        if (!session?.user) {
+          router.replace("/login");
+          return;
+        }
+
+        const portal = await loadPortalDestination(session.access_token);
+        const profile = portal.profile;
+
+        if (portal.destination !== "/choose-portal") {
+          router.replace(portal.destination);
+          return;
+        }
+
+        const hasCleaner = portal.access.cleaner;
+        const hasGrounds = portal.access.grounds;
+
+        if (!hasCleaner && !hasGrounds) {
+          router.replace("/login");
+          return;
+        }
+
+        if (hasCleaner && !hasGrounds) {
+          router.replace("/cleaner");
+          return;
+        }
+
+        if (hasGrounds && !hasCleaner) {
+          router.replace("/grounds");
+          return;
+        }
+
+        if (!active) return;
+
+        setDisplayName(profile?.full_name || "there");
+        setCanUseCleaner(hasCleaner);
+        setCanUseGrounds(hasGrounds);
+        setLoading(false);
+      } catch {
         router.replace("/login");
-        return;
       }
-
-      const [{ data: profile }, { data: cleanerMemberships }, { data: groundsMemberships }] =
-        await Promise.all([
-          supabase
-            .from("profiles")
-            .select("id,full_name,role")
-            .eq("id", user.id)
-            .single<ProfileRow>(),
-          supabase
-            .from("cleaner_account_members")
-            .select("id")
-            .eq("profile_id", user.id)
-            .limit(1),
-          supabase
-            .from("grounds_account_members")
-            .select("id")
-            .eq("profile_id", user.id)
-            .limit(1),
-        ]);
-
-      if (profile?.role === "platform_admin") {
-        router.replace("/platform");
-        return;
-      }
-
-      if (profile?.role === "admin") {
-        router.replace("/admin");
-        return;
-      }
-
-      const hasCleaner = !!cleanerMemberships?.length;
-      const hasGrounds = !!groundsMemberships?.length;
-
-      if (!hasCleaner && !hasGrounds) {
-        router.replace("/login");
-        return;
-      }
-
-      if (hasCleaner && !hasGrounds) {
-        router.replace("/cleaner");
-        return;
-      }
-
-      if (hasGrounds && !hasCleaner) {
-        router.replace("/grounds");
-        return;
-      }
-
-      if (!active) return;
-
-      setDisplayName(profile?.full_name || "there");
-      setCanUseCleaner(hasCleaner);
-      setCanUseGrounds(hasGrounds);
-      setLoading(false);
     }
 
     void loadAccess();

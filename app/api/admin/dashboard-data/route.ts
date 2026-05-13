@@ -91,6 +91,8 @@ export async function GET(request: Request) {
     }
 
     const { user } = await requireAdminAccess(token, organizationId);
+    const todayYmd = new Date().toISOString().slice(0, 10);
+    const bookingLookaheadEndYmd = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
     const [
       propertiesRes,
@@ -172,9 +174,9 @@ export async function GET(request: Request) {
         .from("property_booking_events")
         .select("*")
         .eq("organization_id", organizationId)
-        .lte("checkin_date", new Date().toISOString().slice(0, 10))
-        .gt("checkout_date", new Date().toISOString().slice(0, 10))
-        .order("checkout_date", { ascending: true }),
+        .lte("checkin_date", bookingLookaheadEndYmd)
+        .gt("checkout_date", todayYmd)
+        .order("checkin_date", { ascending: true }),
       serviceClient.from("property_maintenance_flags").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
       serviceClient.from("property_maintenance_flag_images").select("*").order("sort_order", { ascending: true }),
       serviceClient.from("property_inspection_rules").select("*").eq("organization_id", organizationId).order("next_due_date", { ascending: true }),
