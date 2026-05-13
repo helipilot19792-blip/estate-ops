@@ -55,6 +55,25 @@ function wrapPdfText(value: string, maxLength = 86) {
   return lines.length > 0 ? lines : [""];
 }
 
+function getReceiptLabel(item: InvoicePdfLineItem, index: number) {
+  const rawName = String(item.receipt_names?.[index] || "").trim();
+  if (rawName) return rawName;
+
+  const rawUrl = String(item.receipt_urls?.[index] || "").trim();
+  if (rawUrl) {
+    try {
+      const parsed = new URL(rawUrl);
+      const lastPathPart = decodeURIComponent(parsed.pathname.split("/").filter(Boolean).pop() || "");
+      if (lastPathPart) return lastPathPart;
+    } catch {
+      const lastPathPart = rawUrl.split(/[\\/]/).filter(Boolean).pop();
+      if (lastPathPart) return lastPathPart;
+    }
+  }
+
+  return `Receipt ${index + 1}`;
+}
+
 async function fetchLogoBytes(logoUrl: string | null) {
   if (!logoUrl) return null;
 
@@ -152,9 +171,9 @@ export async function createInvoicePdfBuffer(input: InvoicePdfInput) {
 
     for (const extraLine of descriptionLines.slice(1)) drawText(extraLine, 62, 9, { color: muted, gap: 13 });
 
-    (item.receipt_urls || []).forEach((url, index) => {
-      const label = item.receipt_names?.[index] || `Receipt ${index + 1}`;
-      for (const line of wrapPdfText(`${label}: ${url}`, 74)) {
+    (item.receipt_urls || []).forEach((_url, index) => {
+      const label = getReceiptLabel(item, index);
+      for (const line of wrapPdfText(`Receipt attached: ${label}`, 74)) {
         drawText(line, 62, 8, { color: muted, gap: 12 });
       }
     });
