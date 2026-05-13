@@ -143,10 +143,48 @@ export async function POST(req: NextRequest) {
     }
 
     if (invite.role === "cleaner") {
+      const { data: existingAccount, error: existingAccountError } = await service
+        .from("cleaner_accounts")
+        .select("id")
+        .eq("organization_id", invite.organization_id)
+        .eq("email", invite.email)
+        .limit(1)
+        .maybeSingle();
+
+      if (existingAccountError) {
+        return NextResponse.json({ error: existingAccountError.message }, { status: 500 });
+      }
+
+      let cleanerAccountId = existingAccount?.id || null;
+
+      if (!cleanerAccountId) {
+        const { data: insertedAccount, error: insertAccountError } = await service
+          .from("cleaner_accounts")
+          .insert({
+            organization_id: invite.organization_id,
+            display_name: invite.full_name?.trim() || invite.email || "Cleaner account",
+            email: invite.email,
+            phone: invite.phone ?? null,
+            active: true,
+          })
+          .select("id")
+          .single();
+
+        if (insertAccountError || !insertedAccount) {
+          return NextResponse.json(
+            { error: insertAccountError?.message || "Could not create cleaner account." },
+            { status: 500 }
+          );
+        }
+
+        cleanerAccountId = insertedAccount.id;
+      }
+
       const { data: existingMembership, error: cleanerMembershipError } = await service
         .from("cleaner_account_members")
         .select("id, cleaner_account_id")
         .eq("profile_id", user.id)
+        .eq("cleaner_account_id", cleanerAccountId)
         .limit(1)
         .maybeSingle();
 
@@ -155,43 +193,6 @@ export async function POST(req: NextRequest) {
       }
 
       if (!existingMembership) {
-        const { data: existingAccount, error: existingAccountError } = await service
-          .from("cleaner_accounts")
-          .select("id")
-          .eq("organization_id", invite.organization_id)
-          .eq("email", invite.email)
-          .limit(1)
-          .maybeSingle();
-
-        if (existingAccountError) {
-          return NextResponse.json({ error: existingAccountError.message }, { status: 500 });
-        }
-
-        let cleanerAccountId = existingAccount?.id || null;
-
-        if (!cleanerAccountId) {
-          const { data: insertedAccount, error: insertAccountError } = await service
-            .from("cleaner_accounts")
-            .insert({
-              organization_id: invite.organization_id,
-              display_name: invite.full_name?.trim() || invite.email || "Cleaner account",
-              email: invite.email,
-              phone: invite.phone ?? null,
-              active: true,
-            })
-            .select("id")
-            .single();
-
-          if (insertAccountError || !insertedAccount) {
-            return NextResponse.json(
-              { error: insertAccountError?.message || "Could not create cleaner account." },
-              { status: 500 }
-            );
-          }
-
-          cleanerAccountId = insertedAccount.id;
-        }
-
         const { error: memberInsertError } = await service
           .from("cleaner_account_members")
           .insert({
@@ -206,10 +207,48 @@ export async function POST(req: NextRequest) {
     }
 
     if (invite.role === "grounds") {
+      const { data: existingAccount, error: existingAccountError } = await service
+        .from("grounds_accounts")
+        .select("id")
+        .eq("organization_id", invite.organization_id)
+        .eq("email", invite.email)
+        .limit(1)
+        .maybeSingle();
+
+      if (existingAccountError) {
+        return NextResponse.json({ error: existingAccountError.message }, { status: 500 });
+      }
+
+      let groundsAccountId = existingAccount?.id || null;
+
+      if (!groundsAccountId) {
+        const { data: insertedAccount, error: insertAccountError } = await service
+          .from("grounds_accounts")
+          .insert({
+            organization_id: invite.organization_id,
+            display_name: invite.full_name?.trim() || invite.email || "Grounds account",
+            email: invite.email,
+            phone: invite.phone ?? null,
+            active: true,
+          })
+          .select("id")
+          .single();
+
+        if (insertAccountError || !insertedAccount) {
+          return NextResponse.json(
+            { error: insertAccountError?.message || "Could not create grounds account." },
+            { status: 500 }
+          );
+        }
+
+        groundsAccountId = insertedAccount.id;
+      }
+
       const { data: existingMembership, error: groundsMembershipError } = await service
         .from("grounds_account_members")
         .select("id, grounds_account_id")
         .eq("profile_id", user.id)
+        .eq("grounds_account_id", groundsAccountId)
         .limit(1)
         .maybeSingle();
 
@@ -218,43 +257,6 @@ export async function POST(req: NextRequest) {
       }
 
       if (!existingMembership) {
-        const { data: existingAccount, error: existingAccountError } = await service
-          .from("grounds_accounts")
-          .select("id")
-          .eq("organization_id", invite.organization_id)
-          .eq("email", invite.email)
-          .limit(1)
-          .maybeSingle();
-
-        if (existingAccountError) {
-          return NextResponse.json({ error: existingAccountError.message }, { status: 500 });
-        }
-
-        let groundsAccountId = existingAccount?.id || null;
-
-        if (!groundsAccountId) {
-          const { data: insertedAccount, error: insertAccountError } = await service
-            .from("grounds_accounts")
-            .insert({
-              organization_id: invite.organization_id,
-              display_name: invite.full_name?.trim() || invite.email || "Grounds account",
-              email: invite.email,
-              phone: invite.phone ?? null,
-              active: true,
-            })
-            .select("id")
-            .single();
-
-          if (insertAccountError || !insertedAccount) {
-            return NextResponse.json(
-              { error: insertAccountError?.message || "Could not create grounds account." },
-              { status: 500 }
-            );
-          }
-
-          groundsAccountId = insertedAccount.id;
-        }
-
         const { error: memberInsertError } = await service
           .from("grounds_account_members")
           .insert({

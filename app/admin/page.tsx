@@ -1015,6 +1015,7 @@ export default function AdminPage() {
   const [actionMessage, setActionMessage] = useState("");
   const [sendingOwnerInviteId, setSendingOwnerInviteId] = useState<string | null>(null);
   const [deletingOrganizationInviteId, setDeletingOrganizationInviteId] = useState<string | null>(null);
+  const [removingTeamInviteKey, setRemovingTeamInviteKey] = useState<string | null>(null);
   const [resetConfirmText, setResetConfirmText] = useState("");
   const [resettingOrganization, setResettingOrganization] = useState(false);
   const [selectedJobsPropertyFilter, setSelectedJobsPropertyFilter] = useState("all");
@@ -3136,6 +3137,76 @@ export default function AdminPage() {
       setError(err instanceof Error ? err.message : "Could not revoke pending invite.");
     } finally {
       setDeletingOrganizationInviteId(null);
+    }
+  }
+
+  async function removeTeamMemberCompletely(params: {
+    email: string;
+    role: "cleaner" | "grounds";
+    inviteId?: string;
+  }) {
+    const email = params.email.trim().toLowerCase();
+    const label = params.role === "cleaner" ? "cleaner" : "grounds user";
+    const confirmed = window.confirm(
+      `Remove this ${label} from this company completely?\n\nThis deletes their invites, ${label} account link, and company membership. Their login is only deleted if it is not connected to any other company. This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    if (!currentOrganizationId) {
+      setError("No organization selected.");
+      return;
+    }
+
+    const removeKey = `${params.role}:${email}`;
+    setError("");
+    setActionMessage("");
+    setRemovingTeamInviteKey(removeKey);
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        throw new Error("Could not verify your admin session.");
+      }
+
+      const response = await fetch("/api/admin/remove-team-member", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          organizationId: currentOrganizationId,
+          inviteId: params.inviteId,
+          email,
+          role: params.role,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(payload?.error || `Could not remove ${label}.`);
+      }
+
+      setOrganizationInvites((prev) =>
+        prev.filter(
+          (invite) =>
+            !(
+              invite.role === params.role &&
+              invite.email.trim().toLowerCase() === email
+            )
+        )
+      );
+      setActionMessage(payload?.message || `${label} removed from this company.`);
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `Could not remove ${label}.`);
+    } finally {
+      setRemovingTeamInviteKey(null);
     }
   }
   async function notifyJobOffers(kind: "cleaner" | "grounds", slotIds: string[]) {
@@ -6414,6 +6485,7 @@ This removes its linked members and deletes the grounds account.`
         acceptedAt: invite.accepted_at || null,
         expiresAt: invite.expires_at || null,
         canRevoke: !invite.accepted_at && (invite.status === "pending" || invite.status === "sent" || !invite.status),
+        canRemove: invite.role === "cleaner" || invite.role === "grounds",
       };
     });
 
@@ -6431,6 +6503,7 @@ This removes its linked members and deletes the grounds account.`
         acceptedAt: owner.invite_accepted_at || null,
         expiresAt: null,
         canRevoke: false,
+        canRemove: false,
       }));
 
     return [...teamRows, ...ownerRows].sort((a, b) => {
@@ -7913,15 +7986,37 @@ This removes its linked members and deletes the grounds account.`
                       {invite.expiresAt && invite.status !== "accepted" ? <div>Expires: {formatDateTime(invite.expiresAt)}</div> : null}
                     </div>
                   </div>
-                  {invite.kind === "team" && invite.canRevoke ? (
-                    <button
-                      type="button"
-                      onClick={() => void deleteOrganizationInvite(invite.sourceId)}
-                      disabled={deletingOrganizationInviteId === invite.sourceId}
-                      className="shrink-0 rounded-full border border-[#efc6c6] bg-[#fff5f5] px-4 py-2 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-60"
-                    >
-                      {deletingOrganizationInviteId === invite.sourceId ? "Revoking..." : "Revoke invite"}
-                    </button>
+                  {invite.kind === "team" ? (
+                    <div className="flex shrink-0 flex-wrap gap-2">
+                      {invite.canRevoke ? (
+                        <button
+                          type="button"
+                          onClick={() => void deleteOrganizationInvite(invite.sourceId)}
+                          disabled={deletingOrganizationInviteId === invite.sourceId}
+                          className="rounded-full border border-[#efc6c6] bg-[#fff5f5] px-4 py-2 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-60"
+                        >
+                          {deletingOrganizationInviteId === invite.sourceId ? "Revoking..." : "Revoke invite"}
+                        </button>
+                      ) : null}
+                      {invite.canRemove && (invite.role === "cleaner" || invite.role === "grounds") ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void removeTeamMemberCompletely({
+                              inviteId: invite.sourceId,
+                              email: invite.email,
+                              role: invite.role === "cleaner" ? "cleaner" : "grounds",
+                            })
+                          }
+                          disabled={removingTeamInviteKey === `${invite.role}:${invite.email.trim().toLowerCase()}`}
+                          className="rounded-full border border-[#f3b4b4] bg-white px-4 py-2 text-sm font-medium text-[#9f1d1d] transition hover:bg-[#fff5f5] disabled:opacity-60"
+                        >
+                          {removingTeamInviteKey === `${invite.role}:${invite.email.trim().toLowerCase()}`
+                            ? "Removing..."
+                            : "Remove completely"}
+                        </button>
+                      ) : null}
+                    </div>
                   ) : null}
                 </div>
               </div>
@@ -12127,6 +12222,23 @@ This removes its linked members and deletes the grounds account.`
                           >
                             {deletingOrganizationInviteId === invite.id ? "Revoking..." : "Revoke"}
                           </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void removeTeamMemberCompletely({
+                                inviteId: invite.id,
+                                email: invite.email,
+                                role: "cleaner",
+                              })
+                            }
+                            disabled={removingTeamInviteKey === `cleaner:${invite.email.trim().toLowerCase()}`}
+                            className="inline-flex items-center justify-center rounded-full border border-[#f3b4b4] bg-white px-4 py-2 text-sm font-medium text-[#9f1d1d] transition hover:bg-[#fff5f5] disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {removingTeamInviteKey === `cleaner:${invite.email.trim().toLowerCase()}`
+                              ? "Removing..."
+                              : "Remove completely"}
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -12378,6 +12490,23 @@ This removes its linked members and deletes the grounds account.`
                             className="inline-flex items-center justify-center rounded-full border border-[#efc6c6] bg-[#fff5f5] px-4 py-2 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             {deletingOrganizationInviteId === invite.id ? "Revoking..." : "Revoke"}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void removeTeamMemberCompletely({
+                                inviteId: invite.id,
+                                email: invite.email,
+                                role: "grounds",
+                              })
+                            }
+                            disabled={removingTeamInviteKey === `grounds:${invite.email.trim().toLowerCase()}`}
+                            className="inline-flex items-center justify-center rounded-full border border-[#f3b4b4] bg-white px-4 py-2 text-sm font-medium text-[#9f1d1d] transition hover:bg-[#fff5f5] disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {removingTeamInviteKey === `grounds:${invite.email.trim().toLowerCase()}`
+                              ? "Removing..."
+                              : "Remove completely"}
                           </button>
                         </div>
                       </div>
