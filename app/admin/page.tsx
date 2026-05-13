@@ -7573,8 +7573,9 @@ This removes its linked members and deletes the grounds account.`
 
           <div className="mt-5 grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.9fr)_minmax(210px,0.52fr)]">
             <div>
-              <div className="rounded-[24px] border border-[#cfe1ff] bg-[#eef5ff] p-4 shadow-[0_10px_30px_rgba(59,130,246,0.10)]">
-                <div className="flex items-center justify-between gap-3">
+              <div className="rounded-[24px] border border-[#cfe1ff] bg-[#f8fbff] p-4 shadow-[0_10px_30px_rgba(59,130,246,0.10)]">
+                <div className="rounded-[20px] border border-[#b9d1fb] bg-[#e8f1ff] p-3">
+                  <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#4f6ea8]">
                       Happenings
@@ -7588,7 +7589,7 @@ This removes its linked members and deletes the grounds account.`
                   </div>
                 </div>
 
-                <div className="mt-3 space-y-2">
+                  <div className="mt-3 space-y-2">
                   {todaysHomeHappenings.map((item) => {
                     const badgeClass =
                       item.tone === "green"
@@ -7666,9 +7667,11 @@ This removes its linked members and deletes the grounds account.`
                       Nothing scheduled for today.
                     </div>
                   ) : null}
+                  </div>
+                </div>
 
-                  <div className="pt-2">
-                    <div className="flex items-center justify-between gap-3 border-t border-[#cfe1ff] pt-3">
+                <div className="mt-3 rounded-[20px] border border-[#ecd5a6] bg-[#fff7e8] p-3 shadow-[0_8px_20px_rgba(180,83,9,0.06)]">
+                    <div className="flex items-center justify-between gap-3">
                       <div>
                         <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#6d5c40]">
                           Upcoming
@@ -7681,8 +7684,8 @@ This removes its linked members and deletes the grounds account.`
                         {futureHomeHappenings.length} upcoming
                       </div>
                     </div>
-                  </div>
 
+                  <div className="mt-3 space-y-2">
                   {futureHomeHappenings.map((item) => {
                     const badgeClass =
                       item.tone === "green"
@@ -7756,6 +7759,7 @@ This removes its linked members and deletes the grounds account.`
                       No upcoming cleaning, grounds, check-ins, waste pickup, or inspections in the next two days.
                     </div>
                   ) : null}
+                  </div>
                 </div>
               </div>
             </div>
