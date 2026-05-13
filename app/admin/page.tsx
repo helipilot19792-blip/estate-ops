@@ -6334,6 +6334,16 @@ This removes its linked members and deletes the grounds account.`
     tomorrowYmd,
   ]);
 
+  const todaysHomeHappenings = useMemo(
+    () => upcomingHomeHappenings.filter((item) => item.dateYmd === todayYmd),
+    [upcomingHomeHappenings, todayYmd]
+  );
+
+  const futureHomeHappenings = useMemo(
+    () => upcomingHomeHappenings.filter((item) => item.dateYmd !== todayYmd),
+    [upcomingHomeHappenings, todayYmd]
+  );
+
   const todayAtGlanceCounts = useMemo(() => {
     return {
       cleaning: todayAtGlanceItems.filter((item) => item.kind === "Cleaning").length,
@@ -7570,16 +7580,16 @@ This removes its linked members and deletes the grounds account.`
                       Happenings
                     </p>
                     <h3 className="mt-1 text-lg font-semibold text-[#1f3b63]">
-                      Today + next 2 days
+                      Today
                     </h3>
                   </div>
                   <div className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-[#2957a4]">
-                    {upcomingHomeHappenings.length} item{upcomingHomeHappenings.length === 1 ? "" : "s"}
+                    {todaysHomeHappenings.length} today
                   </div>
                 </div>
 
                 <div className="mt-3 space-y-2">
-                  {upcomingHomeHappenings.map((item) => {
+                  {todaysHomeHappenings.map((item) => {
                     const badgeClass =
                       item.tone === "green"
                         ? "bg-[#16a34a] text-white"
@@ -7649,11 +7659,101 @@ This removes its linked members and deletes the grounds account.`
 
                   {!adminDataLoaded ? (
                     <div className="rounded-[16px] border border-dashed border-[#b9d1fb] bg-white/80 px-4 py-3 text-sm text-[#5f6f86]">
-                      Loading the next two days...
+                      Loading today's work...
                     </div>
-                  ) : upcomingHomeHappenings.length === 0 ? (
+                  ) : todaysHomeHappenings.length === 0 ? (
                     <div className="rounded-[16px] border border-dashed border-[#b9d1fb] bg-white/80 px-4 py-3 text-sm text-[#5f6f86]">
-                      No cleaning, grounds, check-ins, waste pickup, or inspections due in this window.
+                      Nothing scheduled for today.
+                    </div>
+                  ) : null}
+
+                  <div className="pt-2">
+                    <div className="flex items-center justify-between gap-3 border-t border-[#cfe1ff] pt-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#6d5c40]">
+                          Upcoming
+                        </p>
+                        <h4 className="mt-0.5 text-base font-semibold text-[#453720]">
+                          Next 2 days
+                        </h4>
+                      </div>
+                      <div className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-[#7a5a23]">
+                        {futureHomeHappenings.length} upcoming
+                      </div>
+                    </div>
+                  </div>
+
+                  {futureHomeHappenings.map((item) => {
+                    const badgeClass =
+                      item.tone === "green"
+                        ? "bg-[#16a34a] text-white"
+                        : item.tone === "teal"
+                          ? "bg-[#0f766e] text-white"
+                          : item.tone === "purple"
+                            ? "bg-[#7c3aed] text-white"
+                          : item.tone === "amber"
+                            ? "bg-[#b45309] text-white"
+                            : "bg-[#2563eb] text-white";
+                    const dateClass =
+                      item.tone === "green"
+                        ? "bg-[#e9f9ef] text-[#218552]"
+                        : item.tone === "teal"
+                          ? "bg-[#dcfce7] text-[#166534]"
+                          : item.tone === "purple"
+                            ? "bg-[#f3e8ff] text-[#6d28d9]"
+                          : item.tone === "amber"
+                            ? "bg-[#fff7ed] text-[#9a6206]"
+                            : "bg-[#e8f1ff] text-[#2f62b6]";
+                    const borderClass =
+                      item.tone === "green"
+                        ? "border-[#bde7cf]"
+                        : item.tone === "teal"
+                          ? "border-[#bfe7cf]"
+                          : item.tone === "purple"
+                            ? "border-[#d8b4fe]"
+                          : item.tone === "amber"
+                            ? "border-[#f1cf8f]"
+                            : "border-[#b9d1fb]";
+                    const content = (
+                      <div className={`rounded-[18px] border ${borderClass} bg-white px-4 py-2.5`}>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className={`inline-flex items-center rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${badgeClass}`}>
+                              {item.kind}
+                            </div>
+                            <p className="mt-1 text-[15px] font-semibold text-[#1c2b45]">
+                              {item.title}
+                            </p>
+                            <p className="mt-0.5 text-sm text-[#5f6f86]">
+                              {item.detail}
+                            </p>
+                          </div>
+                          <div className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${dateClass}`}>
+                            {item.label}
+                          </div>
+                        </div>
+                      </div>
+                    );
+
+                    const onClick = "onClick" in item ? item.onClick : undefined;
+
+                    return onClick ? (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={onClick}
+                        className="block w-full text-left"
+                      >
+                        {content}
+                      </button>
+                    ) : (
+                      <div key={item.id}>{content}</div>
+                    );
+                  })}
+
+                  {adminDataLoaded && futureHomeHappenings.length === 0 ? (
+                    <div className="rounded-[16px] border border-dashed border-[#e3cda7] bg-white/80 px-4 py-3 text-sm text-[#6d5c40]">
+                      No upcoming cleaning, grounds, check-ins, waste pickup, or inspections in the next two days.
                     </div>
                   ) : null}
                 </div>
