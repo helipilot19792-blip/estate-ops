@@ -1670,7 +1670,7 @@ export default function OwnerPage() {
         });
       }
 
-      if (booking.checkinDate && isFutureOrToday(booking.checkinDate)) {
+      if (propertyBookingEvents.length === 0 && booking.checkinDate && isFutureOrToday(booking.checkinDate)) {
         items.push({
           id: `booking-${job.id}`,
           type: "booking",
