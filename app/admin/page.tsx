@@ -550,6 +550,7 @@ type OwnerInvoiceLineItem = {
   category: "turnover" | "grounds" | "expense" | "other";
   quantity: number | string;
   rate: number | string;
+  taxable?: boolean;
   source_id?: string | null;
   receipt_urls?: string[];
   receipt_names?: string[];
@@ -1068,6 +1069,7 @@ export default function AdminPage() {
   const [invoiceTaxLines, setInvoiceTaxLines] = useState<OwnerInvoiceTaxLine[]>([
     { id: "tax-1", label: "Tax", rate: "0", enabled: true },
   ]);
+  const [invoiceApplyTax, setInvoiceApplyTax] = useState(true);
   const [invoiceCcEmails, setInvoiceCcEmails] = useState("");
   const [propertyInvoiceRateDrafts, setPropertyInvoiceRateDrafts] = useState<Record<string, { turnover: string; grounds: string; billTurnover: boolean; billGrounds: boolean }>>({});
   const [invoiceSettingsDirty, setInvoiceSettingsDirty] = useState(false);
@@ -1081,7 +1083,7 @@ export default function AdminPage() {
   const [invoiceAutoTurnover, setInvoiceAutoTurnover] = useState(true);
   const [invoiceAutoGrounds, setInvoiceAutoGrounds] = useState(true);
   const [invoiceLineItems, setInvoiceLineItems] = useState<OwnerInvoiceLineItem[]>([
-    { id: "custom-1", description: "", category: "expense", quantity: 1, rate: 0 },
+    { id: "custom-1", description: "", category: "expense", quantity: 1, rate: 0, taxable: true },
   ]);
 
   const [propertyName, setPropertyName] = useState("");
@@ -8748,7 +8750,13 @@ This removes its linked members and deletes the grounds account.`
     return items.reduce((sum, item) => sum + getLineItemTotal(item), 0);
   }
 
-  function getInvoiceTaxLinesForSubtotal(subtotal: number) {
+  function getInvoiceTaxableSubtotal(items: OwnerInvoiceLineItem[]) {
+    return items.reduce((sum, item) => (item.taxable === false ? sum : sum + getLineItemTotal(item)), 0);
+  }
+
+  function getInvoiceTaxLinesForSubtotal(subtotal: number, applyTax = true) {
+    if (!applyTax) return [];
+
     return invoiceTaxLines
       .filter((line) => line.enabled !== false)
       .map((line) => {
@@ -8767,8 +8775,8 @@ This removes its linked members and deletes the grounds account.`
       .map(({ hasValue, ...line }) => line);
   }
 
-  function getInvoiceTaxTotal(subtotal: number) {
-    return getInvoiceTaxLinesForSubtotal(subtotal).reduce((sum, line) => sum + line.amount, 0);
+  function getInvoiceTaxTotal(subtotal: number, applyTax = true) {
+    return getInvoiceTaxLinesForSubtotal(subtotal, applyTax).reduce((sum, line) => sum + line.amount, 0);
   }
 
   function getPropertyInvoiceRate(propertyId: string) {
@@ -9319,7 +9327,7 @@ This removes its linked members and deletes the grounds account.`
   }
 
   function getEmptyInvoiceLineItem(): OwnerInvoiceLineItem {
-    return { id: `custom-${Date.now()}`, description: "", category: "expense", quantity: 1, rate: "" };
+    return { id: `custom-${Date.now()}`, description: "", category: "expense", quantity: 1, rate: "", taxable: true };
   }
 
   function resetInvoiceComposer() {
@@ -9330,6 +9338,7 @@ This removes its linked members and deletes the grounds account.`
     setInvoiceDueDate(getDefaultDueDateYmd());
     setInvoiceNotes("");
     setInvoiceCcEmails("");
+    setInvoiceApplyTax(true);
     setInvoiceLineItems([getEmptyInvoiceLineItem()]);
     setInvoiceDraftDirty(false);
   }
@@ -9352,7 +9361,11 @@ This removes its linked members and deletes the grounds account.`
     setInvoiceLogoUrl(invoice.logo_url || invoiceSettings?.logo_url || "");
     setInvoiceFromEmail(invoice.from_email || invoiceSettings?.from_email || "");
     setInvoiceReplyToEmail(invoice.reply_to_email || invoiceSettings?.reply_to_email || "");
-    setInvoiceLineItems(invoice.line_items.length > 0 ? invoice.line_items : [getEmptyInvoiceLineItem()]);
+    const loadedLineItems =
+      invoice.line_items.length > 0
+        ? invoice.line_items.map((item) => ({ ...item, taxable: item.taxable !== false }))
+        : [getEmptyInvoiceLineItem()];
+    setInvoiceLineItems(loadedLineItems);
     const loadedTaxLines = normalizeTaxLines(invoice.tax_lines).map((line) => ({
       id: line.id,
       label: line.label,
@@ -9362,6 +9375,7 @@ This removes its linked members and deletes the grounds account.`
     if (loadedTaxLines.length > 0) {
       setInvoiceTaxLines(loadedTaxLines);
     }
+    setInvoiceApplyTax(Number(invoice.tax_total || 0) > 0 || loadedTaxLines.some((line) => Number(line.rate || 0) > 0));
     setInvoiceWorkflowTab("running");
     setInvoiceDraftDirty(false);
     setActionMessage(`Loaded running invoice ${invoice.invoice_number}.`);
@@ -9382,6 +9396,7 @@ This removes its linked members and deletes the grounds account.`
         description: item.description.trim(),
         quantity: Number(item.quantity || 0),
         rate: Number(item.rate || 0),
+        taxable: item.taxable !== false,
         receipt_urls: item.receipt_urls || [],
         receipt_names: item.receipt_names || [],
       }))
@@ -9411,6 +9426,7 @@ This removes its linked members and deletes the grounds account.`
         category: "expense",
         quantity: 1,
         rate: 0,
+        taxable: true,
       },
     ]);
   }
@@ -9444,6 +9460,7 @@ This removes its linked members and deletes the grounds account.`
           category: "turnover",
           quantity: Number(job.cleaner_units_needed || 1),
           rate: turnoverRate,
+          taxable: true,
           source_id: job.id,
         });
       }
@@ -9457,6 +9474,7 @@ This removes its linked members and deletes the grounds account.`
           category: "grounds",
           quantity: Number(job.grounds_units_needed || 1),
           rate: groundsRate,
+          taxable: true,
           source_id: job.id,
         });
       }
@@ -9468,7 +9486,7 @@ This removes its linked members and deletes the grounds account.`
         ? [...generated, ...customItems]
         : customItems.length > 0
           ? customItems
-          : [{ id: "custom-1", description: "", category: "expense", quantity: 1, rate: 0 }];
+          : [{ id: "custom-1", description: "", category: "expense", quantity: 1, rate: 0, taxable: true }];
     });
     setInvoiceDraftDirty(true);
     setActionMessage(
@@ -9616,7 +9634,8 @@ This removes its linked members and deletes the grounds account.`
     }
 
     const subtotal = getInvoiceLineItemsTotal(validLineItems);
-    const taxLines = getInvoiceTaxLinesForSubtotal(subtotal);
+    const taxableSubtotal = getInvoiceTaxableSubtotal(validLineItems);
+    const taxLines = getInvoiceTaxLinesForSubtotal(taxableSubtotal, invoiceApplyTax);
     const taxTotal = taxLines.reduce((sum, line) => sum + line.amount, 0);
     const total = subtotal + taxTotal;
     const invoiceNumber = editingInvoice?.invoice_number || `INV-${Date.now().toString().slice(-8)}`;
@@ -9843,7 +9862,8 @@ This removes its linked members and deletes the grounds account.`
 
       const context = getInvoiceRecipientContext();
       const subtotal = getInvoiceLineItemsTotal(validLineItems);
-      const taxLines = getInvoiceTaxLinesForSubtotal(subtotal);
+      const taxableSubtotal = getInvoiceTaxableSubtotal(validLineItems);
+      const taxLines = getInvoiceTaxLinesForSubtotal(taxableSubtotal, invoiceApplyTax);
       const taxTotal = taxLines.reduce((sum, line) => sum + line.amount, 0);
       const response = await fetch("/api/admin/preview-owner-invoice", {
         method: "POST",
@@ -9971,9 +9991,19 @@ This removes its linked members and deletes the grounds account.`
   function renderInvoicesSection() {
     const ownerProperties = invoiceOwnerId ? getPropertiesForOwner(invoiceOwnerId) : properties;
     const invoiceSubtotal = getInvoiceLineItemsTotal(invoiceLineItems);
-    const invoiceTaxLinesWithAmounts = getInvoiceTaxLinesForSubtotal(invoiceSubtotal);
+    const invoiceTaxableSubtotal = getInvoiceTaxableSubtotal(invoiceLineItems);
+    const invoiceTaxLinesWithAmounts = getInvoiceTaxLinesForSubtotal(invoiceTaxableSubtotal, invoiceApplyTax);
     const invoiceTaxTotal = invoiceTaxLinesWithAmounts.reduce((sum, line) => sum + line.amount, 0);
     const invoiceTotal = invoiceSubtotal + invoiceTaxTotal;
+    const invoiceTaxLabel =
+      invoiceTaxLines
+        .filter((line) => line.enabled !== false)
+        .map((line) => {
+          const label = line.label.trim() || "Tax";
+          const rate = Number(line.rate || 0);
+          return rate > 0 ? `${label} (${rate}%)` : label;
+        })
+        .join(", ") || "configured tax";
     const editingInvoice = editingOwnerInvoiceId
       ? ownerInvoices.find((invoice) => invoice.id === editingOwnerInvoiceId)
       : null;
@@ -10759,14 +10789,22 @@ This removes its linked members and deletes the grounds account.`
                 >
                   Auto-populate from jobs
                 </button>
-                <button
-                  type="button"
-                  onClick={addInvoiceLineItem}
-                  className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#fcfaf7]"
-                >
-                  Add custom expense
-                </button>
               </div>
+
+              <label className="mt-4 flex cursor-pointer flex-wrap items-center justify-between gap-3 rounded-[18px] border border-[#d8c7ab] bg-[#fffaf0] px-4 py-3 text-sm text-[#5f4c3b]">
+                <span className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={invoiceApplyTax}
+                    onChange={(e) => {
+                      setInvoiceDraftDirty(true);
+                      setInvoiceApplyTax(e.target.checked);
+                    }}
+                  />
+                  <span className="font-semibold text-[#241c15]">Add HST/tax to this invoice</span>
+                </span>
+                <span className="text-xs font-medium text-[#8a7b68]">{invoiceTaxLabel}</span>
+              </label>
 
               <div className="mt-4 space-y-3">
                 {invoiceLineItems.map((item) => (
@@ -10828,6 +10866,14 @@ This removes its linked members and deletes the grounds account.`
                       <span className="rounded-full border border-[#eadfce] bg-white px-3 py-1.5 text-xs font-semibold text-[#5f4c3b]">
                         Line total: {formatCurrency(getLineItemTotal(item))}
                       </span>
+                      <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-[#d8c7ab] bg-white px-3 py-1.5 text-xs font-medium text-[#5f4c3b] hover:bg-[#f7f1e8]">
+                        <input
+                          type="checkbox"
+                          checked={item.taxable !== false}
+                          onChange={(e) => updateInvoiceLineItem(item.id, { taxable: e.target.checked })}
+                        />
+                        Add HST/tax to this line
+                      </label>
                       <label className="inline-flex cursor-pointer items-center rounded-full border border-[#d8c7ab] bg-white px-3 py-1.5 text-xs font-medium text-[#5f4c3b] hover:bg-[#f7f1e8]">
                         {uploadingReceiptLineItemId === item.id ? "Uploading..." : "Attach receipt"}
                         <input
@@ -10867,6 +10913,16 @@ This removes its linked members and deletes the grounds account.`
                     </div>
                   </div>
                 ))}
+              </div>
+
+              <div className="mt-3 flex justify-end">
+                <button
+                  type="button"
+                  onClick={addInvoiceLineItem}
+                  className="w-full rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#fcfaf7] sm:w-auto"
+                >
+                  Add custom expense
+                </button>
               </div>
 
               <textarea
