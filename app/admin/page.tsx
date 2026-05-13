@@ -1037,6 +1037,7 @@ export default function AdminPage() {
   const [uploadingReceiptLineItemId, setUploadingReceiptLineItemId] = useState<string | null>(null);
   const [uploadingExternalInvoice, setUploadingExternalInvoice] = useState(false);
   const [sendingInvoiceId, setSendingInvoiceId] = useState<string | null>(null);
+  const [viewingInvoicePdfId, setViewingInvoicePdfId] = useState<string | null>(null);
   const [updatingInvoiceStatusId, setUpdatingInvoiceStatusId] = useState<string | null>(null);
   const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
   const [creatingChatConversation, setCreatingChatConversation] = useState(false);
@@ -9907,6 +9908,70 @@ This removes its linked members and deletes the grounds account.`
     }
   }
 
+  async function viewOwnerInvoicePdf(invoice: OwnerInvoiceRow) {
+    if (invoice.uploaded_invoice_url) {
+      window.open(invoice.uploaded_invoice_url, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    const owner = ownerAccounts.find((item) => item.id === invoice.owner_account_id);
+    const property = properties.find((item) => item.id === invoice.property_id);
+
+    setViewingInvoicePdfId(invoice.id);
+    setError("");
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        throw new Error("Could not verify your admin session.");
+      }
+
+      const response = await fetch("/api/admin/preview-owner-invoice", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          invoiceNumber: invoice.invoice_number,
+          companyName: invoice.company_name || "Property invoice",
+          logoUrl: invoice.logo_url || null,
+          ownerName: owner?.full_name || owner?.email || "Owner",
+          ownerEmail: owner?.email || "",
+          propertyName: property?.name || property?.address || "All linked properties",
+          issueDate: invoice.issue_date || getTodayYmd(),
+          dueDate: invoice.due_date || null,
+          headerText: invoice.header_text || null,
+          notes: invoice.notes || null,
+          paymentInstructions: invoice.payment_instructions || null,
+          subtotal: Number(invoice.subtotal || 0),
+          taxLines: Array.isArray(invoice.tax_lines) ? invoice.tax_lines : [],
+          taxTotal: Number(invoice.tax_total || 0),
+          total: Number(invoice.total || 0),
+          lineItems: Array.isArray(invoice.line_items) ? invoice.line_items : [],
+        }),
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || "Could not open invoice PDF.");
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank", "noopener,noreferrer");
+      window.setTimeout(() => URL.revokeObjectURL(url), 30000);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Could not view invoice PDF."));
+    } finally {
+      setViewingInvoicePdfId(null);
+    }
+  }
+
   async function sendExistingOwnerInvoice(invoiceId: string) {
     setSendingInvoiceId(invoiceId);
     setError("");
@@ -10114,16 +10179,14 @@ This removes its linked members and deletes the grounds account.`
               >
                 CSV
               </button>
-              {invoice.uploaded_invoice_url ? (
-                <a
-                  href={invoice.uploaded_invoice_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-full border border-[#d4c2ea] bg-white px-4 py-2 text-sm font-medium text-[#6f4b9a] hover:bg-[#f6efff]"
-                >
-                  File
-                </a>
-              ) : null}
+              <button
+                type="button"
+                onClick={() => void viewOwnerInvoicePdf(invoice)}
+                disabled={viewingInvoicePdfId === invoice.id}
+                className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-medium text-[#5f4c3b] hover:bg-[#f7f1e8] disabled:opacity-60"
+              >
+                {viewingInvoicePdfId === invoice.id ? "Opening..." : "View PDF"}
+              </button>
               <button
                 type="button"
                 onClick={() => void updateOwnerInvoiceStatus(invoice, invoice.status === "paid" ? "sent" : "paid")}
@@ -10837,10 +10900,14 @@ This removes its linked members and deletes the grounds account.`
                         <input
                           type="number"
                           min="0"
-                          step="0.01"
+                          step="1"
                           className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
                           value={item.quantity}
                           onChange={(e) => updateInvoiceLineItem(item.id, { quantity: e.target.value })}
+                          onBlur={(e) => {
+                            const roundedQuantity = Math.max(1, Math.round(Number(e.target.value || 1)));
+                            updateInvoiceLineItem(item.id, { quantity: roundedQuantity });
+                          }}
                         />
                       </label>
                       <label className="text-xs font-medium text-[#5f5245]">
