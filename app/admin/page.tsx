@@ -14263,6 +14263,69 @@ This removes its linked members and deletes the grounds account.`
                     ) : null}
                   </div>
 
+                  <div className="rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] p-5">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <h3 className="text-base font-semibold text-[#241c15]">Access Notes</h3>
+                        <p className="mt-1 text-sm text-[#7f7263]">
+                          Door codes, alarm codes, and entry instructions for the team.
+                        </p>
+                      </div>
+                      <span className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-medium text-[#6f6255]">
+                        Entry details
+                      </span>
+                    </div>
+
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-[#5f5245]">Door code</label>
+                        <input
+                          className="w-full rounded-[16px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
+                          placeholder="Front door / smart lock code"
+                          value={doorCode}
+                          onChange={(e) => {
+                            setDoorCode(e.target.value);
+                            setAccessDirty(true);
+                          }}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-[#5f5245]">Alarm code</label>
+                        <input
+                          className="w-full rounded-[16px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
+                          placeholder="Alarm panel code"
+                          value={alarmCode}
+                          onChange={(e) => {
+                            setAlarmCode(e.target.value);
+                            setAccessDirty(true);
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mt-4">
+                      <label className="mb-2 block text-sm font-medium text-[#5f5245]">Extra access notes</label>
+                      <textarea
+                        className="min-h-[120px] w-full rounded-[16px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
+                        placeholder="Entry directions, tricky locks, gate notes, etc."
+                        value={accessNotes}
+                        onChange={(e) => {
+                          setAccessNotes(e.target.value);
+                          setAccessDirty(true);
+                        }}
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      className="mt-4 inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]"
+                      onClick={() => void saveAccess()}
+                    >
+                      Save Access
+                    </button>
+                  </div>
+
                   <div className="rounded-[24px] border border-[#d7e6df] bg-[#f6fbf8] p-5">
                     <h3 className="text-base font-semibold text-[#17382d]">WiFi and Waste Details</h3>
                     <p className="mt-1 text-sm text-[#5e7469]">
