@@ -3854,53 +3854,114 @@ export default function AdminPage() {
     setError("");
     setReassigningJobId(jobId);
 
-    const responseHours = getResponseWindowHours(
-      jobs.find((j) => j.id === jobId)?.scheduled_for ||
-      extractCheckoutDate(jobs.find((j) => j.id === jobId)?.notes || null),
-      new Date()
-    );
+    try {
+      if (!currentOrganizationId) {
+        throw new Error("No organization selected.");
+      }
 
-    const { error } = await supabase
-      .from("turnover_job_slots")
-      .update({
-        cleaner_account_id: cleanerAccountId,
-        status: "offered",
-        offered_at: new Date().toISOString(),
-        expires_at: new Date(Date.now() + responseHours * 60 * 60 * 1000).toISOString(),
-        accepted_at: null,
-        declined_at: null,
-        accepted_by_profile_id: null,
-        declined_by_profile_id: null,
-        offer_email_sent_at: null,
-        offer_reminder_sent_at: null,
-        day_of_reminder_sent_at: null,
-      })
-      .eq("id", slot.id);
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
 
-    if (error) {
-      setError(error.message);
+      if (sessionError || !session?.access_token) {
+        throw new Error("Could not verify your admin session.");
+      }
+
+      const response = await fetch("/api/admin/stranded-job", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          action: "reassign",
+          organizationId: currentOrganizationId,
+          jobId,
+          cleanerAccountId,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || "Could not reassign stranded job.");
+      }
+
+      const notifyResult = payload.notificationResult || {};
+      const sentCount = Number(notifyResult.sent ?? 0);
+      const notificationErrors = Array.isArray(notifyResult.errors) ? notifyResult.errors : [];
+
+      setActionMessage(
+        notificationErrors.length > 0
+          ? "Stranded job reassigned. Offer email notification needs attention."
+          : sentCount > 0
+            ? `Stranded job reassigned. ${sentCount} offer email${sentCount === 1 ? "" : "s"} sent.`
+            : "Stranded job reassigned."
+      );
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Could not reassign stranded job.");
+    } finally {
       setReassigningJobId(null);
-      return;
     }
+  }
+
+  async function deleteStrandedJob(jobId: string) {
+    const job = strandedJobs.find((item) => item.id === jobId) || jobs.find((item) => item.id === jobId);
+    const propertyName =
+      "property_name" in (job || {})
+        ? (job as StrandedJob).property_name || getPropertyName(job?.property_id || null)
+        : getPropertyName(job?.property_id || null);
+    const confirmed = window.confirm(
+      `Delete this stranded job${propertyName ? ` for ${propertyName}` : ""}? This removes the job and its cleaner slots.`
+    );
+    if (!confirmed) return;
+
+    setError("");
+    setActionMessage("");
+    setReassigningJobId(jobId);
 
     try {
-      await refreshCleanerJobStaffing(jobId);
-    } catch (err: any) {
-      setError(err?.message || "Could not refresh the job staffing status.");
-      setReassigningJobId(null);
-      return;
-    }
+      if (!currentOrganizationId) {
+        throw new Error("No organization selected.");
+      }
 
-    const notifyResult = await notifyJobOffers("cleaner", [slot.id]);
-    setActionMessage(
-      notifyResult.errors.length > 0
-        ? "Stranded job reassigned. Offer email notification needs attention."
-        : notifyResult.sent > 0
-          ? `Stranded job reassigned. ${notifyResult.sent} offer email${notifyResult.sent === 1 ? "" : "s"} sent.`
-          : "Stranded job reassigned."
-    );
-    await loadData();
-    setReassigningJobId(null);
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        throw new Error("Could not verify your admin session.");
+      }
+
+      const response = await fetch("/api/admin/stranded-job", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          action: "delete",
+          organizationId: currentOrganizationId,
+          jobId,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || "Could not delete stranded job.");
+      }
+
+      setActionMessage("Stranded job deleted.");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Could not delete stranded job.");
+    } finally {
+      setReassigningJobId(null);
+    }
   }
 
   function getNextOpenSlot(jobId: string) {
@@ -13847,6 +13908,14 @@ This removes its linked members and deletes the grounds account.`
                           disabled={reassigningJobId === job.id}
                         >
                           {reassigningJobId === job.id ? "Reassigning..." : "Reassign Stranded Job"}
+                        </button>
+
+                        <button
+                          className="mt-2 w-full rounded-full border border-[#efc6c6] bg-white px-5 py-2.5 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff5f5] disabled:opacity-60"
+                          onClick={() => void deleteStrandedJob(job.id)}
+                          disabled={reassigningJobId === job.id}
+                        >
+                          Delete Stranded Job
                         </button>
 
                         <div className="mt-3 space-y-2">
