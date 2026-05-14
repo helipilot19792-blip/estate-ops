@@ -1114,6 +1114,7 @@ export default function AdminPage() {
   const [propertyGarbageDay, setPropertyGarbageDay] = useState("");
   const [propertyGarbageNotes, setPropertyGarbageNotes] = useState("");
   const [propertyGarbagePickupWeekday, setPropertyGarbagePickupWeekday] = useState("");
+  const [propertyWastePattern, setPropertyWastePattern] = useState<WastePattern>("weekly");
   const [propertyGarbageRotationAnchorDate, setPropertyGarbageRotationAnchorDate] = useState("");
   const [propertyGarbageWeekALabel, setPropertyGarbageWeekALabel] = useState("Garbage + recycling");
   const [propertyGarbageWeekBLabel, setPropertyGarbageWeekBLabel] = useState("Recycling only");
@@ -2575,6 +2576,7 @@ export default function AdminPage() {
     setPropertyGarbageDay("");
     setPropertyGarbageNotes("");
     setPropertyGarbagePickupWeekday("");
+    setPropertyWastePattern("weekly");
     setPropertyGarbageRotationAnchorDate("");
     setPropertyGarbageWeekALabel("Garbage + recycling");
     setPropertyGarbageWeekBLabel("Recycling only");
@@ -2677,6 +2679,68 @@ export default function AdminPage() {
     return true;
   }
 
+  function getPropertyWastePayload() {
+    const savedAnchorDate =
+      propertyWastePattern === "biweekly_same" || propertyWastePattern === "alternating"
+        ? propertyGarbageRotationAnchorDate || null
+        : null;
+    const savedGarbageDay =
+      propertyWastePattern === "alternating"
+        ? null
+        : propertyGarbageDay.trim() || null;
+    const savedWeekALabel =
+      propertyWastePattern === "alternating"
+        ? propertyGarbageWeekALabel.trim() || "Garbage + recycling"
+        : propertyGarbageDay.trim() || "Waste pickup";
+    const savedWeekBLabel =
+      propertyWastePattern === "alternating"
+        ? propertyGarbageWeekBLabel.trim() || "Recycling only"
+        : "No pickup";
+
+    return {
+      garbageDay: savedGarbageDay,
+      garbageRotationAnchorDate: savedAnchorDate,
+      garbageWeekALabel: savedWeekALabel,
+      garbageWeekBLabel: savedWeekBLabel,
+    };
+  }
+
+  async function createPropertyViaAdminApi(payload: Record<string, any>) {
+    if (!currentOrganizationId) {
+      throw new Error("Choose an organization before adding a property.");
+    }
+
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (sessionError || !session?.access_token) {
+      throw new Error("No active admin session was found.");
+    }
+
+    const response = await fetch("/api/admin/property", {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        organizationId: currentOrganizationId,
+        ...payload,
+      }),
+    });
+
+    const result = await response.json().catch(() => null);
+
+    if (!response.ok || !result?.ok) {
+      throw new Error(result?.error || "Could not create property.");
+    }
+
+    return result;
+  }
+
   async function addProperty() {
     if (!propertyName.trim()) {
       setError("Property name is required.");
@@ -2686,13 +2750,10 @@ export default function AdminPage() {
     setError("");
     setActionMessage("");
 
-    const ownerEmail = propertyOwnerEmail.trim().toLowerCase();
-    const ownerName = propertyOwnerName.trim();
+    const ownerWasProvided = !!propertyOwnerEmail.trim();
 
-    const { data: insertedProperty, error: propertyError } = await supabase
-      .from("properties")
-      .insert({
-        organization_id: currentOrganizationId,
+    try {
+      await createPropertyViaAdminApi({
         name: propertyName.trim(),
         address: buildPropertyAddress([
           propertyStreet,
@@ -2701,23 +2762,19 @@ export default function AdminPage() {
           propertyPostal,
         ]),
         notes: propertyNotes.trim() || null,
-        wifi_network: propertyWifiNetwork.trim() || null,
-        wifi_password: propertyWifiPassword.trim() || null,
-        garbage_day: propertyGarbageDay.trim() || null,
-        garbage_notes: propertyGarbageNotes.trim() || null,
-        garbage_pickup_weekday: propertyGarbagePickupWeekday === "" ? null : Number(propertyGarbagePickupWeekday),
-        garbage_rotation_anchor_date: propertyGarbageRotationAnchorDate || null,
-        garbage_week_a_label: propertyGarbageWeekALabel.trim() || "Garbage + recycling",
-        garbage_week_b_label: propertyGarbageWeekBLabel.trim() || "Recycling only",
-        default_cleaner_units_needed: Number(propertyUnitsNeeded),
-        cleaner_units_required_strict: propertyUnitsStrict,
-        show_team_status_to_cleaners: propertyShowTeamStatus,
-      })
-      .select()
-      .single();
-
-    if (propertyError || !insertedProperty) {
-      const message = propertyError?.message || "Could not create property.";
+        wifiNetwork: propertyWifiNetwork,
+        wifiPassword: propertyWifiPassword,
+        garbageNotes: propertyGarbageNotes,
+        garbagePickupWeekday: propertyGarbagePickupWeekday,
+        ...getPropertyWastePayload(),
+        defaultCleanerUnitsNeeded: Number(propertyUnitsNeeded),
+        cleanerUnitsRequiredStrict: propertyUnitsStrict,
+        showTeamStatusToCleaners: propertyShowTeamStatus,
+        ownerEmail: propertyOwnerEmail,
+        ownerName: propertyOwnerName,
+      });
+    } catch (err: any) {
+      const message = err?.message || "Could not create property.";
       setError(
         message.includes("wifi_network") || message.includes("garbage_")
           ? `${message} Run supabase/add_property_inspections.sql first.`
@@ -2726,17 +2783,8 @@ export default function AdminPage() {
       return;
     }
 
-    if (ownerEmail) {
-      try {
-        await linkOwnerAccountToProperty(insertedProperty.id, ownerEmail, ownerName);
-      } catch (err: any) {
-        setError(err?.message || "Could not create owner account.");
-        return;
-      }
-    }
-
     resetManualPropertyForm();
-    setActionMessage(ownerEmail ? "Property added and owner linked." : "Property added.");
+    setActionMessage(ownerWasProvided ? "Property added and owner linked." : "Property added.");
     await loadData();
   }
 
@@ -2781,50 +2829,29 @@ export default function AdminPage() {
         .filter(Boolean)
         .join("\n");
 
-      const { data: insertedProperty, error: propertyError } = await supabase
-        .from("properties")
-        .insert({
-          organization_id: currentOrganizationId,
-          name: airbnbImportName.trim(),
-          address: buildPropertyAddress([
-            airbnbImportStreet,
-            airbnbImportCity,
-            airbnbImportProvince,
-            airbnbImportPostal,
-          ]),
-          notes: combinedNotes || null,
-          cover_photo_url: airbnbImportCoverPhotoUrl.trim() || null,
-          default_cleaner_units_needed: Number(propertyUnitsNeeded),
-          cleaner_units_required_strict: propertyUnitsStrict,
-          show_team_status_to_cleaners: propertyShowTeamStatus,
-        })
-        .select()
-        .single();
-
-      if (propertyError || !insertedProperty) {
-        throw propertyError || new Error("Could not create Airbnb property.");
-      }
-
-      insertedPropertyId = insertedProperty.id;
-
-      if (airbnbImportOwnerEmail.trim()) {
-        await linkOwnerAccountToProperty(
-          insertedProperty.id,
-          airbnbImportOwnerEmail,
-          airbnbImportOwnerName
-        );
-      }
-
-      const { error: calendarError } = await supabase.from("property_calendars").insert({
-        property_id: insertedProperty.id,
-        source: "airbnb",
-        ical_url: normalizedCalendarUrl,
-        is_active: true,
+      const created = await createPropertyViaAdminApi({
+        name: airbnbImportName.trim(),
+        address: buildPropertyAddress([
+          airbnbImportStreet,
+          airbnbImportCity,
+          airbnbImportProvince,
+          airbnbImportPostal,
+        ]),
+        notes: combinedNotes || null,
+        coverPhotoUrl: airbnbImportCoverPhotoUrl,
+        defaultCleanerUnitsNeeded: Number(propertyUnitsNeeded),
+        cleanerUnitsRequiredStrict: propertyUnitsStrict,
+        showTeamStatusToCleaners: propertyShowTeamStatus,
+        ownerEmail: airbnbImportOwnerEmail,
+        ownerName: airbnbImportOwnerName,
+        calendarSource: "airbnb",
+        calendarUrl: normalizedCalendarUrl,
       });
 
-      if (calendarError) {
-        throw new Error(`Property created, but the Airbnb calendar could not be attached: ${calendarError.message}`);
-      }
+      const insertedProperty = created.property;
+      if (!insertedProperty?.id) throw new Error("Could not create Airbnb property.");
+
+      insertedPropertyId = insertedProperty.id;
 
       setSelectedPropertyId(insertedProperty.id);
       setPropertySetupTab("overview");
@@ -11237,23 +11264,67 @@ This removes its linked members and deletes the grounds account.`
                     value={propertyWifiPassword}
                     onChange={(e) => setPropertyWifiPassword(e.target.value)}
                   />
+                  <select
+                    className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e] md:col-span-2"
+                    value={propertyWastePattern}
+                    onChange={(e) => {
+                      const nextPattern = e.target.value as WastePattern;
+                      setPropertyWastePattern(nextPattern);
+                      if (nextPattern === "weekly") {
+                        setPropertyGarbageRotationAnchorDate("");
+                      } else if (!propertyGarbageRotationAnchorDate) {
+                        setPropertyGarbageRotationAnchorDate(todayYmd);
+                      }
+                    }}
+                  >
+                    <option value="weekly">Every week - same contents</option>
+                    <option value="biweekly_same">Every 2 weeks - same contents</option>
+                    <option value="alternating">Alternating weeks - different contents</option>
+                  </select>
                   <div className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3">
                     <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
-                      Pickup contents
+                      {propertyWastePattern === "alternating" ? "Week A contents" : "Pickup contents"}
                     </div>
                     <div className="mt-3 grid gap-2 sm:grid-cols-2">
                       {WASTE_PICKUP_TYPE_OPTIONS.map((option) => (
                         <label key={option} className="flex items-center gap-2 text-sm text-[#5f5245]">
                           <input
                             type="checkbox"
-                            checked={getWastePickupTypes(propertyGarbageDay).includes(option)}
-                            onChange={() => setPropertyGarbageDay((current) => toggleWastePickupType(current, option))}
+                            checked={getWastePickupTypes(
+                              propertyWastePattern === "alternating" ? propertyGarbageWeekALabel : propertyGarbageDay
+                            ).includes(option)}
+                            onChange={() => {
+                              if (propertyWastePattern === "alternating") {
+                                setPropertyGarbageWeekALabel((current) => toggleWastePickupType(current, option));
+                              } else {
+                                setPropertyGarbageDay((current) => toggleWastePickupType(current, option));
+                              }
+                            }}
                           />
                           {option}
                         </label>
                       ))}
                     </div>
                   </div>
+                  {propertyWastePattern === "alternating" ? (
+                    <div className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3">
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
+                        Week B contents
+                      </div>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        {WASTE_PICKUP_TYPE_OPTIONS.map((option) => (
+                          <label key={option} className="flex items-center gap-2 text-sm text-[#5f5245]">
+                            <input
+                              type="checkbox"
+                              checked={getWastePickupTypes(propertyGarbageWeekBLabel).includes(option)}
+                              onChange={() => setPropertyGarbageWeekBLabel((current) => toggleWastePickupType(current, option))}
+                            />
+                            {option}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                   <input
                     className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
                     placeholder="Garbage notes"
@@ -11272,28 +11343,18 @@ This removes its linked members and deletes the grounds account.`
                       </option>
                     ))}
                   </select>
-                  <label className="text-xs font-medium text-[#6f6255]">
-                    Week A anchor date
-                    <input
-                      type="date"
-                      className="mt-1 w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                      value={propertyGarbageRotationAnchorDate}
-                      onChange={(e) => setPropertyGarbageRotationAnchorDate(e.target.value)}
-                      title="Pick a known Garbage + recycling date so the app can alternate weeks."
-                    />
-                  </label>
-                  <input
-                    className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                    placeholder="Week A label"
-                    value={propertyGarbageWeekALabel}
-                    onChange={(e) => setPropertyGarbageWeekALabel(e.target.value)}
-                  />
-                  <input
-                    className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                    placeholder="Week B label"
-                    value={propertyGarbageWeekBLabel}
-                    onChange={(e) => setPropertyGarbageWeekBLabel(e.target.value)}
-                  />
+                  {propertyWastePattern !== "weekly" ? (
+                    <label className="text-xs font-medium text-[#6f6255]">
+                      First Week A pickup date
+                      <input
+                        type="date"
+                        className="mt-1 w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                        value={propertyGarbageRotationAnchorDate}
+                        onChange={(e) => setPropertyGarbageRotationAnchorDate(e.target.value)}
+                        title="Pick a known Week A pickup date."
+                      />
+                    </label>
+                  ) : null}
                 </div>
               </div>
             </div>
