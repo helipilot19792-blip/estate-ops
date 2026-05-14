@@ -149,6 +149,43 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const { data: targetInvite, error: targetInviteError } = await service
+      .from("organization_invites")
+      .select("id, role")
+      .eq("id", inviteId)
+      .eq("organization_id", organizationId)
+      .maybeSingle();
+
+    if (targetInviteError) {
+      return NextResponse.json({ error: targetInviteError.message }, { status: 500 });
+    }
+
+    if (!targetInvite) {
+      return NextResponse.json(
+        { error: "No pending invite was found to revoke." },
+        { status: 404 }
+      );
+    }
+
+    if (targetInvite.role === "admin" && currentProfile.role !== "platform_admin") {
+      const { data: organization, error: organizationError } = await service
+        .from("organizations")
+        .select("created_by")
+        .eq("id", organizationId)
+        .maybeSingle();
+
+      if (organizationError) {
+        return NextResponse.json({ error: organizationError.message }, { status: 500 });
+      }
+
+      if (organization?.created_by !== user.id) {
+        return NextResponse.json(
+          { error: "Only the primary admin can revoke admin invites." },
+          { status: 403 }
+        );
+      }
+    }
+
     const { data: revokedInvite, error: revokeError } = await service
       .from("organization_invites")
       .update({ status: "revoked" })

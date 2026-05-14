@@ -182,7 +182,7 @@ export async function GET(request: Request) {
       serviceClient.from("property_inspection_rules").select("*").eq("organization_id", organizationId).order("next_due_date", { ascending: true }),
       serviceClient.from("property_inspection_logs").select("*").eq("organization_id", organizationId).order("inspected_at", { ascending: false }),
       serviceClient.from("property_inspection_photos").select("*").eq("organization_id", organizationId).order("sort_order", { ascending: true }),
-      serviceClient.from("organization_invites").select("*").eq("organization_id", organizationId).in("role", ["cleaner", "grounds"]).order("created_at", { ascending: false }),
+      serviceClient.from("organization_invites").select("*").eq("organization_id", organizationId).in("role", ["cleaner", "grounds", "admin"]).order("created_at", { ascending: false }),
       serviceClient.from("organization_invoice_settings").select("*").eq("organization_id", organizationId).maybeSingle(),
       serviceClient.from("property_invoice_rates").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
       serviceClient.from("owner_invoices").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),

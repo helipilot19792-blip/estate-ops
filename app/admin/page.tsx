@@ -450,6 +450,7 @@ const ADMIN_SELECTED_ORGANIZATION_KEY = "admin-current-organization-id-v2";
 type OrganizationBillingRow = {
   id: string;
   name: string | null;
+  created_by?: string | null;
   subscription_status?: string | null;
   trial_started_at?: string | null;
   trial_ends_at?: string | null;
@@ -457,13 +458,14 @@ type OrganizationBillingRow = {
   stripe_customer_id?: string | null;
   stripe_subscription_id?: string | null;
 };
+type OrganizationInviteRole = "cleaner" | "grounds" | "owner" | "admin";
 type OrganizationInviteRow = {
   id: string;
   organization_id: string;
   email: string;
   full_name: string | null;
   phone: string | null;
-  role: "cleaner" | "grounds" | "owner";
+  role: OrganizationInviteRole;
   status: string | null;
   token: string;
   sent_at?: string | null;
@@ -1137,6 +1139,9 @@ export default function AdminPage() {
   const [inviteGroundsName, setInviteGroundsName] = useState("");
   const [inviteGroundsEmail, setInviteGroundsEmail] = useState("");
   const [inviteGroundsPhone, setInviteGroundsPhone] = useState("");
+  const [inviteAdminName, setInviteAdminName] = useState("");
+  const [inviteAdminEmail, setInviteAdminEmail] = useState("");
+  const [inviteAdminPhone, setInviteAdminPhone] = useState("");
 
   const [cleanerAccountName, setCleanerAccountName] = useState("");
   const [cleanerAccountEmail, setCleanerAccountEmail] = useState("");
@@ -1317,6 +1322,14 @@ export default function AdminPage() {
     return organizationInvites.filter((invite) => invite.role === "grounds");
   }, [organizationInvites]);
 
+  const pendingAdminInvites = useMemo(() => {
+    return organizationInvites.filter((invite) => invite.role === "admin");
+  }, [organizationInvites]);
+
+  const canManageAdminAccess =
+    currentPortalRole === "platform_admin" ||
+    (!!currentAdminUserId && currentOrganizationBilling?.created_by === currentAdminUserId);
+
   const duplicateGroundsInviteEmails = useMemo(() => {
     const counts = new Map<string, number>();
 
@@ -1331,6 +1344,21 @@ export default function AdminPage() {
         .map(([email]) => email)
     );
   }, [pendingGroundsInvites]);
+
+  const duplicateAdminInviteEmails = useMemo(() => {
+    const counts = new Map<string, number>();
+
+    for (const invite of pendingAdminInvites) {
+      const email = invite.email.trim().toLowerCase();
+      counts.set(email, (counts.get(email) ?? 0) + 1);
+    }
+
+    return new Set(
+      Array.from(counts.entries())
+        .filter(([, count]) => count > 1)
+        .map(([email]) => email)
+    );
+  }, [pendingAdminInvites]);
 
   const openMaintenanceFlagsCount = useMemo(() => {
     return maintenanceFlags.filter((flag) => {
@@ -2022,7 +2050,7 @@ export default function AdminPage() {
         .from("organization_invites")
         .select("*")
         .eq("organization_id", currentOrganizationId)
-        .in("role", ["cleaner", "grounds"])
+        .in("role", ["cleaner", "grounds", "admin"])
         .order("created_at", { ascending: false }),
       supabase
         .from("organization_invoice_settings")
@@ -2339,9 +2367,14 @@ export default function AdminPage() {
 
     if (profile.role === newRole) return;
 
+    if ((profile.role === "admin" || newRole === "admin") && !canManageAdminAccess) {
+      setError("Only the primary admin or platform owner can change admin access.");
+      return;
+    }
+
     if (newRole === "admin") {
       const confirmed = window.confirm(
-        `Promote ${profile.full_name || profile.email || "this user"} to admin?\n\nAdmins have full control of the portal.`
+        `Promote ${profile.full_name || profile.email || "this user"} to company admin?\n\nThis grants access to this company's admin dashboard only. It does not grant SaaS tower access.`
       );
       if (!confirmed) return;
     }
@@ -2377,6 +2410,11 @@ export default function AdminPage() {
 
     if (profile.id === currentAdminUserId) {
       setError("You cannot remove yourself from the portal.");
+      return;
+    }
+
+    if (profile.role === "admin" && !canManageAdminAccess) {
+      setError("Only the primary admin or platform owner can remove another admin.");
       return;
     }
 
@@ -2425,6 +2463,11 @@ export default function AdminPage() {
 
     if (profile.id === currentAdminUserId) {
       setError("You cannot permanently delete your own account.");
+      return;
+    }
+
+    if (profile.role === "admin" && !canManageAdminAccess) {
+      setError("Only the primary admin or platform owner can permanently delete another admin.");
       return;
     }
 
@@ -2899,7 +2942,7 @@ export default function AdminPage() {
     email: string;
     fullName?: string;
     phone?: string;
-    role: "cleaner" | "grounds" | "owner";
+    role: OrganizationInviteRole;
   }) {
     const email = params.email.trim().toLowerCase();
     const fullName = params.fullName?.trim() || null;
@@ -2920,8 +2963,58 @@ export default function AdminPage() {
       return null;
     }
 
+    if (params.role === "admin" && !canManageAdminAccess) {
+      setError("Only the primary admin or platform owner can invite another admin.");
+      return null;
+    }
+
     setError("");
     setActionMessage("");
+
+    if (params.role === "admin") {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        setError("Could not verify your admin session.");
+        return null;
+      }
+
+      try {
+        const response = await fetch("/api/admin/admin-invite", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            organizationId: currentOrganizationId,
+            email,
+            fullName,
+            phone,
+          }),
+        });
+
+        const payload = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          throw new Error(payload?.error || "Could not send admin invite.");
+        }
+
+        setActionMessage(
+          payload?.refreshed
+            ? `admin invite refreshed and email sent: ${payload.inviteUrl}`
+            : `admin invite created and email sent: ${payload.inviteUrl}`
+        );
+        await loadData();
+        return payload.invite;
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not send admin invite.");
+        return null;
+      }
+    }
 
     const token = createInviteToken();
 
@@ -3023,7 +3116,7 @@ export default function AdminPage() {
   }
   async function resendOrganizationInvite(params: {
     email: string;
-    role: "cleaner" | "grounds" | "owner";
+    role: OrganizationInviteRole;
   }) {
     const email = params.email.trim().toLowerCase();
 
@@ -3037,8 +3130,52 @@ export default function AdminPage() {
       return null;
     }
 
+    if (params.role === "admin" && !canManageAdminAccess) {
+      setError("Only the primary admin or platform owner can resend admin invites.");
+      return null;
+    }
+
     setError("");
     setActionMessage("");
+
+    if (params.role === "admin") {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        setError("Could not verify your admin session.");
+        return null;
+      }
+
+      try {
+        const response = await fetch("/api/admin/admin-invite", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            organizationId: currentOrganizationId,
+            email,
+          }),
+        });
+
+        const payload = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          throw new Error(payload?.error || "Could not resend admin invite.");
+        }
+
+        setActionMessage(`admin invite resent and email sent: ${payload.inviteUrl}`);
+        await loadData();
+        return payload.invite;
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not resend admin invite.");
+        return null;
+      }
+    }
 
     const { data: existingInvite, error: existingInviteError } = await supabase
       .from("organization_invites")
@@ -3374,6 +3511,31 @@ export default function AdminPage() {
     setInviteCleanerName("");
     setInviteCleanerEmail("");
     setInviteCleanerPhone("");
+  }
+
+  async function inviteAdminFromForm() {
+    if (!canManageAdminAccess) {
+      setError("Only the primary admin or platform owner can invite another admin.");
+      return;
+    }
+
+    if (!inviteAdminEmail.trim()) {
+      setError("Admin email is required to send an invite.");
+      return;
+    }
+
+    const invite = await createOrganizationInvite({
+      email: inviteAdminEmail,
+      fullName: inviteAdminName || undefined,
+      phone: inviteAdminPhone || undefined,
+      role: "admin",
+    });
+
+    if (!invite) return;
+
+    setInviteAdminName("");
+    setInviteAdminEmail("");
+    setInviteAdminPhone("");
   }
   async function addCleanerAccount() {
     if (!cleanerAccountName.trim()) {
@@ -8133,12 +8295,123 @@ This removes its linked members and deletes the grounds account.`
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8a7b68]">Team access</p>
             <h2 className="mt-2 text-xl font-semibold tracking-tight text-[#241c15]">Invitation status</h2>
             <p className="mt-1 text-sm text-[#7f7263]">
-              Track who has been invited, who has accepted, and revoke cleaner or grounds invites that should no longer work.
+              Track who has been invited, who has accepted, and revoke invites that should no longer work.
             </p>
           </div>
           <span className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-semibold text-[#6f6255]">
             {invitationStatusRows.length} invite{invitationStatusRows.length === 1 ? "" : "s"} tracked
           </span>
+        </div>
+
+        <div className="mt-5 rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+          <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h3 className="text-base font-semibold text-[#241c15]">Invite Company Admin</h3>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-[#7f7263]">
+                Company admins can use this company's admin dashboard. This does not grant platform or SaaS tower access.
+              </p>
+            </div>
+            <span className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-semibold text-[#6f6255]">
+              {canManageAdminAccess ? "Primary control" : "Primary admin only"}
+            </span>
+          </div>
+
+          {canManageAdminAccess ? (
+            <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1fr_1fr_auto_auto]">
+              <input
+                className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                placeholder="Admin name"
+                value={inviteAdminName}
+                onChange={(e) => setInviteAdminName(e.target.value)}
+              />
+              <input
+                className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                placeholder="Admin email"
+                value={inviteAdminEmail}
+                onChange={(e) => setInviteAdminEmail(e.target.value)}
+              />
+              <input
+                className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                placeholder="Admin phone (optional)"
+                value={inviteAdminPhone}
+                onChange={(e) => setInviteAdminPhone(e.target.value)}
+              />
+              <button
+                type="button"
+                onClick={() => void inviteAdminFromForm()}
+                className="rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]"
+              >
+                Invite Admin
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  void resendOrganizationInvite({
+                    email: inviteAdminEmail,
+                    role: "admin",
+                  })
+                }
+                className="rounded-full border border-[#d8c7ab] bg-white px-5 py-2.5 text-sm font-medium text-[#5f5245] transition hover:bg-[#fcfaf7]"
+              >
+                Resend
+              </button>
+            </div>
+          ) : (
+            <div className="mt-4 rounded-[18px] border border-[#eadfce] bg-white px-4 py-3 text-sm text-[#7f7263]">
+              Only the primary company admin or platform owner can invite or change admins.
+            </div>
+          )}
+
+          {pendingAdminInvites.length > 0 ? (
+            <div className="mt-4 space-y-3">
+              {pendingAdminInvites.map((invite) => (
+                <div key={invite.id} className="rounded-[18px] border border-[#e7ddd0] bg-white px-4 py-3">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <div className="text-sm font-semibold text-[#241c15]">
+                        {invite.full_name || invite.email}
+                        {duplicateAdminInviteEmails.has(invite.email.trim().toLowerCase()) ? (
+                          <span className="ml-2 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                            Duplicate
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="text-sm text-[#7f7263]">{invite.email}</div>
+                      <div className="mt-1 text-xs text-[#8a7b68]">
+                        Status: {invite.status || "sent"}
+                        {invite.sent_at ? ` • Sent ${new Date(invite.sent_at).toLocaleDateString()}` : ""}
+                        {invite.expires_at ? ` • Expires ${new Date(invite.expires_at).toLocaleDateString()}` : ""}
+                      </div>
+                    </div>
+                    {canManageAdminAccess ? (
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void resendOrganizationInvite({
+                              email: invite.email,
+                              role: "admin",
+                            })
+                          }
+                          className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-medium text-[#5f5245] transition hover:bg-white"
+                        >
+                          Resend Invite
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void deleteOrganizationInvite(invite.id)}
+                          disabled={deletingOrganizationInviteId === invite.id}
+                          className="rounded-full border border-[#efc6c6] bg-[#fff5f5] px-4 py-2 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-60"
+                        >
+                          {deletingOrganizationInviteId === invite.id ? "Revoking..." : "Revoke"}
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
 
         <div className="mt-5 grid gap-3 lg:grid-cols-2">
@@ -8165,7 +8438,7 @@ This removes its linked members and deletes the grounds account.`
                   </div>
                   {invite.kind === "team" ? (
                     <div className="flex shrink-0 flex-wrap gap-2">
-                      {invite.canRevoke ? (
+                      {invite.canRevoke && (invite.role !== "admin" || canManageAdminAccess) ? (
                         <button
                           type="button"
                           onClick={() => void deleteOrganizationInvite(invite.sourceId)}
@@ -8558,7 +8831,7 @@ This removes its linked members and deletes the grounds account.`
                       className="w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none transition focus:border-[#b48d4e]"
                       value={profile.role}
                       onChange={(e) => void updateUserRole(profile.id, e.target.value)}
-                      disabled={isBusy}
+                      disabled={isBusy || ((profile.role === "admin" || profile.id === currentAdminUserId) && !canManageAdminAccess)}
                     >
                       <option value="pending">pending</option>
                       <option value="cleaner">cleaner</option>
@@ -8576,7 +8849,7 @@ This removes its linked members and deletes the grounds account.`
                       <button
                         className="rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm text-[#5f5245] transition hover:bg-[#f7f3ee] disabled:opacity-50"
                         onClick={() => void removeUserFromPortal(profile)}
-                        disabled={isBusy}
+                        disabled={isBusy || (profile.role === "admin" && !canManageAdminAccess)}
                       >
                         {actingOnProfileId === profile.id ? "Working..." : "Remove from portal"}
                       </button>
@@ -8584,7 +8857,7 @@ This removes its linked members and deletes the grounds account.`
                       <button
                         className="rounded-[14px] border border-[#efc6c6] bg-[#fff5f5] px-3 py-2 text-sm text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-50"
                         onClick={() => void permanentlyDeleteUser(profile)}
-                        disabled={isBusy}
+                        disabled={isBusy || (profile.role === "admin" && !canManageAdminAccess)}
                       >
                         {actingOnProfileId === profile.id ? "Working..." : "Permanently delete"}
                       </button>
@@ -8593,7 +8866,9 @@ This removes its linked members and deletes the grounds account.`
                     <div className="mt-1 text-[11px] text-[#8a7b68]">
                       {savingRoleId === profile.id
                         ? "Saving..."
-                        : "Admin promotion requires confirmation"}
+                        : canManageAdminAccess
+                          ? "Admin promotion requires confirmation"
+                          : "Admin access is controlled by the primary admin"}
                     </div>
                   </div>
                 </div>
