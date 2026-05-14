@@ -3518,8 +3518,10 @@ export default function AdminPage() {
     setError("");
     setActionMessage("");
 
+    let assignmentResult: any = null;
+
     try {
-      await saveTeamAssignment({
+      assignmentResult = await saveTeamAssignment({
         kind: "cleaner",
         propertyId: assignmentPropertyId,
         profileId: assignmentCleanerProfileId,
@@ -3533,7 +3535,21 @@ export default function AdminPage() {
     setAssignmentPropertyId("");
     setAssignmentCleanerProfileId("");
     setAssignmentPriority("1");
-    setActionMessage("Cleaner assigned to property.");
+    const repair = assignmentResult?.cleanerOfferRepair;
+    const offeredCount = Array.isArray(repair?.offeredSlotIds) ? repair.offeredSlotIds.length : 0;
+    const sentCount = Number(repair?.notificationResult?.sent ?? 0);
+    const notificationErrors = Array.isArray(repair?.notificationResult?.errors)
+      ? repair.notificationResult.errors
+      : [];
+    setActionMessage(
+      notificationErrors.length > 0
+        ? "Cleaner assigned to property. Existing job offers were created, but email notification needs attention."
+        : sentCount > 0
+          ? `Cleaner assigned to property. ${sentCount} offer email${sentCount === 1 ? "" : "s"} sent.`
+          : offeredCount > 0
+            ? "Cleaner assigned to property. Existing stranded jobs were offered."
+            : "Cleaner assigned to property."
+    );
     await loadData();
   }
 
@@ -3867,6 +3883,14 @@ export default function AdminPage() {
       return;
     }
 
+    try {
+      await refreshCleanerJobStaffing(jobId);
+    } catch (err: any) {
+      setError(err?.message || "Could not refresh the job staffing status.");
+      setReassigningJobId(null);
+      return;
+    }
+
     const notifyResult = await notifyJobOffers("cleaner", [slot.id]);
     setActionMessage(
       notifyResult.errors.length > 0
@@ -3885,6 +3909,47 @@ export default function AdminPage() {
       .sort((a, b) => a.slot_number - b.slot_number)
       .find((x) => x.status !== "accepted");
   }
+
+  async function refreshCleanerJobStaffing(jobId: string) {
+    const job = jobs.find((item) => item.id === jobId);
+    if (!job) return;
+
+    const { data: slots, error } = await supabase
+      .from("turnover_job_slots")
+      .select("id, status, cleaner_account_id")
+      .eq("job_id", jobId);
+
+    if (error) throw error;
+
+    const slotRows = slots ?? [];
+    const unitsNeeded = Math.max(1, Number(job.cleaner_units_needed || 1));
+    const accepted = slotRows.filter((slot) => slot.status === "accepted").length;
+    const offered = slotRows.filter((slot) => slot.status === "offered").length;
+    const stillStranded = slotRows.some(
+      (slot) => slot.status === "stranded" || !slot.cleaner_account_id
+    );
+
+    const staffingStatus = stillStranded
+      ? "stranded"
+      : accepted >= unitsNeeded
+        ? "filled"
+        : accepted > 0 || offered > 0
+          ? "partially_filled"
+          : "unassigned";
+    const status = accepted >= unitsNeeded ? "accepted" : offered > 0 ? "offered" : "open";
+
+    const { error: updateError } = await supabase
+      .from("turnover_jobs")
+      .update({
+        status,
+        staffing_status: staffingStatus,
+        offered_at: offered > 0 ? new Date().toISOString() : null,
+      })
+      .eq("id", jobId);
+
+    if (updateError) throw updateError;
+  }
+
   async function deleteJob(jobId: string) {
     const confirmed = window.confirm("Delete this job? This cannot be undone.");
     if (!confirmed) return;
@@ -3968,6 +4033,14 @@ export default function AdminPage() {
 
     if (error) {
       setError(error.message);
+      setReassigningJobId(null);
+      return;
+    }
+
+    try {
+      await refreshCleanerJobStaffing(jobId);
+    } catch (err: any) {
+      setError(err?.message || "Could not refresh the job staffing status.");
       setReassigningJobId(null);
       return;
     }

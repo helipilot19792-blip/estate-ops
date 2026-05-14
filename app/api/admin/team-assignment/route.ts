@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { sendJobOfferEmailsForSlots } from "@/lib/server/job-notifications";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,162 @@ function getTables(kind: TeamKind) {
 function roleCanBeAssigned(kind: TeamKind, role: string | null | undefined) {
   if (kind === "cleaner") return role === "cleaner";
   return role === "grounds" || role === "cleaner";
+}
+
+function extractCheckoutDate(notes: string | null): string | null {
+  if (!notes) return null;
+  const match = notes.match(/Checkout date:\s*(\d{4}-\d{2}-\d{2})/i);
+  return match?.[1] ?? null;
+}
+
+function getCleanerJobDate(job: { scheduled_for?: string | null; notes?: string | null }) {
+  return job.scheduled_for || extractCheckoutDate(job.notes || null);
+}
+
+function getResponseWindowHours(jobDate: string | null, now = new Date()) {
+  if (!jobDate) return 8;
+
+  const job = new Date(`${jobDate}T12:00:00`);
+  const diffHours = (job.getTime() - now.getTime()) / (1000 * 60 * 60);
+
+  if (diffHours > 24 * 7) return 48;
+  if (diffHours > 48) return 8;
+  return 2;
+}
+
+async function refreshCleanerJobStaffing(serviceClient: any, jobId: string) {
+  const { data: job, error: jobError } = await serviceClient
+    .from("turnover_jobs")
+    .select("id, cleaner_units_needed")
+    .eq("id", jobId)
+    .maybeSingle();
+
+  if (jobError) throw new Error(jobError.message);
+  if (!job) return;
+
+  const { data: slots, error: slotError } = await serviceClient
+    .from("turnover_job_slots")
+    .select("id, status, cleaner_account_id")
+    .eq("job_id", jobId);
+
+  if (slotError) throw new Error(slotError.message);
+
+  const slotRows = slots ?? [];
+  const unitsNeeded = Math.max(1, Number(job.cleaner_units_needed || 1));
+  const accepted = slotRows.filter((slot: any) => slot.status === "accepted").length;
+  const offered = slotRows.filter((slot: any) => slot.status === "offered").length;
+  const stillStranded = slotRows.some(
+    (slot: any) => slot.status === "stranded" || !slot.cleaner_account_id
+  );
+
+  const nextStaffingStatus = stillStranded
+    ? "stranded"
+    : accepted >= unitsNeeded
+      ? "filled"
+      : accepted > 0 || offered > 0
+        ? "partially_filled"
+        : "unassigned";
+  const nextStatus = accepted >= unitsNeeded ? "accepted" : offered > 0 ? "offered" : "open";
+
+  const { error: updateError } = await serviceClient
+    .from("turnover_jobs")
+    .update({
+      status: nextStatus,
+      staffing_status: nextStaffingStatus,
+      offered_at: offered > 0 ? new Date().toISOString() : null,
+    })
+    .eq("id", jobId);
+
+  if (updateError) throw new Error(updateError.message);
+}
+
+async function offerOpenCleanerSlotsForProperty(
+  serviceClient: any,
+  propertyId: string,
+  organizationId: string,
+  cleanerAccountId: string,
+  origin: string
+) {
+  const todayYmd = new Date().toISOString().slice(0, 10);
+  const { data: jobs, error: jobsError } = await serviceClient
+    .from("turnover_jobs")
+    .select("id, scheduled_for, notes")
+    .eq("organization_id", organizationId)
+    .eq("property_id", propertyId);
+
+  if (jobsError) throw new Error(jobsError.message);
+
+  const futureJobIds = (jobs ?? [])
+    .filter((job: any) => {
+      const jobDate = getCleanerJobDate(job);
+      return !!jobDate && jobDate >= todayYmd;
+    })
+    .map((job: any) => job.id)
+    .filter(Boolean);
+
+  if (futureJobIds.length === 0) {
+    return { offeredSlotIds: [] as string[], notificationResult: null };
+  }
+
+  const { data: slots, error: slotsError } = await serviceClient
+    .from("turnover_job_slots")
+    .select("id, job_id")
+    .in("job_id", futureJobIds)
+    .or("status.eq.stranded,cleaner_account_id.is.null");
+
+  if (slotsError) throw new Error(slotsError.message);
+
+  const openSlots = slots ?? [];
+  if (openSlots.length === 0) {
+    return { offeredSlotIds: [] as string[], notificationResult: null };
+  }
+
+  const jobsById = new Map((jobs ?? []).map((job: any) => [job.id, job]));
+  const now = new Date();
+  const offeredSlotIds: string[] = [];
+
+  for (const slot of openSlots) {
+    const job = jobsById.get(slot.job_id) as any;
+    const responseHours = getResponseWindowHours(job ? getCleanerJobDate(job) : null, now);
+
+    const { error: updateError } = await serviceClient
+      .from("turnover_job_slots")
+      .update({
+        cleaner_account_id: cleanerAccountId,
+        status: "offered",
+        offered_at: now.toISOString(),
+        expires_at: new Date(now.getTime() + responseHours * 60 * 60 * 1000).toISOString(),
+        accepted_at: null,
+        declined_at: null,
+        accepted_by_profile_id: null,
+        declined_by_profile_id: null,
+        offer_email_sent_at: null,
+        offer_reminder_sent_at: null,
+        day_of_reminder_sent_at: null,
+      })
+      .eq("id", slot.id);
+
+    if (updateError) throw new Error(updateError.message);
+    offeredSlotIds.push(slot.id);
+  }
+
+  const affectedJobIds = [
+    ...new Set<string>(
+      openSlots
+        .map((slot: any) => slot.job_id)
+        .filter((jobId: unknown): jobId is string => typeof jobId === "string" && jobId.length > 0)
+    ),
+  ];
+
+  for (const jobId of affectedJobIds) {
+    await refreshCleanerJobStaffing(serviceClient, jobId);
+  }
+
+  const notificationResult = await sendJobOfferEmailsForSlots("cleaner", offeredSlotIds, origin, {
+    allowedOrganizationIds: new Set([organizationId]),
+  });
+
+  return { offeredSlotIds, notificationResult };
 }
 
 export async function POST(request: NextRequest) {
@@ -247,7 +404,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: assignmentError.message }, { status: 500 });
     }
 
-    return NextResponse.json({ ok: true, assignment, accountId });
+    const cleanerOfferRepair =
+      kind === "cleaner" && accountId
+        ? await offerOpenCleanerSlotsForProperty(
+            serviceClient,
+            propertyId,
+            organizationId,
+            accountId,
+            request.nextUrl.origin
+          )
+        : null;
+
+    return NextResponse.json({
+      ok: true,
+      assignment,
+      accountId,
+      cleanerOfferRepair,
+    });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Could not save assignment." },
