@@ -4548,6 +4548,47 @@ This removes its linked members and deletes the grounds account.`
     }
   }
 
+  async function savePropertyCoverPhotoUrl(coverPhotoUrl: string | null) {
+    if (!selectedPropertyId) {
+      throw new Error("Please select a property first.");
+    }
+
+    if (!currentOrganizationId) {
+      throw new Error("Choose an organization before updating the cover photo.");
+    }
+
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (sessionError || !session?.access_token) {
+      throw new Error("No active admin session was found.");
+    }
+
+    const response = await fetch("/api/admin/property-cover", {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        organizationId: currentOrganizationId,
+        propertyId: selectedPropertyId,
+        coverPhotoUrl,
+      }),
+    });
+
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok || !payload?.ok) {
+      throw new Error(payload?.error || "Could not update property cover photo.");
+    }
+
+    return payload.property as Property;
+  }
+
   async function uploadSelectedPropertyCoverPhoto(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] || null;
     e.target.value = "";
@@ -4586,19 +4627,12 @@ This removes its linked members and deletes the grounds account.`
         data: { publicUrl },
       } = supabase.storage.from("property-sop-images").getPublicUrl(filePath);
 
-      const { error: updateError } = await supabase
-        .from("properties")
-        .update({
-          cover_photo_url: publicUrl,
-        })
-        .eq("id", selectedPropertyId);
-
-      if (updateError) throw updateError;
+      const updatedProperty = await savePropertyCoverPhotoUrl(publicUrl);
 
       setProperties((prev) =>
         prev.map((property) =>
           property.id === selectedPropertyId
-            ? { ...property, cover_photo_url: publicUrl }
+            ? { ...property, ...updatedProperty, cover_photo_url: publicUrl }
             : property
         )
       );
@@ -4971,19 +5005,12 @@ This removes its linked members and deletes the grounds account.`
     setUploadingPropertyCover(true);
 
     try {
-      const { error } = await supabase
-        .from("properties")
-        .update({
-          cover_photo_url: null,
-        })
-        .eq("id", selectedPropertyId);
-
-      if (error) throw error;
+      const updatedProperty = await savePropertyCoverPhotoUrl(null);
 
       setProperties((prev) =>
         prev.map((property) =>
           property.id === selectedPropertyId
-            ? { ...property, cover_photo_url: null }
+            ? { ...property, ...updatedProperty, cover_photo_url: null }
             : property
         )
       );
