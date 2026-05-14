@@ -1,26 +1,63 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createServerClient } from "@supabase/ssr";
+
+function getSafeNextPath(value: string | null) {
+  if (!value) return "/login";
+  if (!value.startsWith("/") || value.startsWith("//")) {
+    return "/login";
+  }
+
+  return value;
+}
 
 export async function GET(req: NextRequest) {
   const requestUrl = new URL(req.url);
 
   const code = requestUrl.searchParams.get("code");
-  const next = requestUrl.searchParams.get("next") || "/login";
+  const next = getSafeNextPath(requestUrl.searchParams.get("next"));
 
   if (!code) {
+    console.warn("[auth/confirm] missing code", { next });
     return NextResponse.redirect(new URL("/login?error=missing_code", req.url));
   }
 
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !anonKey) {
+    console.error("[auth/confirm] missing Supabase environment variables");
+    return NextResponse.redirect(new URL("/login?error=confirm_config", req.url));
+  }
+
+  const redirectTo = new URL(next, req.url);
+  let response = NextResponse.redirect(redirectTo);
+
+  const supabase = createServerClient(supabaseUrl, anonKey, {
+    cookies: {
+      getAll() {
+        return req.cookies.getAll();
+      },
+      setAll(cookiesToSet) {
+        cookiesToSet.forEach(({ name, value, options }) => {
+          response.cookies.set(name, value, options);
+        });
+      },
+    },
+  });
 
   const { error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error) {
+    console.error("[auth/confirm] code exchange failed", {
+      next,
+      message: error.message,
+    });
     return NextResponse.redirect(new URL("/login?error=confirm_failed", req.url));
   }
 
-  return NextResponse.redirect(new URL(next, req.url));
+  console.info("[auth/confirm] confirmed email and redirecting", { next });
+
+  return response;
 }

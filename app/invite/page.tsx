@@ -59,6 +59,29 @@ function getDestinationForRole(role: InviteRow["role"]) {
   }
 }
 
+const PENDING_INVITE_TOKEN_KEY = "gulera_pending_invite_token";
+
+function isExistingUserSignupError(error: { message?: string } | null) {
+  const message = error?.message?.toLowerCase() || "";
+  return (
+    message.includes("already registered") ||
+    message.includes("already exists") ||
+    message.includes("user already")
+  );
+}
+
+function rememberPendingInviteToken(token: string) {
+  if (typeof window === "undefined" || !token) return;
+  window.localStorage.setItem(PENDING_INVITE_TOKEN_KEY, token);
+}
+
+function clearPendingInviteToken(token: string) {
+  if (typeof window === "undefined" || !token) return;
+  if (window.localStorage.getItem(PENDING_INVITE_TOKEN_KEY) === token) {
+    window.localStorage.removeItem(PENDING_INVITE_TOKEN_KEY);
+  }
+}
+
 function InvitePageContent() {
   const searchParams = useSearchParams();
   const token = useMemo(() => searchParams.get("token")?.trim() || "", [searchParams]);
@@ -134,8 +157,7 @@ function InvitePageContent() {
       setInviteChecked(true);
 
       if (data.status === "accepted") {
-        setInviteAccepted(true);
-        setMessage("This invite has already been accepted.");
+        setMessage("This invite has already been accepted. If you are signed in, we will verify your account link.");
       }
     } finally {
       setLoadingInvite(false);
@@ -324,7 +346,9 @@ function InvitePageContent() {
       setInviteAccepted(true);
       setMessage("Your account has been connected to the organization.");
       setInvite(acceptedInvite);
+      clearPendingInviteToken(token);
     } catch (err: any) {
+      console.error("[invite] invite acceptance failed", err);
       setError(err?.message || "Could not finish invite acceptance.");
     } finally {
       setCompletingInvite(false);
@@ -337,7 +361,6 @@ function InvitePageContent() {
 
   useEffect(() => {
     if (!inviteChecked || !invite) return;
-    if (invite.status === "accepted") return;
     void completeInviteForSignedInUser(invite);
   }, [inviteChecked, invite]);
 
@@ -380,22 +403,66 @@ function InvitePageContent() {
     setLoadingSignup(true);
 
     try {
-      const { error } = await supabase.auth.signUp({
+      const next = `/invite?token=${encodeURIComponent(token)}`;
+      const emailRedirectTo = `${window.location.origin}/auth/confirm?next=${encodeURIComponent(next)}`;
+
+      rememberPendingInviteToken(token);
+      console.info("[invite] starting invite signup", {
+        role: invite.role,
+        inviteId: invite.id,
+        emailRedirectTo,
+      });
+
+      const { data, error } = await supabase.auth.signUp({
         email: email.trim().toLowerCase(),
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/confirm?next=/invite?token=${token}`,
+          emailRedirectTo,
         },
       });
 
       if (error) {
+        console.error("[invite] signup failed", error);
+        if (isExistingUserSignupError(error)) {
+          const { error: resendError } = await supabase.auth.resend({
+            type: "signup",
+            email: email.trim().toLowerCase(),
+            options: {
+              emailRedirectTo,
+            },
+          });
+
+          if (resendError) {
+            console.error("[invite] confirmation resend failed", resendError);
+            setError(resendError.message);
+            return;
+          }
+
+          setMessage(
+            "This email already has a pending account. We sent a fresh verification email for this invite."
+          );
+          return;
+        }
+
         setError(error.message);
+        return;
+      }
+
+      const accessToken =
+        data.session?.access_token ||
+        (await supabase.auth.getSession()).data.session?.access_token;
+
+      if (accessToken) {
+        await completeInviteForSignedInUser(invite);
         return;
       }
 
       setMessage(
         "Account created. Check your email to confirm your account. After confirmation, you will be connected to the organization automatically."
       );
+    } catch (err: any) {
+      console.error("[invite] signup flow failed", err);
+      setError(err?.message || "Could not create account.");
     } finally {
       setLoadingSignup(false);
     }

@@ -2,6 +2,68 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { writeAuditLog } from "@/lib/server/audit-log";
 
+async function countRows(service: any, table: string, column: string, value: string) {
+  const { count, error } = await service
+    .from(table)
+    .select("id", { count: "exact", head: true })
+    .eq(column, value);
+
+  if (error) throw error;
+  return count || 0;
+}
+
+async function cleanupUnlinkedInviteLogin(service: any, email: string, role: string) {
+  if (role !== "cleaner" && role !== "grounds") {
+    return { deletedLoginIds: [] as string[], skippedProfileIds: [] as string[] };
+  }
+
+  const { data: profiles, error: profileError } = await service
+    .from("profiles")
+    .select("id, role, email")
+    .ilike("email", email);
+
+  if (profileError) throw profileError;
+
+  const deletedLoginIds: string[] = [];
+  const skippedProfileIds: string[] = [];
+
+  for (const profile of profiles || []) {
+    const profileId = profile?.id as string | undefined;
+    const profileRole = String(profile?.role || "");
+    if (!profileId || (profileRole !== role && profileRole !== "pending")) {
+      skippedProfileIds.push(profileId || "unknown");
+      continue;
+    }
+
+    const [orgMemberships, cleanerMemberships, groundsMemberships, ownerAccounts] =
+      await Promise.all([
+        countRows(service, "organization_members", "profile_id", profileId),
+        countRows(service, "cleaner_account_members", "profile_id", profileId),
+        countRows(service, "grounds_account_members", "profile_id", profileId),
+        countRows(service, "owner_accounts", "profile_id", profileId),
+      ]);
+
+    if (orgMemberships + cleanerMemberships + groundsMemberships + ownerAccounts > 0) {
+      skippedProfileIds.push(profileId);
+      continue;
+    }
+
+    const { error: deleteProfileError } = await service
+      .from("profiles")
+      .delete()
+      .eq("id", profileId);
+
+    if (deleteProfileError) throw deleteProfileError;
+
+    const { error: deleteAuthError } = await service.auth.admin.deleteUser(profileId);
+    if (deleteAuthError) throw deleteAuthError;
+
+    deletedLoginIds.push(profileId);
+  }
+
+  return { deletedLoginIds, skippedProfileIds };
+}
+
 export async function POST(req: NextRequest) {
   try {
     const authHeader = req.headers.get("authorization");
@@ -93,7 +155,7 @@ export async function POST(req: NextRequest) {
       .eq("id", inviteId)
       .eq("organization_id", organizationId)
       .in("status", ["pending", "sent"])
-      .select("id")
+      .select("id, email, role")
       .maybeSingle();
 
     if (revokeError) {
@@ -107,6 +169,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    let cleanupSummary = {
+      deletedLoginIds: [] as string[],
+      skippedProfileIds: [] as string[],
+    };
+
+    try {
+      cleanupSummary = await cleanupUnlinkedInviteLogin(
+        service,
+        String(revokedInvite.email || "").trim().toLowerCase(),
+        String(revokedInvite.role || "")
+      );
+    } catch (cleanupError) {
+      console.error("[admin/delete-organization-invite] invite login cleanup failed", {
+        inviteId,
+        message: cleanupError instanceof Error ? cleanupError.message : cleanupError,
+      });
+    }
+
     await writeAuditLog(service, {
       actorProfileId: currentProfile.id,
       actorEmail: currentProfile.email || user.email || null,
@@ -117,12 +197,20 @@ export async function POST(req: NextRequest) {
       targetId: inviteId,
       metadata: {
         status: "revoked_pending_invite",
+        email: revokedInvite.email,
+        role: revokedInvite.role,
+        deleted_unlinked_logins: cleanupSummary.deletedLoginIds.length,
+        skipped_profiles: cleanupSummary.skippedProfileIds.length,
       },
     });
 
     return NextResponse.json({
       success: true,
-      message: "Pending invite revoked.",
+      message:
+        cleanupSummary.deletedLoginIds.length > 0
+          ? "Pending invite revoked and unlinked pending login cleared."
+          : "Pending invite revoked.",
+      cleanup: cleanupSummary,
     });
   } catch (error) {
     return NextResponse.json(

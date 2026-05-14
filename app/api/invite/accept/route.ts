@@ -12,31 +12,40 @@ type InviteRow = {
   expires_at: string | null;
 };
 
+function jsonError(message: string, status: number, details?: unknown) {
+  if (status >= 500) {
+    console.error("[invite/accept]", message, details || "");
+  } else {
+    console.warn("[invite/accept]", message, details || "");
+  }
+
+  return NextResponse.json({ error: message }, { status });
+}
+
 export async function POST(req: NextRequest) {
   try {
     const authHeader = req.headers.get("authorization");
     const accessToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
 
     if (!accessToken) {
-      return NextResponse.json({ error: "Missing access token." }, { status: 401 });
+      return jsonError("Missing access token.", 401);
     }
 
     const body = await req.json().catch(() => null);
     const inviteToken = typeof body?.token === "string" ? body.token.trim() : "";
 
     if (!inviteToken) {
-      return NextResponse.json({ error: "Missing invite token." }, { status: 400 });
+      return jsonError("Missing invite token.", 400);
     }
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const anonKey =
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (!supabaseUrl || !anonKey || !serviceRoleKey) {
-      return NextResponse.json(
-        { error: "Missing server environment variables." },
-        { status: 500 }
-      );
+      return jsonError("Missing server environment variables.", 500);
     }
 
     const authClient = createClient(supabaseUrl, anonKey, {
@@ -54,8 +63,14 @@ export async function POST(req: NextRequest) {
     } = await authClient.auth.getUser();
 
     if (userError || !user) {
-      return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
+      return jsonError("Not authenticated.", 401, userError);
     }
+
+    console.info("[invite/accept] accepting invite", {
+      userId: user.id,
+      email: user.email,
+      tokenSuffix: inviteToken.slice(-8),
+    });
 
     const service = createClient(supabaseUrl, serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
@@ -68,43 +83,72 @@ export async function POST(req: NextRequest) {
       .maybeSingle<InviteRow>();
 
     if (inviteError) {
-      return NextResponse.json({ error: inviteError.message }, { status: 500 });
+      return jsonError(inviteError.message, 500);
     }
 
     if (!invite) {
-      return NextResponse.json(
-        { error: "This invite link is invalid or no longer exists." },
-        { status: 404 }
-      );
+      return jsonError("This invite link is invalid or no longer exists.", 404);
     }
 
     if (invite.status === "revoked") {
-      return NextResponse.json({ error: "This invite has been revoked." }, { status: 400 });
+      return jsonError("This invite has been revoked.", 400, { inviteId: invite.id });
+    }
+
+    if (invite.status === "expired") {
+      return jsonError("This invite has expired.", 400, { inviteId: invite.id });
     }
 
     if (invite.expires_at && new Date(invite.expires_at).getTime() < Date.now()) {
-      return NextResponse.json({ error: "This invite has expired." }, { status: 400 });
+      return jsonError("This invite has expired.", 400, { inviteId: invite.id });
     }
 
     const userEmail = user.email?.trim().toLowerCase() || "";
     const inviteEmail = invite.email.trim().toLowerCase();
 
     if (!userEmail || userEmail !== inviteEmail) {
-      return NextResponse.json(
-        { error: "You are signed in with a different email than the invite." },
-        { status: 403 }
-      );
+      return jsonError("You are signed in with a different email than the invite.", 403, {
+        inviteId: invite.id,
+        userEmail,
+        inviteEmail,
+      });
+    }
+
+    const profilePayload: Record<string, string | null> = {
+      id: user.id,
+      email: user.email || invite.email,
+      role: invite.role,
+      phone: invite.phone ?? null,
+      full_name:
+        invite.full_name?.trim() ||
+        (typeof user.user_metadata?.full_name === "string"
+          ? user.user_metadata.full_name.trim()
+          : "") ||
+        null,
+    };
+
+    const { error: profileUpsertError } = await service
+      .from("profiles")
+      .upsert(profilePayload, { onConflict: "id" });
+
+    if (profileUpsertError) {
+      return jsonError(profileUpsertError.message, 500, {
+        inviteId: invite.id,
+        userId: user.id,
+      });
     }
 
     const { data: existingOrgMembership, error: membershipLookupError } = await service
       .from("organization_members")
-      .select("organization_id, profile_id")
+      .select("organization_id, profile_id, role")
       .eq("organization_id", invite.organization_id)
       .eq("profile_id", user.id)
       .maybeSingle();
 
     if (membershipLookupError) {
-      return NextResponse.json({ error: membershipLookupError.message }, { status: 500 });
+      return jsonError(membershipLookupError.message, 500, {
+        inviteId: invite.id,
+        userId: user.id,
+      });
     }
 
     if (!existingOrgMembership) {
@@ -117,29 +161,24 @@ export async function POST(req: NextRequest) {
         });
 
       if (insertMembershipError) {
-        return NextResponse.json({ error: insertMembershipError.message }, { status: 500 });
+        return jsonError(insertMembershipError.message, 500, {
+          inviteId: invite.id,
+          userId: user.id,
+        });
       }
-    }
+    } else if (existingOrgMembership && existingOrgMembership.role !== invite.role) {
+      const { error: updateMembershipError } = await service
+        .from("organization_members")
+        .update({ role: invite.role })
+        .eq("organization_id", invite.organization_id)
+        .eq("profile_id", user.id);
 
-    const profileUpdates: Record<string, string | null> = {
-      role: invite.role,
-    };
-
-    if (invite.phone) {
-      profileUpdates.phone = invite.phone;
-    }
-
-    if (invite.full_name) {
-      profileUpdates.full_name = invite.full_name;
-    }
-
-    const { error: profileUpdateError } = await service
-      .from("profiles")
-      .update(profileUpdates)
-      .eq("id", user.id);
-
-    if (profileUpdateError) {
-      return NextResponse.json({ error: profileUpdateError.message }, { status: 500 });
+      if (updateMembershipError) {
+        return jsonError(updateMembershipError.message, 500, {
+          inviteId: invite.id,
+          userId: user.id,
+        });
+      }
     }
 
     if (invite.role === "cleaner") {
@@ -152,7 +191,7 @@ export async function POST(req: NextRequest) {
         .maybeSingle();
 
       if (existingAccountError) {
-        return NextResponse.json({ error: existingAccountError.message }, { status: 500 });
+        return jsonError(existingAccountError.message, 500, { inviteId: invite.id });
       }
 
       let cleanerAccountId = existingAccount?.id || null;
@@ -171,10 +210,9 @@ export async function POST(req: NextRequest) {
           .single();
 
         if (insertAccountError || !insertedAccount) {
-          return NextResponse.json(
-            { error: insertAccountError?.message || "Could not create cleaner account." },
-            { status: 500 }
-          );
+          return jsonError(insertAccountError?.message || "Could not create cleaner account.", 500, {
+            inviteId: invite.id,
+          });
         }
 
         cleanerAccountId = insertedAccount.id;
@@ -189,7 +227,11 @@ export async function POST(req: NextRequest) {
         .maybeSingle();
 
       if (cleanerMembershipError) {
-        return NextResponse.json({ error: cleanerMembershipError.message }, { status: 500 });
+        return jsonError(cleanerMembershipError.message, 500, {
+          inviteId: invite.id,
+          userId: user.id,
+          cleanerAccountId,
+        });
       }
 
       if (!existingMembership) {
@@ -201,7 +243,11 @@ export async function POST(req: NextRequest) {
           });
 
         if (memberInsertError) {
-          return NextResponse.json({ error: memberInsertError.message }, { status: 500 });
+          return jsonError(memberInsertError.message, 500, {
+            inviteId: invite.id,
+            userId: user.id,
+            cleanerAccountId,
+          });
         }
       }
     }
@@ -216,7 +262,7 @@ export async function POST(req: NextRequest) {
         .maybeSingle();
 
       if (existingAccountError) {
-        return NextResponse.json({ error: existingAccountError.message }, { status: 500 });
+        return jsonError(existingAccountError.message, 500, { inviteId: invite.id });
       }
 
       let groundsAccountId = existingAccount?.id || null;
@@ -235,10 +281,9 @@ export async function POST(req: NextRequest) {
           .single();
 
         if (insertAccountError || !insertedAccount) {
-          return NextResponse.json(
-            { error: insertAccountError?.message || "Could not create grounds account." },
-            { status: 500 }
-          );
+          return jsonError(insertAccountError?.message || "Could not create grounds account.", 500, {
+            inviteId: invite.id,
+          });
         }
 
         groundsAccountId = insertedAccount.id;
@@ -253,7 +298,11 @@ export async function POST(req: NextRequest) {
         .maybeSingle();
 
       if (groundsMembershipError) {
-        return NextResponse.json({ error: groundsMembershipError.message }, { status: 500 });
+        return jsonError(groundsMembershipError.message, 500, {
+          inviteId: invite.id,
+          userId: user.id,
+          groundsAccountId,
+        });
       }
 
       if (!existingMembership) {
@@ -265,7 +314,11 @@ export async function POST(req: NextRequest) {
           });
 
         if (memberInsertError) {
-          return NextResponse.json({ error: memberInsertError.message }, { status: 500 });
+          return jsonError(memberInsertError.message, 500, {
+            inviteId: invite.id,
+            userId: user.id,
+            groundsAccountId,
+          });
         }
       }
     }
@@ -280,8 +333,18 @@ export async function POST(req: NextRequest) {
       .eq("id", invite.id);
 
     if (inviteUpdateError) {
-      return NextResponse.json({ error: inviteUpdateError.message }, { status: 500 });
+      return jsonError(inviteUpdateError.message, 500, {
+        inviteId: invite.id,
+        userId: user.id,
+      });
     }
+
+    console.info("[invite/accept] invite accepted", {
+      inviteId: invite.id,
+      userId: user.id,
+      organizationId: invite.organization_id,
+      role: invite.role,
+    });
 
     return NextResponse.json({
       invite: {

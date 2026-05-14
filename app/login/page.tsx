@@ -17,6 +17,7 @@ type ProfileRow = {
 
 type AuthMode = "login" | "company";
 const ORGANIZATION_TRIAL_DAYS = 30;
+const PENDING_INVITE_TOKEN_KEY = "gulera_pending_invite_token";
 
 function scrollInputIntoView(target: EventTarget | null) {
   if (typeof window === "undefined") return;
@@ -55,6 +56,45 @@ async function getPortalDestinationFromServer(accessToken: string) {
   }
 
   return result.destination as string;
+}
+
+async function acceptPendingInviteFromLogin(accessToken: string) {
+  if (typeof window === "undefined") return null;
+
+  const token = window.localStorage.getItem(PENDING_INVITE_TOKEN_KEY)?.trim();
+  if (!token) return null;
+
+  console.info("[login] attempting pending invite acceptance", {
+    tokenSuffix: token.slice(-8),
+  });
+
+  const response = await fetch("/api/invite/accept", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ token }),
+  });
+
+  const result = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    console.warn("[login] pending invite acceptance failed", {
+      status: response.status,
+      error: result?.error,
+    });
+
+    if ([400, 403, 404].includes(response.status)) {
+      window.localStorage.removeItem(PENDING_INVITE_TOKEN_KEY);
+    }
+
+    throw new Error(result?.error || "Could not connect your invite.");
+  }
+
+  window.localStorage.removeItem(PENDING_INVITE_TOKEN_KEY);
+  console.info("[login] pending invite accepted");
+  return result;
 }
 
 async function finishCompanySignup(accessToken: string, details?: {
@@ -142,17 +182,6 @@ export default function LoginPage() {
         return;
       }
 
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("id,email,full_name,phone,role")
-        .eq("id", user.id)
-        .single<ProfileRow>();
-
-      if (profileError || !profile) {
-        setError("Could not load your profile.");
-        return;
-      }
-
       const {
         data: { session },
       } = await supabase.auth.getSession();
@@ -163,6 +192,25 @@ export default function LoginPage() {
       }
 
       const metadata = user.user_metadata || {};
+
+      let pendingInviteError = "";
+      try {
+        await acceptPendingInviteFromLogin(session.access_token);
+      } catch (inviteError) {
+        pendingInviteError =
+          inviteError instanceof Error ? inviteError.message : "Could not connect your invite.";
+      }
+
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("id,email,full_name,phone,role")
+        .eq("id", user.id)
+        .maybeSingle<ProfileRow>();
+
+      if (profileError || !profile) {
+        setError(pendingInviteError || "Could not load your profile.");
+        return;
+      }
 
       if (profile.role === "pending" && metadata.signup_kind === "company_admin") {
         try {
@@ -189,7 +237,10 @@ export default function LoginPage() {
       }
 
       if (destination === "/login") {
-        setError("This sign-in is not linked to a company, cleaner, grounds, or owner account yet. If you were invited, use the newest invite email. If you were creating a company, start the company signup again.");
+        setError(
+          pendingInviteError ||
+            "This sign-in is not linked to a company, cleaner, grounds, or owner account yet. If you were invited, use the newest invite email. If you were creating a company, start the company signup again."
+        );
         return;
       }
 
