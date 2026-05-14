@@ -3439,6 +3439,49 @@ export default function AdminPage() {
     await loadData();
   }
 
+  async function saveTeamAssignment(params: {
+    kind: "cleaner" | "grounds";
+    propertyId: string;
+    profileId: string;
+    priority: string;
+  }) {
+    if (!currentOrganizationId) {
+      throw new Error("No organization selected.");
+    }
+
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (sessionError || !session?.access_token) {
+      throw new Error("Could not verify your admin session.");
+    }
+
+    const response = await fetch("/api/admin/team-assignment", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        organizationId: currentOrganizationId,
+        kind: params.kind,
+        propertyId: params.propertyId,
+        profileId: params.profileId,
+        priority: Number(params.priority),
+      }),
+    });
+
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(payload?.error || "Could not save assignment.");
+    }
+
+    return payload;
+  }
+
   async function addAssignment() {
     if (!assignmentPropertyId || !assignmentCleanerProfileId) {
       setError("Select property and cleaner.");
@@ -3448,57 +3491,15 @@ export default function AdminPage() {
     setError("");
     setActionMessage("");
 
-    let cleanerAccountId: string | null = null;
-
-    const existingMembership = cleanerAccountMembers.find(
-      (member) => member.profile_id === assignmentCleanerProfileId
-    );
-
-    if (existingMembership) {
-      cleanerAccountId = existingMembership.cleaner_account_id;
-    } else {
-      const cleanerProfile = profiles.find((p) => p.id === assignmentCleanerProfileId);
-
-      const { data: insertedAccount, error: insertedAccountError } = await supabase
-        .from("cleaner_accounts")
-        .insert({
-          display_name:
-            cleanerProfile?.full_name || cleanerProfile?.email || "Cleaner account",
-          email: cleanerProfile?.email || null,
-          phone: cleanerProfile?.phone || null,
-          active: true,
-        })
-        .select()
-        .single();
-
-      if (insertedAccountError || !insertedAccount) {
-        setError(insertedAccountError?.message || "Could not create cleaner account.");
-        return;
-      }
-
-      cleanerAccountId = insertedAccount.id;
-
-      const { error: memberInsertError } = await supabase
-        .from("cleaner_account_members")
-        .insert({
-          cleaner_account_id: cleanerAccountId,
-          profile_id: assignmentCleanerProfileId,
-        });
-
-      if (memberInsertError) {
-        setError(memberInsertError.message);
-        return;
-      }
-    }
-
-    const { error } = await supabase.from("property_cleaner_account_assignments").insert({
-      property_id: assignmentPropertyId,
-      cleaner_account_id: cleanerAccountId,
-      priority: Number(assignmentPriority),
-    });
-
-    if (error) {
-      setError(error.message);
+    try {
+      await saveTeamAssignment({
+        kind: "cleaner",
+        propertyId: assignmentPropertyId,
+        profileId: assignmentCleanerProfileId,
+        priority: assignmentPriority,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save cleaner assignment.");
       return;
     }
 
@@ -4123,57 +4124,15 @@ export default function AdminPage() {
     setError("");
     setActionMessage("");
 
-    let groundsAccountId: string | null = null;
-
-    const existingMembership = groundsAccountMembers.find(
-      (member) => member.profile_id === groundsAssignmentProfileId
-    );
-
-    if (existingMembership) {
-      groundsAccountId = existingMembership.grounds_account_id;
-    } else {
-      const groundsProfile = profiles.find((p) => p.id === groundsAssignmentProfileId);
-
-      const { data: insertedAccount, error: insertedAccountError } = await supabase
-        .from("grounds_accounts")
-        .insert({
-          display_name:
-            groundsProfile?.full_name || groundsProfile?.email || "Grounds account",
-          email: groundsProfile?.email || null,
-          phone: groundsProfile?.phone || null,
-          active: true,
-        })
-        .select()
-        .single();
-
-      if (insertedAccountError || !insertedAccount) {
-        setError(insertedAccountError?.message || "Could not create grounds account.");
-        return;
-      }
-
-      groundsAccountId = insertedAccount.id;
-
-      const { error: memberInsertError } = await supabase
-        .from("grounds_account_members")
-        .insert({
-          grounds_account_id: groundsAccountId,
-          profile_id: groundsAssignmentProfileId,
-        });
-
-      if (memberInsertError) {
-        setError(memberInsertError.message);
-        return;
-      }
-    }
-
-    const { error } = await supabase.from("property_grounds_account_assignments").insert({
-      property_id: groundsAssignmentPropertyId,
-      grounds_account_id: groundsAccountId,
-      priority: Number(groundsAssignmentPriority),
-    });
-
-    if (error) {
-      setError(error.message);
+    try {
+      await saveTeamAssignment({
+        kind: "grounds",
+        propertyId: groundsAssignmentPropertyId,
+        profileId: groundsAssignmentProfileId,
+        priority: groundsAssignmentPriority,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save grounds assignment.");
       return;
     }
 
