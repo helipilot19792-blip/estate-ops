@@ -6081,11 +6081,29 @@ This removes its linked members and deletes the grounds account.`
     }, 50);
   }
   const filteredJobs = useMemo(
-    () =>
-      selectedJobsPropertyFilter === "all"
-        ? jobs
-        : jobs.filter((job) => job.property_id === selectedJobsPropertyFilter),
-    [jobs, selectedJobsPropertyFilter]
+    () => {
+      const scopedJobs =
+        selectedJobsPropertyFilter === "all"
+          ? jobs
+          : jobs.filter((job) => job.property_id === selectedJobsPropertyFilter);
+
+      return [...scopedJobs].sort((a, b) => {
+        const aSlots = jobSlotsByJobId[a.id] ?? [];
+        const bSlots = jobSlotsByJobId[b.id] ?? [];
+        const aWaiting = aSlots.some((slot) => slot.status === "offered");
+        const bWaiting = bSlots.some((slot) => slot.status === "offered");
+        if (aWaiting !== bWaiting) return aWaiting ? -1 : 1;
+
+        const aStranded = aSlots.some((slot) => slot.status === "stranded" || !slot.cleaner_account_id);
+        const bStranded = bSlots.some((slot) => slot.status === "stranded" || !slot.cleaner_account_id);
+        if (aStranded !== bStranded) return aStranded ? -1 : 1;
+
+        const aDate = a.scheduled_for || extractCheckoutDate(a.notes) || "";
+        const bDate = b.scheduled_for || extractCheckoutDate(b.notes) || "";
+        return aDate.localeCompare(bDate) || (b.created_at || "").localeCompare(a.created_at || "");
+      });
+    },
+    [jobs, selectedJobsPropertyFilter, jobSlotsByJobId]
   );
 
   const visibleJobs = jobsExpanded ? filteredJobs : filteredJobs.slice(0, 3);
