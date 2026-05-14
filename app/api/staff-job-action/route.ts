@@ -37,7 +37,7 @@ async function refreshCleanerJobStaffing(service: any, jobId: string) {
   const staffingStatus = stillStranded
     ? "stranded"
     : acceptedSlots.length >= needed
-      ? "filled"
+      ? "fully_staffed"
       : acceptedSlots.length > 0 || offeredSlots.length > 0
         ? "partially_filled"
         : "unassigned";

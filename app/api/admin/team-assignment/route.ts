@@ -82,7 +82,7 @@ async function refreshCleanerJobStaffing(serviceClient: any, jobId: string) {
   const nextStaffingStatus = stillStranded
     ? "stranded"
     : accepted >= unitsNeeded
-      ? "filled"
+      ? "fully_staffed"
       : accepted > 0 || offered > 0
         ? "partially_filled"
         : "unassigned";
