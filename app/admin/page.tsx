@@ -6071,8 +6071,20 @@ This removes its linked members and deletes the grounds account.`
   function jumpToJobs(type: "waiting" | "stranded") {
     setActiveSection("jobs");
     setJobWorkflowTab(type === "waiting" ? "active" : "exceptions");
+    if (type === "waiting") {
+      setSelectedJobsPropertyFilter("all");
+      setJobsExpanded(true);
+      setHighlightedJobId(waitingJobs[0]?.id || null);
+    }
 
     setTimeout(() => {
+      if (type === "waiting" && waitingJobs[0]?.id) {
+        document
+          .getElementById(`job-${waitingJobs[0].id}`)
+          ?.scrollIntoView({ behavior: "smooth", block: "center" });
+        return;
+      }
+
       document
         .getElementById(
           type === "waiting" ? "waiting-jobs-section" : "stranded-jobs-section"
