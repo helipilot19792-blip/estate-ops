@@ -977,12 +977,32 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     setSelectionDismissed(false);
 
     try {
-      const { error } = await supabase.rpc("accept_turnover_job_slot", {
-        p_slot_id: acceptedSlotId,
-        p_profile_id: profile.id,
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("Your login session expired. Please log in again.");
+      }
+
+      const response = await fetch("/api/staff-job-action", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          portal: "cleaner",
+          action: "accept",
+          slotId: acceptedSlotId,
+        }),
       });
 
-      if (error) throw error;
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || "Could not accept job.");
+      }
 
       await refreshCleanerJobs();
 
@@ -1005,12 +1025,32 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     setActionLoading("decline");
 
     try {
-      const { error } = await supabase.rpc("decline_turnover_job_slot", {
-        p_slot_id: selectedCleanerJob.slot.id,
-        p_profile_id: profile.id,
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("Your login session expired. Please log in again.");
+      }
+
+      const response = await fetch("/api/staff-job-action", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          portal: "cleaner",
+          action: "decline",
+          slotId: selectedCleanerJob.slot.id,
+        }),
       });
 
-      if (error) throw error;
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || "Could not decline job.");
+      }
 
       const declinedSlotId = selectedCleanerJob.slot.id;
       await refreshCleanerJobs();
