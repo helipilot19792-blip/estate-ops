@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useState } from "react";
+import { PASSWORD_REQUIREMENTS, validatePassword } from "@/lib/password-policy";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 
@@ -76,13 +77,9 @@ export default function ResetPasswordPage() {
     setError("");
     setMessage("");
 
-    if (!password) {
-      setError("Please enter a new password.");
-      return;
-    }
-
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters.");
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      setError(passwordError);
       return;
     }
 
@@ -172,6 +169,7 @@ export default function ResetPasswordPage() {
                   className="w-full rounded-[20px] border px-4 py-3"
                   disabled={initializing}
                 />
+                <p className="px-1 text-xs text-[#7f7263]">{PASSWORD_REQUIREMENTS}</p>
 
                 <input
                   type={showConfirmPassword ? "text" : "password"}

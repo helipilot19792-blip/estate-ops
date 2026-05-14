@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useI18n } from "@/components/i18n-provider";
 import type { TranslationPath } from "@/lib/i18n";
+import { PASSWORD_REQUIREMENTS, validatePassword } from "@/lib/password-policy";
 import { supabase } from "@/lib/supabase";
 
 type OwnerAccountRow = {
@@ -292,7 +293,7 @@ export default function OwnerWelcomePage() {
   }, [t]);
 
   const passwordReady = useMemo(() => {
-    return password.trim().length >= 8 && password === confirmPassword;
+    return !validatePassword(password) && password === confirmPassword;
   }, [password, confirmPassword]);
 
   const ownerMatched = !!ownerAccount;
@@ -316,7 +317,13 @@ export default function OwnerWelcomePage() {
       return;
     }
 
-    if (!passwordReady) {
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      setError(passwordError);
+      return;
+    }
+
+    if (password !== confirmPassword) {
       setError(t("ownerWelcome.errors.passwordMismatch"));
       return;
     }
@@ -331,7 +338,7 @@ export default function OwnerWelcomePage() {
     setStatusMessage("");
 
     const { error: updateError } = await supabase.auth.updateUser({
-      password: password.trim(),
+      password,
     });
 
     if (updateError) {
@@ -522,6 +529,7 @@ async function handleFreshLoginLink() {
                   {showPassword ? t("ownerWelcome.hide") : t("ownerWelcome.show")}
                 </button>
               </div>
+              <p className="mt-1 px-1 text-xs text-[#ccb99a]">{PASSWORD_REQUIREMENTS}</p>
             </div>
 
             <div>

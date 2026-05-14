@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
+import { PASSWORD_REQUIREMENTS, validatePassword } from "@/lib/password-policy";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { useI18n } from "@/components/i18n-provider";
@@ -310,8 +311,9 @@ export default function LoginPage() {
       return;
     }
 
-    if (!signupPassword) {
-      setError("Please enter a password.");
+    const passwordError = validatePassword(signupPassword);
+    if (passwordError) {
+      setError(passwordError);
       return;
     }
 
@@ -717,23 +719,26 @@ export default function LoginPage() {
                         onFocus={(e) => scrollInputIntoView(e.currentTarget)}
                       />
 
-                      <div className="relative">
-                        <input
-                          className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 pr-12 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e] focus:bg-white"
-                          type={showSignupPassword ? "text" : "password"}
-                          placeholder={t("login.password")}
-                          autoComplete="new-password"
-                          value={signupPassword}
-                          onChange={(e) => setSignupPassword(e.target.value)}
-                          onFocus={(e) => scrollInputIntoView(e.currentTarget)}
-                        />
-                        <button
-                          type="button"
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8a7b68] hover:text-[#241c15]"
-                          onClick={() => setShowSignupPassword(!showSignupPassword)}
-                        >
-                          {showSignupPassword ? t("login.hide") : t("login.show")}
-                        </button>
+                      <div>
+                        <div className="relative">
+                          <input
+                            className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 pr-12 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e] focus:bg-white"
+                            type={showSignupPassword ? "text" : "password"}
+                            placeholder={t("login.password")}
+                            autoComplete="new-password"
+                            value={signupPassword}
+                            onChange={(e) => setSignupPassword(e.target.value)}
+                            onFocus={(e) => scrollInputIntoView(e.currentTarget)}
+                          />
+                          <button
+                            type="button"
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8a7b68] hover:text-[#241c15]"
+                            onClick={() => setShowSignupPassword(!showSignupPassword)}
+                          >
+                            {showSignupPassword ? t("login.hide") : t("login.show")}
+                          </button>
+                        </div>
+                        <p className="mt-1 px-1 text-xs text-[#7f7263]">{PASSWORD_REQUIREMENTS}</p>
                       </div>
 
                       <div className="relative">

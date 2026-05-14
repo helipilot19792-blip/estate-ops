@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
+import { PASSWORD_REQUIREMENTS, validatePassword } from "@/lib/password-policy";
 import { supabase } from "@/lib/supabase";
 
 type InviteRow = {
@@ -385,8 +386,9 @@ function InvitePageContent() {
       return;
     }
 
-    if (!password) {
-      setError("Password is required.");
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      setError(passwordError);
       return;
     }
 
@@ -596,22 +598,25 @@ function InvitePageContent() {
                       onChange={(e) => setEmail(e.target.value)}
                     />
 
-                    <div className="relative">
-                      <input
-                        className="w-full rounded-[20px] border border-[#d9ccbb] bg-white px-4 py-3 pr-12 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
-                        type={showPassword ? "text" : "password"}
-                        placeholder="Password"
-                        autoComplete="new-password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                      />
-                      <button
-                        type="button"
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8a7b68] hover:text-[#241c15]"
-                        onClick={() => setShowPassword((prev) => !prev)}
-                      >
-                        {showPassword ? "Hide" : "Show"}
-                      </button>
+                    <div>
+                      <div className="relative">
+                        <input
+                          className="w-full rounded-[20px] border border-[#d9ccbb] bg-white px-4 py-3 pr-12 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e]"
+                          type={showPassword ? "text" : "password"}
+                          placeholder="Password"
+                          autoComplete="new-password"
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                        />
+                        <button
+                          type="button"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8a7b68] hover:text-[#241c15]"
+                          onClick={() => setShowPassword((prev) => !prev)}
+                        >
+                          {showPassword ? "Hide" : "Show"}
+                        </button>
+                      </div>
+                      <p className="mt-1 px-1 text-xs text-[#7f7263]">{PASSWORD_REQUIREMENTS}</p>
                     </div>
 
                     <input

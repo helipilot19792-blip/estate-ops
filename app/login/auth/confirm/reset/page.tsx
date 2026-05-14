@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useState } from "react";
+import { PASSWORD_REQUIREMENTS, validatePassword } from "@/lib/password-policy";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 
@@ -22,13 +23,9 @@ export default function ResetPasswordPage() {
     setError("");
     setMessage("");
 
-    if (!password) {
-      setError("Please enter a new password.");
-      return;
-    }
-
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters.");
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      setError(passwordError);
       return;
     }
 
@@ -126,9 +123,10 @@ export default function ResetPasswordPage() {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                     />
+                    <p className="mt-1 px-1 text-xs text-[#7f7263]">{PASSWORD_REQUIREMENTS}</p>
                     <button
                       type="button"
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8a7b68] hover:text-[#241c15]"
+                      className="absolute right-3 top-6 -translate-y-1/2 text-[#8a7b68] hover:text-[#241c15]"
                       onClick={() => setShowPassword(!showPassword)}
                     >
                       👁
