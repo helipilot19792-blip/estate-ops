@@ -414,20 +414,6 @@ function InvitePageContent() {
         return;
       }
 
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: email.trim().toLowerCase(),
-        password,
-      });
-
-      if (signInError) {
-        setInviteAccepted(true);
-        setInvite((payload.invite || invite) as InviteRow);
-        clearPendingInviteToken(token);
-        setMessage("Your invite is connected. Please sign in with the password you just set.");
-        setError(signInError.message);
-        return;
-      }
-
       const acceptedInvite = (payload.invite || {
         ...invite,
         status: "accepted",
@@ -435,9 +421,28 @@ function InvitePageContent() {
       }) as InviteRow;
 
       setInviteAccepted(true);
-      setMessage("Your account has been connected to the organization.");
       setInvite(acceptedInvite);
       clearPendingInviteToken(token);
+
+      if (payload.accountAlreadyExisted) {
+        setMessage("Your invite is connected. Please sign in with your existing password.");
+        setPassword("");
+        setConfirmPassword("");
+        return;
+      }
+
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password,
+      });
+
+      if (signInError) {
+        setMessage("Your invite is connected. Please sign in with the password you just set.");
+        setError(signInError.message);
+        return;
+      }
+
+      setMessage("Your account has been connected to the organization.");
     } catch (err: any) {
       console.error("[invite] signup flow failed", err);
       setError(err?.message || "Could not create account.");

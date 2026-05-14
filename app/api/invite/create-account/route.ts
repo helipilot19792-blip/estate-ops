@@ -282,28 +282,10 @@ export async function POST(req: NextRequest) {
     };
 
     let userId = existingUser?.id || "";
+    const accountAlreadyExisted = !!existingUser;
 
     if (existingUser) {
-      const { data: updatedUser, error: updateUserError } = await service.auth.admin.updateUserById(
-        existingUser.id,
-        {
-          password,
-          email_confirm: true,
-          user_metadata: {
-            ...(existingUser.user_metadata || {}),
-            ...userMetadata,
-          },
-        } as any
-      );
-
-      if (updateUserError || !updatedUser?.user) {
-        return jsonError(updateUserError?.message || "Could not update invited account.", 500, {
-          inviteId: invite.id,
-          userId: existingUser.id,
-        });
-      }
-
-      userId = updatedUser.user.id;
+      userId = existingUser.id;
     } else {
       const { data: createdUser, error: createUserError } = await service.auth.admin.createUser({
         email,
@@ -327,6 +309,7 @@ export async function POST(req: NextRequest) {
       ok: true,
       invite: acceptedInvite,
       email,
+      accountAlreadyExisted,
     });
   } catch (error) {
     return NextResponse.json(
