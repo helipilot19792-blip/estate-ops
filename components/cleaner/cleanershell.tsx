@@ -156,6 +156,7 @@ export type CleanerViewProps = {
   selectedJobProperty: Property | null;
   selectedJobAccess: AccessRow | null;
   selectedJobSops: Sop[];
+  jobsSectionRef: React.RefObject<HTMLDivElement | null>;
   handleDateClick: (dateYmd: string) => void;
   handleJobClick: (slotId: string) => void;
   scrollToJobsSection: () => void;
@@ -550,6 +551,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
   const hasAutoSelectedInitialJob = useRef(false);
   const realtimeRefreshTimeoutRef = useRef<number | null>(null);
   const chatSectionRef = useRef<HTMLDivElement | null>(null);
+  const jobsSectionRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!cleanerAccount?.id) return;
 
@@ -1363,7 +1365,14 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
   }
 
   function scrollToJobsSection() {
+    setSelectedDate(null);
+    if (unacceptedJobs[0]) {
+      setSelectedSlotId(unacceptedJobs[0].slot.id);
+    }
     setJobsCollapsed(false);
+    window.setTimeout(() => {
+      jobsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
   }
 
   function scrollToChatSection() {
@@ -1414,6 +1423,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     selectedJobProperty,
     selectedJobAccess,
     selectedJobSops,
+    jobsSectionRef,
     handleDateClick,
     handleJobClick,
     scrollToJobsSection,

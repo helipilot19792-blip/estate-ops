@@ -714,6 +714,7 @@ export default function CleanerDesktopView({
   selectedJobProperty,
   selectedJobAccess,
   selectedJobSops,
+  jobsSectionRef,
   sopImagesBySopId,
   handleDateClick,
   handleJobClick,
@@ -996,9 +997,6 @@ export default function CleanerDesktopView({
 
                   <button
                     onClick={() => {
-                      if (unacceptedJobs[0]) {
-                        setSelectedSlotId(unacceptedJobs[0].slot.id);
-                      }
                       setJobView("active");
                       scrollToJobsSection();
                     }}
@@ -1201,7 +1199,7 @@ export default function CleanerDesktopView({
               </div>
             </section>
 
-            <section className="rounded-2xl border border-[#7a5c2e]/25 bg-[#15110d] p-5">
+            <section ref={jobsSectionRef} className="rounded-2xl border border-[#7a5c2e]/25 bg-[#15110d] p-5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <h2 className="text-xl font-semibold text-[#f8f2e8]">

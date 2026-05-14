@@ -328,6 +328,8 @@ export default function CleanerMobileView({
   toYmd,
   selectedDate,
   setSelectedDate,
+  jobsSectionRef,
+  scrollToJobsSection,
   selectedJobProperty,
   selectedJobAccess,
   selectedJobSops,
@@ -825,6 +827,27 @@ export default function CleanerMobileView({
           </div>
         ) : null}
 
+        {unacceptedCount > 0 ? (
+          <div className="rounded-2xl border border-red-400/60 bg-red-600 p-4 text-white shadow-[0_0_24px_rgba(239,68,68,0.24)]">
+            <div className="text-[11px] uppercase tracking-[0.18em] text-red-100">
+              Immediate Attention Needed
+            </div>
+            <div className="mt-1 text-base font-semibold">
+              {unacceptedCount} job{unacceptedCount === 1 ? "" : "s"} waiting for your response
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setJobView("active");
+                scrollToJobsSection();
+              }}
+              className="mt-3 rounded-full border border-white/25 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/20"
+            >
+              View urgent jobs
+            </button>
+          </div>
+        ) : null}
+
         <div className="inline-flex w-full rounded-2xl border border-[#7a5c2e]/30 bg-[#100d0a] p-1">
           <button
             type="button"
@@ -910,7 +933,7 @@ export default function CleanerMobileView({
           </div>
         )}
 
-        <div className="space-y-3">
+        <div ref={jobsSectionRef} className="space-y-3">
           {jobView === "active"
             ? renderJobList(
                 visibleJobs,
