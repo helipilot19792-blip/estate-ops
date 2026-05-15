@@ -399,6 +399,7 @@ type PropertyInspectionPhoto = {
 type AdminSection =
   | "home"
   | "notifications"
+  | "team"
   | "users"
   | "properties"
   | "cleanerAccounts"
@@ -418,10 +419,14 @@ type PropertyWorkflowTab = "add" | "setup" | "directory" | "health";
 type PropertySetupTab = "overview" | "access" | "calendars" | "sops";
 type JobWorkflowTab = "cleaning" | "grounds" | "active" | "reliability" | "notifications" | "exceptions";
 type InvoiceWorkflowTab = "create" | "running" | "existing" | "defaults" | "history";
+type TeamWorkflowTab = "invites" | "users" | "cleaners" | "grounds";
+type TeamInviteRole = "admin" | "cleaner" | "grounds";
+type InvoiceHistoryFilter = "all" | "unpaid" | "paid" | "draft" | "void";
 type AdminMenuOrientation = "side" | "top";
 const ADMIN_FEATURE_LABELS: Record<AdminSection, string> = {
   home: "Admin Home",
   notifications: "Notification Center",
+  team: "Team",
   users: "Users",
   properties: "Properties",
   cleanerAccounts: "Cleaner Accounts",
@@ -1075,6 +1080,9 @@ export default function AdminPage() {
   ]);
   const [invoiceApplyTax, setInvoiceApplyTax] = useState(true);
   const [invoiceCcEmails, setInvoiceCcEmails] = useState("");
+  const [invoiceHistorySearch, setInvoiceHistorySearch] = useState("");
+  const [invoiceHistoryStatusFilter, setInvoiceHistoryStatusFilter] = useState<InvoiceHistoryFilter>("all");
+  const [invoiceHistoryPropertyFilter, setInvoiceHistoryPropertyFilter] = useState("all");
   const [propertyInvoiceRateDrafts, setPropertyInvoiceRateDrafts] = useState<Record<string, { turnover: string; grounds: string; billTurnover: boolean; billGrounds: boolean }>>({});
   const [invoiceSettingsDirty, setInvoiceSettingsDirty] = useState(false);
   const [invoiceDraftDirty, setInvoiceDraftDirty] = useState(false);
@@ -1089,6 +1097,8 @@ export default function AdminPage() {
   const [invoiceLineItems, setInvoiceLineItems] = useState<OwnerInvoiceLineItem[]>([
     { id: "custom-1", description: "", category: "expense", quantity: 1, rate: 0, taxable: true },
   ]);
+  const [teamWorkflowTab, setTeamWorkflowTab] = useState<TeamWorkflowTab>("invites");
+  const [teamInviteRole, setTeamInviteRole] = useState<TeamInviteRole>("admin");
 
   const [propertyName, setPropertyName] = useState("");
   const [propertyEntryMode, setPropertyEntryMode] = useState<PropertyEntryMode>("manual");
@@ -3536,6 +3546,34 @@ export default function AdminPage() {
     setInviteAdminName("");
     setInviteAdminEmail("");
     setInviteAdminPhone("");
+  }
+
+  async function inviteSelectedTeamRoleFromForm() {
+    if (teamInviteRole === "admin") {
+      await inviteAdminFromForm();
+      return;
+    }
+
+    if (teamInviteRole === "cleaner") {
+      await inviteCleanerFromForm();
+      return;
+    }
+
+    await inviteGroundsFromForm();
+  }
+
+  async function resendSelectedTeamInvite() {
+    const email =
+      teamInviteRole === "admin"
+        ? inviteAdminEmail
+        : teamInviteRole === "cleaner"
+          ? inviteCleanerEmail
+          : inviteGroundsEmail;
+
+    await resendOrganizationInvite({
+      email,
+      role: teamInviteRole,
+    });
   }
   async function addCleanerAccount() {
     if (!cleanerAccountName.trim()) {
@@ -7277,32 +7315,11 @@ This removes its linked members and deletes the grounds account.`
       label: "People",
       items: [
         {
-          key: "cleanerAccounts",
-          label: "Cleaner Accounts",
-          hint: "Cleaner profiles",
-          accent: "bg-[#10b981]",
-          activeClass: "border-[#a7f3d0] bg-[#ecfdf5] text-[#047857]",
-        },
-        {
-          key: "groundsAccounts",
-          label: "Grounds Accounts",
-          hint: "Grounds profiles",
-          accent: "bg-[#0f766e]",
-          activeClass: "border-[#99f6e4] bg-[#f0fdfa] text-[#115e59]",
-        },
-        {
-          key: "invites",
-          label: "Invites",
-          hint: "Invitation status",
+          key: "team",
+          label: "Team",
+          hint: "Invites, users, accounts",
           accent: "bg-[#8b5cf6]",
           activeClass: "border-[#ddd6fe] bg-[#f5f3ff] text-[#6d28d9]",
-        },
-        {
-          key: "users",
-          label: "Users",
-          hint: "Admin access",
-          accent: "bg-[#6366f1]",
-          activeClass: "border-[#c7d2fe] bg-[#eef2ff] text-[#4338ca]",
         },
       ],
     },
@@ -7431,7 +7448,10 @@ This removes its linked members and deletes the grounds account.`
         count: recentlyAcceptedInvites.length,
         tone: "green",
         actionLabel: "Open invites",
-        onClick: () => setActiveSection("invites"),
+        onClick: () => {
+          setTeamWorkflowTab("invites");
+          setActiveSection("team");
+        },
       });
     }
 
@@ -7508,7 +7528,7 @@ This removes its linked members and deletes the grounds account.`
     if (section === "jobs" && strandedJobs.length > 0) return String(strandedJobs.length);
     if (section === "maintenance" && maintenanceFlagCounts.urgent > 0) return String(maintenanceFlagCounts.urgent);
     if (section === "inspections" && dueInspectionRules.length > 0) return String(dueInspectionRules.length);
-    if (section === "invites" && recentlyAcceptedInvites.length > 0) return String(recentlyAcceptedInvites.length);
+    if (section === "team" && recentlyAcceptedInvites.length > 0) return String(recentlyAcceptedInvites.length);
     if (section === "invoices" && ownerInvoices.length > 0) return String(ownerInvoices.length);
     return "";
   }
@@ -7882,7 +7902,10 @@ This removes its linked members and deletes the grounds account.`
             groundsAccounts.length > 0 ||
             onboardingOwnerAccounts.length > 0),
         actionLabel: "Open invites",
-        onAction: () => setActiveSection("invites"),
+        onAction: () => {
+          setTeamWorkflowTab("invites");
+          setActiveSection("team");
+        },
       },
       {
         id: "assignments",
@@ -8288,6 +8311,43 @@ This removes its linked members and deletes the grounds account.`
     );
   }
   function renderInvitesSection() {
+    const inviteRoleLabel =
+      teamInviteRole === "admin" ? "Admin" : teamInviteRole === "cleaner" ? "Cleaner" : "Grounds";
+    const inviteName =
+      teamInviteRole === "admin"
+        ? inviteAdminName
+        : teamInviteRole === "cleaner"
+          ? inviteCleanerName
+          : inviteGroundsName;
+    const inviteEmail =
+      teamInviteRole === "admin"
+        ? inviteAdminEmail
+        : teamInviteRole === "cleaner"
+          ? inviteCleanerEmail
+          : inviteGroundsEmail;
+    const invitePhone =
+      teamInviteRole === "admin"
+        ? inviteAdminPhone
+        : teamInviteRole === "cleaner"
+          ? inviteCleanerPhone
+          : inviteGroundsPhone;
+    const canUseSelectedInviteRole = teamInviteRole !== "admin" || canManageAdminAccess;
+    const setInviteNameForRole = (value: string) => {
+      if (teamInviteRole === "admin") setInviteAdminName(value);
+      else if (teamInviteRole === "cleaner") setInviteCleanerName(value);
+      else setInviteGroundsName(value);
+    };
+    const setInviteEmailForRole = (value: string) => {
+      if (teamInviteRole === "admin") setInviteAdminEmail(value);
+      else if (teamInviteRole === "cleaner") setInviteCleanerEmail(value);
+      else setInviteGroundsEmail(value);
+    };
+    const setInvitePhoneForRole = (value: string) => {
+      if (teamInviteRole === "admin") setInviteAdminPhone(value);
+      else if (teamInviteRole === "cleaner") setInviteCleanerPhone(value);
+      else setInviteGroundsPhone(value);
+    };
+
     return (
       <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-4 shadow-[0_18px_45px_rgba(0,0,0,0.05)] md:p-5">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -8306,51 +8366,67 @@ This removes its linked members and deletes the grounds account.`
         <div className="mt-5 rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] p-4">
           <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
             <div>
-              <h3 className="text-base font-semibold text-[#241c15]">Invite Company Admin</h3>
+              <h3 className="text-base font-semibold text-[#241c15]">Invite someone</h3>
               <p className="mt-1 max-w-3xl text-sm leading-6 text-[#7f7263]">
-                Company admins can use this company's admin dashboard. This does not grant platform or SaaS tower access.
+                Send admin, cleaner, or grounds invites from one place. Owner invites stay with property setup for now.
               </p>
             </div>
             <span className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-semibold text-[#6f6255]">
-              {canManageAdminAccess ? "Primary control" : "Primary admin only"}
+              {teamInviteRole === "admin" ? (canManageAdminAccess ? "Company admin" : "Primary admin only") : inviteRoleLabel}
             </span>
           </div>
 
-          {canManageAdminAccess ? (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {([
+              { key: "admin" as const, label: "Invite Admin" },
+              { key: "cleaner" as const, label: "Invite Cleaner" },
+              { key: "grounds" as const, label: "Invite Grounds" },
+            ]).map((option) => (
+              <button
+                key={option.key}
+                type="button"
+                onClick={() => setTeamInviteRole(option.key)}
+                className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                  teamInviteRole === option.key
+                    ? "border-[#241c15] bg-[#241c15] text-[#f8f2e8]"
+                    : "border-[#d8c7ab] bg-white text-[#5f5245] hover:bg-[#fcfaf7]"
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+
+          {canUseSelectedInviteRole ? (
             <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1fr_1fr_auto_auto]">
               <input
                 className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                placeholder="Admin name"
-                value={inviteAdminName}
-                onChange={(e) => setInviteAdminName(e.target.value)}
+                placeholder={`${inviteRoleLabel} name`}
+                value={inviteName}
+                onChange={(e) => setInviteNameForRole(e.target.value)}
               />
               <input
                 className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                placeholder="Admin email"
-                value={inviteAdminEmail}
-                onChange={(e) => setInviteAdminEmail(e.target.value)}
+                placeholder={`${inviteRoleLabel} email`}
+                value={inviteEmail}
+                onChange={(e) => setInviteEmailForRole(e.target.value)}
               />
               <input
                 className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                placeholder="Admin phone (optional)"
-                value={inviteAdminPhone}
-                onChange={(e) => setInviteAdminPhone(e.target.value)}
+                placeholder={`${inviteRoleLabel} phone (optional)`}
+                value={invitePhone}
+                onChange={(e) => setInvitePhoneForRole(e.target.value)}
               />
               <button
                 type="button"
-                onClick={() => void inviteAdminFromForm()}
+                onClick={() => void inviteSelectedTeamRoleFromForm()}
                 className="rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]"
               >
-                Invite Admin
+                Invite {inviteRoleLabel}
               </button>
               <button
                 type="button"
-                onClick={() =>
-                  void resendOrganizationInvite({
-                    email: inviteAdminEmail,
-                    role: "admin",
-                  })
-                }
+                onClick={() => void resendSelectedTeamInvite()}
                 className="rounded-full border border-[#d8c7ab] bg-white px-5 py-2.5 text-sm font-medium text-[#5f5245] transition hover:bg-[#fcfaf7]"
               >
                 Resend
@@ -8754,7 +8830,10 @@ This removes its linked members and deletes the grounds account.`
           </div>
           <button
             type="button"
-            onClick={() => setActiveSection("invites")}
+            onClick={() => {
+              setTeamWorkflowTab("invites");
+              setActiveSection("team");
+            }}
             className="mt-3 rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#fcfaf7]"
           >
             View invitation status
@@ -10619,21 +10698,86 @@ This removes its linked members and deletes the grounds account.`
     const editingInvoice = editingOwnerInvoiceId
       ? ownerInvoices.find((invoice) => invoice.id === editingOwnerInvoiceId)
       : null;
-    const draftInvoices = ownerInvoices.filter((invoice) => invoice.status === "draft");
-    const activeInvoices = ownerInvoices.filter((invoice) => invoice.status === "sent");
-    const paidInvoices = ownerInvoices.filter((invoice) => invoice.status === "paid" || invoice.status === "void");
+    const allDraftInvoices = ownerInvoices.filter((invoice) => invoice.status === "draft");
+    const allActiveInvoices = ownerInvoices.filter((invoice) => invoice.status === "sent");
+    const allPaidInvoices = ownerInvoices.filter((invoice) => invoice.status === "paid" || invoice.status === "void");
+    const normalizedInvoiceSearch = invoiceHistorySearch.trim().toLowerCase();
+    const invoiceMatchesSearch = (invoice: OwnerInvoiceRow) => {
+      if (!normalizedInvoiceSearch) return true;
+      const owner = ownerAccounts.find((item) => item.id === invoice.owner_account_id);
+      const property = properties.find((item) => item.id === invoice.property_id);
+      const lineItemText = Array.isArray(invoice.line_items)
+        ? invoice.line_items.map((item) => `${item.description || ""} ${item.category || ""}`).join(" ")
+        : "";
+      return [
+        invoice.invoice_number,
+        invoice.status,
+        invoice.issue_date,
+        invoice.due_date,
+        invoice.notes,
+        invoice.company_name,
+        invoice.uploaded_invoice_name,
+        String(invoice.total || ""),
+        owner?.full_name,
+        owner?.email,
+        property?.name,
+        property?.address,
+        lineItemText,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(normalizedInvoiceSearch);
+    };
+    const invoiceMatchesStatus = (invoice: OwnerInvoiceRow) => {
+      if (invoiceHistoryStatusFilter === "all") return true;
+      if (invoiceHistoryStatusFilter === "unpaid") return invoice.status === "sent";
+      if (invoiceHistoryStatusFilter === "paid") return invoice.status === "paid";
+      if (invoiceHistoryStatusFilter === "draft") return invoice.status === "draft";
+      if (invoiceHistoryStatusFilter === "void") return invoice.status === "void";
+      return true;
+    };
+    const sortInvoicesByPropertyThenDate = (invoices: OwnerInvoiceRow[]) => {
+      return [...invoices].sort((a, b) => {
+        const aProperty = properties.find((item) => item.id === a.property_id);
+        const bProperty = properties.find((item) => item.id === b.property_id);
+        const aPropertyLabel = (aProperty?.name || aProperty?.address || "All properties").toLowerCase();
+        const bPropertyLabel = (bProperty?.name || bProperty?.address || "All properties").toLowerCase();
+        const propertyCompare = aPropertyLabel.localeCompare(bPropertyLabel);
+        if (propertyCompare !== 0) return propertyCompare;
+        const aDate = a.issue_date || a.sent_at || a.created_at || "";
+        const bDate = b.issue_date || b.sent_at || b.created_at || "";
+        return bDate.localeCompare(aDate);
+      });
+    };
+    const filteredOwnerInvoices = sortInvoicesByPropertyThenDate(
+      ownerInvoices.filter((invoice) => {
+        const matchesProperty =
+          invoiceHistoryPropertyFilter === "all" ||
+          (invoice.property_id || "unassigned") === invoiceHistoryPropertyFilter;
+        return matchesProperty && invoiceMatchesStatus(invoice) && invoiceMatchesSearch(invoice);
+      })
+    );
+    const draftInvoices = filteredOwnerInvoices.filter((invoice) => invoice.status === "draft");
+    const activeInvoices = filteredOwnerInvoices.filter((invoice) => invoice.status === "sent");
+    const paidInvoices = filteredOwnerInvoices.filter((invoice) => invoice.status === "paid" || invoice.status === "void");
+    const filteredUnpaidTotal = activeInvoices.reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
+    const invoiceFilterActive =
+      !!normalizedInvoiceSearch ||
+      invoiceHistoryStatusFilter !== "all" ||
+      invoiceHistoryPropertyFilter !== "all";
     const invoiceWorkflowOptions: Array<{ key: InvoiceWorkflowTab; title: string; description: string; meta: string }> = [
       {
         key: "create",
         title: "Create owner invoice",
         description: "Build a regular invoice, preview the PDF, then send it to the owner.",
-        meta: `${activeInvoices.length} unpaid`,
+        meta: `${allActiveInvoices.length} unpaid`,
       },
       {
         key: "running",
         title: "Create running invoice",
         description: "Open or save a draft that you add to throughout the month before sending.",
-        meta: `${draftInvoices.length} draft${draftInvoices.length === 1 ? "" : "s"}`,
+        meta: `${allDraftInvoices.length} draft${allDraftInvoices.length === 1 ? "" : "s"}`,
       },
       {
         key: "existing",
@@ -11606,13 +11750,90 @@ This removes its linked members and deletes the grounds account.`
             <div>
               <h3 className="text-lg font-semibold text-[#241c15]">Invoice history</h3>
               <p className="mt-1 text-sm text-[#7f7263]">
-                Running drafts stay here until you open, update, and send them.
+                Search invoice history by property, owner, invoice number, status, amount, notes, or line item.
               </p>
             </div>
             <span className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-semibold text-[#6f6255]">
-              {ownerInvoices.length} total
+              {filteredOwnerInvoices.length} of {ownerInvoices.length} total
             </span>
           </div>
+          <div className="mt-4 grid gap-3 xl:grid-cols-[1.2fr_220px_auto]">
+            <input
+              className="rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+              placeholder="Search invoices by property, owner, invoice #, amount, notes..."
+              value={invoiceHistorySearch}
+              onChange={(e) => setInvoiceHistorySearch(e.target.value)}
+            />
+            <select
+              className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+              value={invoiceHistoryPropertyFilter}
+              onChange={(e) => setInvoiceHistoryPropertyFilter(e.target.value)}
+            >
+              <option value="all">All properties</option>
+              <option value="unassigned">No property</option>
+              {properties
+                .slice()
+                .sort((a, b) => (a.name || a.address || "").localeCompare(b.name || b.address || ""))
+                .map((property) => (
+                  <option key={property.id} value={property.id}>
+                    {property.name || property.address || "Unnamed property"}
+                  </option>
+                ))}
+            </select>
+            <div className="flex flex-wrap gap-2">
+              {([
+                { key: "all" as const, label: "All" },
+                { key: "unpaid" as const, label: "Unpaid" },
+                { key: "paid" as const, label: "Paid" },
+                { key: "draft" as const, label: "Drafts" },
+                { key: "void" as const, label: "Void" },
+              ]).map((filter) => (
+                <button
+                  key={filter.key}
+                  type="button"
+                  onClick={() => setInvoiceHistoryStatusFilter(filter.key)}
+                  className={`rounded-full border px-3 py-2 text-sm font-semibold transition ${
+                    invoiceHistoryStatusFilter === filter.key
+                      ? "border-[#241c15] bg-[#241c15] text-[#f8f2e8]"
+                      : "border-[#d8c7ab] bg-white text-[#5f5245] hover:bg-[#fcfaf7]"
+                  }`}
+                >
+                  {filter.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-4">
+            <div className="rounded-[16px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">Unpaid</div>
+              <div className="mt-1 text-xl font-semibold text-[#7f1d1d]">{allActiveInvoices.length}</div>
+            </div>
+            <div className="rounded-[16px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">Paid</div>
+              <div className="mt-1 text-xl font-semibold text-[#236b30]">{allPaidInvoices.filter((invoice) => invoice.status === "paid").length}</div>
+            </div>
+            <div className="rounded-[16px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">Drafts</div>
+              <div className="mt-1 text-xl font-semibold text-[#6f4b9a]">{allDraftInvoices.length}</div>
+            </div>
+            <div className="rounded-[16px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">Filtered unpaid</div>
+              <div className="mt-1 text-xl font-semibold text-[#7f1d1d]">{formatCurrency(filteredUnpaidTotal)}</div>
+            </div>
+          </div>
+          {invoiceFilterActive ? (
+            <button
+              type="button"
+              onClick={() => {
+                setInvoiceHistorySearch("");
+                setInvoiceHistoryStatusFilter("all");
+                setInvoiceHistoryPropertyFilter("all");
+              }}
+              className="mt-3 rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-semibold text-[#5f5245] transition hover:bg-[#fcfaf7]"
+            >
+              Clear invoice filters
+            </button>
+          ) : null}
           <div className="mt-4 space-y-3">
             {renderInvoiceHistoryGroup("drafts", "Running drafts", draftInvoices, "No running invoice drafts yet.")}
             {renderInvoiceHistoryGroup("active", "Sent and unpaid", activeInvoices, "No sent unpaid invoices.")}
@@ -12603,7 +12824,7 @@ This removes its linked members and deletes the grounds account.`
   function renderCleanerAccountsSection() {
     return (
       <div className="space-y-6">
-        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+        <section className="hidden">
           <h2 className="text-xl font-semibold tracking-tight">Invite Cleaner</h2>
           <p className="mt-1 text-sm text-[#7f7263]">
             Invite a new cleaner to create their account and join this company.
@@ -12873,7 +13094,7 @@ This removes its linked members and deletes the grounds account.`
   function renderGroundsAccountsSection() {
     return (
       <div className="space-y-6">
-        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+        <section className="hidden">
           <h2 className="text-xl font-semibold tracking-tight">Invite Grounds</h2>
           <p className="mt-1 text-sm text-[#7f7263]">
             Invite a new grounds user to create their account and join this company.
@@ -13114,6 +13335,60 @@ This removes its linked members and deletes the grounds account.`
             ))}
           </div>
         </section>
+      </div>
+    );
+  }
+
+  function renderTeamSection() {
+    const tabs: Array<{ key: TeamWorkflowTab; label: string; count: number }> = [
+      { key: "invites", label: "Invites", count: invitationStatusRows.length },
+      { key: "users", label: "Users", count: profiles.length },
+      { key: "cleaners", label: "Cleaner Accounts", count: cleanerAccounts.length },
+      { key: "grounds", label: "Grounds Accounts", count: groundsAccounts.length },
+    ];
+
+    return (
+      <div className="space-y-6">
+        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8a7b68]">People and access</p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#241c15]">Team</h2>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-[#7f7263]">
+                Manage invitations, login users, cleaner teams, and grounds teams from one place.
+              </p>
+            </div>
+            <span className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-semibold text-[#6f6255]">
+              {profiles.length} users
+            </span>
+          </div>
+          <div className="mt-5 flex flex-wrap gap-2">
+            {tabs.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setTeamWorkflowTab(tab.key)}
+                className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                  teamWorkflowTab === tab.key
+                    ? "border-[#241c15] bg-[#241c15] text-[#f8f2e8]"
+                    : "border-[#d8c7ab] bg-white text-[#5f5245] hover:bg-[#fcfaf7]"
+                }`}
+              >
+                {tab.label}
+                <span className={`ml-2 rounded-full px-2 py-0.5 text-[11px] ${
+                  teamWorkflowTab === tab.key ? "bg-white/15 text-[#f8f2e8]" : "bg-[#fcfaf7] text-[#7f7263]"
+                }`}>
+                  {tab.count}
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {teamWorkflowTab === "invites" ? renderInvitesSection() : null}
+        {teamWorkflowTab === "users" ? renderUsersSection() : null}
+        {teamWorkflowTab === "cleaners" ? renderCleanerAccountsSection() : null}
+        {teamWorkflowTab === "grounds" ? renderGroundsAccountsSection() : null}
       </div>
     );
   }
@@ -16659,8 +16934,10 @@ This removes its linked members and deletes the grounds account.`
         return renderHomeSection();
       case "notifications":
         return renderNotificationCenterSection();
+      case "team":
+        return renderTeamSection();
       case "users":
-        return renderUsersSection();
+        return renderTeamSection();
       case "properties":
         return (
           <div className="space-y-6">
@@ -16672,11 +16949,11 @@ This removes its linked members and deletes the grounds account.`
           </div>
         );
       case "cleanerAccounts":
-        return renderCleanerAccountsSection();
+        return renderTeamSection();
       case "groundsAccounts":
-        return renderGroundsAccountsSection();
+        return renderTeamSection();
       case "invites":
-        return renderInvitesSection();
+        return renderTeamSection();
       case "chat":
         return renderChatSection();
       case "assignments":
@@ -16696,7 +16973,7 @@ This removes its linked members and deletes the grounds account.`
       case "invoices":
         return renderInvoicesSection();
       default:
-        return renderUsersSection();
+        return renderTeamSection();
     }
   }
 
