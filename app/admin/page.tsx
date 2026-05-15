@@ -8378,18 +8378,31 @@ This removes its linked members and deletes the grounds account.`
 
           <div className="mt-4 flex flex-wrap gap-2">
             {([
-              { key: "admin" as const, label: "Invite Admin" },
-              { key: "cleaner" as const, label: "Invite Cleaner" },
-              { key: "grounds" as const, label: "Invite Grounds" },
+              {
+                key: "cleaner" as const,
+                label: "Invite Cleaner",
+                selectedClass: "border-[#16a34a] bg-[#16a34a] text-white shadow-[0_10px_24px_rgba(22,163,74,0.22)]",
+                idleClass: "border-[#86efac] bg-[#dcfce7] text-[#166534] hover:bg-[#bbf7d0]",
+              },
+              {
+                key: "grounds" as const,
+                label: "Invite Grounds",
+                selectedClass: "border-[#0891b2] bg-[#0891b2] text-white shadow-[0_10px_24px_rgba(8,145,178,0.22)]",
+                idleClass: "border-[#67e8f9] bg-[#cffafe] text-[#155e75] hover:bg-[#a5f3fc]",
+              },
+              {
+                key: "admin" as const,
+                label: "Invite Admin",
+                selectedClass: "border-[#f97316] bg-[#f97316] text-white shadow-[0_10px_24px_rgba(249,115,22,0.22)]",
+                idleClass: "border-[#fdba74] bg-[#ffedd5] text-[#9a3412] hover:bg-[#fed7aa]",
+              },
             ]).map((option) => (
               <button
                 key={option.key}
                 type="button"
                 onClick={() => setTeamInviteRole(option.key)}
                 className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                  teamInviteRole === option.key
-                    ? "border-[#241c15] bg-[#241c15] text-[#f8f2e8]"
-                    : "border-[#d8c7ab] bg-white text-[#5f5245] hover:bg-[#fcfaf7]"
+                  teamInviteRole === option.key ? option.selectedClass : option.idleClass
                 }`}
               >
                 {option.label}
