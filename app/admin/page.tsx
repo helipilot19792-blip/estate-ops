@@ -17097,7 +17097,7 @@ This removes its linked members and deletes the grounds account.`
         </aside>
 
         <div className="min-w-0">
-        <div className={`${activeSection === "home" ? "hidden" : ""} admin-premium-surface mb-6 overflow-hidden rounded-[28px] border`}>
+        <div className="admin-premium-surface mb-6 overflow-hidden rounded-[28px] border">
           <div className="relative overflow-hidden px-6 py-7 md:px-8 md:py-8">
             <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(240,249,255,0.96)_0%,rgba(240,253,244,0.82)_50%,rgba(255,247,237,0.92)_100%)]" aria-hidden="true" />
             <div className="absolute right-0 top-0 h-36 w-72 rounded-bl-[80px] bg-[#bae6fd]/35" aria-hidden="true" />
@@ -17207,23 +17207,122 @@ This removes its linked members and deletes the grounds account.`
             </button>
           </div>
 
-          <div className={`${showMobileWorkspaceStats ? "grid" : "hidden"} gap-3 border-t border-[#e2e8f0] bg-white/72 px-6 py-4 sm:grid-cols-2 md:grid md:grid-cols-4 xl:grid-cols-8 md:px-8`}>
-            {[
-              { label: "Properties", value: properties.length, tone: "border-[#bae6fd] bg-[#f0f9ff]" },
-              { label: "Cleaner Accounts", value: cleanerAccounts.length, tone: "border-[#a7f3d0] bg-[#ecfdf5]" },
-              { label: "Grounds Accounts", value: groundsAccounts.length, tone: "border-[#99f6e4] bg-[#f0fdfa]" },
-              { label: "Assignments", value: assignments.length + groundsAssignments.length, tone: "border-[#d9f99d] bg-[#f7fee7]" },
-              { label: "Jobs", value: jobs.length + groundsJobs.length, tone: "border-[#bbf7d0] bg-[#f0fdf4]" },
-              { label: "Invoices", value: ownerInvoices.length, tone: "border-[#fde68a] bg-[#fffbeb]" },
-              { label: "Users", value: profiles.length, tone: "border-[#c7d2fe] bg-[#eef2ff]" },
-              { label: "Flags", value: maintenanceFlags.length, tone: "border-[#fecaca] bg-[#fff1f2]" },
-            ].map((item) => (
-              <div key={item.label} className={`rounded-[20px] border px-4 py-4 shadow-sm ${item.tone}`}>
-                <div className="admin-kicker text-[11px] uppercase text-[#64748b]">{item.label}</div>
-                <div className="mt-2 text-3xl font-semibold text-[#17202a]">{item.value}</div>
+          {activeSection === "home" ? (
+            <div className="grid gap-3 border-t border-[#e2e8f0] bg-white/72 px-6 py-4 md:grid-cols-[minmax(0,1.15fr)_minmax(240px,0.9fr)_minmax(210px,0.55fr)] md:px-8">
+              <div className="rounded-[20px] border border-[#bfdbfe] bg-[#f8fbff] px-4 py-4 shadow-sm">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="admin-kicker text-[11px] uppercase text-[#3563a8]">Today at a glance</div>
+                    <div className="mt-1 text-sm font-semibold text-[#17202a]">
+                      {now.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void syncCalendarsNow()}
+                      disabled={syncingCalendarsNow}
+                      className="rounded-full bg-[#241c15] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#352a21] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {syncingCalendarsNow ? "Syncing..." : "Sync calendars"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveSection("jobs")}
+                      className="rounded-full border border-[#b9d1fb] bg-white px-3 py-1.5 text-xs font-semibold text-[#2957a4] transition hover:bg-[#eef5ff]"
+                    >
+                      View jobs
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {todaysHomeHappenings.slice(0, 2).map((item) => (
+                    <div key={item.id} className="rounded-[16px] border border-[#cfe1ff] bg-white px-3 py-2.5">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#2563eb]">
+                        {item.kind}
+                      </div>
+                      <div className="mt-1 truncate text-sm font-semibold text-[#17202a]">{item.title}</div>
+                      <div className="truncate text-xs text-[#64748b]">{item.detail}</div>
+                    </div>
+                  ))}
+                  {adminDataLoaded && todaysHomeHappenings.length === 0 ? (
+                    <div className="rounded-[16px] border border-dashed border-[#b9d1fb] bg-white/80 px-3 py-2.5 text-sm text-[#5f6f86] sm:col-span-2">
+                      Nothing scheduled for today.
+                    </div>
+                  ) : null}
+                  {!adminDataLoaded ? (
+                    <div className="rounded-[16px] border border-dashed border-[#b9d1fb] bg-white/80 px-3 py-2.5 text-sm text-[#5f6f86] sm:col-span-2">
+                      Loading today's work...
+                    </div>
+                  ) : null}
+                </div>
               </div>
-            ))}
-          </div>
+
+              <div className="rounded-[20px] border border-[#bbf7d0] bg-[#f0fdf4] px-4 py-4 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="admin-kicker text-[11px] uppercase text-[#15803d]">Occupied</div>
+                    <div className="mt-1 text-sm font-semibold text-[#17202a]">Properties with guests today</div>
+                  </div>
+                  <div className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#15803d]">
+                    {occupiedTodayProperties.length} occupied
+                  </div>
+                </div>
+                <div className="mt-3 space-y-2">
+                  {occupiedTodayProperties.slice(0, 2).map((property) => (
+                    <div key={property.id} className="rounded-[16px] border border-[#bbf7d0] bg-white px-3 py-2.5">
+                      <div className="truncate text-sm font-semibold text-[#17202a]">{property.propertyName}</div>
+                      <div className="truncate text-xs text-[#64748b]">
+                        Checks out {formatDateLabel(property.checkoutDate)}
+                      </div>
+                    </div>
+                  ))}
+                  {occupiedTodayProperties.length === 0 ? (
+                    <div className="rounded-[16px] border border-dashed border-[#bbf7d0] bg-white/80 px-3 py-2.5 text-sm text-[#475569]">
+                      No properties are currently marked occupied.
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-4 shadow-sm">
+                <div className="admin-kicker text-[11px] uppercase text-[#8a7b68]">Snapshot</div>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {[
+                    { label: "Cleaning", value: todayAtGlanceCounts.cleaning },
+                    { label: "Grounds", value: todayAtGlanceCounts.grounds },
+                    { label: "Waiting", value: todayAtGlanceCounts.waiting },
+                    { label: "Flags", value: todayAtGlanceCounts.flags },
+                  ].map((item) => (
+                    <div key={item.label} className="rounded-[14px] border border-[#eadfce] bg-white px-3 py-2">
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8a7b68]">
+                        {item.label}
+                      </div>
+                      <div className="mt-1 text-xl font-semibold text-[#17202a]">{item.value}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className={`${showMobileWorkspaceStats ? "grid" : "hidden"} gap-3 border-t border-[#e2e8f0] bg-white/72 px-6 py-4 sm:grid-cols-2 md:grid md:grid-cols-4 xl:grid-cols-8 md:px-8`}>
+              {[
+                { label: "Properties", value: properties.length, tone: "border-[#bae6fd] bg-[#f0f9ff]" },
+                { label: "Cleaner Accounts", value: cleanerAccounts.length, tone: "border-[#a7f3d0] bg-[#ecfdf5]" },
+                { label: "Grounds Accounts", value: groundsAccounts.length, tone: "border-[#99f6e4] bg-[#f0fdfa]" },
+                { label: "Assignments", value: assignments.length + groundsAssignments.length, tone: "border-[#d9f99d] bg-[#f7fee7]" },
+                { label: "Jobs", value: jobs.length + groundsJobs.length, tone: "border-[#bbf7d0] bg-[#f0fdf4]" },
+                { label: "Invoices", value: ownerInvoices.length, tone: "border-[#fde68a] bg-[#fffbeb]" },
+                { label: "Users", value: profiles.length, tone: "border-[#c7d2fe] bg-[#eef2ff]" },
+                { label: "Flags", value: maintenanceFlags.length, tone: "border-[#fecaca] bg-[#fff1f2]" },
+              ].map((item) => (
+                <div key={item.label} className={`rounded-[20px] border px-4 py-4 shadow-sm ${item.tone}`}>
+                  <div className="admin-kicker text-[11px] uppercase text-[#64748b]">{item.label}</div>
+                  <div className="mt-2 text-3xl font-semibold text-[#17202a]">{item.value}</div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {error ? (
@@ -17238,9 +17337,7 @@ This removes its linked members and deletes the grounds account.`
           </div>
         ) : null}
 
-        {activeSection === "home" ? renderActiveSection() : null}
-
-        {currentOrganizationBilling && activeSection !== "home" ? (
+        {currentOrganizationBilling ? (
           <div
             className={`mb-6 rounded-[24px] border px-4 py-4 shadow-sm ${
               trialExpired
@@ -17285,7 +17382,7 @@ This removes its linked members and deletes the grounds account.`
           </div>
         ) : null}
 
-        {operationsAlerts.length > 0 && activeSection !== "home" ? (
+        {operationsAlerts.length > 0 ? (
           <div className="sticky top-3 z-40 mb-6 rounded-[30px] border border-[#e7ddd0] bg-[rgba(255,255,255,0.94)] p-4 shadow-[0_18px_45px_rgba(0,0,0,0.08)] backdrop-blur">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
@@ -17459,7 +17556,7 @@ This removes its linked members and deletes the grounds account.`
           </div>
         ) : null}
 
-        {activeSection !== "home" ? renderActiveSection() : null}
+        {renderActiveSection()}
         </div>
       </div>
 
