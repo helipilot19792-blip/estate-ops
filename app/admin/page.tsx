@@ -17097,7 +17097,7 @@ This removes its linked members and deletes the grounds account.`
         </aside>
 
         <div className="min-w-0">
-        <div className="admin-premium-surface mb-6 overflow-hidden rounded-[28px] border">
+        <div className={`${activeSection === "home" ? "hidden" : ""} admin-premium-surface mb-6 overflow-hidden rounded-[28px] border`}>
           <div className="relative overflow-hidden px-6 py-7 md:px-8 md:py-8">
             <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(240,249,255,0.96)_0%,rgba(240,253,244,0.82)_50%,rgba(255,247,237,0.92)_100%)]" aria-hidden="true" />
             <div className="absolute right-0 top-0 h-36 w-72 rounded-bl-[80px] bg-[#bae6fd]/35" aria-hidden="true" />
@@ -17238,7 +17238,9 @@ This removes its linked members and deletes the grounds account.`
           </div>
         ) : null}
 
-        {currentOrganizationBilling ? (
+        {activeSection === "home" ? renderActiveSection() : null}
+
+        {currentOrganizationBilling && activeSection !== "home" ? (
           <div
             className={`mb-6 rounded-[24px] border px-4 py-4 shadow-sm ${
               trialExpired
@@ -17283,7 +17285,7 @@ This removes its linked members and deletes the grounds account.`
           </div>
         ) : null}
 
-        {operationsAlerts.length > 0 ? (
+        {operationsAlerts.length > 0 && activeSection !== "home" ? (
           <div className="sticky top-3 z-40 mb-6 rounded-[30px] border border-[#e7ddd0] bg-[rgba(255,255,255,0.94)] p-4 shadow-[0_18px_45px_rgba(0,0,0,0.08)] backdrop-blur">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
@@ -17457,7 +17459,7 @@ This removes its linked members and deletes the grounds account.`
           </div>
         ) : null}
 
-        {renderActiveSection()}
+        {activeSection !== "home" ? renderActiveSection() : null}
         </div>
       </div>
 
