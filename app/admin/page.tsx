@@ -1309,9 +1309,17 @@ export default function AdminPage() {
       (job) => job.scheduled_for === tomorrowYmd
     );
   }, [groundsJobs, tomorrowYmd]);
-  const pendingCleanerInvites = useMemo(() => {
-    return organizationInvites.filter((invite) => invite.role === "cleaner");
+  const activeOrganizationInvites = useMemo(() => {
+    return organizationInvites.filter((invite) => {
+      const status = String(invite.status || "sent").toLowerCase();
+      const expired = invite.expires_at && new Date(invite.expires_at).getTime() < Date.now();
+      return !invite.accepted_at && !expired && status !== "accepted" && status !== "revoked" && status !== "expired";
+    });
   }, [organizationInvites]);
+
+  const pendingCleanerInvites = useMemo(() => {
+    return activeOrganizationInvites.filter((invite) => invite.role === "cleaner");
+  }, [activeOrganizationInvites]);
 
   const duplicateCleanerInviteEmails = useMemo(() => {
     const counts = new Map<string, number>();
@@ -1329,12 +1337,12 @@ export default function AdminPage() {
   }, [pendingCleanerInvites]);
 
   const pendingGroundsInvites = useMemo(() => {
-    return organizationInvites.filter((invite) => invite.role === "grounds");
-  }, [organizationInvites]);
+    return activeOrganizationInvites.filter((invite) => invite.role === "grounds");
+  }, [activeOrganizationInvites]);
 
   const pendingAdminInvites = useMemo(() => {
-    return organizationInvites.filter((invite) => invite.role === "admin");
-  }, [organizationInvites]);
+    return activeOrganizationInvites.filter((invite) => invite.role === "admin");
+  }, [activeOrganizationInvites]);
 
   const canManageAdminAccess =
     currentPortalRole === "platform_admin" ||
@@ -8347,6 +8355,11 @@ This removes its linked members and deletes the grounds account.`
       else if (teamInviteRole === "cleaner") setInviteCleanerPhone(value);
       else setInviteGroundsPhone(value);
     };
+    const pendingInviteRows = [...pendingAdminInvites, ...pendingCleanerInvites, ...pendingGroundsInvites].sort((a, b) => {
+      const aDate = a.sent_at || a.created_at || "";
+      const bDate = b.sent_at || b.created_at || "";
+      return bDate.localeCompare(aDate);
+    });
 
     return (
       <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-4 shadow-[0_18px_45px_rgba(0,0,0,0.05)] md:p-5">
@@ -8451,19 +8464,39 @@ This removes its linked members and deletes the grounds account.`
             </div>
           )}
 
-          {pendingAdminInvites.length > 0 ? (
-            <div className="mt-4 space-y-3">
-              {pendingAdminInvites.map((invite) => (
+        </div>
+
+        <section className="mt-5 rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h3 className="text-base font-semibold text-[#241c15]">Pending invites</h3>
+              <p className="mt-1 text-sm text-[#7f7263]">
+                Invites waiting for someone to accept. Accepted, revoked, and expired invites move to history below.
+              </p>
+            </div>
+            <span className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-semibold text-[#6f6255]">
+              {pendingInviteRows.length} pending
+            </span>
+          </div>
+
+          {pendingInviteRows.length > 0 ? (
+            <div className="mt-4 grid gap-3 lg:grid-cols-2">
+              {pendingInviteRows.map((invite) => (
                 <div key={invite.id} className="rounded-[18px] border border-[#e7ddd0] bg-white px-4 py-3">
                   <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                     <div>
                       <div className="text-sm font-semibold text-[#241c15]">
                         {invite.full_name || invite.email}
-                        {duplicateAdminInviteEmails.has(invite.email.trim().toLowerCase()) ? (
+                        {((invite.role === "admin" && duplicateAdminInviteEmails.has(invite.email.trim().toLowerCase())) ||
+                          (invite.role === "cleaner" && duplicateCleanerInviteEmails.has(invite.email.trim().toLowerCase())) ||
+                          (invite.role === "grounds" && duplicateGroundsInviteEmails.has(invite.email.trim().toLowerCase()))) ? (
                           <span className="ml-2 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
                             Duplicate
                           </span>
                         ) : null}
+                        <span className="ml-2 rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-2 py-0.5 text-[11px] font-semibold capitalize text-[#6f6255]">
+                          {invite.role}
+                        </span>
                       </div>
                       <div className="text-sm text-[#7f7263]">{invite.email}</div>
                       <div className="mt-1 text-xs text-[#8a7b68]">
@@ -8472,14 +8505,15 @@ This removes its linked members and deletes the grounds account.`
                         {invite.expires_at ? ` • Expires ${new Date(invite.expires_at).toLocaleDateString()}` : ""}
                       </div>
                     </div>
-                    {canManageAdminAccess ? (
-                      <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-2">
+                      {invite.role !== "admin" || canManageAdminAccess ? (
+                        <>
                         <button
                           type="button"
                           onClick={() =>
                             void resendOrganizationInvite({
                               email: invite.email,
-                              role: "admin",
+                              role: invite.role,
                             })
                           }
                           className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-medium text-[#5f5245] transition hover:bg-white"
@@ -8494,16 +8528,30 @@ This removes its linked members and deletes the grounds account.`
                         >
                           {deletingOrganizationInviteId === invite.id ? "Revoking..." : "Revoke"}
                         </button>
-                      </div>
-                    ) : null}
+                        </>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
-          ) : null}
+          ) : (
+            <div className="mt-4 rounded-[18px] border border-dashed border-[#d8c7ab] bg-white px-4 py-5 text-sm text-[#7f7263]">
+              No pending invites right now.
+            </div>
+          )}
+        </section>
+
+        <div className="mt-5 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h3 className="text-base font-semibold text-[#241c15]">Invite history</h3>
+            <p className="mt-1 text-sm text-[#7f7263]">
+              Accepted, expired, revoked, and past invite activity.
+            </p>
+          </div>
         </div>
 
-        <div className="mt-5 grid gap-3 lg:grid-cols-2">
+        <div className="mt-3 grid gap-3 lg:grid-cols-2">
           {invitationStatusRows.length > 0 ? (
             invitationStatusRows.map((invite) => (
               <div key={invite.id} className="rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-4">
