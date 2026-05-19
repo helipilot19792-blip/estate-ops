@@ -30,6 +30,7 @@ function getBookingSourceLabel(source?: string | null) {
 
 type Property = {
   id: string;
+  organization_id?: string | null;
   name: string | null;
   address: string | null;
   notes?: string | null;
@@ -2685,15 +2686,25 @@ export default function AdminPage() {
   async function linkOwnerAccountToProperty(propertyId: string, ownerEmailRaw: string, ownerNameRaw: string) {
     const ownerEmail = ownerEmailRaw.trim().toLowerCase();
     const ownerName = ownerNameRaw.trim();
+    const ownerOrganizationId =
+      currentOrganizationId ||
+      properties.find((property) => property.id === propertyId)?.organization_id ||
+      "";
 
     if (!ownerEmail) {
       return false;
     }
 
+    if (!ownerOrganizationId) {
+      throw new Error("Choose an organization before linking an owner.");
+    }
+
     let ownerAccountId: string | null = null;
 
     const existingOwner = ownerAccounts.find(
-      (owner) => owner.email.trim().toLowerCase() === ownerEmail
+      (owner) =>
+        owner.email.trim().toLowerCase() === ownerEmail &&
+        (!owner.organization_id || owner.organization_id === ownerOrganizationId)
     );
 
     if (existingOwner) {
@@ -2716,9 +2727,9 @@ export default function AdminPage() {
       }
     } else {
       const { data: insertedOwner, error: ownerInsertError } = await supabase
-        .from("owner_accounts")
-        .insert({
-          organization_id: currentOrganizationId,
+          .from("owner_accounts")
+          .insert({
+          organization_id: ownerOrganizationId,
           email: ownerEmail,
           full_name: ownerName || null,
           is_active: true,
@@ -4804,6 +4815,10 @@ This removes its linked members and deletes the grounds account.`
 
     const trimmedEmail = selectedPropertyOwnerEmail.trim().toLowerCase();
     const trimmedName = selectedPropertyOwnerName.trim();
+    const ownerOrganizationId =
+      currentOrganizationId ||
+      properties.find((property) => property.id === selectedPropertyId)?.organization_id ||
+      "";
 
     setError("");
     setActionMessage("");
@@ -4829,10 +4844,16 @@ This removes its linked members and deletes the grounds account.`
         return;
       }
 
+      if (!ownerOrganizationId) {
+        throw new Error("Choose an organization before saving an owner.");
+      }
+
       let ownerAccountId: string | null = null;
 
       const existingOwner = ownerAccounts.find(
-        (owner) => owner.email.trim().toLowerCase() === trimmedEmail
+        (owner) =>
+          owner.email.trim().toLowerCase() === trimmedEmail &&
+          (!owner.organization_id || owner.organization_id === ownerOrganizationId)
       );
 
       if (existingOwner) {
@@ -4855,7 +4876,7 @@ This removes its linked members and deletes the grounds account.`
         const { data: insertedOwner, error: insertOwnerError } = await supabase
           .from("owner_accounts")
           .insert({
-            organization_id: currentOrganizationId,
+            organization_id: ownerOrganizationId,
             email: trimmedEmail,
             full_name: trimmedName || null,
             is_active: true,
