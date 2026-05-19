@@ -11,6 +11,7 @@ export type InvoicePdfLineItem = {
 
 export type InvoicePdfInput = {
   invoiceNumber: string;
+  documentKind?: "invoice" | "statement";
   companyName: string;
   logoUrl: string | null;
   ownerName: string;
@@ -136,8 +137,10 @@ export async function createInvoicePdfBuffer(input: InvoicePdfInput) {
     }
   }
 
+  const documentLabel = input.documentKind === "statement" ? "Statement" : "Invoice";
+
   drawText(input.companyName, 50, 18, { bold: true, gap: 24 });
-  drawText(`Invoice ${input.invoiceNumber}`, 50, 14, { bold: true, gap: 22 });
+  drawText(`${documentLabel} ${input.invoiceNumber}`, 50, 14, { bold: true, gap: 22 });
   drawText(`Owner: ${input.ownerName} <${input.ownerEmail}>`, 50, 10, { color: muted });
   drawText(`Property: ${input.propertyName}`, 50, 10, { color: muted });
   drawText(`Issue date: ${input.issueDate}`, 50, 10, { color: muted });
@@ -160,7 +163,7 @@ export async function createInvoicePdfBuffer(input: InvoicePdfInput) {
     const quantity = Number(item.quantity || 0);
     const rate = Number(item.rate || 0);
     const amount = quantity * rate;
-    const description = String(item.description || "Invoice item");
+    const description = String(item.description || `${documentLabel} item`);
     const descriptionLines = wrapPdfText(description, 48);
 
     page.drawText(descriptionLines[0] || description, { x: 50, y, size: 10, font: regularFont, color: ink });

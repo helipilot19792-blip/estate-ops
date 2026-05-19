@@ -131,9 +131,11 @@ export async function POST(request: NextRequest) {
     const lineItems = Array.isArray(invoice.line_items)
       ? (invoice.line_items as InvoicePdfLineItem[])
       : [];
+    const documentKind = String(invoice.invoice_number || "").toUpperCase().startsWith("STMT-") ? "statement" : "invoice";
 
     const pdfBuffer = await createInvoicePdfBuffer({
       invoiceNumber: invoice.invoice_number,
+      documentKind,
       companyName: invoice.company_name || "Property invoice",
       logoUrl: invoice.logo_url || null,
       ownerName: owner.full_name || owner.email,

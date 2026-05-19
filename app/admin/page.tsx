@@ -419,6 +419,7 @@ type PropertyWorkflowTab = "add" | "setup" | "directory" | "health";
 type PropertySetupTab = "overview" | "access" | "calendars" | "sops";
 type JobWorkflowTab = "cleaning" | "grounds" | "active" | "reliability" | "notifications" | "exceptions";
 type InvoiceWorkflowTab = "create" | "running" | "existing" | "defaults" | "history";
+type InvoiceDocumentKind = "invoice" | "statement";
 type TeamWorkflowTab = "invites" | "users" | "cleaners" | "grounds";
 type TeamInviteRole = "admin" | "cleaner" | "grounds";
 type InvoiceHistoryFilter = "all" | "unpaid" | "paid" | "draft" | "void";
@@ -1031,6 +1032,7 @@ export default function AdminPage() {
   const [maintenanceFormCategory, setMaintenanceFormCategory] = useState("");
   const [maintenanceFormUrgency, setMaintenanceFormUrgency] = useState("normal");
   const [maintenanceFormNotes, setMaintenanceFormNotes] = useState("");
+  const [maintenanceFormFiles, setMaintenanceFormFiles] = useState<File[]>([]);
   const [maintenanceFormError, setMaintenanceFormError] = useState("");
   const [creatingMaintenanceFlag, setCreatingMaintenanceFlag] = useState(false);
   const [resolvingMaintenanceFlagId, setResolvingMaintenanceFlagId] = useState<string | null>(null);
@@ -1057,6 +1059,8 @@ export default function AdminPage() {
   const [chatReplyBody, setChatReplyBody] = useState("");
   const [chatRealtimeReady, setChatRealtimeReady] = useState(false);
   const chatThreadScrollRef = useRef<HTMLDivElement | null>(null);
+  const maintenanceCameraInputRef = useRef<HTMLInputElement | null>(null);
+  const maintenanceLibraryInputRef = useRef<HTMLInputElement | null>(null);
   const [invoiceOwnerId, setInvoiceOwnerId] = useState("");
   const [invoicePropertyId, setInvoicePropertyId] = useState("");
   const [invoiceIssueDate, setInvoiceIssueDate] = useState(() => getTodayYmd());
@@ -1068,6 +1072,7 @@ export default function AdminPage() {
   const [invoiceReplyToEmail, setInvoiceReplyToEmail] = useState("");
   const [invoiceHeaderText, setInvoiceHeaderText] = useState("");
   const [invoicePaymentInstructions, setInvoicePaymentInstructions] = useState("");
+  const [invoiceDocumentKind, setInvoiceDocumentKind] = useState<InvoiceDocumentKind>("invoice");
   const [editingOwnerInvoiceId, setEditingOwnerInvoiceId] = useState<string | null>(null);
   const [invoiceWorkflowTab, setInvoiceWorkflowTab] = useState<InvoiceWorkflowTab>("create");
   const [externalInvoiceUrl, setExternalInvoiceUrl] = useState("");
@@ -5833,7 +5838,56 @@ This removes its linked members and deletes the grounds account.`
     setMaintenanceFormCategory("");
     setMaintenanceFormUrgency("normal");
     setMaintenanceFormNotes("");
+    setMaintenanceFormFiles([]);
     setMaintenanceFormError("");
+  }
+
+  function appendMaintenanceFormFiles(files: FileList | null) {
+    if (!files?.length) return;
+    setMaintenanceFormFiles((current) => [...current, ...Array.from(files)]);
+    setMaintenanceFormError("");
+  }
+
+  function removeMaintenanceFormFile(indexToRemove: number) {
+    setMaintenanceFormFiles((current) => current.filter((_, index) => index !== indexToRemove));
+  }
+
+  async function uploadMaintenanceFlagImages(flagId: string) {
+    if (maintenanceFormFiles.length === 0) return 0;
+
+    const uploads: Array<{ flag_id: string; image_url: string; caption: null; sort_order: number }> = [];
+
+    for (let index = 0; index < maintenanceFormFiles.length; index += 1) {
+      const file = maintenanceFormFiles[index];
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const filePath = `${flagId}/${Date.now()}-${index}-${safeName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("maintenance-flag-images")
+        .upload(filePath, file, { cacheControl: "3600", upsert: false });
+
+      if (uploadError) {
+        throw new Error(`Photo upload failed: ${uploadError.message}`);
+      }
+
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("maintenance-flag-images").getPublicUrl(filePath);
+
+      uploads.push({
+        flag_id: flagId,
+        image_url: publicUrl,
+        caption: null,
+        sort_order: index,
+      });
+    }
+
+    const { error: imageInsertError } = await supabase.from("property_maintenance_flag_images").insert(uploads);
+    if (imageInsertError) {
+      throw new Error(`Photo record save failed: ${imageInsertError.message}`);
+    }
+
+    return uploads.length;
   }
 
   function openMaintenanceModal() {
@@ -5847,6 +5901,11 @@ This removes its linked members and deletes the grounds account.`
   }
 
   async function createMaintenanceFlag() {
+    if (!currentOrganizationId) {
+      setMaintenanceFormError("Choose an organization before creating a maintenance flag.");
+      return;
+    }
+
     if (!maintenanceFormPropertyId) {
       setMaintenanceFormError("Please choose a property.");
       return;
@@ -5897,11 +5956,19 @@ This removes its linked members and deletes the grounds account.`
         throw new Error(payload?.error || "Could not create maintenance flag.");
       }
 
+      const flagId = String(payload?.flag?.id || "");
+      const photoCount = flagId ? await uploadMaintenanceFlagImages(flagId) : 0;
+
       closeMaintenanceModal();
-      setActionMessage("Maintenance flag created.");
+      setActionMessage(
+        photoCount > 0
+          ? `Maintenance flag created with ${photoCount} photo${photoCount === 1 ? "" : "s"}.`
+          : "Maintenance flag created."
+      );
       await loadData();
     } catch (err: any) {
       setError(err?.message || "Could not create maintenance flag.");
+      await loadData();
     } finally {
       setCreatingMaintenanceFlag(false);
     }
@@ -6878,17 +6945,23 @@ This removes its linked members and deletes the grounds account.`
     [upcomingHomeHappenings, todayYmd]
   );
 
+  const upcomingCheckInGlanceItems = useMemo(
+    () => futureHomeHappenings.filter((item) => item.kind === "Check-in").slice(0, 3),
+    [futureHomeHappenings]
+  );
+
   const todayAtGlanceCounts = useMemo(() => {
     return {
       cleaning: todayAtGlanceItems.filter((item) => item.kind === "Cleaning").length,
       grounds: todayAtGlanceItems.filter((item) => item.kind === "Grounds").length,
       occupied: occupiedTodayProperties.length,
+      checkIns: upcomingCheckInGlanceItems.length,
       waste: upcomingWastePickups.length,
       waiting: waitingJobs.length,
       overdue: overdueWaitingJobs.length,
       flags: openMaintenanceFlags.length,
     };
-  }, [todayAtGlanceItems, occupiedTodayProperties.length, upcomingWastePickups.length, waitingJobs.length, overdueWaitingJobs.length, openMaintenanceFlags.length]);
+  }, [todayAtGlanceItems, occupiedTodayProperties.length, upcomingCheckInGlanceItems.length, upcomingWastePickups.length, waitingJobs.length, overdueWaitingJobs.length, openMaintenanceFlags.length]);
 
 
   const resolvedMaintenanceFlags = useMemo(
@@ -10093,6 +10166,10 @@ This removes its linked members and deletes the grounds account.`
     return { id: `custom-${Date.now()}`, description: "", category: "expense", quantity: 1, rate: "", taxable: true };
   }
 
+  function getInvoiceDocumentKind(invoice: Pick<OwnerInvoiceRow, "invoice_number"> | null | undefined): InvoiceDocumentKind {
+    return String(invoice?.invoice_number || "").toUpperCase().startsWith("STMT-") ? "statement" : "invoice";
+  }
+
   function resetInvoiceComposer() {
     setEditingOwnerInvoiceId(null);
     setInvoiceOwnerId("");
@@ -10101,6 +10178,7 @@ This removes its linked members and deletes the grounds account.`
     setInvoiceDueDate(getDefaultDueDateYmd());
     setInvoiceNotes("");
     setInvoiceCcEmails("");
+    setInvoiceDocumentKind("invoice");
     setInvoiceApplyTax(true);
     setInvoiceLineItems([getEmptyInvoiceLineItem()]);
     setInvoiceDraftDirty(false);
@@ -10118,6 +10196,7 @@ This removes its linked members and deletes the grounds account.`
     setInvoiceIssueDate(invoice.issue_date || getTodayYmd());
     setInvoiceDueDate(invoice.due_date || "");
     setInvoiceNotes(invoice.notes || "");
+    setInvoiceDocumentKind(getInvoiceDocumentKind(invoice));
     setInvoiceHeaderText(invoice.header_text || invoiceSettings?.header_text || "");
     setInvoicePaymentInstructions(invoice.payment_instructions || invoiceSettings?.payment_instructions || "");
     setInvoiceCompanyName(invoice.company_name || invoiceSettings?.company_name || "");
@@ -10401,7 +10480,11 @@ This removes its linked members and deletes the grounds account.`
     const taxLines = getInvoiceTaxLinesForSubtotal(taxableSubtotal, invoiceApplyTax);
     const taxTotal = taxLines.reduce((sum, line) => sum + line.amount, 0);
     const total = subtotal + taxTotal;
-    const invoiceNumber = editingInvoice?.invoice_number || `INV-${Date.now().toString().slice(-8)}`;
+    const documentLabel = invoiceDocumentKind === "statement" ? "Statement" : "Invoice";
+    const documentLabelLower = documentLabel.toLowerCase();
+    const invoiceNumber =
+      editingInvoice?.invoice_number ||
+      `${invoiceDocumentKind === "statement" ? "STMT" : "INV"}-${Date.now().toString().slice(-8)}`;
 
     setCreatingInvoice(true);
     setError("");
@@ -10462,11 +10545,11 @@ This removes its linked members and deletes the grounds account.`
       setActionMessage(
         status === "sent"
           ? editingOwnerInvoiceId
-            ? "Running invoice sent to owner."
-            : "Invoice created and sent to owner."
+            ? `Running ${documentLabelLower} sent to owner.`
+            : `${documentLabel} created and sent to owner.`
           : editingOwnerInvoiceId
-            ? "Running invoice updated."
-            : "Running invoice draft created."
+            ? `Running ${documentLabelLower} updated.`
+            : `Running ${documentLabelLower} draft created.`
       );
       if (status === "sent") {
         resetInvoiceComposer();
@@ -10476,7 +10559,7 @@ This removes its linked members and deletes the grounds account.`
       }
       await loadData();
     } catch (err: unknown) {
-      setError(getErrorMessage(err, "Could not create invoice."));
+      setError(getErrorMessage(err, `Could not create ${documentLabelLower}.`));
     } finally {
       setCreatingInvoice(false);
     }
@@ -10604,9 +10687,10 @@ This removes its linked members and deletes the grounds account.`
 
   async function previewInvoicePdf() {
     const validLineItems = getValidInvoiceLineItems();
+    const documentLabelLower = invoiceDocumentKind === "statement" ? "statement" : "invoice";
 
     if (validLineItems.length === 0) {
-      setError("Add at least one invoice line item before previewing the PDF.");
+      setError(`Add at least one ${documentLabelLower} line item before previewing the PDF.`);
       return;
     }
 
@@ -10636,6 +10720,7 @@ This removes its linked members and deletes the grounds account.`
         },
         body: JSON.stringify({
           invoiceNumber: "PREVIEW",
+          documentKind: invoiceDocumentKind,
           companyName: invoiceCompanyName.trim() || "Property invoice",
           logoUrl: invoiceLogoUrl.trim() || null,
           ownerName: context.ownerName,
@@ -10678,6 +10763,7 @@ This removes its linked members and deletes the grounds account.`
 
     const owner = ownerAccounts.find((item) => item.id === invoice.owner_account_id);
     const property = properties.find((item) => item.id === invoice.property_id);
+    const documentKind = getInvoiceDocumentKind(invoice);
 
     setViewingInvoicePdfId(invoice.id);
     setError("");
@@ -10700,6 +10786,7 @@ This removes its linked members and deletes the grounds account.`
         },
         body: JSON.stringify({
           invoiceNumber: invoice.invoice_number,
+          documentKind,
           companyName: invoice.company_name || "Property invoice",
           logoUrl: invoice.logo_url || null,
           ownerName: owner?.full_name || owner?.email || "Owner",
@@ -10905,8 +10992,8 @@ This removes its linked members and deletes the grounds account.`
     const invoiceWorkflowOptions: Array<{ key: InvoiceWorkflowTab; title: string; description: string; meta: string }> = [
       {
         key: "create",
-        title: "Create owner invoice",
-        description: "Build a regular invoice, preview the PDF, then send it to the owner.",
+        title: "Create invoice or statement",
+        description: "Build a regular invoice or owner statement, preview the PDF, then send it.",
         meta: `${allActiveInvoices.length} unpaid`,
       },
       {
@@ -10943,6 +11030,7 @@ This removes its linked members and deletes the grounds account.`
       const property = properties.find((item) => item.id === invoice.property_id);
       const isPaidInvoice = invoice.status === "paid";
       const isDraftInvoice = invoice.status === "draft";
+      const documentKind = getInvoiceDocumentKind(invoice);
 
       return (
         <div
@@ -10975,6 +11063,11 @@ This removes its linked members and deletes the grounds account.`
                 {invoice.invoice_source === "uploaded" ? (
                   <span className="rounded-full border border-[#d4c2ea] bg-white px-2.5 py-0.5 text-xs font-semibold text-[#6f4b9a]">
                     uploaded file
+                  </span>
+                ) : null}
+                {documentKind === "statement" ? (
+                  <span className="rounded-full border border-[#bfdbfe] bg-white px-2.5 py-0.5 text-xs font-semibold text-[#2957a4]">
+                    statement
                   </span>
                 ) : null}
               </div>
@@ -11589,12 +11682,16 @@ This removes its linked members and deletes the grounds account.`
                         ? `${editingInvoice.invoice_number} is being edited`
                         : invoiceWorkflowTab === "running"
                           ? "Create a running invoice"
-                          : "Create owner invoice"}
+                          : invoiceDocumentKind === "statement"
+                            ? "Create owner statement"
+                            : "Create owner invoice"}
                     </h3>
                     <p className="mt-1 text-sm leading-6 text-[#6f6255]">
                       {invoiceWorkflowTab === "running"
                         ? "Save as draft to keep adding cleaning, grounds, supplies, and receipts until you are ready to send it."
-                        : "Build an invoice, preview the PDF, and send it to the owner when it is ready."}
+                        : invoiceDocumentKind === "statement"
+                          ? "Build a statement, preview the PDF, and send it to the owner when it is ready."
+                          : "Build an invoice, preview the PDF, and send it to the owner when it is ready."}
                     </p>
                   </div>
                   <button
@@ -11605,6 +11702,34 @@ This removes its linked members and deletes the grounds account.`
                     Start new invoice
                   </button>
                 </div>
+              </div>
+
+              <div className="mb-4 inline-flex rounded-full border border-[#d8c7ab] bg-[#fcfaf7] p-1">
+                {[
+                  { value: "invoice", label: "Invoice" },
+                  { value: "statement", label: "Statement" },
+                ].map((option) => {
+                  const selected = invoiceDocumentKind === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      disabled={!!editingInvoice}
+                      onClick={() => {
+                        if (editingInvoice) return;
+                        setInvoiceDraftDirty(true);
+                        setInvoiceDocumentKind(option.value as InvoiceDocumentKind);
+                      }}
+                      className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                        selected
+                          ? "bg-[#241c15] text-[#f8f2e8]"
+                          : "text-[#6f6255] hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
               </div>
 
               <div className="grid gap-3 md:grid-cols-2">
@@ -11858,7 +11983,9 @@ This removes its linked members and deletes the grounds account.`
                   disabled={creatingInvoice}
                   className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2.5 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#fcfaf7] disabled:opacity-60"
                 >
-                  {editingInvoice ? "Save running invoice" : "Save as running invoice"}
+                  {editingInvoice
+                    ? `Save running ${invoiceDocumentKind}`
+                    : `Save as running ${invoiceDocumentKind}`}
                 </button>
                 <button
                   type="button"
@@ -11866,7 +11993,7 @@ This removes its linked members and deletes the grounds account.`
                   disabled={previewingInvoicePdf}
                   className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2.5 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#fcfaf7] disabled:opacity-60"
                 >
-                  {previewingInvoicePdf ? "Opening..." : "Preview PDF"}
+                  {previewingInvoicePdf ? "Opening..." : `Preview ${invoiceDocumentKind} PDF`}
                 </button>
                 <button
                   type="button"
@@ -11874,7 +12001,11 @@ This removes its linked members and deletes the grounds account.`
                   disabled={creatingInvoice}
                   className="rounded-full bg-[#241c15] px-4 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60"
                 >
-                  {creatingInvoice ? "Working..." : editingInvoice ? "Send running invoice" : "Create and send PDF"}
+                  {creatingInvoice
+                    ? "Working..."
+                    : editingInvoice
+                      ? `Send running ${invoiceDocumentKind}`
+                      : `Create and send ${invoiceDocumentKind} PDF`}
                 </button>
               </div>
             </aside>
@@ -16265,7 +16396,7 @@ This removes its linked members and deletes the grounds account.`
 
         {maintenanceModalOpen ? (
           <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/45 px-4 py-6">
-            <div className="w-full max-w-2xl rounded-[32px] border border-[#d8c7ab] bg-[#f8f3eb] p-5 shadow-[0_30px_80px_rgba(0,0,0,0.28)] md:p-6">
+            <div className="max-h-[calc(100vh-3rem)] w-full max-w-2xl overflow-y-auto rounded-[32px] border border-[#d8c7ab] bg-[#f8f3eb] p-5 shadow-[0_30px_80px_rgba(0,0,0,0.28)] md:p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <div className="text-xl font-semibold tracking-tight text-[#241c15]">Create Maintenance Flag</div>
@@ -16345,6 +16476,76 @@ This removes its linked members and deletes the grounds account.`
                     value={maintenanceFormNotes}
                     onChange={(e) => setMaintenanceFormNotes(e.target.value)}
                   />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Photos</label>
+                  <input
+                    ref={maintenanceCameraInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    disabled={creatingMaintenanceFlag}
+                    onChange={(e) => {
+                      appendMaintenanceFormFiles(e.target.files);
+                      e.target.value = "";
+                    }}
+                  />
+                  <input
+                    ref={maintenanceLibraryInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    disabled={creatingMaintenanceFlag}
+                    onChange={(e) => {
+                      appendMaintenanceFormFiles(e.target.files);
+                      e.target.value = "";
+                    }}
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => maintenanceCameraInputRef.current?.click()}
+                      disabled={creatingMaintenanceFlag}
+                      className="rounded-full bg-[#b48d4e] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#9d793e] disabled:opacity-60"
+                    >
+                      Take photo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => maintenanceLibraryInputRef.current?.click()}
+                      disabled={creatingMaintenanceFlag}
+                      className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-semibold text-[#5f5245] transition hover:bg-[#fcfaf7] disabled:opacity-60"
+                    >
+                      Add photos
+                    </button>
+                  </div>
+                  <p className="mt-2 text-xs text-[#8a7b68]">
+                    Attach issue photos now so they stay with the maintenance flag.
+                  </p>
+
+                  {maintenanceFormFiles.length > 0 ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {maintenanceFormFiles.map((file, index) => (
+                        <span
+                          key={`${file.name}-${file.lastModified}-${index}`}
+                          className="inline-flex items-center gap-2 rounded-full border border-[#d8c7ab] bg-white px-3 py-1.5 text-xs text-[#5f5245]"
+                        >
+                          <span className="max-w-[180px] truncate">{file.name}</span>
+                          <button
+                            type="button"
+                            onClick={() => removeMaintenanceFormFile(index)}
+                            disabled={creatingMaintenanceFlag}
+                            className="font-semibold text-[#8a2e22] disabled:opacity-60"
+                          >
+                            x
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
@@ -17320,9 +17521,23 @@ This removes its linked members and deletes the grounds account.`
                       <div className="truncate text-xs text-[#64748b]">{item.detail}</div>
                     </div>
                   ))}
+                  {upcomingCheckInGlanceItems.map((item) => (
+                    <div key={item.id} className="rounded-[16px] border border-[#ddd6fe] bg-white px-3 py-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6d28d9]">
+                          Upcoming check-in
+                        </div>
+                        <div className="shrink-0 text-[11px] font-semibold text-[#7c3aed]">{item.label}</div>
+                      </div>
+                      <div className="mt-1 truncate text-sm font-semibold text-[#17202a]">{item.title}</div>
+                      <div className="truncate text-xs text-[#64748b]">{item.detail}</div>
+                    </div>
+                  ))}
                   {adminDataLoaded && todaysHomeHappenings.length === 0 ? (
                     <div className="rounded-[16px] border border-dashed border-[#b9d1fb] bg-white/80 px-3 py-2.5 text-sm text-[#5f6f86] sm:col-span-2">
-                      Nothing scheduled for today.
+                      {upcomingCheckInGlanceItems.length === 0
+                        ? "Nothing scheduled for today."
+                        : "Nothing else scheduled for today."}
                     </div>
                   ) : null}
                   {!adminDataLoaded ? (
@@ -17366,6 +17581,7 @@ This removes its linked members and deletes the grounds account.`
                   {[
                     { label: "Cleaning", value: todayAtGlanceCounts.cleaning },
                     { label: "Grounds", value: todayAtGlanceCounts.grounds },
+                    { label: "Check-ins", value: todayAtGlanceCounts.checkIns },
                     { label: "Waiting", value: todayAtGlanceCounts.waiting },
                     { label: "Flags", value: todayAtGlanceCounts.flags },
                   ].map((item) => (

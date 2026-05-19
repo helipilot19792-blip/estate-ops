@@ -209,6 +209,9 @@ export async function POST(request: NextRequest) {
       : [];
     const taxLines = normalizeTaxLines(invoice);
     const isUploadedInvoice = invoice.invoice_source === "uploaded" && !!invoice.uploaded_invoice_url;
+    const documentKind = String(invoice.invoice_number || "").toUpperCase().startsWith("STMT-") ? "statement" : "invoice";
+    const documentLabel = documentKind === "statement" ? "Statement" : "Invoice";
+    const documentLabelLower = documentLabel.toLowerCase();
     const ownerPortalUrl = `${request.nextUrl.origin}/owner?tab=invoices`;
     const rows = lineItems
       .map((item) => {
@@ -238,7 +241,7 @@ export async function POST(request: NextRequest) {
       <div style="font-family:Arial,sans-serif;color:#241c15;line-height:1.5;padding:20px;">
         ${invoice.logo_url ? `<img src="${escapeHtml(invoice.logo_url)}" alt="" style="max-height:72px;margin-bottom:16px;" />` : ""}
         <h1 style="margin:0 0 4px;font-size:24px;">${escapeHtml(invoice.company_name || "Property invoice")}</h1>
-        <p style="margin:0 0 16px;color:#6f6255;">Invoice ${escapeHtml(invoice.invoice_number)}</p>
+        <p style="margin:0 0 16px;color:#6f6255;">${documentLabel} ${escapeHtml(invoice.invoice_number)}</p>
         ${invoice.header_text ? `<p style="margin:0 0 18px;">${escapeHtml(invoice.header_text)}</p>` : ""}
         <div style="margin-bottom:18px;padding:14px;border:1px solid #eadfce;border-radius:14px;background:#fcfaf7;">
           <div><strong>Owner:</strong> ${escapeHtml(owner.full_name || owner.email)}</div>
@@ -246,7 +249,7 @@ export async function POST(request: NextRequest) {
           <div><strong>Issue date:</strong> ${escapeHtml(invoice.issue_date)}</div>
           ${invoice.due_date ? `<div><strong>Due date:</strong> ${escapeHtml(invoice.due_date)}</div>` : ""}
         </div>
-        ${isUploadedInvoice ? `<p style="margin:0 0 18px;color:#5f5245;">The original uploaded invoice is attached to this email.</p>` : ""}
+        ${isUploadedInvoice ? `<p style="margin:0 0 18px;color:#5f5245;">The original uploaded ${documentLabelLower} is attached to this email.</p>` : ""}
         ${lineItems.length > 0 ? `<table style="width:100%;border-collapse:collapse;margin:0 0 18px;">
           <thead>
             <tr style="background:#f7f3ee;">
@@ -275,7 +278,7 @@ export async function POST(request: NextRequest) {
         ${invoice.payment_instructions ? `<p style="margin-top:18px;"><strong>Payment:</strong> ${escapeHtml(invoice.payment_instructions)}</p>` : ""}
         <div style="margin-top:22px;padding:16px;border:1px solid #eadfce;border-radius:14px;background:#fcfaf7;">
           <p style="margin:0 0 12px;color:#5f5245;">
-            Log in to your owner portal to view invoice history and download invoice files, including PDF, CSV, and JSON exports.
+            Log in to your owner portal to view billing history and download files, including PDF, CSV, and JSON exports.
           </p>
           <a href="${escapeHtml(ownerPortalUrl)}" style="display:inline-block;padding:10px 16px;background:#241c15;color:#ffffff;border-radius:999px;text-decoration:none;font-weight:700;">
             Open owner portal
@@ -291,6 +294,7 @@ export async function POST(request: NextRequest) {
       ? null
       : await createInvoicePdfBuffer({
           invoiceNumber: invoice.invoice_number,
+          documentKind,
           companyName: invoice.company_name || "Property invoice",
           logoUrl: invoice.logo_url || null,
           ownerName: owner.full_name || owner.email,
@@ -322,7 +326,7 @@ export async function POST(request: NextRequest) {
       to: owner.email,
       cc: ccEmails.length > 0 ? ccEmails : undefined,
       replyTo: replyToEmail || undefined,
-      subject: `Invoice ${invoice.invoice_number} from ${invoice.company_name || "your property manager"}`,
+      subject: `${documentLabel} ${invoice.invoice_number} from ${invoice.company_name || "your property manager"}`,
       html,
       attachments: [
         isUploadedInvoice

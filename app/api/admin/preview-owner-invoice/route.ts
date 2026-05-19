@@ -97,9 +97,11 @@ export async function POST(request: NextRequest) {
       typeof body?.total === "number"
         ? Number(body.total)
         : subtotal + taxTotal;
+    const documentKind = body?.documentKind === "statement" ? "statement" : "invoice";
 
     const pdfBuffer = await createInvoicePdfBuffer({
       invoiceNumber: String(body?.invoiceNumber || "PREVIEW"),
+      documentKind,
       companyName: String(body?.companyName || "Property invoice"),
       logoUrl: body?.logoUrl ? String(body.logoUrl) : null,
       ownerName: String(body?.ownerName || "Owner"),
@@ -120,7 +122,7 @@ export async function POST(request: NextRequest) {
     return new NextResponse(pdfBuffer, {
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": "inline; filename=invoice-preview.pdf",
+        "Content-Disposition": `inline; filename=${documentKind}-preview.pdf`,
       },
     });
   } catch (error) {
