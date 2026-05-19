@@ -125,6 +125,7 @@ export async function POST(request: NextRequest) {
     const { data: existingOwner, error: existingOwnerError } = await serviceClient
       .from("owner_accounts")
       .select("*")
+      .eq("organization_id", property.organization_id)
       .eq("email", ownerEmail)
       .maybeSingle();
 
@@ -155,6 +156,7 @@ export async function POST(request: NextRequest) {
       const { data: insertedOwner, error: insertOwnerError } = await serviceClient
         .from("owner_accounts")
         .insert({
+          organization_id: property.organization_id,
           email: ownerEmail,
           full_name: ownerName || null,
           is_active: true,

@@ -4815,107 +4815,40 @@ This removes its linked members and deletes the grounds account.`
 
     const trimmedEmail = selectedPropertyOwnerEmail.trim().toLowerCase();
     const trimmedName = selectedPropertyOwnerName.trim();
-    const ownerOrganizationId =
-      currentOrganizationId ||
-      properties.find((property) => property.id === selectedPropertyId)?.organization_id ||
-      "";
 
     setError("");
     setActionMessage("");
     setSavingSelectedPropertyOwner(true);
 
     try {
-      const existingAccess = ownerPropertyAccess.find(
-        (row) => row.property_id === selectedPropertyId
-      );
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-      if (!trimmedEmail) {
-        if (existingAccess) {
-          const { error } = await supabase
-            .from("owner_property_access")
-            .delete()
-            .eq("id", existingAccess.id);
-
-          if (error) throw error;
-        }
-
-        setActionMessage("Owner link removed from property.");
-        await loadData();
-        return;
+      if (!session?.access_token) {
+        throw new Error("Please sign in again before saving an owner.");
       }
 
-      if (!ownerOrganizationId) {
-        throw new Error("Choose an organization before saving an owner.");
+      const response = await fetch("/api/admin/property-owner", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          propertyId: selectedPropertyId,
+          ownerEmail: trimmedEmail,
+          ownerName: trimmedName,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || "Could not save owner for property.");
       }
 
-      let ownerAccountId: string | null = null;
-
-      const existingOwner = ownerAccounts.find(
-        (owner) =>
-          owner.email.trim().toLowerCase() === trimmedEmail &&
-          (!owner.organization_id || owner.organization_id === ownerOrganizationId)
-      );
-
-      if (existingOwner) {
-        ownerAccountId = existingOwner.id;
-
-        const updates: Record<string, any> = {};
-        if (trimmedName && trimmedName !== (existingOwner.full_name || "")) {
-          updates.full_name = trimmedName;
-        }
-
-        if (Object.keys(updates).length > 0) {
-          const { error: updateOwnerError } = await supabase
-            .from("owner_accounts")
-            .update(updates)
-            .eq("id", existingOwner.id);
-
-          if (updateOwnerError) throw updateOwnerError;
-        }
-      } else {
-        const { data: insertedOwner, error: insertOwnerError } = await supabase
-          .from("owner_accounts")
-          .insert({
-            organization_id: ownerOrganizationId,
-            email: trimmedEmail,
-            full_name: trimmedName || null,
-            is_active: true,
-          })
-          .select()
-          .single();
-
-        if (insertOwnerError || !insertedOwner) {
-          throw new Error(insertOwnerError?.message || "Could not create owner account.");
-        }
-
-        ownerAccountId = insertedOwner.id;
-      }
-
-      if (!ownerAccountId) {
-        throw new Error("Could not determine owner account.");
-      }
-
-      if (existingAccess) {
-        const { error: updateAccessError } = await supabase
-          .from("owner_property_access")
-          .update({
-            owner_account_id: ownerAccountId,
-          })
-          .eq("id", existingAccess.id);
-
-        if (updateAccessError) throw updateAccessError;
-      } else {
-        const { error: insertAccessError } = await supabase
-          .from("owner_property_access")
-          .insert({
-            owner_account_id: ownerAccountId,
-            property_id: selectedPropertyId,
-          });
-
-        if (insertAccessError) throw insertAccessError;
-      }
       setSelectedPropertyOwnerDirty(false);
-      setActionMessage("Owner saved for property.");
+      setActionMessage(trimmedEmail ? "Owner saved for property." : "Owner link removed from property.");
       await loadData();
     } catch (err: any) {
       setError(err?.message || "Could not save owner for property.");
