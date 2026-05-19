@@ -191,7 +191,6 @@ export async function PATCH(request: NextRequest) {
           category,
           urgency,
           notes,
-          updated_at: new Date().toISOString(),
         })
         .eq("id", flagId)
         .eq("organization_id", organizationId)
@@ -319,7 +318,6 @@ export async function PATCH(request: NextRequest) {
           owner_visible_at: flag.owner_visible_at || nowIso,
           owner_notified_at: nowIso,
           owner_notified_by_profile_id: admin.user.id,
-          updated_at: nowIso,
         })
         .eq("id", flagId)
         .eq("organization_id", organizationId)
