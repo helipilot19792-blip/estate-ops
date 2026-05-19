@@ -5868,20 +5868,34 @@ This removes its linked members and deletes the grounds account.`
     setCreatingMaintenanceFlag(true);
 
     try {
-      const nowIso = new Date().toISOString();
-      const { error } = await supabase.from("property_maintenance_flags").insert({
-        organization_id: currentOrganizationId,
-        property_id: maintenanceFormPropertyId,
-        source: "admin",
-        category: maintenanceFormCategory.trim(),
-        urgency: maintenanceFormUrgency,
-        status: "open",
-        notes: maintenanceFormNotes.trim(),
-        flagged_by_profile_id: currentAdminUserId,
-        flagged_at: nowIso,
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("Please sign in again before creating a maintenance flag.");
+      }
+
+      const response = await fetch("/api/admin/maintenance-flag", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          organizationId: currentOrganizationId,
+          propertyId: maintenanceFormPropertyId,
+          category: maintenanceFormCategory.trim(),
+          urgency: maintenanceFormUrgency,
+          notes: maintenanceFormNotes.trim(),
+        }),
       });
 
-      if (error) throw error;
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(payload?.error || "Could not create maintenance flag.");
+      }
 
       closeMaintenanceModal();
       setActionMessage("Maintenance flag created.");
@@ -5904,16 +5918,31 @@ This removes its linked members and deletes the grounds account.`
     setResolvingMaintenanceFlagId(flagId);
 
     try {
-      const { error } = await supabase
-        .from("property_maintenance_flags")
-        .update({
-          status: "resolved",
-          resolved_at: new Date().toISOString(),
-          resolved_by_profile_id: currentAdminUserId,
-        })
-        .eq("id", flagId);
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-      if (error) throw error;
+      if (!session?.access_token) {
+        throw new Error("Please sign in again before resolving a maintenance flag.");
+      }
+
+      const response = await fetch("/api/admin/maintenance-flag", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          organizationId: currentOrganizationId,
+          flagId,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(payload?.error || "Could not resolve maintenance flag.");
+      }
 
       setActionMessage("Maintenance flag resolved.");
       await loadData();
@@ -5933,8 +5962,31 @@ This removes its linked members and deletes the grounds account.`
     setDeletingMaintenanceFlagId(flagId);
 
     try {
-      const { error } = await supabase.from("property_maintenance_flags").delete().eq("id", flagId);
-      if (error) throw error;
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("Please sign in again before deleting a maintenance flag.");
+      }
+
+      const response = await fetch("/api/admin/maintenance-flag", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          organizationId: currentOrganizationId,
+          flagIds: [flagId],
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(payload?.error || "Could not delete maintenance flag.");
+      }
 
       setActionMessage("Maintenance flag deleted.");
       await loadData();
@@ -5969,8 +6021,31 @@ This removes its linked members and deletes the grounds account.`
     setDeletingResolvedMaintenanceFlags(true);
 
     try {
-      const { error } = await supabase.from("property_maintenance_flags").delete().in("id", resolvedIds);
-      if (error) throw error;
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("Please sign in again before deleting maintenance flags.");
+      }
+
+      const response = await fetch("/api/admin/maintenance-flag", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          organizationId: currentOrganizationId,
+          flagIds: resolvedIds,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(payload?.error || "Could not delete resolved maintenance flags.");
+      }
 
       setActionMessage(`Deleted ${resolvedIds.length} resolved maintenance flag${resolvedIds.length === 1 ? "" : "s"}.`);
       await loadData();
