@@ -334,6 +334,9 @@ type MaintenanceFlagRow = {
   notes?: string | null;
   flagged_by_profile_id?: string | null;
   flagged_at?: string | null;
+  owner_visible_at?: string | null;
+  owner_notified_at?: string | null;
+  owner_notified_by_profile_id?: string | null;
   resolved_at?: string | null;
   resolved_by_profile_id?: string | null;
   created_at?: string | null;
@@ -1037,6 +1040,11 @@ export default function AdminPage() {
   const [creatingMaintenanceFlag, setCreatingMaintenanceFlag] = useState(false);
   const [resolvingMaintenanceFlagId, setResolvingMaintenanceFlagId] = useState<string | null>(null);
   const [deletingMaintenanceFlagId, setDeletingMaintenanceFlagId] = useState<string | null>(null);
+  const [editingMaintenanceFlagId, setEditingMaintenanceFlagId] = useState<string | null>(null);
+  const [notifyingMaintenanceOwnerId, setNotifyingMaintenanceOwnerId] = useState<string | null>(null);
+  const [maintenanceEditCategory, setMaintenanceEditCategory] = useState("");
+  const [maintenanceEditUrgency, setMaintenanceEditUrgency] = useState("normal");
+  const [maintenanceEditNotes, setMaintenanceEditNotes] = useState("");
   const [maintenanceHistoryExpanded, setMaintenanceHistoryExpanded] = useState(false);
   const [deletingResolvedMaintenanceFlags, setDeletingResolvedMaintenanceFlags] = useState(false);
   const [savingInvoiceSettings, setSavingInvoiceSettings] = useState(false);
@@ -5971,6 +5979,121 @@ This removes its linked members and deletes the grounds account.`
       await loadData();
     } finally {
       setCreatingMaintenanceFlag(false);
+    }
+  }
+
+  function startEditingMaintenanceFlag(flag: MaintenanceFlagRow) {
+    setEditingMaintenanceFlagId(flag.id);
+    setMaintenanceEditCategory(flag.category || "");
+    setMaintenanceEditUrgency(flag.urgency || flag.priority || flag.severity || "normal");
+    setMaintenanceEditNotes(flag.notes || "");
+    setError("");
+    setActionMessage("");
+  }
+
+  function cancelEditingMaintenanceFlag() {
+    setEditingMaintenanceFlagId(null);
+    setMaintenanceEditCategory("");
+    setMaintenanceEditUrgency("normal");
+    setMaintenanceEditNotes("");
+  }
+
+  async function saveMaintenanceFlagEdit(flagId: string) {
+    if (!currentOrganizationId) return;
+
+    const category = maintenanceEditCategory.trim();
+    const notes = maintenanceEditNotes.trim();
+
+    if (!category || !notes) {
+      setError("Category and notes are required before saving a maintenance flag.");
+      return;
+    }
+
+    setResolvingMaintenanceFlagId(flagId);
+    setError("");
+    setActionMessage("");
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("Please sign in again before editing a maintenance flag.");
+      }
+
+      const response = await fetch("/api/admin/maintenance-flag", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          action: "update",
+          organizationId: currentOrganizationId,
+          flagId,
+          category,
+          urgency: maintenanceEditUrgency,
+          notes,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || "Could not update maintenance flag.");
+      }
+
+      cancelEditingMaintenanceFlag();
+      setActionMessage("Maintenance flag updated.");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Could not update maintenance flag.");
+    } finally {
+      setResolvingMaintenanceFlagId(null);
+    }
+  }
+
+  async function notifyOwnerAboutMaintenanceFlag(flagId: string) {
+    if (!currentOrganizationId) return;
+
+    setNotifyingMaintenanceOwnerId(flagId);
+    setError("");
+    setActionMessage("");
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("Please sign in again before notifying an owner.");
+      }
+
+      const response = await fetch("/api/admin/maintenance-flag", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          action: "notify_owner",
+          organizationId: currentOrganizationId,
+          flagId,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || "Could not notify owner.");
+      }
+
+      const notified = Number(payload?.notified || 0);
+      setActionMessage(`Owner notification sent to ${notified} recipient${notified === 1 ? "" : "s"}.`);
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Could not notify owner.");
+    } finally {
+      setNotifyingMaintenanceOwnerId(null);
     }
   }
 
@@ -16090,6 +16213,9 @@ This removes its linked members and deletes the grounds account.`
                         urgencyLower.includes("high") ||
                         urgencyLower.includes("urgent") ||
                         urgencyLower.includes("critical");
+                      const isEditing = editingMaintenanceFlagId === flag.id;
+                      const ownerVisible = !!flag.owner_visible_at;
+                      const ownerNotified = !!flag.owner_notified_at;
 
                       const flaggedByName = getProfileDisplayName(flag.flagged_by_profile_id);
                       const resolvedByName = getProfileDisplayName(flag.resolved_by_profile_id);
@@ -16105,6 +16231,9 @@ This removes its linked members and deletes the grounds account.`
                             "notes",
                             "flagged_by_profile_id",
                             "flagged_at",
+                            "owner_visible_at",
+                            "owner_notified_at",
+                            "owner_notified_by_profile_id",
                             "resolved_at",
                             "resolved_by_profile_id",
                             "created_at",
@@ -16149,13 +16278,65 @@ This removes its linked members and deletes the grounds account.`
                                     Source: {flag.source}
                                   </span>
                                 ) : null}
+                                <span
+                                  className={`inline-flex rounded-full border bg-white px-2.5 py-0.5 text-[11px] font-medium ${
+                                    ownerVisible
+                                      ? "border-[#bbdfc0] text-[#236b30]"
+                                      : "border-[#d8c7ab] text-[#7f7263]"
+                                  }`}
+                                >
+                                  {ownerVisible ? "Owner visible" : "Admin review"}
+                                </span>
+                                {ownerNotified ? (
+                                  <span className="inline-flex rounded-full border border-[#bfdbfe] bg-white px-2.5 py-0.5 text-[11px] font-medium text-[#2957a4]">
+                                    Owner emailed
+                                  </span>
+                                ) : null}
                               </div>
 
                               <div className="mt-2 text-sm text-[#6f6255]">
                                 {getPropertyName(flag.property_id ?? null)}
                               </div>
 
-                              {flag.notes ? (
+                              {isEditing ? (
+                                <div className="mt-4 grid gap-3 rounded-[18px] border border-[#eadfce] bg-white p-3 md:grid-cols-2">
+                                  <label className="text-xs font-medium text-[#5f5245]">
+                                    Category
+                                    <select
+                                      className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                                      value={maintenanceEditCategory}
+                                      onChange={(e) => setMaintenanceEditCategory(e.target.value)}
+                                    >
+                                      <option value="">Select category</option>
+                                      {MAINTENANCE_CATEGORY_OPTIONS.map((option) => (
+                                        <option key={option} value={option}>
+                                          {option}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                  <label className="text-xs font-medium text-[#5f5245]">
+                                    Urgency
+                                    <select
+                                      className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                                      value={maintenanceEditUrgency}
+                                      onChange={(e) => setMaintenanceEditUrgency(e.target.value)}
+                                    >
+                                      <option value="low">Low</option>
+                                      <option value="normal">Normal</option>
+                                      <option value="urgent">Urgent</option>
+                                    </select>
+                                  </label>
+                                  <label className="text-xs font-medium text-[#5f5245] md:col-span-2">
+                                    Notes
+                                    <textarea
+                                      className="mt-1 min-h-[110px] w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                                      value={maintenanceEditNotes}
+                                      onChange={(e) => setMaintenanceEditNotes(e.target.value)}
+                                    />
+                                  </label>
+                                </div>
+                              ) : flag.notes ? (
                                 <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[#5f5245]">
                                   {flag.notes}
                                 </div>
@@ -16227,6 +16408,48 @@ This removes its linked members and deletes the grounds account.`
                               </div>
 
                               <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
+                                {isEditing ? (
+                                  <>
+                                    <button
+                                      className="rounded-[16px] bg-[#241c15] px-4 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60"
+                                      onClick={() => void saveMaintenanceFlagEdit(flag.id)}
+                                      disabled={resolvingMaintenanceFlagId === flag.id || deletingMaintenanceFlagId === flag.id}
+                                    >
+                                      {resolvingMaintenanceFlagId === flag.id ? "Saving..." : "Save edits"}
+                                    </button>
+                                    <button
+                                      className="rounded-[16px] border border-[#d8c7ab] bg-white px-4 py-2.5 text-sm font-medium text-[#6f6255] transition hover:bg-[#f7f3ee] disabled:opacity-60"
+                                      onClick={cancelEditingMaintenanceFlag}
+                                      disabled={resolvingMaintenanceFlagId === flag.id || deletingMaintenanceFlagId === flag.id}
+                                    >
+                                      Cancel edit
+                                    </button>
+                                  </>
+                                ) : (
+                                  <button
+                                    className="rounded-[16px] border border-[#d8c7ab] bg-white px-4 py-2.5 text-sm font-medium text-[#6f6255] transition hover:bg-[#f7f3ee] disabled:opacity-60"
+                                    onClick={() => startEditingMaintenanceFlag(flag)}
+                                    disabled={deletingMaintenanceFlagId === flag.id || resolvingMaintenanceFlagId === flag.id}
+                                  >
+                                    Edit before owner
+                                  </button>
+                                )}
+                                <button
+                                  className="rounded-[16px] border border-[#bfdbfe] bg-[#eff6ff] px-4 py-2.5 text-sm font-medium text-[#2957a4] transition hover:bg-[#dbeafe] disabled:opacity-60"
+                                  onClick={() => void notifyOwnerAboutMaintenanceFlag(flag.id)}
+                                  disabled={
+                                    notifyingMaintenanceOwnerId === flag.id ||
+                                    deletingMaintenanceFlagId === flag.id ||
+                                    resolvingMaintenanceFlagId === flag.id ||
+                                    isEditing
+                                  }
+                                >
+                                  {notifyingMaintenanceOwnerId === flag.id
+                                    ? "Sending..."
+                                    : ownerNotified
+                                      ? "Email owner again"
+                                      : "Notify owner"}
+                                </button>
                                 {!isResolved ? (
                                   <button
                                     className="rounded-[16px] bg-[#241c15] px-4 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60"
@@ -16313,6 +16536,9 @@ This removes its linked members and deletes the grounds account.`
                               "notes",
                               "flagged_by_profile_id",
                               "flagged_at",
+                              "owner_visible_at",
+                              "owner_notified_at",
+                              "owner_notified_by_profile_id",
                               "resolved_at",
                               "resolved_by_profile_id",
                               "created_at",

@@ -139,6 +139,8 @@ type MaintenanceFlag = {
   urgency?: string | null;
   status?: string | null;
   notes?: string | null;
+  owner_visible_at?: string | null;
+  owner_notified_at?: string | null;
   created_at?: string | null;
   flagged_at?: string | null;
   resolved_at?: string | null;
@@ -1210,8 +1212,9 @@ export default function OwnerPage() {
         .eq("owner_account_id", ownerRes.id),
       supabase
         .from("property_maintenance_flags")
-        .select("id,property_id,source,category,urgency,status,notes,created_at,flagged_at,resolved_at")
+        .select("id,property_id,source,category,urgency,status,notes,owner_visible_at,owner_notified_at,created_at,flagged_at,resolved_at")
         .in("property_id", propertyIds)
+        .or("source.eq.owner,owner_visible_at.not.is.null")
         .order("created_at", { ascending: false }),
       supabase
         .from("property_maintenance_flag_images")
