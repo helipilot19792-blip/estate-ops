@@ -28,6 +28,15 @@ function getBookingSourceLabel(source?: string | null) {
   return normalized.toUpperCase();
 }
 
+function formatGuestCountLabel(guestCount?: number | null) {
+  const count = Number(guestCount);
+  if (Number.isFinite(count) && count > 0) {
+    return `${count} guest${count === 1 ? "" : "s"}`;
+  }
+
+  return "Number of guests unknown";
+}
+
 type Property = {
   id: string;
   organization_id?: string | null;
@@ -6960,7 +6969,7 @@ This removes its linked members and deletes the grounds account.`
         const property = propertyById.get(event.property_id);
         const guestCount = Number.isFinite(Number(event.guest_count)) ? Number(event.guest_count) : null;
         const sourceLabel = getBookingSourceLabel(event.source);
-        const guestDetail = guestCount ? `${guestCount} guest${guestCount === 1 ? "" : "s"}` : "Guests unknown";
+        const guestDetail = formatGuestCountLabel(guestCount);
         const summary = event.summary?.trim();
 
         return {
@@ -8478,7 +8487,7 @@ This removes its linked members and deletes the grounds account.`
                         </div>
                         <div className="shrink-0 text-left text-sm">
                           <p className="font-semibold text-[#20432f]">
-                            {item.guestCount ? `${item.guestCount} guest${item.guestCount === 1 ? "" : "s"}` : "Guests unknown"}
+                            {formatGuestCountLabel(item.guestCount)}
                           </p>
                           <p className="mt-1 text-xs font-medium text-[#5d7767]">
                             Out {formatDateLabel(item.checkoutDate)}

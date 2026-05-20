@@ -193,10 +193,23 @@ function parseGuestCountFromText(...values: Array<string | null | undefined>): n
   const text = values.filter(Boolean).join("\n");
   if (!text.trim()) return null;
 
+  const adultCount = text.match(/\badults?\s*[:=-]?\s*(\d{1,2})\b/i) ?? text.match(/\b(\d{1,2})\s*adults?\b/i);
+  const childCount =
+    text.match(/\b(?:children|child|kids?)\s*[:=-]?\s*(\d{1,2})\b/i) ??
+    text.match(/\b(\d{1,2})\s*(?:children|child|kids?)\b/i);
+  const infantCount =
+    text.match(/\binfants?\s*[:=-]?\s*(\d{1,2})\b/i) ??
+    text.match(/\b(\d{1,2})\s*infants?\b/i);
+  const groupedCount =
+    Number(adultCount?.[1] || 0) + Number(childCount?.[1] || 0) + Number(infantCount?.[1] || 0);
+
+  if (groupedCount > 0 && groupedCount < 100) {
+    return groupedCount;
+  }
+
   const patterns = [
     /\b(?:guests?|guest count|number of guests|party size|occupants?|people)\s*[:=-]?\s*(\d{1,2})\b/i,
     /\b(\d{1,2})\s*(?:guests?|people|occupants?)\b/i,
-    /\badults?\s*[:=-]?\s*(\d{1,2})\b/i,
   ];
 
   for (const pattern of patterns) {
