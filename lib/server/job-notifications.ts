@@ -1,10 +1,12 @@
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
+import { sendStaffPushNotifications } from "@/lib/server/staff-push-notifications";
 
 export type JobNotificationKind = "cleaner" | "grounds";
 type JobNotificationMode = "offer" | "offer_reminder" | "day_of";
 
 type Recipient = {
+  profileId: string | null;
   email: string;
   name: string | null;
 };
@@ -20,6 +22,9 @@ type SlotBundle = {
   offerEmailSentAt: string | null;
   offerReminderSentAt: string | null;
   dayOfReminderSentAt: string | null;
+  offerPushSentAt: string | null;
+  offerReminderPushSentAt: string | null;
+  dayOfReminderPushSentAt: string | null;
   propertyName: string;
   propertyAddress: string | null;
   jobDate: string | null;
@@ -171,6 +176,17 @@ function getSentColumn(mode: JobNotificationMode) {
   }
 }
 
+function getPushSentColumn(mode: JobNotificationMode) {
+  switch (mode) {
+    case "offer":
+      return "offer_push_sent_at";
+    case "offer_reminder":
+      return "offer_reminder_push_sent_at";
+    case "day_of":
+      return "day_of_reminder_push_sent_at";
+  }
+}
+
 async function loadRecipients(
   service: ReturnType<typeof getServiceClient>,
   kind: JobNotificationKind,
@@ -207,6 +223,7 @@ async function loadRecipients(
       const email = String(profile.email || "").trim().toLowerCase();
       if (!email) continue;
       recipients.set(email, {
+        profileId: profile.id,
         email,
         name: profile.full_name || null,
       });
@@ -216,6 +233,7 @@ async function loadRecipients(
   const normalizedAccountEmail = String(accountEmail || "").trim().toLowerCase();
   if (normalizedAccountEmail && !recipients.has(normalizedAccountEmail)) {
     recipients.set(normalizedAccountEmail, {
+      profileId: null,
       email: normalizedAccountEmail,
       name: accountLabel || null,
     });
@@ -235,8 +253,8 @@ async function loadSlotBundle(
 
   const slotSelect =
     kind === "cleaner"
-      ? `id, job_id, ${accountIdColumn}, status, offered_at, accepted_at, expires_at, offer_email_sent_at, offer_reminder_sent_at, day_of_reminder_sent_at`
-      : `id, job_id, ${accountIdColumn}, status, offered_at, accepted_at, expires_at, offer_email_sent_at, offer_reminder_sent_at, day_of_reminder_sent_at`;
+      ? `id, job_id, ${accountIdColumn}, status, offered_at, accepted_at, expires_at, offer_email_sent_at, offer_reminder_sent_at, day_of_reminder_sent_at, offer_push_sent_at, offer_reminder_push_sent_at, day_of_reminder_push_sent_at`
+      : `id, job_id, ${accountIdColumn}, status, offered_at, accepted_at, expires_at, offer_email_sent_at, offer_reminder_sent_at, day_of_reminder_sent_at, offer_push_sent_at, offer_reminder_push_sent_at, day_of_reminder_push_sent_at`;
 
   const { data: slot, error: slotError } = await (service
     .from(slotTable as any)
@@ -297,6 +315,9 @@ async function loadSlotBundle(
       offerEmailSentAt: slot.offer_email_sent_at || null,
       offerReminderSentAt: slot.offer_reminder_sent_at || null,
       dayOfReminderSentAt: slot.day_of_reminder_sent_at || null,
+      offerPushSentAt: slot.offer_push_sent_at || null,
+      offerReminderPushSentAt: slot.offer_reminder_push_sent_at || null,
+      dayOfReminderPushSentAt: slot.day_of_reminder_push_sent_at || null,
       propertyName: property.name || property.address || "Property",
       propertyAddress: property.address || null,
       jobDate: getCleanerJobDate(job),
@@ -335,6 +356,9 @@ async function loadSlotBundle(
     offerEmailSentAt: slot.offer_email_sent_at || null,
     offerReminderSentAt: slot.offer_reminder_sent_at || null,
     dayOfReminderSentAt: slot.day_of_reminder_sent_at || null,
+    offerPushSentAt: slot.offer_push_sent_at || null,
+    offerReminderPushSentAt: slot.offer_reminder_push_sent_at || null,
+    dayOfReminderPushSentAt: slot.day_of_reminder_push_sent_at || null,
     propertyName: property.name || property.address || "Property",
     propertyAddress: property.address || null,
     jobDate: job.scheduled_for || null,
@@ -437,14 +461,42 @@ async function sendNotificationEmail(
   };
 }
 
+async function sendNotificationPush(
+  bundle: SlotBundle,
+  mode: JobNotificationMode,
+  origin: string
+) {
+  const emailCopy = buildEmailCopy(bundle, mode, origin);
+  const profileIds = bundle.recipients
+    .map((recipient) => recipient.profileId)
+    .filter((profileId): profileId is string => Boolean(profileId));
+
+  if (profileIds.length === 0) {
+    return { successCount: 0, failures: [] as string[] };
+  }
+
+  const result = await sendStaffPushNotifications(bundle.kind, profileIds, {
+    title: emailCopy.subject,
+    body: `${emailCopy.propertyLine} - ${emailCopy.dateLabel}`,
+    url: emailCopy.portalUrl,
+    tag: `${bundle.kind}-${mode}-${bundle.slotId}`,
+  });
+
+  return {
+    successCount: result.sent,
+    failures: result.errors,
+  };
+}
+
 async function markNotificationSent(
   service: ReturnType<typeof getServiceClient>,
   kind: JobNotificationKind,
   slotId: string,
-  mode: JobNotificationMode
+  mode: JobNotificationMode,
+  channel: "email" | "push" = "email"
 ) {
   const slotTable = getSlotTable(kind);
-  const sentColumn = getSentColumn(mode);
+  const sentColumn = channel === "email" ? getSentColumn(mode) : getPushSentColumn(mode);
 
   const { error } = await (service
     .from(slotTable as any)
@@ -494,6 +546,7 @@ export async function sendJobOfferEmailsForSlots(
   const uniqueSlotIds = [...new Set(slotIds.filter(Boolean))];
 
   let sent = 0;
+  let pushSent = 0;
   let skipped = 0;
   const errors: string[] = [];
 
@@ -519,21 +572,35 @@ export async function sendJobOfferEmailsForSlots(
         continue;
       }
 
-      if (bundle.offerEmailSentAt) {
+      const needsEmail = !bundle.offerEmailSentAt;
+      const needsPush = !bundle.offerPushSentAt;
+
+      if (!needsEmail && !needsPush) {
         skipped += 1;
         continue;
       }
 
-      const result = await sendNotificationEmail(bundle, "offer", origin);
-      if (result.failures.length > 0) {
-        errors.push(...result.failures);
-      }
-      if (result.successCount <= 0) {
-        continue;
+      if (needsEmail) {
+        const result = await sendNotificationEmail(bundle, "offer", origin);
+        if (result.failures.length > 0) {
+          errors.push(...result.failures);
+        }
+        if (result.successCount > 0) {
+          await markNotificationSent(service, kind, slotId, "offer", "email");
+          sent += result.successCount;
+        }
       }
 
-      await markNotificationSent(service, kind, slotId, "offer");
-      sent += result.successCount;
+      if (needsPush) {
+        const result = await sendNotificationPush(bundle, "offer", origin);
+        if (result.failures.length > 0) {
+          errors.push(...result.failures);
+        }
+        if (result.successCount > 0) {
+          await markNotificationSent(service, kind, slotId, "offer", "push");
+          pushSent += result.successCount;
+        }
+      }
     } catch (error) {
       errors.push(error instanceof Error ? error.message : "Unknown notification error.");
     }
@@ -541,6 +608,7 @@ export async function sendJobOfferEmailsForSlots(
 
   return {
     sent,
+    pushSent,
     skipped,
     errors,
   };
@@ -555,20 +623,21 @@ async function runSlotNotificationSweep(
   const slotTable = getSlotTable(kind);
   const accountIdColumn = getAccountIdColumn(kind);
   const sentColumn = getSentColumn(mode);
+  const pushSentColumn = getPushSentColumn(mode);
 
   let query = service
     .from(slotTable as any)
     .select(
-      `id,status,offered_at,accepted_at,expires_at,offer_email_sent_at,offer_reminder_sent_at,day_of_reminder_sent_at,${accountIdColumn}`
+      `id,status,offered_at,accepted_at,expires_at,offer_email_sent_at,offer_reminder_sent_at,day_of_reminder_sent_at,offer_push_sent_at,offer_reminder_push_sent_at,day_of_reminder_push_sent_at,${accountIdColumn}`
     )
     .not(accountIdColumn, "is", null);
 
   if (mode === "offer") {
-    query = query.eq("status", "offered").is("offer_email_sent_at", null);
+    query = query.eq("status", "offered");
   } else if (mode === "offer_reminder") {
-    query = query.eq("status", "offered").is("offer_reminder_sent_at", null).not("offered_at", "is", null);
+    query = query.eq("status", "offered").not("offered_at", "is", null);
   } else {
-    query = query.eq("status", "accepted").is("day_of_reminder_sent_at", null);
+    query = query.eq("status", "accepted");
   }
 
   const { data: rows, error } = await query as any;
@@ -578,12 +647,12 @@ async function runSlotNotificationSweep(
   }
 
   let sent = 0;
+  let pushSent = 0;
   let considered = 0;
   const errors: string[] = [];
 
   for (const row of rows ?? []) {
-    if (mode === "offer" && row.offer_email_sent_at) continue;
-    if (mode !== "offer" && row[sentColumn]) continue;
+    if (row[sentColumn] && row[pushSentColumn]) continue;
 
     const bundle = await loadSlotBundle(service, kind, row.id);
     if (!bundle) continue;
@@ -598,16 +667,27 @@ async function runSlotNotificationSweep(
     considered += 1;
 
     try {
-      const result = await sendNotificationEmail(bundle, mode, origin);
-      if (result.failures.length > 0) {
-        errors.push(...result.failures);
-      }
-      if (result.successCount <= 0) {
-        continue;
+      if (!row[sentColumn]) {
+        const result = await sendNotificationEmail(bundle, mode, origin);
+        if (result.failures.length > 0) {
+          errors.push(...result.failures);
+        }
+        if (result.successCount > 0) {
+          await markNotificationSent(service, kind, row.id, mode, "email");
+          sent += result.successCount;
+        }
       }
 
-      await markNotificationSent(service, kind, row.id, mode);
-      sent += result.successCount;
+      if (!row[pushSentColumn]) {
+        const result = await sendNotificationPush(bundle, mode, origin);
+        if (result.failures.length > 0) {
+          errors.push(...result.failures);
+        }
+        if (result.successCount > 0) {
+          await markNotificationSent(service, kind, row.id, mode, "push");
+          pushSent += result.successCount;
+        }
+      }
     } catch (sweepError) {
       errors.push(sweepError instanceof Error ? sweepError.message : "Unknown notification error.");
     }
@@ -616,6 +696,7 @@ async function runSlotNotificationSweep(
   return {
     considered,
     sent,
+    pushSent,
     errors,
   };
 }

@@ -7,6 +7,7 @@ import { trackFeatureUsage } from "@/lib/feature-usage";
 import PortalChat from "@/components/chat/portalchat";
 import CleanerDesktopView from "@/components/cleaner/cleanerdesktopview";
 import CleanerMobileView from "@/components/cleaner/cleanermobileview";
+import PushNotificationControl from "@/components/cleaner/pushnotificationcontrol";
 
 type Profile = {
   id: string;
@@ -1452,6 +1453,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
   return (
     <>
       {shellView}
+      {profile ? <PushNotificationControl /> : null}
       {profile && chatUnreadCount > 0 ? (
         <button
           type="button"
