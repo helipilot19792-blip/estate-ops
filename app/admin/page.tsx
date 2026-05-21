@@ -87,6 +87,7 @@ const QUIRKY_SYNCING_COPY = [
 ];
 
 const SHOW_ADMIN_TOP_BANNER = false;
+const SHOW_ADMIN_TOP_OVERVIEW = false;
 
 type Property = {
   id: string;
@@ -17638,36 +17639,38 @@ This removes its linked members and deletes the grounds account.`
         </aside>
 
         <div className="min-w-0">
-        {SHOW_ADMIN_TOP_BANNER ? (
+        {SHOW_ADMIN_TOP_BANNER || !SHOW_ADMIN_TOP_OVERVIEW ? (
         <div className="admin-premium-surface mb-6 overflow-hidden rounded-[28px] border">
-          <div className="relative overflow-hidden px-6 py-7 md:px-8 md:py-8">
+          <div className="relative overflow-hidden px-5 py-5 md:px-6 md:py-5">
             <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(240,249,255,0.96)_0%,rgba(240,253,244,0.82)_50%,rgba(255,247,237,0.92)_100%)]" aria-hidden="true" />
-            <div className="absolute right-0 top-0 h-36 w-72 rounded-bl-[80px] bg-[#bae6fd]/35" aria-hidden="true" />
-            <div className="relative flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-              <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-                <div className="admin-brand-orb flex h-[116px] w-[172px] shrink-0 items-center justify-center rounded-[26px] border border-white/80 px-5 shadow-[0_18px_45px_rgba(15,23,42,0.12)]">
+            <div className="absolute right-0 top-0 h-24 w-56 rounded-bl-[70px] bg-[#bae6fd]/30" aria-hidden="true" />
+            <div className="relative flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-center">
+                <div className="admin-brand-orb flex h-[74px] w-[118px] shrink-0 items-center justify-center rounded-[22px] border border-white/80 px-4 shadow-[0_14px_30px_rgba(15,23,42,0.10)]">
                   <Image
                     src="/guleraoslogo.png"
                     alt="GuleraOS"
                     width={300}
                     height={100}
-                    className="h-auto w-full max-w-[132px]"
+                    className="h-auto w-full max-w-[92px]"
                     priority
                   />
                 </div>
-                <div className="max-w-3xl">
+                <div className="min-w-0">
                   <div className="admin-kicker text-xs font-semibold uppercase text-[#0f766e]">GULERAOS</div>
                   <div className="mt-1 inline-flex max-w-full items-center rounded-full border border-[#cbd5e1] bg-white/85 px-3 py-1 text-sm font-semibold text-[#334155] shadow-sm">
                     <span className="mr-1 text-[#64748b]">Company:</span>
                     <span className="truncate">{currentOrganizationLabel}</span>
                   </div>
-                  <h1 className="mt-2 text-3xl font-semibold tracking-tight text-[#17202a] md:text-5xl">
+                  <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[#17202a] md:text-3xl">
                     Property operations, elevated.
                   </h1>
-                  <p className="mt-3 max-w-2xl text-sm leading-6 text-[#475569] md:text-base">
+                  {SHOW_ADMIN_TOP_BANNER ? (
+                    <>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-[#475569] md:text-base">
                     Staffing, scheduling, maintenance, billing, and owner communication in one focused workspace.
                   </p>
-                  <div className="mt-4 flex flex-wrap gap-2">
+                  <div className="mt-3 flex flex-wrap gap-2">
                     <span className="rounded-full border border-[#bae6fd] bg-white/80 px-3 py-1 text-xs font-semibold text-[#0369a1]">
                       Live operations
                     </span>
@@ -17678,6 +17681,8 @@ This removes its linked members and deletes the grounds account.`
                       {notificationCenterCount} alerts
                     </span>
                   </div>
+                    </>
+                  ) : null}
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-3">
@@ -17749,7 +17754,7 @@ This removes its linked members and deletes the grounds account.`
             </button>
           </div>
 
-          {activeSection === "home" ? (
+          {SHOW_ADMIN_TOP_OVERVIEW && activeSection === "home" ? (
             <div className="grid gap-3 border-t border-[#e2e8f0] bg-white/72 px-6 py-4 md:grid-cols-[minmax(0,1.15fr)_minmax(240px,0.9fr)_minmax(210px,0.55fr)] md:px-8">
               <div className="rounded-[20px] border border-[#bfdbfe] bg-[#f8fbff] px-4 py-4 shadow-sm">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -17861,7 +17866,7 @@ This removes its linked members and deletes the grounds account.`
                 </div>
               </div>
             </div>
-          ) : (
+          ) : SHOW_ADMIN_TOP_OVERVIEW ? (
             <div className={`${showMobileWorkspaceStats ? "grid" : "hidden"} gap-3 border-t border-[#e2e8f0] bg-white/72 px-6 py-4 sm:grid-cols-2 md:grid md:grid-cols-4 xl:grid-cols-8 md:px-8`}>
               {[
                 { label: "Properties", value: properties.length, tone: "border-[#bae6fd] bg-[#f0f9ff]" },
@@ -17879,7 +17884,7 @@ This removes its linked members and deletes the grounds account.`
                 </div>
               ))}
             </div>
-          )}
+          ) : null}
         </div>
         ) : null}
 
