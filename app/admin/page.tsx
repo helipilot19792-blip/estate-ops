@@ -7957,6 +7957,23 @@ This removes its linked members and deletes the grounds account.`
     return "Unknown user";
   }
 
+  async function notifyChatPush(messageId: string) {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session?.access_token) return;
+
+    await fetch("/api/chat/push", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ messageId }),
+    }).catch(() => null);
+  }
+
   function renderAdminNavigation(orientation: AdminMenuOrientation = "side") {
     const isTop = orientation === "top";
 
@@ -9565,15 +9582,20 @@ This removes its linked members and deletes the grounds account.`
       const { error: participantsError } = await supabase.from("chat_participants").insert(participants);
       if (participantsError) throw participantsError;
 
-      const { error: messageError } = await supabase.from("chat_messages").insert({
-        organization_id: currentOrganizationId,
-        conversation_id: conversation.id,
-        sender_profile_id: currentAdminUserId,
-        body,
-      });
+      const { data: insertedMessage, error: messageError } = await supabase
+        .from("chat_messages")
+        .insert({
+          organization_id: currentOrganizationId,
+          conversation_id: conversation.id,
+          sender_profile_id: currentAdminUserId,
+          body,
+        })
+        .select("id")
+        .single();
 
       if (messageError) throw messageError;
 
+      if (insertedMessage?.id) void notifyChatPush(insertedMessage.id);
       setSelectedChatConversationId(conversation.id);
       setChatRecipientTarget("");
       setChatSubject("");
@@ -9609,15 +9631,20 @@ This removes its linked members and deletes the grounds account.`
     setActionMessage("");
 
     try {
-      const { error: messageError } = await supabase.from("chat_messages").insert({
-        organization_id: currentOrganizationId,
-        conversation_id: activeConversation.id,
-        sender_profile_id: currentAdminUserId,
-        body,
-      });
+      const { data: insertedMessage, error: messageError } = await supabase
+        .from("chat_messages")
+        .insert({
+          organization_id: currentOrganizationId,
+          conversation_id: activeConversation.id,
+          sender_profile_id: currentAdminUserId,
+          body,
+        })
+        .select("id")
+        .single();
 
       if (messageError) throw messageError;
 
+      if (insertedMessage?.id) void notifyChatPush(insertedMessage.id);
       setChatReplyBody("");
       setActionMessage("Chat reply sent.");
       await loadData();

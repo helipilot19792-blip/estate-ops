@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 import { createInvoicePdfBuffer } from "@/lib/server/invoice-pdf";
+import { sendStaffPushNotifications } from "@/lib/server/staff-push-notifications";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const publicSupabaseKey =
@@ -173,7 +174,7 @@ export async function POST(request: NextRequest) {
 
     const { data: owner, error: ownerError } = await service
       .from("owner_accounts")
-      .select("id, email, full_name")
+      .select("id, email, full_name, profile_id")
       .eq("id", invoice.owner_account_id)
       .maybeSingle();
 
@@ -362,7 +363,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: updateError.message }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, id: result.data?.id ?? null });
+    const pushResult = owner.profile_id
+      ? await sendStaffPushNotifications("owner", [owner.profile_id], {
+          title: `${documentLabel} ${invoice.invoice_number} is ready`,
+          body: `${property?.name || property?.address || "Owner portal"} - ${formatCurrency(invoice.total)}`,
+          url: "/owner?tab=invoices",
+          tag: `owner-invoice-${invoice.id}`,
+        })
+      : { sent: 0, skipped: 1, errors: [] as string[] };
+
+    return NextResponse.json({
+      success: true,
+      id: result.data?.id ?? null,
+      pushSent: pushResult.sent,
+      pushErrors: pushResult.errors,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error.";
     return NextResponse.json({ error: message }, { status: 500 });

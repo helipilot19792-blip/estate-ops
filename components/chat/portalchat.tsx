@@ -94,6 +94,23 @@ function getErrorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
+async function notifyChatPush(messageId: string) {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session?.access_token) return;
+
+  await fetch("/api/chat/push", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ messageId }),
+  }).catch(() => null);
+}
+
 export default function PortalChat({
   participant,
   title = "Chat",
@@ -452,16 +469,21 @@ export default function PortalChat({
     setError("");
 
     try {
-      const { error: insertError } = await supabase.from("chat_messages").insert({
-        organization_id: selectedConversation.organization_id,
-        conversation_id: selectedConversation.id,
-        sender_profile_id: ownProfileId,
-        body,
-      });
+      const { data: insertedMessage, error: insertError } = await supabase
+        .from("chat_messages")
+        .insert({
+          organization_id: selectedConversation.organization_id,
+          conversation_id: selectedConversation.id,
+          sender_profile_id: ownProfileId,
+          body,
+        })
+        .select("id")
+        .single();
 
       if (insertError) throw insertError;
 
       setReplyBody("");
+      if (insertedMessage?.id) void notifyChatPush(insertedMessage.id);
       await loadChat();
     } catch (err) {
       setError(getErrorMessage(err, "Could not send chat reply."));
