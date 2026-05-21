@@ -291,12 +291,16 @@ export default function PortalInstallControl({
   const showIOSInstallHint = isIOS && !isStandalone;
   const canShowPush = enablePush && status !== "checking";
   const canTogglePush = canShowPush && status !== "unsupported" && status !== "disabled";
+  const isActive = status === "active";
+
+  if (isActive) {
+    return null;
+  }
 
   if (!canOfferInstall && !canShowPush) {
     return null;
   }
 
-  const isActive = status === "active";
   const isBusy = status === "saving";
   const titleText = isActive
     ? "Alerts on"
