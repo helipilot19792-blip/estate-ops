@@ -14,10 +14,12 @@ export async function GET(req: NextRequest) {
   const requestUrl = new URL(req.url);
 
   const code = requestUrl.searchParams.get("code");
+  const tokenHash = requestUrl.searchParams.get("token_hash");
+  const tokenType = requestUrl.searchParams.get("type") || "email";
   const next = getSafeNextPath(requestUrl.searchParams.get("next"));
 
-  if (!code) {
-    console.warn("[auth/confirm] missing code", { next });
+  if (!code && !tokenHash) {
+    console.warn("[auth/confirm] missing code or token_hash", { next });
     return NextResponse.redirect(new URL("/login?error=missing_code", req.url));
   }
 
@@ -32,7 +34,7 @@ export async function GET(req: NextRequest) {
   }
 
   const redirectTo = new URL(next, req.url);
-  let response = NextResponse.redirect(redirectTo);
+  const response = NextResponse.redirect(redirectTo);
 
   const supabase = createServerClient(supabaseUrl, anonKey, {
     cookies: {
@@ -47,7 +49,12 @@ export async function GET(req: NextRequest) {
     },
   });
 
-  const { error } = await supabase.auth.exchangeCodeForSession(code);
+  const { error } = code
+    ? await supabase.auth.exchangeCodeForSession(code)
+    : await supabase.auth.verifyOtp({
+        token_hash: tokenHash!,
+        type: tokenType as any,
+      });
 
   if (error) {
     console.error("[auth/confirm] code exchange failed", {

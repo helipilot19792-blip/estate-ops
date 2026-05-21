@@ -2,9 +2,9 @@
 
 import Image from "next/image";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { PASSWORD_REQUIREMENTS, validatePassword } from "@/lib/password-policy";
 import { supabase } from "@/lib/supabase";
-import { useRouter } from "next/navigation";
 
 export default function ResetPasswordPage() {
   const router = useRouter();
@@ -13,55 +13,76 @@ export default function ResetPasswordPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [initializing, setInitializing] = useState(true);
 
-  // 🔥 FIXED TOKEN HANDLING
   useEffect(() => {
     async function initResetSession() {
       setError("");
 
       try {
-        const hash = window.location.hash.replace("#", "");
-        const params = new URLSearchParams(hash);
+        const url = new URL(window.location.href);
+        const queryParams = url.searchParams;
+        const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
 
-        const accessToken = params.get("access_token");
-        const refreshToken = params.get("refresh_token");
+        const code = queryParams.get("code");
+        const tokenHash = queryParams.get("token_hash");
+        const tokenType = queryParams.get("type") || "recovery";
+        const accessToken = hashParams.get("access_token");
+        const refreshToken = hashParams.get("refresh_token");
 
-        // ✅ DO NOT CHECK "type" — this was breaking your flow
-        if (accessToken && refreshToken) {
-          const { error } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
-          });
-
+        if (code) {
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
           if (error) {
             setError(error.message);
             setInitializing(false);
             return;
           }
+        } else if (tokenHash) {
+          const { error } = await supabase.auth.verifyOtp({
+            token_hash: tokenHash,
+            type: tokenType as any,
+          });
+          if (error) {
+            setError(error.message);
+            setInitializing(false);
+            return;
+          }
+        } else if (accessToken && refreshToken) {
+          const { error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+          if (error) {
+            setError(error.message);
+            setInitializing(false);
+            return;
+          }
+        } else {
+          const {
+            data: { session },
+          } = await supabase.auth.getSession();
 
-          // stabilize session
-          await supabase.auth.getUser();
-
-          // clean URL
-          window.history.replaceState({}, document.title, "/auth/reset");
-
-          setInitializing(false);
-          return;
+          if (!session) {
+            setError("Reset link is invalid or expired. Please request a new password reset email from the login page.");
+            setInitializing(false);
+            return;
+          }
         }
 
-        // fallback check
         const {
           data: { session },
         } = await supabase.auth.getSession();
 
         if (!session) {
-          setError("Reset link is invalid or expired. Please request a new password reset email.");
+          setError("Reset session could not be prepared. Please request a new password reset email from the login page.");
+          setInitializing(false);
+          return;
         }
+
+        window.history.replaceState({}, document.title, "/auth/reset");
       } catch (err: any) {
         setError(err?.message || "Could not initialize reset session.");
       } finally {
@@ -69,7 +90,7 @@ export default function ResetPasswordPage() {
       }
     }
 
-    initResetSession();
+    void initResetSession();
   }, []);
 
   async function handleResetPassword(e: React.FormEvent) {
@@ -91,9 +112,7 @@ export default function ResetPasswordPage() {
     setLoading(true);
 
     try {
-      const { error } = await supabase.auth.updateUser({
-        password,
-      });
+      const { error } = await supabase.auth.updateUser({ password });
 
       if (error) {
         setError(error.message);
@@ -101,8 +120,7 @@ export default function ResetPasswordPage() {
       }
 
       setMessage("Password updated successfully. Redirecting to login...");
-
-      setTimeout(() => {
+      window.setTimeout(() => {
         router.push("/login");
       }, 1500);
     } finally {
@@ -114,8 +132,6 @@ export default function ResetPasswordPage() {
     <main className="min-h-screen bg-[#f7f3ee] text-[#241c15]">
       <div className="mx-auto flex min-h-screen max-w-6xl items-center p-4 md:p-6">
         <div className="grid w-full overflow-hidden rounded-[34px] border border-[#e7ddd0] bg-white shadow-[0_30px_70px_rgba(0,0,0,0.08)] lg:grid-cols-2">
-          
-          {/* LEFT SIDE */}
           <section className="bg-[linear-gradient(135deg,#1f1812_0%,#2a2119_55%,#3a2c1d_100%)] px-6 py-8 text-white md:px-10 md:py-12">
             <div className="max-w-md">
               <div className="mb-6">
@@ -128,70 +144,87 @@ export default function ResetPasswordPage() {
                   priority
                 />
               </div>
-
               <div className="mb-2 text-xs uppercase tracking-[0.32em] text-[#d8c7ab]">
                 Luxury Operations Portal
               </div>
-
-              <h1 className="text-3xl font-semibold md:text-4xl">
-                Reset Password
-              </h1>
-
+              <h1 className="text-3xl font-semibold md:text-4xl">Reset Password</h1>
               <p className="mt-4 text-sm text-[#e7dccb]">
                 Enter your new password below to regain access.
               </p>
             </div>
           </section>
 
-          {/* RIGHT SIDE */}
           <section className="bg-white px-6 py-8 md:px-10 md:py-12">
             <div className="mx-auto max-w-xl">
-
-              {error && (
+              {error ? (
                 <div className="mb-4 rounded-[20px] border border-[#e7c6c1] bg-[#fff4f2] px-4 py-3 text-sm text-[#8a2e22]">
                   {error}
                 </div>
-              )}
+              ) : null}
 
-              {message && (
+              {message ? (
                 <div className="mb-4 rounded-[20px] border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-3 text-sm text-[#5f5245]">
                   {message}
                 </div>
-              )}
+              ) : null}
 
               <form onSubmit={handleResetPassword} className="space-y-4">
+                <div>
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    placeholder="New password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full rounded-[20px] border px-4 py-3"
+                    disabled={initializing}
+                  />
+                  <p className="mt-1 px-1 text-xs text-[#7f7263]">{PASSWORD_REQUIREMENTS}</p>
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((current) => !current)}
+                    className="mt-2 text-sm text-[#5f5245] underline underline-offset-2"
+                  >
+                    {showPassword ? "Hide password" : "Show password"}
+                  </button>
+                </div>
 
-                <input
-                  type={showPassword ? "text" : "password"}
-                  placeholder="New password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full rounded-[20px] border px-4 py-3"
-                  disabled={initializing}
-                />
-                <p className="px-1 text-xs text-[#7f7263]">{PASSWORD_REQUIREMENTS}</p>
+                <div>
+                  <input
+                    type={showConfirmPassword ? "text" : "password"}
+                    placeholder="Confirm password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full rounded-[20px] border px-4 py-3"
+                    disabled={initializing}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword((current) => !current)}
+                    className="mt-2 text-sm text-[#5f5245] underline underline-offset-2"
+                  >
+                    {showConfirmPassword ? "Hide confirmation" : "Show confirmation"}
+                  </button>
+                </div>
 
-                <input
-                  type={showConfirmPassword ? "text" : "password"}
-                  placeholder="Confirm password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full rounded-[20px] border px-4 py-3"
-                  disabled={initializing}
-                />
-
-                <button
-                  type="submit"
-                  disabled={loading || initializing}
-                  className="w-full rounded-full bg-[#241c15] text-white py-3"
-                >
-                  {initializing ? "Preparing..." : loading ? "Updating..." : "Update Password"}
-                </button>
-
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="submit"
+                    disabled={loading || initializing}
+                    className="rounded-full bg-[#241c15] px-5 py-3 text-sm font-medium text-white disabled:opacity-50"
+                  >
+                    {initializing ? "Preparing..." : loading ? "Updating..." : "Update Password"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => router.push("/login")}
+                    className="rounded-full border border-[#d9ccbb] bg-white px-5 py-3 text-sm font-medium text-[#5f5245]"
+                  >
+                    Back to Login
+                  </button>
+                </div>
               </form>
             </div>
           </section>
-
         </div>
       </div>
     </main>

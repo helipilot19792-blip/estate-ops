@@ -20,6 +20,20 @@ type AuthMode = "login" | "company";
 const ORGANIZATION_TRIAL_DAYS = 30;
 const PENDING_INVITE_TOKEN_KEY = "gulera_pending_invite_token";
 
+function getFriendlyLoginError(message: string) {
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes("invalid login credentials")) {
+    return "Email or password was not accepted. Check the email spelling, then use Forgot password to set a fresh password. If you were invited recently, open the newest invite email first.";
+  }
+
+  if (normalized.includes("email not confirmed")) {
+    return "This email still needs confirmation. Use Resend confirmation, then open the newest email from this browser.";
+  }
+
+  return message;
+}
+
 function scrollInputIntoView(target: EventTarget | null) {
   if (typeof window === "undefined") return;
   const element = target as HTMLElement | null;
@@ -165,12 +179,12 @@ export default function LoginPage() {
 
     try {
       const { error } = await supabase.auth.signInWithPassword({
-        email: loginEmail.trim(),
+        email: loginEmail.trim().toLowerCase(),
         password: loginPassword,
       });
 
       if (error) {
-        setError(error.message);
+        setError(getFriendlyLoginError(error.message));
         return;
       }
 
@@ -269,7 +283,7 @@ export default function LoginPage() {
       const normalizedEmail = loginEmail.trim().toLowerCase();
 
       const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
-        redirectTo: `${window.location.origin}/auth/confirm?next=/auth/reset`,
+        redirectTo: `${window.location.origin}/auth/reset`,
       });
 
       if (error) {

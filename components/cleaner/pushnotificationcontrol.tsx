@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 type PushStatus = "checking" | "unsupported" | "disabled" | "ready" | "active" | "saving" | "error";
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+};
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
@@ -30,9 +34,22 @@ export default function PushNotificationControl() {
   const [status, setStatus] = useState<PushStatus>("checking");
   const [message, setMessage] = useState("");
   const [subscription, setSubscription] = useState<PushSubscription | null>(null);
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [isStandalone, setIsStandalone] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
 
   useEffect(() => {
     let active = true;
+
+    setIsStandalone(window.matchMedia("(display-mode: standalone)").matches);
+    setIsIOS(/iPad|iPhone|iPod/.test(navigator.userAgent));
+
+    function handleBeforeInstallPrompt(event: Event) {
+      event.preventDefault();
+      setInstallPrompt(event as BeforeInstallPromptEvent);
+    }
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
 
     async function initialize() {
       if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
@@ -83,8 +100,19 @@ export default function PushNotificationControl() {
 
     return () => {
       active = false;
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
     };
   }, []);
+
+  async function installApp() {
+    if (!installPrompt) return;
+    await installPrompt.prompt();
+    const choice = await installPrompt.userChoice;
+    if (choice.outcome === "accepted") {
+      setInstallPrompt(null);
+      setIsStandalone(true);
+    }
+  }
 
   async function enablePush() {
     const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
@@ -169,7 +197,11 @@ export default function PushNotificationControl() {
     }
   }
 
-  if (status === "checking" || status === "unsupported" || status === "disabled") {
+  const canInstall = !!installPrompt && !isStandalone;
+  const showIOSInstallHint = isIOS && !isStandalone;
+  const canShowPush = status !== "checking" && status !== "unsupported" && status !== "disabled";
+
+  if (!canInstall && !showIOSInstallHint && !canShowPush) {
     return null;
   }
 
@@ -186,18 +218,34 @@ export default function PushNotificationControl() {
         />
         <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold">
-            {isActive ? "Push on" : status === "error" ? "Push issue" : "Push alerts"}
+            {isActive ? "Push on" : status === "error" ? "Push issue" : canInstall ? "Install app" : "Push alerts"}
           </div>
           {message ? <div className="mt-0.5 text-xs text-[#cdbda0]">{message}</div> : null}
+          {showIOSInstallHint ? (
+            <div className="mt-0.5 text-xs text-[#cdbda0]">Use Share, then Add to Home Screen.</div>
+          ) : null}
         </div>
-        <button
-          type="button"
-          onClick={() => void (isActive ? disablePush() : enablePush())}
-          disabled={isBusy}
-          className="rounded-full border border-[#b08b47]/55 px-3 py-1.5 text-xs font-semibold text-[#f5efe4] transition hover:bg-[#b08b47] hover:text-[#120f0b] disabled:opacity-50"
-        >
-          {isBusy ? "Saving" : isActive ? "Turn off" : "Turn on"}
-        </button>
+        <div className="flex shrink-0 flex-col gap-2">
+          {canInstall ? (
+            <button
+              type="button"
+              onClick={() => void installApp()}
+              className="rounded-full border border-[#b08b47]/55 px-3 py-1.5 text-xs font-semibold text-[#f5efe4] transition hover:bg-[#b08b47] hover:text-[#120f0b]"
+            >
+              Install
+            </button>
+          ) : null}
+          {canShowPush ? (
+            <button
+              type="button"
+              onClick={() => void (isActive ? disablePush() : enablePush())}
+              disabled={isBusy}
+              className="rounded-full border border-[#b08b47]/55 px-3 py-1.5 text-xs font-semibold text-[#f5efe4] transition hover:bg-[#b08b47] hover:text-[#120f0b] disabled:opacity-50"
+            >
+              {isBusy ? "Saving" : isActive ? "Turn off" : "Turn on"}
+            </button>
+          ) : null}
+        </div>
       </div>
     </div>
   );
