@@ -61,6 +61,39 @@ export async function POST(request: Request) {
       );
     }
 
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("id,email,role")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (profileError || !profile) {
+      return Response.json(
+        { ok: false, error: "No profile was found for this user." },
+        { status: 403 }
+      );
+    }
+
+    if (profile.role !== "admin" && profile.role !== "platform_admin") {
+      return Response.json(
+        { ok: false, error: "Only admins can reset organization data." },
+        { status: 403 }
+      );
+    }
+
+    const { data: organization, error: organizationError } = await supabase
+      .from("organizations")
+      .select("id,created_by")
+      .eq("id", organizationId)
+      .maybeSingle();
+
+    if (organizationError || !organization) {
+      return Response.json(
+        { ok: false, error: "Organization was not found." },
+        { status: 404 }
+      );
+    }
+
     const { data: membership, error: membershipError } = await supabase
       .from("organization_members")
       .select("role")
@@ -68,16 +101,23 @@ export async function POST(request: Request) {
       .eq("profile_id", user.id)
       .maybeSingle();
 
-    if (membershipError || !membership) {
+    if (profile.role !== "platform_admin" && (membershipError || !membership)) {
       return Response.json(
         { ok: false, error: "You do not have access to this organization." },
         { status: 403 }
       );
     }
 
-    if (membership.role !== "admin") {
+    if (profile.role !== "platform_admin" && membership?.role !== "admin") {
       return Response.json(
         { ok: false, error: "Only admins can reset organization data." },
+        { status: 403 }
+      );
+    }
+
+    if (profile.role !== "platform_admin" && organization.created_by !== user.id) {
+      return Response.json(
+        { ok: false, error: "Only the primary admin can reset organization data." },
         { status: 403 }
       );
     }

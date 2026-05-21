@@ -33,15 +33,19 @@ export default function OnboardingChecklist({
   const [manualCompletions, setManualCompletions] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    try {
-      setDismissed(window.localStorage.getItem(`${storageKey}:dismissed`) === "1");
-      setCollapsed(window.localStorage.getItem(`${storageKey}:collapsed`) === "1");
-      setManualCompletions(JSON.parse(window.localStorage.getItem(`${storageKey}:manual`) || "{}"));
-    } catch {
-      setDismissed(false);
-      setCollapsed(false);
-      setManualCompletions({});
-    }
+    const timeout = window.setTimeout(() => {
+      try {
+        setDismissed(window.localStorage.getItem(`${storageKey}:dismissed`) === "1");
+        setCollapsed(window.localStorage.getItem(`${storageKey}:collapsed`) === "1");
+        setManualCompletions(JSON.parse(window.localStorage.getItem(`${storageKey}:manual`) || "{}"));
+      } catch {
+        setDismissed(false);
+        setCollapsed(false);
+        setManualCompletions({});
+      }
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
   }, [storageKey]);
 
   const visibleSteps = useMemo(

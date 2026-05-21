@@ -502,7 +502,7 @@ const ADMIN_FEATURE_LABELS: Record<AdminSection, string> = {
   invites: "Invites",
   chat: "Chat",
   documents: "Document Vault",
-  backup: "Backup Center",
+  backup: "Export Center",
   invoices: "Invoices",
 };
 type MyOrganizationRow = {
@@ -9924,7 +9924,7 @@ This removes its linked members and deletes the grounds account.`
       JSON.stringify(backup, null, 2),
       "application/json;charset=utf-8"
     );
-    setActionMessage("Full JSON backup downloaded.");
+    setActionMessage("Full data snapshot downloaded.");
   }
 
   function downloadBackupCsv(kind: "properties" | "people" | "jobs" | "invoices" | "documents") {
@@ -17008,8 +17008,8 @@ This removes its linked members and deletes the grounds account.`
       tone: string;
     }> = [
       {
-        title: "Full backup",
-        description: "Download one JSON snapshot containing the main organization records loaded in admin.",
+        title: "Full data snapshot",
+        description: "Download one JSON export containing the main organization records loaded in admin.",
         meta: `${properties.length + jobs.length + groundsJobs.length + ownerInvoices.length} core records`,
         action: "Download JSON",
         onClick: downloadFullBackupJson,
@@ -17062,10 +17062,10 @@ This removes its linked members and deletes the grounds account.`
         <section className="rounded-[30px] border border-[#cbd5e1] bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-5 shadow-[0_18px_45px_rgba(51,65,85,0.08)]">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#475569]">Backup Center</p>
-              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#1e293b]">Exports and snapshots</h2>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#475569]">Export Center</p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#1e293b]">Exports and data snapshots</h2>
               <p className="mt-1 max-w-3xl text-sm leading-6 text-[#64748b]">
-                Download a local backup or targeted CSVs for bookkeeping, offline review, and support troubleshooting.
+                Download a local data snapshot or targeted CSVs for bookkeeping, offline review, and support troubleshooting.
               </p>
             </div>
             <button
@@ -17073,7 +17073,7 @@ This removes its linked members and deletes the grounds account.`
               onClick={downloadFullBackupJson}
               className="rounded-full bg-[#1e293b] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#334155]"
             >
-              Download full backup
+              Download data snapshot
             </button>
           </div>
 
@@ -17132,7 +17132,7 @@ This removes its linked members and deletes the grounds account.`
         </section>
 
         <section className="rounded-[24px] border border-[#e2e8f0] bg-[#f8fafc] p-4 text-sm leading-6 text-[#475569]">
-          This is a local export center, not an automated offsite database backup yet. It gives you practical downloadable copies now, while a future server-side backup can add scheduled encrypted storage.
+          This is a local export center, not a restore system or automated offsite database backup yet. It gives you practical downloadable copies now, while a future server-side backup can add previewed restore and scheduled encrypted storage.
         </section>
       </div>
     );
