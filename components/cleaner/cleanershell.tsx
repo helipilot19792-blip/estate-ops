@@ -606,9 +606,8 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
 
         setProfile(dashboard.profile);
 
-        if (dashboard.profile.role === "admin") {
-          setPageError("This sign-in belongs to an admin account. Please use the admin workspace or log in with a cleaner account.");
-          setLoading(false);
+        if (dashboard.profile.role === "platform_admin" || dashboard.profile.role === "admin") {
+          router.replace(dashboard.profile.role === "platform_admin" ? "/platform" : "/admin");
           return;
         }
 

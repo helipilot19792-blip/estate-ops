@@ -582,8 +582,8 @@ export default function GroundsShell({ mode }: GroundsShellProps) {
 
         setProfile(dashboard.profile);
 
-        if (dashboard.profile.role === "admin") {
-          router.replace("/admin");
+        if (dashboard.profile.role === "platform_admin" || dashboard.profile.role === "admin") {
+          router.replace(dashboard.profile.role === "platform_admin" ? "/platform" : "/admin");
           return;
         }
 
