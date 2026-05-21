@@ -136,11 +136,14 @@ export async function POST(request: NextRequest) {
 
     const ownerProfileById = new Map((ownerRows || []).map((owner: any) => [owner.id, owner.profile_id]));
     const recipientsByPortal = new Map<PushPortal, Set<string>>();
+    let recipientCount = 0;
 
     function addRecipient(portal: PushPortal, profileId?: string | null) {
       if (!profileId || profileId === userId) return;
       if (!recipientsByPortal.has(portal)) recipientsByPortal.set(portal, new Set());
-      recipientsByPortal.get(portal)!.add(profileId);
+      const recipients = recipientsByPortal.get(portal)!;
+      if (!recipients.has(profileId)) recipientCount += 1;
+      recipients.add(profileId);
     }
 
     for (const participant of participantRows as any[]) {
@@ -177,7 +180,11 @@ export async function POST(request: NextRequest) {
       errors.push(...result.errors);
     }
 
-    return NextResponse.json({ ok: true, sent, errors });
+    if (recipientCount > 0 && sent === 0 && errors.length > 0) {
+      return NextResponse.json({ ok: false, sent, recipientCount, errors }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true, sent, recipientCount, errors });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not send chat push.";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });

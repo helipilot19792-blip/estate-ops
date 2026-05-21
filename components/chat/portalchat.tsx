@@ -99,16 +99,31 @@ async function notifyChatPush(messageId: string) {
     data: { session },
   } = await supabase.auth.getSession();
 
-  if (!session?.access_token) return;
+  if (!session?.access_token) {
+    return { ok: false, sent: 0, errors: ["Missing auth token for push notification."] };
+  }
 
-  await fetch("/api/chat/push", {
+  const response = await fetch("/api/chat/push", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${session.access_token}`,
     },
     body: JSON.stringify({ messageId }),
-  }).catch(() => null);
+  });
+  const payload = await response.json().catch(() => null);
+
+  return {
+    ok: response.ok && payload?.ok !== false,
+    sent: Number(payload?.sent || 0),
+    errors: Array.isArray(payload?.errors)
+      ? payload.errors
+      : payload?.error
+        ? [String(payload.error)]
+        : response.ok
+          ? []
+          : ["Push notification failed."],
+  };
 }
 
 export default function PortalChat({
@@ -483,7 +498,10 @@ export default function PortalChat({
       if (insertError) throw insertError;
 
       setReplyBody("");
-      if (insertedMessage?.id) void notifyChatPush(insertedMessage.id);
+      const pushResult = insertedMessage?.id ? await notifyChatPush(insertedMessage.id) : null;
+      if (pushResult && !pushResult.ok) {
+        setError(`Reply sent, but push notification failed: ${pushResult.errors.join(" ")}`);
+      }
       await loadChat();
     } catch (err) {
       setError(getErrorMessage(err, "Could not send chat reply."));

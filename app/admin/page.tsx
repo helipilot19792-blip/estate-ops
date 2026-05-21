@@ -7982,16 +7982,31 @@ This removes its linked members and deletes the grounds account.`
       data: { session },
     } = await supabase.auth.getSession();
 
-    if (!session?.access_token) return;
+    if (!session?.access_token) {
+      return { ok: false, sent: 0, errors: ["Missing auth token for push notification."] };
+    }
 
-    await fetch("/api/chat/push", {
+    const response = await fetch("/api/chat/push", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${session.access_token}`,
       },
       body: JSON.stringify({ messageId }),
-    }).catch(() => null);
+    });
+    const payload = await response.json().catch(() => null);
+
+    return {
+      ok: response.ok && payload?.ok !== false,
+      sent: Number(payload?.sent || 0),
+      errors: Array.isArray(payload?.errors)
+        ? payload.errors
+        : payload?.error
+          ? [String(payload.error)]
+          : response.ok
+            ? []
+            : ["Push notification failed."],
+    };
   }
 
   function renderAdminNavigation(orientation: AdminMenuOrientation = "side") {
@@ -9615,12 +9630,16 @@ This removes its linked members and deletes the grounds account.`
 
       if (messageError) throw messageError;
 
-      if (insertedMessage?.id) void notifyChatPush(insertedMessage.id);
+      const pushResult = insertedMessage?.id ? await notifyChatPush(insertedMessage.id) : null;
       setSelectedChatConversationId(conversation.id);
       setChatRecipientTarget("");
       setChatSubject("");
       setChatMessageBody("");
-      setActionMessage("Conversation started.");
+      setActionMessage(
+        pushResult && !pushResult.ok
+          ? `Conversation started, but push notification failed: ${pushResult.errors.join(" ")}`
+          : "Conversation started."
+      );
       await loadData();
     } catch (err) {
       setError(getErrorMessage(err, "Could not start conversation. Run the chat foundation SQL if this is the first time using chat."));
@@ -9664,9 +9683,13 @@ This removes its linked members and deletes the grounds account.`
 
       if (messageError) throw messageError;
 
-      if (insertedMessage?.id) void notifyChatPush(insertedMessage.id);
+      const pushResult = insertedMessage?.id ? await notifyChatPush(insertedMessage.id) : null;
       setChatReplyBody("");
-      setActionMessage("Chat reply sent.");
+      setActionMessage(
+        pushResult && !pushResult.ok
+          ? `Chat reply sent, but push notification failed: ${pushResult.errors.join(" ")}`
+          : "Chat reply sent."
+      );
       await loadData();
     } catch (err) {
       setError(getErrorMessage(err, "Could not send chat reply."));
