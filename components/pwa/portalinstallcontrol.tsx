@@ -43,6 +43,7 @@ export default function PortalInstallControl({
   const [status, setStatus] = useState<PushStatus>(enablePush ? "checking" : "disabled");
   const [message, setMessage] = useState("");
   const [subscription, setSubscription] = useState<PushSubscription | null>(null);
+  const [vapidPublicKey, setVapidPublicKey] = useState("");
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isStandalone, setIsStandalone] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
@@ -93,18 +94,10 @@ export default function PortalInstallControl({
         return;
       }
 
-      const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-      if (!publicKey) {
-        if (active) {
-          setStatus("disabled");
-          setMessage("Push setup needs a VAPID public key.");
-        }
-        return;
-      }
-
       try {
         const existing = await registration.pushManager.getSubscription();
         const token = await getAccessToken();
+        let publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "";
 
         if (!active) return;
 
@@ -116,6 +109,11 @@ export default function PortalInstallControl({
             headers: { Authorization: `Bearer ${token}` },
           });
           const payload = await response.json().catch(() => null);
+          publicKey = payload?.publicKey || publicKey;
+
+          if (active && publicKey) {
+            setVapidPublicKey(publicKey);
+          }
 
           if (active && payload?.subscribed && existing) {
             setStatus("active");
@@ -137,6 +135,11 @@ export default function PortalInstallControl({
               setMessage("Alerts are on for this portal.");
             }
           }
+        }
+
+        if (active && !publicKey) {
+          setStatus("disabled");
+          setMessage("Push setup needs a VAPID public key.");
         }
       } catch (error) {
         if (!active) return;
@@ -174,8 +177,12 @@ export default function PortalInstallControl({
   }
 
   async function enablePushNotifications() {
-    const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-    if (!publicKey) return;
+    const publicKey = vapidPublicKey || process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "";
+    if (!publicKey) {
+      setStatus("disabled");
+      setMessage("Push setup needs a VAPID public key.");
+      return;
+    }
 
     try {
       setStatus("saving");

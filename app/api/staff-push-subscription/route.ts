@@ -19,6 +19,7 @@ function getEnv() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const publicKey =
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY ||
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -170,7 +171,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       subscribed: (count ?? 0) > 0,
-      publicKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || null,
+      publicKey:
+        process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ||
+        process.env.VAPID_PUBLIC_KEY ||
+        null,
     });
   } catch (error) {
     return NextResponse.json(
