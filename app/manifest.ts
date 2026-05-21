@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Gulera Ops",
-    short_name: "Gulera Ops",
+    name: "Gulera OS",
+    short_name: "Gulera OS",
     description: "STR operations portal for teams and owners",
     start_url: "/",
     scope: "/",
@@ -12,13 +12,13 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: "#0f0d0a",
     icons: [
       {
-        src: "/gulera-pwa-icon-192.png",
+        src: "/gulera-pwa-icon-192.png?v=2",
         sizes: "192x192",
         type: "image/png",
         purpose: "any",
       },
       {
-        src: "/gulera-pwa-icon-512.png",
+        src: "/gulera-pwa-icon-512.png?v=2",
         sizes: "512x512",
         type: "image/png",
         purpose: "any",
