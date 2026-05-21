@@ -36,6 +36,15 @@ async function getAccessToken() {
   return session?.access_token || "";
 }
 
+async function loadPushStatus(portal: AppPortal, token?: string) {
+  const response = await fetch(`/api/staff-push-subscription?portal=${portal}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  const payload = await response.json().catch(() => null);
+
+  return { response, payload };
+}
+
 export default function PortalInstallControl({
   portal = "cleaner",
   enablePush = true,
@@ -104,17 +113,14 @@ export default function PortalInstallControl({
         setSubscription(existing);
         setStatus("ready");
 
+        const { response, payload } = await loadPushStatus(portal, token);
+        publicKey = payload?.publicKey || publicKey;
+
+        if (active && publicKey) {
+          setVapidPublicKey(publicKey);
+        }
+
         if (token) {
-          const response = await fetch(`/api/staff-push-subscription?portal=${portal}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          const payload = await response.json().catch(() => null);
-          publicKey = payload?.publicKey || publicKey;
-
-          if (active && publicKey) {
-            setVapidPublicKey(publicKey);
-          }
-
           if (active && payload?.subscribed && existing) {
             setStatus("active");
           } else if (active && existing && response.ok) {
@@ -139,7 +145,7 @@ export default function PortalInstallControl({
 
         if (active && !publicKey) {
           setStatus("disabled");
-          setMessage("Push setup needs a VAPID public key.");
+          setMessage("Alerts need a VAPID_PUBLIC_KEY environment variable on the server.");
         }
       } catch (error) {
         if (!active) return;
@@ -177,11 +183,26 @@ export default function PortalInstallControl({
   }
 
   async function enablePushNotifications() {
-    const publicKey = vapidPublicKey || process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "";
+    let publicKey = vapidPublicKey || process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "";
     if (!publicKey) {
-      setStatus("disabled");
-      setMessage("Push setup needs a VAPID public key.");
-      return;
+      try {
+        setStatus("saving");
+        const token = await getAccessToken();
+        const { payload } = await loadPushStatus(portal, token);
+        const serverPublicKey = payload?.publicKey || "";
+        if (serverPublicKey) {
+          publicKey = serverPublicKey;
+          setVapidPublicKey(serverPublicKey);
+        } else {
+          setStatus("disabled");
+          setMessage("Alerts need a VAPID_PUBLIC_KEY environment variable on the server.");
+          return;
+        }
+      } catch {
+        setStatus("disabled");
+        setMessage("Alerts need a VAPID_PUBLIC_KEY environment variable on the server.");
+        return;
+      }
     }
 
     try {

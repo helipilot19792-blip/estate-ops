@@ -39,6 +39,10 @@ function getPortal(value: unknown): AppPortal | null {
   return value === "admin" || value === "cleaner" || value === "grounds" || value === "owner" ? value : null;
 }
 
+function getVapidPublicKey() {
+  return process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || process.env.VAPID_PUBLIC_KEY || null;
+}
+
 async function getSignedInProfile(token: string) {
   const { supabaseUrl, publicKey, serviceRoleKey } = getEnv();
 
@@ -145,9 +149,15 @@ export async function GET(request: NextRequest) {
   try {
     const token = getBearerToken(request);
     const portal = getPortal(request.nextUrl.searchParams.get("portal"));
+    const publicKey = getVapidPublicKey();
 
     if (!token) {
-      return NextResponse.json({ ok: false, error: "Missing auth token." }, { status: 401 });
+      return NextResponse.json({
+        ok: true,
+        subscribed: false,
+        publicKey,
+        needsAuth: true,
+      });
     }
 
     if (!portal) {
@@ -171,10 +181,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       subscribed: (count ?? 0) > 0,
-      publicKey:
-        process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ||
-        process.env.VAPID_PUBLIC_KEY ||
-        null,
+      publicKey,
     });
   } catch (error) {
     return NextResponse.json(
