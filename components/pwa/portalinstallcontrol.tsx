@@ -86,7 +86,10 @@ export default function PortalInstallControl({
       if (!enablePush) return;
 
       if (!registration || !("PushManager" in window) || !("Notification" in window)) {
-        if (active) setStatus("unsupported");
+        if (active) {
+          setStatus("unsupported");
+          setMessage("This browser does not support web push alerts here.");
+        }
         return;
       }
 
@@ -256,8 +259,8 @@ export default function PortalInstallControl({
   const canOfferInstall = !isStandalone;
   const canInstall = !!installPrompt && !isStandalone;
   const showIOSInstallHint = isIOS && !isStandalone;
-  const canShowPush =
-    enablePush && status !== "checking" && status !== "unsupported" && status !== "disabled";
+  const canShowPush = enablePush && status !== "checking";
+  const canTogglePush = canShowPush && status !== "unsupported" && status !== "disabled";
 
   if (!canOfferInstall && !canShowPush) {
     return null;
@@ -269,18 +272,22 @@ export default function PortalInstallControl({
     ? "Alerts on"
     : status === "error"
       ? "Alert issue"
+      : status === "unsupported"
+        ? "Alerts unavailable"
+        : status === "disabled"
+          ? "Alerts setup needed"
       : canOfferInstall
         ? "Install + alerts"
         : "Alerts off";
   const defaultMessage =
-    enablePush && !isActive && status === "ready"
+    enablePush && !isActive && (status === "ready" || status === "error")
       ? canOfferInstall
         ? "Install the app, then enable alerts."
         : "Enable alerts for this device."
       : "";
 
   return (
-    <div className="fixed bottom-4 left-4 z-40 max-w-[calc(100vw-2rem)] rounded-2xl border border-[#7a5c2e]/35 bg-[#120f0b]/95 p-3 text-[#f5efe4] shadow-[0_18px_45px_rgba(0,0,0,0.28)] backdrop-blur sm:max-w-xs">
+    <div className="fixed bottom-4 left-4 z-[110] max-w-[calc(100vw-2rem)] rounded-2xl border border-[#7a5c2e]/35 bg-[#120f0b]/95 p-3 text-[#f5efe4] shadow-[0_18px_45px_rgba(0,0,0,0.28)] backdrop-blur sm:max-w-xs">
       <div className="flex items-center gap-3">
         <div
           className={`h-2.5 w-2.5 rounded-full ${
@@ -313,10 +320,10 @@ export default function PortalInstallControl({
             <button
               type="button"
               onClick={() => void (isActive ? disablePush() : enablePushNotifications())}
-              disabled={isBusy}
+              disabled={isBusy || !canTogglePush}
               className="rounded-full border border-[#b08b47]/55 px-3 py-1.5 text-xs font-semibold text-[#f5efe4] transition hover:bg-[#b08b47] hover:text-[#120f0b] disabled:opacity-50"
             >
-              {isBusy ? "Saving" : isActive ? "Turn off" : "Enable alerts"}
+              {isBusy ? "Saving" : isActive ? "Turn off" : status === "disabled" ? "Needs setup" : status === "unsupported" ? "Unavailable" : "Enable alerts"}
             </button>
           ) : null}
         </div>
