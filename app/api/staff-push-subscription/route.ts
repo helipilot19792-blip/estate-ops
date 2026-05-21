@@ -15,6 +15,8 @@ type SerializedPushSubscription = {
   };
 };
 
+const DEFAULT_VAPID_PUBLIC_KEY = "BDetbzBPxu1z9Qzcp7t4pRnce_wS_SbHnTTabNHohR7Li1rJaKfgHBs_AlGkl9AfG4qf6fxTNwiWwqkiWGBTEK4";
+
 function getEnv() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const publicKey =
@@ -40,7 +42,7 @@ function getPortal(value: unknown): AppPortal | null {
 }
 
 function getVapidPublicKey() {
-  return process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || process.env.VAPID_PUBLIC_KEY || null;
+  return process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || process.env.VAPID_PUBLIC_KEY || DEFAULT_VAPID_PUBLIC_KEY;
 }
 
 async function getSignedInProfile(token: string) {

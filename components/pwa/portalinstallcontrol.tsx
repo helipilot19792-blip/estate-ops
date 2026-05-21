@@ -15,6 +15,8 @@ type PortalInstallControlProps = {
   enablePush?: boolean;
 };
 
+const DEFAULT_VAPID_PUBLIC_KEY = "BDetbzBPxu1z9Qzcp7t4pRnce_wS_SbHnTTabNHohR7Li1rJaKfgHBs_AlGkl9AfG4qf6fxTNwiWwqkiWGBTEK4";
+
 function urlBase64ToUint8Array(base64String: string) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
@@ -106,7 +108,7 @@ export default function PortalInstallControl({
       try {
         const existing = await registration.pushManager.getSubscription();
         const token = await getAccessToken();
-        let publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "";
+        let publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || DEFAULT_VAPID_PUBLIC_KEY;
 
         if (!active) return;
 
@@ -183,7 +185,7 @@ export default function PortalInstallControl({
   }
 
   async function enablePushNotifications() {
-    let publicKey = vapidPublicKey || process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "";
+    let publicKey = vapidPublicKey || process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || DEFAULT_VAPID_PUBLIC_KEY;
     if (!publicKey) {
       try {
         setStatus("saving");
