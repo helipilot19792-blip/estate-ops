@@ -42,6 +42,21 @@ function isValidVapidPrivateKey(value?: string | null) {
   }
 }
 
+function describePrivateKeyIssue(value?: string | null) {
+  const raw = String(value || "");
+  const key = raw.trim();
+
+  if (!key) return "VAPID_PRIVATE_KEY is missing or blank in production.";
+  if (key.startsWith("sk_")) return "VAPID_PRIVATE_KEY is set to a Stripe-style key, not a VAPID key.";
+
+  try {
+    const decoded = base64UrlDecode(key);
+    return `VAPID_PRIVATE_KEY has ${key.length} characters and decodes to ${decoded.length} bytes; it must decode to 32 bytes.`;
+  } catch {
+    return "VAPID_PRIVATE_KEY is not valid base64url text.";
+  }
+}
+
 function getVapidPublicKey() {
   const candidates = [
     process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
@@ -62,7 +77,7 @@ function configureVapid() {
   }
 
   if (!isValidVapidPrivateKey(privateKey)) {
-    return "Push notifications need a valid VAPID_PRIVATE_KEY.";
+    return describePrivateKeyIssue(privateKey);
   }
 
   if (!vapidConfigured) {
