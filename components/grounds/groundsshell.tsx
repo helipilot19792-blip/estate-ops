@@ -7,6 +7,7 @@ import { trackFeatureUsage } from "@/lib/feature-usage";
 import PortalChat from "@/components/chat/portalchat";
 import GroundsDesktopView from "@/components/grounds/groundsdesktopview";
 import GroundsMobileView from "@/components/grounds/groundsmobileview";
+import PortalInstallControl from "@/components/pwa/portalinstallcontrol";
 
 type Profile = {
   id: string;
@@ -1451,6 +1452,7 @@ export default function GroundsShell({ mode }: GroundsShellProps) {
   return (
     <>
       {shellView}
+      {profile ? <PortalInstallControl portal="grounds" enablePush /> : null}
       {profile && chatUnreadCount > 0 ? (
         <button
           type="button"
