@@ -86,6 +86,8 @@ const QUIRKY_SYNCING_COPY = [
   "Convincing calendars to tell the truth...",
 ];
 
+const SHOW_ADMIN_TOP_BANNER = false;
+
 type Property = {
   id: string;
   organization_id?: string | null;
@@ -17636,6 +17638,7 @@ This removes its linked members and deletes the grounds account.`
         </aside>
 
         <div className="min-w-0">
+        {SHOW_ADMIN_TOP_BANNER ? (
         <div className="admin-premium-surface mb-6 overflow-hidden rounded-[28px] border">
           <div className="relative overflow-hidden px-6 py-7 md:px-8 md:py-8">
             <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(240,249,255,0.96)_0%,rgba(240,253,244,0.82)_50%,rgba(255,247,237,0.92)_100%)]" aria-hidden="true" />
@@ -17878,6 +17881,7 @@ This removes its linked members and deletes the grounds account.`
             </div>
           )}
         </div>
+        ) : null}
 
         {error ? (
           <div className="mb-6 rounded-[24px] border border-[#e7c6c1] bg-[#fff4f2] px-4 py-3 text-sm text-[#8a2e22] shadow-sm">
