@@ -2776,7 +2776,7 @@ export default function OwnerPage() {
           void loadData();
         }}
       />
-      {ownerAccount ? <PortalInstallControl enablePush={false} /> : null}
+      {ownerAccount ? <PortalInstallControl portal="owner" enablePush /> : null}
     </main>
   );
 }

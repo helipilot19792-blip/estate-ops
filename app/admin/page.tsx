@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { trackFeatureUsage } from "@/lib/feature-usage";
 import OnboardingChecklist, { type OnboardingStep } from "@/components/onboarding-checklist";
+import PortalInstallControl from "@/components/pwa/portalinstallcontrol";
 
 function getCityFromAddress(address?: string | null) {
   if (!address) return "";
@@ -18273,6 +18274,7 @@ This removes its linked members and deletes the grounds account.`
           </div>
         </div>
       )}
+      {currentAdminProfile ? <PortalInstallControl portal="admin" enablePush /> : null}
     </main>
   );
 }

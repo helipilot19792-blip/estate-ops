@@ -4,7 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-type StaffPortal = "cleaner" | "grounds";
+type AppPortal = "admin" | "cleaner" | "grounds" | "owner";
 
 type SerializedPushSubscription = {
   endpoint?: string;
@@ -34,8 +34,8 @@ function getBearerToken(request: NextRequest) {
   return authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
 }
 
-function getPortal(value: unknown): StaffPortal | null {
-  return value === "cleaner" || value === "grounds" ? value : null;
+function getPortal(value: unknown): AppPortal | null {
+  return value === "admin" || value === "cleaner" || value === "grounds" || value === "owner" ? value : null;
 }
 
 async function getSignedInProfile(token: string) {
@@ -75,8 +75,32 @@ async function getSignedInProfile(token: string) {
 async function assertPortalMembership(
   service: any,
   profileId: string,
-  portal: StaffPortal
+  portal: AppPortal,
+  role?: string | null
 ) {
+  if (portal === "admin") {
+    if (role === "admin" || role === "platform_admin") return;
+    throw new Error("This sign-in is not linked to an admin account.");
+  }
+
+  if (portal === "owner") {
+    const { data, error } = await service
+      .from("owner_accounts")
+      .select("id")
+      .eq("profile_id", profileId)
+      .eq("is_active", true)
+      .limit(1);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    if (!data || data.length === 0) {
+      throw new Error("This sign-in is not linked to an owner account.");
+    }
+    return;
+  }
+
   const membershipTable =
     portal === "cleaner" ? "cleaner_account_members" : "grounds_account_members";
 
@@ -130,7 +154,7 @@ export async function GET(request: NextRequest) {
     }
 
     const { service, profile } = await getSignedInProfile(token);
-    await assertPortalMembership(service, profile.id, portal);
+    await assertPortalMembership(service, profile.id, portal, profile.role);
 
     const { count, error } = await service
       .from("staff_push_subscriptions")
@@ -172,7 +196,7 @@ export async function POST(request: NextRequest) {
 
     const { endpoint, p256dh, auth, subscription } = serializeSubscription(body?.subscription || {});
     const { service, profile } = await getSignedInProfile(token);
-    await assertPortalMembership(service, profile.id, portal);
+    await assertPortalMembership(service, profile.id, portal, profile.role);
 
     const now = new Date().toISOString();
     const { error } = await service
@@ -222,7 +246,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     const { service, profile } = await getSignedInProfile(token);
-    await assertPortalMembership(service, profile.id, portal);
+    await assertPortalMembership(service, profile.id, portal, profile.role);
 
     let query = service
       .from("staff_push_subscriptions")

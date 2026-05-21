@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import webpush from "web-push";
 
-type PushPortal = "cleaner" | "grounds";
+type PushPortal = "admin" | "cleaner" | "grounds" | "owner";
 
 type PushPayload = {
   title: string;

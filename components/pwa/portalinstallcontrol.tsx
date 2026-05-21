@@ -4,14 +4,14 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 type PushStatus = "checking" | "unsupported" | "disabled" | "ready" | "active" | "saving" | "error";
-type StaffPortal = "cleaner" | "grounds";
+type AppPortal = "admin" | "cleaner" | "grounds" | "owner";
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
 };
 
 type PortalInstallControlProps = {
-  portal?: StaffPortal;
+  portal?: AppPortal;
   enablePush?: boolean;
 };
 
@@ -106,7 +106,7 @@ export default function PortalInstallControl({
         if (!active) return;
 
         setSubscription(existing);
-        setStatus(existing ? "active" : "ready");
+        setStatus("ready");
 
         if (token) {
           const response = await fetch(`/api/staff-push-subscription?portal=${portal}`, {
@@ -116,6 +116,23 @@ export default function PortalInstallControl({
 
           if (active && payload?.subscribed && existing) {
             setStatus("active");
+          } else if (active && existing && response.ok) {
+            const saveResponse = await fetch("/api/staff-push-subscription", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                portal,
+                subscription: existing.toJSON(),
+              }),
+            });
+            const savePayload = await saveResponse.json().catch(() => null);
+            if (active && saveResponse.ok && savePayload?.ok) {
+              setStatus("active");
+              setMessage("Alerts are on for this portal.");
+            }
           }
         }
       } catch (error) {
@@ -258,8 +275,8 @@ export default function PortalInstallControl({
   const defaultMessage =
     enablePush && !isActive && status === "ready"
       ? canOfferInstall
-        ? "Install the app, then enable job alerts."
-        : "Enable job alerts for this device."
+        ? "Install the app, then enable alerts."
+        : "Enable alerts for this device."
       : "";
 
   return (
