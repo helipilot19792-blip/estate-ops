@@ -17,6 +17,22 @@ type PortalInstallControlProps = {
 
 const DEFAULT_VAPID_PUBLIC_KEY = "BDetbzBPxu1z9Qzcp7t4pRnce_wS_SbHnTTabNHohR7Li1rJaKfgHBs_AlGkl9AfG4qf6fxTNwiWwqkiWGBTEK4";
 
+function isValidVapidPublicKey(value?: string | null) {
+  const key = String(value || "").trim();
+  if (!key || key.startsWith("sk_")) return false;
+
+  try {
+    const decoded = urlBase64ToUint8Array(key);
+    return decoded.length === 65 && decoded[0] === 4;
+  } catch {
+    return false;
+  }
+}
+
+function getBrowserVapidPublicKey(...values: Array<string | null | undefined>) {
+  return values.find(isValidVapidPublicKey) || DEFAULT_VAPID_PUBLIC_KEY;
+}
+
 function urlBase64ToUint8Array(base64String: string) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
@@ -108,7 +124,7 @@ export default function PortalInstallControl({
       try {
         const existing = await registration.pushManager.getSubscription();
         const token = await getAccessToken();
-        let publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || DEFAULT_VAPID_PUBLIC_KEY;
+        let publicKey = getBrowserVapidPublicKey(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY);
 
         if (!active) return;
 
@@ -116,7 +132,7 @@ export default function PortalInstallControl({
         setStatus("ready");
 
         const { response, payload } = await loadPushStatus(portal, token);
-        publicKey = payload?.publicKey || publicKey;
+        publicKey = getBrowserVapidPublicKey(payload?.publicKey, publicKey);
 
         if (active && publicKey) {
           setVapidPublicKey(publicKey);
@@ -185,13 +201,13 @@ export default function PortalInstallControl({
   }
 
   async function enablePushNotifications() {
-    let publicKey = vapidPublicKey || process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || DEFAULT_VAPID_PUBLIC_KEY;
+    let publicKey = getBrowserVapidPublicKey(vapidPublicKey, process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY);
     if (!publicKey) {
       try {
         setStatus("saving");
         const token = await getAccessToken();
         const { payload } = await loadPushStatus(portal, token);
-        const serverPublicKey = payload?.publicKey || "";
+        const serverPublicKey = isValidVapidPublicKey(payload?.publicKey) ? payload.publicKey : "";
         if (serverPublicKey) {
           publicKey = serverPublicKey;
           setVapidPublicKey(serverPublicKey);

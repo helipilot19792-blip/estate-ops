@@ -14,21 +14,63 @@ let vapidConfigured = false;
 
 const DEFAULT_VAPID_PUBLIC_KEY = "BDetbzBPxu1z9Qzcp7t4pRnce_wS_SbHnTTabNHohR7Li1rJaKfgHBs_AlGkl9AfG4qf6fxTNwiWwqkiWGBTEK4";
 
+function base64UrlDecode(value: string) {
+  const padding = "=".repeat((4 - (value.length % 4)) % 4);
+  return Buffer.from((value + padding).replace(/-/g, "+").replace(/_/g, "/"), "base64");
+}
+
+function isValidVapidPublicKey(value?: string | null) {
+  const key = String(value || "").trim();
+  if (!key || key.startsWith("sk_")) return false;
+
+  try {
+    const decoded = base64UrlDecode(key);
+    return decoded.length === 65 && decoded[0] === 4;
+  } catch {
+    return false;
+  }
+}
+
+function isValidVapidPrivateKey(value?: string | null) {
+  const key = String(value || "").trim();
+  if (!key || key.startsWith("sk_")) return false;
+
+  try {
+    return base64UrlDecode(key).length === 32;
+  } catch {
+    return false;
+  }
+}
+
+function getVapidPublicKey() {
+  const candidates = [
+    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+    process.env.VAPID_PUBLIC_KEY,
+    DEFAULT_VAPID_PUBLIC_KEY,
+  ];
+
+  return candidates.find(isValidVapidPublicKey) || "";
+}
+
 function configureVapid() {
-  const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || process.env.VAPID_PUBLIC_KEY || DEFAULT_VAPID_PUBLIC_KEY;
+  const publicKey = getVapidPublicKey();
   const privateKey = process.env.VAPID_PRIVATE_KEY;
   const subject = process.env.VAPID_SUBJECT || "mailto:onboarding@estateofmindpm.com";
 
-  if (!publicKey || !privateKey) {
-    return false;
+  if (!publicKey) {
+    return "Push notifications need a valid VAPID public key.";
+  }
+
+  if (!isValidVapidPrivateKey(privateKey)) {
+    return "Push notifications need a valid VAPID_PRIVATE_KEY.";
   }
 
   if (!vapidConfigured) {
-    webpush.setVapidDetails(subject, publicKey, privateKey);
+    webpush.setVapidDetails(subject, publicKey, privateKey!);
     vapidConfigured = true;
   }
 
-  return true;
+  return null;
 }
 
 function getServiceClient() {
@@ -49,11 +91,12 @@ export async function sendStaffPushNotifications(
   profileIds: string[],
   payload: PushPayload
 ) {
-  if (!configureVapid()) {
+  const vapidError = configureVapid();
+  if (vapidError) {
     return {
       sent: 0,
       skipped: profileIds.length,
-      errors: ["Push notifications need NEXT_PUBLIC_VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY."],
+      errors: [vapidError],
     };
   }
 

@@ -17,6 +17,19 @@ type SerializedPushSubscription = {
 
 const DEFAULT_VAPID_PUBLIC_KEY = "BDetbzBPxu1z9Qzcp7t4pRnce_wS_SbHnTTabNHohR7Li1rJaKfgHBs_AlGkl9AfG4qf6fxTNwiWwqkiWGBTEK4";
 
+function isValidVapidPublicKey(value?: string | null) {
+  const key = String(value || "").trim();
+  if (!key || key.startsWith("sk_")) return false;
+
+  try {
+    const padding = "=".repeat((4 - (key.length % 4)) % 4);
+    const decoded = Buffer.from((key + padding).replace(/-/g, "+").replace(/_/g, "/"), "base64");
+    return decoded.length === 65 && decoded[0] === 4;
+  } catch {
+    return false;
+  }
+}
+
 function getEnv() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const publicKey =
@@ -42,7 +55,13 @@ function getPortal(value: unknown): AppPortal | null {
 }
 
 function getVapidPublicKey() {
-  return process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || process.env.VAPID_PUBLIC_KEY || DEFAULT_VAPID_PUBLIC_KEY;
+  const candidates = [
+    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+    process.env.VAPID_PUBLIC_KEY,
+    DEFAULT_VAPID_PUBLIC_KEY,
+  ];
+
+  return candidates.find(isValidVapidPublicKey) || DEFAULT_VAPID_PUBLIC_KEY;
 }
 
 async function getSignedInProfile(token: string) {
