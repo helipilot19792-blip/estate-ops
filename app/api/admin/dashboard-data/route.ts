@@ -175,7 +175,7 @@ export async function GET(request: Request) {
         .select("*")
         .eq("organization_id", organizationId)
         .lte("checkin_date", bookingLookaheadEndYmd)
-        .gt("checkout_date", todayYmd)
+        .gte("checkout_date", todayYmd)
         .order("checkin_date", { ascending: true }),
       serviceClient.from("property_maintenance_flags").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
       serviceClient.from("property_maintenance_flag_images").select("*").order("sort_order", { ascending: true }),

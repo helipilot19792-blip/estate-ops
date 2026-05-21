@@ -2064,7 +2064,7 @@ export default function AdminPage() {
         .select("*")
         .eq("organization_id", currentOrganizationId)
         .lte("checkin_date", serviceLookaheadYmds[serviceLookaheadYmds.length - 1] || todayYmd)
-        .gt("checkout_date", todayYmd)
+        .gte("checkout_date", todayYmd)
         .order("checkin_date", { ascending: true }),
       supabase
         .from("property_maintenance_flags")
