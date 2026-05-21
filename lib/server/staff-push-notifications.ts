@@ -69,7 +69,7 @@ function getVapidPublicKey() {
 
 function configureVapid() {
   const publicKey = getVapidPublicKey();
-  const privateKey = process.env.VAPID_PRIVATE_KEY;
+  const privateKey = process.env.GULERA_VAPID_PRIVATE_KEY || process.env.VAPID_PRIVATE_KEY;
   const subject = process.env.VAPID_SUBJECT || "mailto:onboarding@estateofmindpm.com";
 
   if (!publicKey) {
