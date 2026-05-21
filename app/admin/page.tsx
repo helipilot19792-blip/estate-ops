@@ -1536,8 +1536,7 @@ export default function AdminPage() {
       } = await supabase.auth.getUser();
 
       if (!user) {
-        setError("No signed-in user was found on the admin page.");
-        setCheckingAuth(false);
+        router.replace("/login?portal=admin");
         return;
       }
 
@@ -1654,7 +1653,7 @@ export default function AdminPage() {
     }
 
     void checkAuthAndRole();
-  }, []);
+  }, [router]);
   useEffect(() => {
     if (typeof window === "undefined") return;
 
