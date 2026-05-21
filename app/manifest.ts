@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Estate of Mind Portal",
-    short_name: "Estate Portal",
+    name: "Gulera Ops",
+    short_name: "Gulera Ops",
     description: "Cleaner scheduling and STR operations portal",
     start_url: "/cleaner",
     scope: "/",
@@ -12,14 +12,16 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: "#0f0d0a",
     icons: [
       {
-        src: "/estateoslogo.png",
-        sizes: "512x512",
+        src: "/gulera-pwa-icon-192.png",
+        sizes: "192x192",
         type: "image/png",
+        purpose: "any",
       },
       {
-        src: "/eomlogo.png",
+        src: "/gulera-pwa-icon-512.png",
         sizes: "512x512",
         type: "image/png",
+        purpose: "any",
       },
     ],
   };
