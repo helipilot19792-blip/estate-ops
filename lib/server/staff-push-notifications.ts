@@ -57,6 +57,55 @@ function describePrivateKeyIssue(value?: string | null) {
   }
 }
 
+function describePrivateKeyValue(value?: string | null) {
+  const raw = String(value || "");
+  const key = raw.trim();
+
+  if (!key) {
+    return {
+      present: false,
+      rawLength: raw.length,
+      trimmedLength: key.length,
+      decodedBytes: null as number | null,
+      startsWithSk: false,
+      valid: false,
+    };
+  }
+
+  let decodedBytes: number | null = null;
+  try {
+    decodedBytes = base64UrlDecode(key).length;
+  } catch {
+    decodedBytes = null;
+  }
+
+  return {
+    present: true,
+    rawLength: raw.length,
+    trimmedLength: key.length,
+    decodedBytes,
+    startsWithSk: key.startsWith("sk_"),
+    valid: isValidVapidPrivateKey(key),
+  };
+}
+
+export function getPushEnvironmentDiagnostics() {
+  const privateCandidates = [
+    ["GULERA_PUSH_SIGNING", process.env.GULERA_PUSH_SIGNING],
+    ["GULERA_VAPID_PRIVATE_KEY", process.env.GULERA_VAPID_PRIVATE_KEY],
+    ["VAPID_PRIVATE_KEY", process.env.VAPID_PRIVATE_KEY],
+  ] as const;
+  const selectedPrivate = privateCandidates.find(([, value]) => isValidVapidPrivateKey(value));
+
+  return {
+    publicKeyValid: isValidVapidPublicKey(getVapidPublicKey()),
+    selectedPrivateKeyName: selectedPrivate?.[0] || null,
+    privateKeys: Object.fromEntries(
+      privateCandidates.map(([name, value]) => [name, describePrivateKeyValue(value)])
+    ),
+  };
+}
+
 function getVapidPublicKey() {
   const candidates = [
     process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
