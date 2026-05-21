@@ -145,6 +145,9 @@ export default function PortalInstallControl({
       setInstallPrompt(null);
       setIsStandalone(true);
       setShowInstallHelp(false);
+      if (enablePush && status === "ready") {
+        setMessage("One more tap: enable alerts for this device.");
+      }
     } else {
       setShowInstallHelp(true);
     }
@@ -245,6 +248,19 @@ export default function PortalInstallControl({
 
   const isActive = status === "active";
   const isBusy = status === "saving";
+  const titleText = isActive
+    ? "Alerts on"
+    : status === "error"
+      ? "Alert issue"
+      : canOfferInstall
+        ? "Install + alerts"
+        : "Alerts off";
+  const defaultMessage =
+    enablePush && !isActive && status === "ready"
+      ? canOfferInstall
+        ? "Install the app, then enable job alerts."
+        : "Enable job alerts for this device."
+      : "";
 
   return (
     <div className="fixed bottom-4 left-4 z-40 max-w-[calc(100vw-2rem)] rounded-2xl border border-[#7a5c2e]/35 bg-[#120f0b]/95 p-3 text-[#f5efe4] shadow-[0_18px_45px_rgba(0,0,0,0.28)] backdrop-blur sm:max-w-xs">
@@ -255,10 +271,10 @@ export default function PortalInstallControl({
           }`}
         />
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold">
-            {isActive ? "Push on" : status === "error" ? "Push issue" : canOfferInstall ? "Install app" : "Push alerts"}
-          </div>
-          {message ? <div className="mt-0.5 text-xs text-[#cdbda0]">{message}</div> : null}
+          <div className="text-sm font-semibold">{titleText}</div>
+          {message || defaultMessage ? (
+            <div className="mt-0.5 text-xs text-[#cdbda0]">{message || defaultMessage}</div>
+          ) : null}
           {showIOSInstallHint ? (
             <div className="mt-0.5 text-xs text-[#cdbda0]">Use Share, then Add to Home Screen.</div>
           ) : null}
@@ -283,7 +299,7 @@ export default function PortalInstallControl({
               disabled={isBusy}
               className="rounded-full border border-[#b08b47]/55 px-3 py-1.5 text-xs font-semibold text-[#f5efe4] transition hover:bg-[#b08b47] hover:text-[#120f0b] disabled:opacity-50"
             >
-              {isBusy ? "Saving" : isActive ? "Turn off" : "Turn on"}
+              {isBusy ? "Saving" : isActive ? "Turn off" : "Enable alerts"}
             </button>
           ) : null}
         </div>
