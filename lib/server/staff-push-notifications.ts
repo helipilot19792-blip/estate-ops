@@ -12,8 +12,7 @@ type PushPayload = {
 
 let vapidConfigured = false;
 
-const DEFAULT_VAPID_PUBLIC_KEY = "BDetbzBPxu1z9Qzcp7t4pRnce_wS_SbHnTTabNHohR7Li1rJaKfgHBs_AlGkl9AfG4qf6fxTNwiWwqkiWGBTEK4";
-const DEFAULT_VAPID_PRIVATE_KEY = "FQAVuhp2SwTxCvQKWO0se-gV6sSKju3oxY-DwFYymds";
+const DEFAULT_VAPID_PUBLIC_KEY = "BMqODVFZyHzmPlYyb_nlVwHA2HacRBq7V1O5j-_4jFNj368GIDjqX5vrCytVoOxkWSSKo8zsO6tgTrCwT2TTGe4";
 
 function base64UrlDecode(value: string) {
   const padding = "=".repeat((4 - (value.length % 4)) % 4);
@@ -95,7 +94,6 @@ export function getPushEnvironmentDiagnostics() {
     ["GULERA_PUSH_SIGNING", process.env.GULERA_PUSH_SIGNING],
     ["GULERA_VAPID_PRIVATE_KEY", process.env.GULERA_VAPID_PRIVATE_KEY],
     ["VAPID_PRIVATE_KEY", process.env.VAPID_PRIVATE_KEY],
-    ["SERVER_FALLBACK", DEFAULT_VAPID_PRIVATE_KEY],
   ] as const;
   const selectedPrivate = privateCandidates.find(([, value]) => isValidVapidPrivateKey(value));
 
@@ -123,8 +121,7 @@ function configureVapid() {
   const privateKey =
     process.env.GULERA_PUSH_SIGNING ||
     process.env.GULERA_VAPID_PRIVATE_KEY ||
-    process.env.VAPID_PRIVATE_KEY ||
-    DEFAULT_VAPID_PRIVATE_KEY;
+    process.env.VAPID_PRIVATE_KEY;
   const subject = process.env.VAPID_SUBJECT || "mailto:onboarding@estateofmindpm.com";
 
   if (!publicKey) {

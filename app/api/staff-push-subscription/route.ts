@@ -15,7 +15,7 @@ type SerializedPushSubscription = {
   };
 };
 
-const DEFAULT_VAPID_PUBLIC_KEY = "BDetbzBPxu1z9Qzcp7t4pRnce_wS_SbHnTTabNHohR7Li1rJaKfgHBs_AlGkl9AfG4qf6fxTNwiWwqkiWGBTEK4";
+const DEFAULT_VAPID_PUBLIC_KEY = "BMqODVFZyHzmPlYyb_nlVwHA2HacRBq7V1O5j-_4jFNj368GIDjqX5vrCytVoOxkWSSKo8zsO6tgTrCwT2TTGe4";
 
 function isValidVapidPublicKey(value?: string | null) {
   const key = String(value || "").trim();
