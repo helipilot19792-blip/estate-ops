@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const anonKey =
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY ||
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -59,7 +60,11 @@ export async function GET(request: Request) {
       );
     }
 
-    const [{ data: cleanerMemberships, error: cleanerError }, { data: groundsMemberships, error: groundsError }] =
+    const [
+      { data: cleanerMemberships, error: cleanerError },
+      { data: groundsMemberships, error: groundsError },
+      { data: ownerAccounts, error: ownerError },
+    ] =
       await Promise.all([
         serviceClient
           .from("cleaner_account_members")
@@ -71,17 +76,31 @@ export async function GET(request: Request) {
           .select("id")
           .eq("profile_id", user.id)
           .limit(1),
+        serviceClient
+          .from("owner_accounts")
+          .select("id")
+          .eq("profile_id", user.id)
+          .eq("is_active", true)
+          .limit(1),
       ]);
 
-    if (cleanerError || groundsError) {
+    if (cleanerError || groundsError || ownerError) {
       return Response.json(
-        { ok: false, error: cleanerError?.message || groundsError?.message || "Could not check portal access." },
+        {
+          ok: false,
+          error:
+            cleanerError?.message ||
+            groundsError?.message ||
+            ownerError?.message ||
+            "Could not check portal access.",
+        },
         { status: 500 }
       );
     }
 
     const hasCleaner = !!cleanerMemberships?.length;
     const hasGrounds = !!groundsMemberships?.length;
+    const hasOwner = !!ownerAccounts?.length;
     let destination = "/login";
 
     if (profile.role === "platform_admin") {
@@ -94,6 +113,8 @@ export async function GET(request: Request) {
       destination = "/cleaner";
     } else if (hasGrounds) {
       destination = "/grounds";
+    } else if (hasOwner || profile.role === "owner") {
+      destination = "/owner";
     }
 
     return Response.json({
@@ -103,6 +124,7 @@ export async function GET(request: Request) {
       access: {
         cleaner: hasCleaner,
         grounds: hasGrounds,
+        owner: hasOwner,
       },
     });
   } catch (error) {

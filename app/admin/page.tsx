@@ -3201,10 +3201,20 @@ export default function AdminPage() {
     const inviteUrl = `${window.location.origin}/invite?token=${data.token}`;
 
     try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        throw new Error("Could not verify your admin session.");
+      }
+
       const response = await fetch("/api/send-invite-email", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
           email,
@@ -3348,10 +3358,20 @@ export default function AdminPage() {
     const inviteUrl = `${window.location.origin}/invite?token=${data.token}`;
 
     try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        throw new Error("Could not verify your admin session.");
+      }
+
       const response = await fetch("/api/send-invite-email", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
           email,

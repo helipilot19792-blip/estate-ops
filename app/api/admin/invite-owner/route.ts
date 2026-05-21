@@ -6,6 +6,7 @@ import { writeAuditLog } from "@/lib/server/audit-log";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const publicSupabaseKey =
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY ||
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
   "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -24,13 +25,43 @@ if (!serviceRoleKey) {
   throw new Error("SUPABASE_SERVICE_ROLE_KEY is missing.");
 }
 
-const ownerWelcomeBaseUrl = "https://portal.estateofmindpm.com/owner/welcome";
-
-function getOwnerWelcomeUrl(ownerEmail: string) {
-  const url = new URL(ownerWelcomeBaseUrl);
+function getOwnerWelcomeUrl(ownerEmail: string, requestOrigin: string) {
+  const url = new URL("/owner/welcome", requestOrigin);
   url.searchParams.set("owner_email", ownerEmail);
   url.searchParams.set("sig", signOwnerEmail(ownerEmail));
   return url.toString();
+}
+
+async function findAuthUserByEmail(
+  serviceClient: any,
+  email: string
+) {
+  const normalizedEmail = email.trim().toLowerCase();
+
+  for (let page = 1; page <= 20; page += 1) {
+    const { data, error } = await serviceClient.auth.admin.listUsers({
+      page,
+      perPage: 1000,
+    });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    const match = data.users.find((candidate: any) => {
+      return candidate.email?.trim().toLowerCase() === normalizedEmail;
+    });
+
+    if (match) {
+      return match;
+    }
+
+    if (data.users.length < 1000) {
+      return null;
+    }
+  }
+
+  return null;
 }
 
 export async function POST(request: NextRequest) {
@@ -87,7 +118,7 @@ export async function POST(request: NextRequest) {
     }
 
     const serviceClient = createClient(supabaseUrl, serviceRoleKey);
-    const ownerWelcomeUrl = getOwnerWelcomeUrl(ownerEmail);
+    const ownerWelcomeUrl = getOwnerWelcomeUrl(ownerEmail, new URL(request.url).origin);
     const { data: property, error: propertyError } = await serviceClient
       .from("properties")
       .select("id, organization_id, name")
@@ -199,15 +230,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const { data: usersList, error: listUsersError } = await serviceClient.auth.admin.listUsers();
-
-    if (listUsersError) {
-      return NextResponse.json({ error: listUsersError.message }, { status: 500 });
-    }
-
-    const userExists = (usersList?.users ?? []).some(
-      (u) => u.email?.toLowerCase() === ownerEmail
-    );
+    const existingAuthUser = await findAuthUserByEmail(serviceClient, ownerEmail);
+    const userExists = !!existingAuthUser;
 
     let authError: { message: string } | null = null;
 

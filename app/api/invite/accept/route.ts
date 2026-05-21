@@ -41,6 +41,7 @@ export async function POST(req: NextRequest) {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const anonKey =
       process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY ||
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -318,6 +319,58 @@ export async function POST(req: NextRequest) {
             inviteId: invite.id,
             userId: user.id,
             groundsAccountId,
+          });
+        }
+      }
+    }
+
+    if (invite.role === "owner") {
+      const { data: existingOwner, error: ownerLookupError } = await service
+        .from("owner_accounts")
+        .select("id")
+        .eq("organization_id", invite.organization_id)
+        .eq("email", invite.email)
+        .limit(1)
+        .maybeSingle();
+
+      if (ownerLookupError) {
+        return jsonError(ownerLookupError.message, 500, { inviteId: invite.id });
+      }
+
+      if (existingOwner) {
+        const { error: ownerUpdateError } = await service
+          .from("owner_accounts")
+          .update({
+            profile_id: user.id,
+            is_active: true,
+            invite_accepted_at: new Date().toISOString(),
+          })
+          .eq("id", existingOwner.id);
+
+        if (ownerUpdateError) {
+          return jsonError(ownerUpdateError.message, 500, {
+            inviteId: invite.id,
+            userId: user.id,
+            ownerAccountId: existingOwner.id,
+          });
+        }
+      } else {
+        const { error: ownerInsertError } = await service
+          .from("owner_accounts")
+          .insert({
+            organization_id: invite.organization_id,
+            email: invite.email,
+            full_name: invite.full_name?.trim() || null,
+            profile_id: user.id,
+            is_active: true,
+            invite_sent_at: new Date().toISOString(),
+            invite_accepted_at: new Date().toISOString(),
+          });
+
+        if (ownerInsertError) {
+          return jsonError(ownerInsertError.message, 500, {
+            inviteId: invite.id,
+            userId: user.id,
           });
         }
       }
