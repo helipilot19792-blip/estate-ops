@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { PASSWORD_REQUIREMENTS, validatePassword } from "@/lib/password-policy";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
@@ -169,6 +169,28 @@ export default function LoginPage() {
   const [loadingResend, setLoadingResend] = useState(false);
   const [loadingReset, setLoadingReset] = useState(false);
   const [loadingCancelSignup, setLoadingCancelSignup] = useState(false);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const queryType = url.searchParams.get("type");
+    const hashType = hashParams.get("type");
+    const hasRecoveryHash =
+      hashType === "recovery" &&
+      Boolean(hashParams.get("access_token") && hashParams.get("refresh_token"));
+    const hasRecoveryQuery =
+      queryType === "recovery" &&
+      Boolean(url.searchParams.get("code") || url.searchParams.get("token_hash"));
+
+    if (hasRecoveryHash) {
+      window.location.replace(`/auth/reset${window.location.hash}`);
+      return;
+    }
+
+    if (hasRecoveryQuery) {
+      window.location.replace(`/auth/reset${url.search}`);
+    }
+  }, []);
 
   async function handleLogin(e?: FormEvent) {
     e?.preventDefault();

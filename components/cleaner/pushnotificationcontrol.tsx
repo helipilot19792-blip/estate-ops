@@ -37,6 +37,7 @@ export default function PushNotificationControl() {
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isStandalone, setIsStandalone] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
+  const [showInstallHelp, setShowInstallHelp] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -105,12 +106,19 @@ export default function PushNotificationControl() {
   }, []);
 
   async function installApp() {
-    if (!installPrompt) return;
+    if (!installPrompt) {
+      setShowInstallHelp((current) => !current);
+      return;
+    }
+
     await installPrompt.prompt();
     const choice = await installPrompt.userChoice;
     if (choice.outcome === "accepted") {
       setInstallPrompt(null);
       setIsStandalone(true);
+      setShowInstallHelp(false);
+    } else {
+      setShowInstallHelp(true);
     }
   }
 
@@ -197,11 +205,12 @@ export default function PushNotificationControl() {
     }
   }
 
+  const canOfferInstall = !isStandalone;
   const canInstall = !!installPrompt && !isStandalone;
   const showIOSInstallHint = isIOS && !isStandalone;
   const canShowPush = status !== "checking" && status !== "unsupported" && status !== "disabled";
 
-  if (!canInstall && !showIOSInstallHint && !canShowPush) {
+  if (!canOfferInstall && !canShowPush) {
     return null;
   }
 
@@ -218,21 +227,24 @@ export default function PushNotificationControl() {
         />
         <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold">
-            {isActive ? "Push on" : status === "error" ? "Push issue" : canInstall ? "Install app" : "Push alerts"}
+            {isActive ? "Push on" : status === "error" ? "Push issue" : canOfferInstall ? "Install app" : "Push alerts"}
           </div>
           {message ? <div className="mt-0.5 text-xs text-[#cdbda0]">{message}</div> : null}
           {showIOSInstallHint ? (
             <div className="mt-0.5 text-xs text-[#cdbda0]">Use Share, then Add to Home Screen.</div>
           ) : null}
+          {showInstallHelp && !showIOSInstallHint ? (
+            <div className="mt-0.5 text-xs text-[#cdbda0]">Use the browser menu, then Install app or Add to Home screen.</div>
+          ) : null}
         </div>
         <div className="flex shrink-0 flex-col gap-2">
-          {canInstall ? (
+          {canOfferInstall ? (
             <button
               type="button"
               onClick={() => void installApp()}
               className="rounded-full border border-[#b08b47]/55 px-3 py-1.5 text-xs font-semibold text-[#f5efe4] transition hover:bg-[#b08b47] hover:text-[#120f0b]"
             >
-              Install
+              {canInstall ? "Install" : "How"}
             </button>
           ) : null}
           {canShowPush ? (
