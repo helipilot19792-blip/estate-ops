@@ -37,6 +37,55 @@ function formatGuestCountLabel(guestCount?: number | null) {
   return "Number of guests unknown";
 }
 
+function pickDailyCopy(options: string[], key: string) {
+  if (options.length === 0) return "";
+  const seed = Array.from(key).reduce((total, char) => total + char.charCodeAt(0), 0);
+  return options[seed % options.length];
+}
+
+const QUIRKY_TODAY_EMPTY_COPY = [
+  "Nothing on deck today. Suspicious, but we'll take it.",
+  "All clear for today. The calendar is behaving.",
+  "No scheduled chaos today.",
+  "Nothing scheduled today. Weirdly peaceful.",
+  "No jobs today. The clipboard gets a day off.",
+];
+
+const QUIRKY_TODAY_ELSE_EMPTY_COPY = [
+  "Nothing else scheduled today. The plot is calm.",
+  "That's the list for today. Surprisingly tidy.",
+  "Nothing else on deck. The calendar has said its piece.",
+  "No extra chaos today. We love a clean handoff.",
+];
+
+const QUIRKY_UPCOMING_EMPTY_COPY = [
+  "Nothing coming up in the next two days. The schedule is taking a tiny vacation.",
+  "No upcoming cleaning, grounds, check-ins, waste pickup, or inspections. Rare air.",
+  "The next two days are quiet. Do not scare the calendar.",
+  "Nothing upcoming. A suspiciously smooth runway.",
+];
+
+const QUIRKY_OCCUPIED_EMPTY_COPY = [
+  "No properties marked occupied. Beds are off duty, apparently.",
+  "No synced guests in-house today. The pillows are resting.",
+  "No occupied stays showing right now. The calendar says everyone is elsewhere.",
+  "No guests marked in-house. Quiet keys, quiet doors.",
+];
+
+const QUIRKY_LOADING_COPY = [
+  "Gathering today's moving pieces...",
+  "Checking the clipboard and the calendar...",
+  "Loading today's work. One tiny logistics sweep...",
+  "Collecting the operational confetti...",
+];
+
+const QUIRKY_SYNCING_COPY = [
+  "Interrogating calendars...",
+  "Asking the calendars what they know...",
+  "Syncing the date universe...",
+  "Convincing calendars to tell the truth...",
+];
+
 type Property = {
   id: string;
   organization_id?: string | null;
@@ -1293,6 +1342,30 @@ export default function AdminPage() {
   const [groundsLinkSelections, setGroundsLinkSelections] = useState<Record<string, string>>({});
 
   const todayYmd = toYmd(now);
+  const todayEmptyCopy = useMemo(
+    () => pickDailyCopy(QUIRKY_TODAY_EMPTY_COPY, `today-empty-${todayYmd}`),
+    [todayYmd]
+  );
+  const todayElseEmptyCopy = useMemo(
+    () => pickDailyCopy(QUIRKY_TODAY_ELSE_EMPTY_COPY, `today-else-empty-${todayYmd}`),
+    [todayYmd]
+  );
+  const upcomingEmptyCopy = useMemo(
+    () => pickDailyCopy(QUIRKY_UPCOMING_EMPTY_COPY, `upcoming-empty-${todayYmd}`),
+    [todayYmd]
+  );
+  const occupiedEmptyCopy = useMemo(
+    () => pickDailyCopy(QUIRKY_OCCUPIED_EMPTY_COPY, `occupied-empty-${todayYmd}`),
+    [todayYmd]
+  );
+  const loadingWorkCopy = useMemo(
+    () => pickDailyCopy(QUIRKY_LOADING_COPY, `loading-work-${todayYmd}`),
+    [todayYmd]
+  );
+  const syncingCalendarCopy = useMemo(
+    () => pickDailyCopy(QUIRKY_SYNCING_COPY, `syncing-calendar-${todayYmd}`),
+    [todayYmd]
+  );
   const todaysCleaningJobs = useMemo(() => {
     return jobs
       .filter((job) => (job.scheduled_for || extractCheckoutDate(job.notes)) === todayYmd)
@@ -4018,7 +4091,7 @@ export default function AdminPage() {
       }
     }
 
-    return `${parts.join(". ")}.`;
+    return `Calendars synced. Everyone's secrets are now dates. ${parts.join(". ")}.`;
   }
   async function handleResetOrganization() {
     if (resetConfirmText.trim().toUpperCase() !== "WIPE ALL DATA") {
@@ -8232,7 +8305,7 @@ This removes its linked members and deletes the grounds account.`
                 disabled={syncingCalendarsNow}
                 className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-4 py-2 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {syncingCalendarsNow ? "Syncing..." : "Sync all calendars"}
+                {syncingCalendarsNow ? syncingCalendarCopy : "Sync all calendars"}
               </button>
               <button
                 type="button"
@@ -8340,11 +8413,11 @@ This removes its linked members and deletes the grounds account.`
 
                   {!adminDataLoaded ? (
                     <div className="rounded-[16px] border border-dashed border-[#b9d1fb] bg-white/80 px-4 py-3 text-sm text-[#5f6f86]">
-                      Loading today's work...
+                      {loadingWorkCopy}
                     </div>
                   ) : todaysHomeHappenings.length === 0 ? (
                     <div className="rounded-[16px] border border-dashed border-[#b9d1fb] bg-white/80 px-4 py-3 text-sm text-[#5f6f86]">
-                      Nothing scheduled for today.
+                      {todayEmptyCopy}
                     </div>
                   ) : null}
                   </div>
@@ -8436,7 +8509,7 @@ This removes its linked members and deletes the grounds account.`
 
                   {adminDataLoaded && futureHomeHappenings.length === 0 ? (
                     <div className="rounded-[16px] border border-dashed border-[#e3cda7] bg-white/80 px-4 py-3 text-sm text-[#6d5c40]">
-                      No upcoming cleaning, grounds, check-ins, waste pickup, or inspections in the next two days.
+                      {upcomingEmptyCopy}
                     </div>
                   ) : null}
                   </div>
@@ -8462,7 +8535,7 @@ This removes its linked members and deletes the grounds account.`
               <div className="mt-3 space-y-2">
                 {occupiedTodayProperties.length === 0 ? (
                   <div className="rounded-[16px] border border-dashed border-[#bde7cf] bg-white/80 px-4 py-3 text-sm text-[#5d7767]">
-                    No properties are currently marked occupied from synced calendars.
+                    {occupiedEmptyCopy}
                   </div>
                 ) : (
                   occupiedTodayProperties.map((item) => (
@@ -15940,7 +16013,7 @@ This removes its linked members and deletes the grounds account.`
                     onClick={() => void syncCalendarsNow()}
                     disabled={syncingCalendarsNow}
                   >
-                    {syncingCalendarsNow ? "Syncing..." : "Sync Calendars Now"}
+                    {syncingCalendarsNow ? syncingCalendarCopy : "Sync Calendars Now"}
                   </button>
                 </div>
 
@@ -17691,7 +17764,7 @@ This removes its linked members and deletes the grounds account.`
                       disabled={syncingCalendarsNow}
                       className="rounded-full bg-[#241c15] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#352a21] disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {syncingCalendarsNow ? "Syncing..." : "Sync calendars"}
+                      {syncingCalendarsNow ? syncingCalendarCopy : "Sync calendars"}
                     </button>
                     <button
                       type="button"
@@ -17727,13 +17800,13 @@ This removes its linked members and deletes the grounds account.`
                   {adminDataLoaded && todaysHomeHappenings.length === 0 ? (
                     <div className="rounded-[16px] border border-dashed border-[#b9d1fb] bg-white/80 px-3 py-2.5 text-sm text-[#5f6f86] sm:col-span-2">
                       {upcomingCheckInGlanceItems.length === 0
-                        ? "Nothing scheduled for today."
-                        : "Nothing else scheduled for today."}
+                        ? todayEmptyCopy
+                        : todayElseEmptyCopy}
                     </div>
                   ) : null}
                   {!adminDataLoaded ? (
                     <div className="rounded-[16px] border border-dashed border-[#b9d1fb] bg-white/80 px-3 py-2.5 text-sm text-[#5f6f86] sm:col-span-2">
-                      Loading today's work...
+                      {loadingWorkCopy}
                     </div>
                   ) : null}
                 </div>
@@ -17760,7 +17833,7 @@ This removes its linked members and deletes the grounds account.`
                   ))}
                   {occupiedTodayProperties.length === 0 ? (
                     <div className="rounded-[16px] border border-dashed border-[#bbf7d0] bg-white/80 px-3 py-2.5 text-sm text-[#475569]">
-                      No properties are currently marked occupied.
+                      {occupiedEmptyCopy}
                     </div>
                   ) : null}
                 </div>
