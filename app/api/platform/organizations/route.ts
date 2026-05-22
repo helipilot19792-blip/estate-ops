@@ -7,6 +7,16 @@ export const dynamic = "force-dynamic";
 type PlatformAction =
   | { type: "extend_trial"; organizationId: string; days?: number }
   | { type: "set_status"; organizationId: string; status: "trialing" | "active" | "past_due" | "canceled" | "suspended" }
+  | {
+      type: "set_plan";
+      organizationId: string;
+      accountType?: "internal" | "beta" | "customer";
+      planName?: string;
+      propertyLimit?: number | null;
+      memberLimit?: number | null;
+      billingOverrideReason?: string | null;
+      status?: "trialing" | "active" | "past_due" | "canceled" | "suspended";
+    }
   | { type: "delete_organization"; organizationId: string; confirmName: string };
 
 type OrganizationRow = {
@@ -21,6 +31,11 @@ type OrganizationRow = {
   billing_enabled?: boolean | null;
   stripe_customer_id?: string | null;
   stripe_subscription_id?: string | null;
+  account_type?: string | null;
+  plan_name?: string | null;
+  property_limit?: number | null;
+  member_limit?: number | null;
+  billing_override_reason?: string | null;
 };
 
 type OrganizationMemberRow = {
@@ -158,8 +173,9 @@ async function requirePlatformAdmin(token?: string | null) {
 }
 
 async function loadOrganizationOverview(serviceClient: ReturnType<typeof getClients>["serviceClient"]) {
+  const organizationSelect =
+    "id,name,slug,created_at,created_by,subscription_status,trial_started_at,trial_ends_at,billing_enabled,stripe_customer_id,stripe_subscription_id,account_type,plan_name,property_limit,member_limit,billing_override_reason";
   const [
-    organizationsRes,
     membersRes,
     profilesRes,
     propertiesRes,
@@ -167,10 +183,6 @@ async function loadOrganizationOverview(serviceClient: ReturnType<typeof getClie
     groundsJobsRes,
     ownerAccountsRes,
   ] = await Promise.all([
-    serviceClient
-      .from("organizations")
-      .select("id,name,slug,created_at,created_by,subscription_status,trial_started_at,trial_ends_at,billing_enabled,stripe_customer_id,stripe_subscription_id")
-      .order("created_at", { ascending: false }),
     serviceClient
       .from("organization_members")
       .select("organization_id, profile_id, role, created_at"),
@@ -191,6 +203,18 @@ async function loadOrganizationOverview(serviceClient: ReturnType<typeof getClie
       .select("id,organization_id"),
   ]);
 
+  let organizationsRes: any = await serviceClient
+    .from("organizations")
+    .select(organizationSelect)
+    .order("created_at", { ascending: false });
+
+  if (organizationsRes.error?.code === "42703") {
+    organizationsRes = await serviceClient
+      .from("organizations")
+      .select("id,name,slug,created_at,created_by,subscription_status,trial_started_at,trial_ends_at,billing_enabled,stripe_customer_id,stripe_subscription_id")
+      .order("created_at", { ascending: false });
+  }
+
   const responses = [
     organizationsRes,
     membersRes,
@@ -207,7 +231,13 @@ async function loadOrganizationOverview(serviceClient: ReturnType<typeof getClie
     }
   }
 
-  const organizations = (organizationsRes.data ?? []) as OrganizationRow[];
+  const organizations = ((organizationsRes.data ?? []) as OrganizationRow[]).map((organization) => ({
+    account_type: "beta",
+    plan_name: "Beta trial",
+    property_limit: 10,
+    member_limit: 15,
+    ...organization,
+  }));
   const members = (membersRes.data ?? []) as OrganizationMemberRow[];
   const profiles = (profilesRes.data ?? []) as ProfileRow[];
   const properties = (propertiesRes.data ?? []) as OrganizationLinkedRow[];
@@ -647,6 +677,59 @@ export async function POST(req: NextRequest) {
         metadata: {
           status: body.status,
         },
+      });
+    } else if (body.type === "set_plan") {
+      const updates: Record<string, unknown> = {};
+
+      if (body.accountType) updates.account_type = body.accountType;
+      if (typeof body.planName === "string") updates.plan_name = body.planName.trim() || "Beta trial";
+      if (body.propertyLimit !== undefined) {
+        const value = body.propertyLimit === null ? null : Number(body.propertyLimit);
+        updates.property_limit = value === null || (Number.isFinite(value) && value >= 0) ? value : 10;
+      }
+      if (body.memberLimit !== undefined) {
+        const value = body.memberLimit === null ? null : Number(body.memberLimit);
+        updates.member_limit = value === null || (Number.isFinite(value) && value >= 0) ? value : 15;
+      }
+      if (body.billingOverrideReason !== undefined) {
+        const reason = String(body.billingOverrideReason || "").trim();
+        updates.billing_override_reason = reason || null;
+      }
+      if (body.status) updates.subscription_status = body.status;
+      if (body.accountType === "internal") {
+        updates.subscription_status = body.status || "active";
+        updates.property_limit = null;
+        updates.member_limit = null;
+        updates.plan_name = body.planName?.trim() || "Internal workspace";
+      }
+
+      const { error: updateError } = await serviceClient
+        .from("organizations")
+        .update(updates)
+        .eq("id", body.organizationId);
+
+      if (updateError) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              updateError.code === "42703"
+                ? "SaaS plan fields are missing. Run supabase/add_saas_plan_controls.sql in Supabase first."
+                : updateError.message,
+          },
+          { status: 500 }
+        );
+      }
+
+      await writeAuditLog(serviceClient, {
+        actorProfileId: profile.id,
+        actorEmail: profile.email,
+        actorRole: profile.role,
+        organizationId: body.organizationId,
+        actionType: "platform.set_plan",
+        targetType: "organization",
+        targetId: body.organizationId,
+        metadata: updates,
       });
     } else if (body.type === "delete_organization") {
       const { data: organization, error: orgError } = await serviceClient

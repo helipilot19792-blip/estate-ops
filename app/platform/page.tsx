@@ -15,6 +15,11 @@ type PlatformOrganization = {
   billing_enabled?: boolean | null;
   stripe_customer_id?: string | null;
   stripe_subscription_id?: string | null;
+  account_type?: string | null;
+  plan_name?: string | null;
+  property_limit?: number | null;
+  member_limit?: number | null;
+  billing_override_reason?: string | null;
   member_count: number;
   admin_count: number;
   property_count: number;
@@ -92,6 +97,10 @@ function getStatusTone(status?: string | null) {
     default:
       return "border-[#ecd7a8] bg-[#fff8e8] text-[#8a6112]";
   }
+}
+
+function getPlanLabel(organization: PlatformOrganization) {
+  return organization.plan_name || (organization.account_type === "internal" ? "Internal workspace" : "Beta trial");
 }
 
 export default function PlatformPage() {
@@ -500,6 +509,14 @@ export default function PlatformPage() {
                       <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1">
                         {organization.property_count} properties
                       </span>
+                      <span className="rounded-full border border-[#d7e6df] bg-[#f6fbf8] px-3 py-1">
+                        {getPlanLabel(organization)}
+                      </span>
+                      {typeof organization.property_limit === "number" ? (
+                        <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1">
+                          {organization.property_count}/{organization.property_limit} property limit
+                        </span>
+                      ) : null}
                       <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1">
                         {jobCount} jobs
                       </span>
@@ -540,9 +557,12 @@ export default function PlatformPage() {
                       </div>
 
                       <div className="rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3">
-                        <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Usage</div>
+                        <div className="text-[11px] uppercase tracking-[0.18em] text-[#8a7b68]">Plan</div>
                         <div className="mt-2 text-sm font-semibold text-[#241c15]">
-                          {organization.property_count} properties | {jobCount} jobs
+                          {getPlanLabel(organization)}
+                        </div>
+                        <div className="mt-1 text-xs text-[#7f7263]">
+                          {organization.account_type || "beta"}
                         </div>
                       </div>
 
@@ -659,6 +679,101 @@ export default function PlatformPage() {
                             className="rounded-full border border-[#efc6c6] bg-[#fff5f5] px-4 py-2.5 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-60"
                           >
                             Suspend
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="rounded-[22px] border border-[#d7e6df] bg-[#f6fbf8] px-4 py-4">
+                        <div className="text-sm font-semibold text-[#17382d]">Plan controls</div>
+                        <p className="mt-1 text-xs leading-5 text-[#5e7469]">
+                          These are manual beta controls for limits and internal workspaces. Stripe can be connected later.
+                        </p>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                          <button
+                            type="button"
+                            disabled={isActing}
+                            onClick={() =>
+                              void handleAction(
+                                {
+                                  type: "set_plan",
+                                  organizationId: organization.id,
+                                  accountType: "internal",
+                                  planName: "Internal workspace",
+                                  status: "active",
+                                  billingOverrideReason: "Developer/company owner workspace",
+                                },
+                                `${organization.name || "Organization"} marked internal.`
+                              )
+                            }
+                            className="rounded-full border border-[#b9d9ca] bg-white px-4 py-2.5 text-sm font-medium text-[#2f6b55] transition hover:bg-[#eef8f2] disabled:opacity-60"
+                          >
+                            Mark internal
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={isActing}
+                            onClick={() =>
+                              void handleAction(
+                                {
+                                  type: "set_plan",
+                                  organizationId: organization.id,
+                                  accountType: "beta",
+                                  planName: "Beta Starter",
+                                  propertyLimit: 10,
+                                  memberLimit: 15,
+                                  status: "trialing",
+                                },
+                                `${organization.name || "Organization"} set to Beta Starter.`
+                              )
+                            }
+                            className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2.5 text-sm font-medium text-[#5f5245] transition hover:bg-[#fcfaf7] disabled:opacity-60"
+                          >
+                            Beta Starter
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={isActing}
+                            onClick={() =>
+                              void handleAction(
+                                {
+                                  type: "set_plan",
+                                  organizationId: organization.id,
+                                  accountType: "beta",
+                                  planName: "Beta Growth",
+                                  propertyLimit: 20,
+                                  memberLimit: 30,
+                                  status: "trialing",
+                                },
+                                `${organization.name || "Organization"} set to Beta Growth.`
+                              )
+                            }
+                            className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2.5 text-sm font-medium text-[#5f5245] transition hover:bg-[#fcfaf7] disabled:opacity-60"
+                          >
+                            Beta Growth
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={isActing}
+                            onClick={() =>
+                              void handleAction(
+                                {
+                                  type: "set_plan",
+                                  organizationId: organization.id,
+                                  accountType: "customer",
+                                  planName: "Active customer",
+                                  propertyLimit: organization.property_limit ?? 10,
+                                  memberLimit: organization.member_limit ?? 15,
+                                  status: "active",
+                                },
+                                `${organization.name || "Organization"} marked as an active customer.`
+                              )
+                            }
+                            className="rounded-full border border-[#cfe4cf] bg-white px-4 py-2.5 text-sm font-medium text-[#2f6b2f] transition hover:bg-[#eef8f2] disabled:opacity-60"
+                          >
+                            Active customer
                           </button>
                         </div>
                       </div>

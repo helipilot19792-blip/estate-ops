@@ -529,6 +529,11 @@ type OrganizationBillingRow = {
   billing_enabled?: boolean | null;
   stripe_customer_id?: string | null;
   stripe_subscription_id?: string | null;
+  account_type?: string | null;
+  plan_name?: string | null;
+  property_limit?: number | null;
+  member_limit?: number | null;
+  billing_override_reason?: string | null;
 };
 type OrganizationInviteRole = "cleaner" | "grounds" | "owner" | "admin";
 type OrganizationInviteRow = {
@@ -1494,14 +1499,18 @@ export default function AdminPage() {
   }, [maintenanceFlags]);
 
   const currentTrialStatus = (currentOrganizationBilling?.subscription_status || "trialing").toLowerCase();
+  const currentAccountType = (currentOrganizationBilling?.account_type || "beta").toLowerCase();
+  const currentPlanName = currentOrganizationBilling?.plan_name || (currentAccountType === "internal" ? "Internal workspace" : "Beta trial");
+  const isInternalWorkspace = currentAccountType === "internal";
   const currentOrganizationLabel =
     currentOrganizationBilling?.name ||
     myOrganizations.find((organization) => organization.organization_id === currentOrganizationId)?.organization_name ||
     myOrganizations.find((organization) => organization.organization_id === currentOrganizationId)?.organization_slug ||
     "Current company";
   const trialDaysRemaining = getTrialDaysRemaining(currentOrganizationBilling?.trial_ends_at, now);
-  const trialExpired = currentTrialStatus === "trialing" && trialDaysRemaining !== null && trialDaysRemaining < 0;
+  const trialExpired = !isInternalWorkspace && currentTrialStatus === "trialing" && trialDaysRemaining !== null && trialDaysRemaining < 0;
   const trialEndingSoon =
+    !isInternalWorkspace &&
     currentTrialStatus === "trialing" &&
     trialDaysRemaining !== null &&
     trialDaysRemaining >= 0 &&
@@ -18023,14 +18032,18 @@ This removes its linked members and deletes the grounds account.`
             <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div>
                 <div className="text-xs font-semibold uppercase tracking-[0.18em]">
-                  {currentTrialStatus === "active"
+                  {isInternalWorkspace
+                    ? "Internal Workspace"
+                    : currentTrialStatus === "active"
                     ? "Billing Ready"
                     : trialExpired
                       ? "Trial Ended"
                       : "Free Trial"}
                 </div>
                 <div className="mt-1 text-sm leading-6">
-                  {currentTrialStatus === "active"
+                  {isInternalWorkspace
+                    ? "This is an internal GuleraOS workspace, so trial limits and billing prompts are hidden."
+                    : currentTrialStatus === "active"
                     ? "This organization is marked as active for future billing integration."
                     : trialExpired
                       ? "This organization’s free trial has ended. Billing enforcement is not turned on yet, but this workspace is now flagged for a future upgrade flow."
@@ -18041,7 +18054,7 @@ This removes its linked members and deletes the grounds account.`
                           : `${trialDaysRemaining} day${trialDaysRemaining === 1 ? "" : "s"} left in the free trial.`}
                 </div>
                 <div className="mt-1 text-xs opacity-80">
-                  Status: {currentTrialStatus}
+                  Status: {isInternalWorkspace ? "internal" : currentTrialStatus} | Plan: {currentPlanName}
                   {currentOrganizationBilling.trial_ends_at
                     ? ` • Trial ends ${new Date(currentOrganizationBilling.trial_ends_at).toLocaleDateString()}`
                     : ""}
@@ -18049,7 +18062,7 @@ This removes its linked members and deletes the grounds account.`
               </div>
 
               <div className="rounded-full border border-current/15 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em]">
-                Pricing coming later
+                {isInternalWorkspace ? "Internal" : currentPlanName}
               </div>
             </div>
           </div>

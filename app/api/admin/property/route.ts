@@ -113,6 +113,60 @@ async function linkOwnerToProperty(
   return ownerAccountId;
 }
 
+async function assertOrganizationCanAddProperty(serviceClient: any, organizationId: string) {
+  let organizationResult = await serviceClient
+    .from("organizations")
+    .select("id,subscription_status,trial_ends_at,account_type,property_limit")
+    .eq("id", organizationId)
+    .maybeSingle();
+
+  if (organizationResult.error?.code === "42703") {
+    organizationResult = await serviceClient
+      .from("organizations")
+      .select("id,subscription_status,trial_ends_at")
+      .eq("id", organizationId)
+      .maybeSingle();
+  }
+
+  if (organizationResult.error) throw organizationResult.error;
+  if (!organizationResult.data) throw new Error("Organization not found.");
+
+  const organization = organizationResult.data as {
+    subscription_status?: string | null;
+    trial_ends_at?: string | null;
+    account_type?: string | null;
+    property_limit?: number | null;
+  };
+  const status = String(organization.subscription_status || "trialing").toLowerCase();
+  const accountType = String(organization.account_type || "beta").toLowerCase();
+
+  if (status === "suspended" || status === "canceled") {
+    throw new Error("This workspace is not active. Contact support to add more properties.");
+  }
+
+  if (accountType !== "internal" && status === "trialing" && organization.trial_ends_at) {
+    const trialEndsAt = new Date(organization.trial_ends_at);
+    if (!Number.isNaN(trialEndsAt.getTime()) && trialEndsAt.getTime() < Date.now()) {
+      throw new Error("This workspace trial has ended. Contact support to add more properties.");
+    }
+  }
+
+  if (accountType === "internal" || organization.property_limit === null || organization.property_limit === undefined) {
+    return;
+  }
+
+  const { count, error } = await serviceClient
+    .from("properties")
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", organizationId);
+
+  if (error) throw error;
+
+  if ((count ?? 0) >= organization.property_limit) {
+    throw new Error(`This workspace is at its ${organization.property_limit}-property plan limit.`);
+  }
+}
+
 export async function POST(request: NextRequest) {
   if (!supabaseUrl || !publicSupabaseKey || !serviceRoleKey) {
     return NextResponse.json(
@@ -159,6 +213,8 @@ export async function POST(request: NextRequest) {
     if (!hasAdminAccess) {
       return NextResponse.json({ error: "Admin access required for this organization." }, { status: 403 });
     }
+
+    await assertOrganizationCanAddProperty(serviceClient, organizationId);
 
     const defaultCleanerUnits = Number(body?.defaultCleanerUnitsNeeded || 1);
 
