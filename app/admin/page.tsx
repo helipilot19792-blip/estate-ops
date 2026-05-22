@@ -747,6 +747,14 @@ function normalizeTaxLines(lines: OwnerInvoiceTaxLine[] | null | undefined) {
   ];
 }
 
+const DEFAULT_INVOICE_TAX_LABELS = ["Tax", "Sales tax", "VAT", "GST", "PST", "HST", "IVA"];
+
+function getInvoiceTaxModeLabel(taxLabel: string) {
+  const normalized = taxLabel.trim();
+  if (!normalized || normalized === "configured tax") return "configured taxes/fees";
+  return normalized;
+}
+
 function getErrorMessage(error: unknown, fallback: string) {
   if (error instanceof Error) return error.message;
   if (error && typeof error === "object" && "message" in error) {
@@ -11169,6 +11177,7 @@ This removes its linked members and deletes the grounds account.`
           return rate > 0 ? `${label} (${rate}%)` : label;
         })
         .join(", ") || "configured tax";
+    const invoiceTaxModeLabel = getInvoiceTaxModeLabel(invoiceTaxLabel);
     const editingInvoice = editingOwnerInvoiceId
       ? ownerInvoices.find((invoice) => invoice.id === editingOwnerInvoiceId)
       : null;
@@ -11623,7 +11632,12 @@ This removes its linked members and deletes the grounds account.`
                 />
                 <div className="rounded-[18px] border border-[#eadfce] bg-white p-3">
                   <div className="flex items-center justify-between gap-3">
-                    <div className="text-sm font-semibold text-[#241c15]">Taxes</div>
+                    <div>
+                      <div className="text-sm font-semibold text-[#241c15]">Taxes and fees</div>
+                      <p className="mt-1 text-xs leading-5 text-[#7f7263]">
+                        Add the tax names and rates your business needs. Use one line or several, such as VAT, GST, PST, HST, state sales tax, city tax, or no tax.
+                      </p>
+                    </div>
                     <button
                       type="button"
                       onClick={addInvoiceTaxLine}
@@ -11651,8 +11665,9 @@ This removes its linked members and deletes the grounds account.`
                         <label className="text-xs font-medium text-[#5f5245]">
                           Tax label
                           <input
+                            list="invoice-tax-label-suggestions"
                             className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
-                            placeholder="HST, GST, PST, VAT"
+                            placeholder="Tax, VAT, GST, sales tax"
                             value={taxLine.label}
                             onChange={(e) => updateInvoiceTaxLine(taxLine.id, { label: e.target.value })}
                           />
@@ -11679,6 +11694,11 @@ This removes its linked members and deletes the grounds account.`
                       </div>
                     ))}
                   </div>
+                  <datalist id="invoice-tax-label-suggestions">
+                    {DEFAULT_INVOICE_TAX_LABELS.map((label) => (
+                      <option key={label} value={label} />
+                    ))}
+                  </datalist>
                 </div>
               </div>
             </div>
@@ -12067,7 +12087,7 @@ This removes its linked members and deletes the grounds account.`
                       setInvoiceApplyTax(e.target.checked);
                     }}
                   />
-                  <span className="font-semibold text-[#241c15]">Add HST/tax to this invoice</span>
+                  <span className="font-semibold text-[#241c15]">Apply {invoiceTaxModeLabel} to this invoice</span>
                 </span>
                 <span className="text-xs font-medium text-[#8a7b68]">{invoiceTaxLabel}</span>
               </label>
@@ -12142,7 +12162,7 @@ This removes its linked members and deletes the grounds account.`
                           checked={item.taxable !== false}
                           onChange={(e) => updateInvoiceLineItem(item.id, { taxable: e.target.checked })}
                         />
-                        Add HST/tax to this line
+                        Taxable / subject to configured tax
                       </label>
                       <label className="inline-flex cursor-pointer items-center rounded-full border border-[#d8c7ab] bg-white px-3 py-1.5 text-xs font-medium text-[#5f4c3b] hover:bg-[#f7f1e8]">
                         {uploadingReceiptLineItemId === item.id ? "Uploading..." : "Attach receipt"}
