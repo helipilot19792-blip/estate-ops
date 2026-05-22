@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { I18nProvider } from "@/components/i18n-provider";
 import LanguageSwitcher from "@/components/language-switcher";
 import LegalConsentBanner from "@/components/legal-consent-banner";
+import HelpAssistant from "@/components/help/helpassistant";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -36,6 +37,7 @@ export default function RootLayout({
         <I18nProvider>
           <LanguageSwitcher />
           {children}
+          <HelpAssistant />
           <LegalConsentBanner />
         </I18nProvider>
       </body>

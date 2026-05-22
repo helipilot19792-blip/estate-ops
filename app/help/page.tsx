@@ -3,7 +3,6 @@
 import Image from "next/image";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import HelpAssistant from "@/components/help/helpassistant";
 
 type HelpSectionKey =
   | "getting-started"
@@ -424,10 +423,6 @@ export default function HelpPage() {
                   title="Use support early"
                   text="If something looks off, send a support request before bad setup spreads into operations."
                 />
-              </div>
-
-              <div className="mb-6">
-                <HelpAssistant />
               </div>
 
               {sectionContent}
