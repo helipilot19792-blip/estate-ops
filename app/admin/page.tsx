@@ -4063,6 +4063,8 @@ export default function AdminPage() {
     const skippedNonBooking = Number(totals.skipped_non_booking ?? 0);
     const bookingEventsSaved = Number(totals.booking_events_saved ?? 0);
     const removedMissingFuture = Number(totals.removed_missing_future ?? 0);
+    const removedMissingFutureJobs = Number(totals.removed_missing_future_jobs ?? 0);
+    const updatedJobs = Number(totals.updated_jobs ?? 0);
     const errors = Number(totals.errors ?? 0);
     const results = Array.isArray(payload?.results) ? payload.results : [];
     const resultIssueSummaries = results
@@ -4083,11 +4085,20 @@ export default function AdminPage() {
             const propertyName = result?.property_name || "Unknown property";
             const source = result?.source || "calendar";
             const resultCreated = Number(result?.created ?? 0);
+            const resultUpdatedJobs = Number(result?.updated_jobs ?? 0);
             const resultBookingEvents = Number(result?.booking_events_saved ?? 0);
             const resultRemovedMissingFuture = Number(result?.removed_missing_future ?? 0);
+            const resultRemovedMissingFutureJobs = Number(result?.removed_missing_future_jobs ?? 0);
             const resultErrors = Array.isArray(result?.errors) ? result.errors.length : 0;
-            if (resultCreated === 0 && resultBookingEvents === 0 && resultRemovedMissingFuture === 0 && resultErrors === 0) return "";
-            return `${propertyName} / ${source}: ${resultCreated} created, ${resultBookingEvents} booking saved, ${resultRemovedMissingFuture} removed${resultErrors > 0 ? `, ${resultErrors} issue${resultErrors === 1 ? "" : "s"}` : ""}`;
+            if (
+              resultCreated === 0 &&
+              resultUpdatedJobs === 0 &&
+              resultBookingEvents === 0 &&
+              resultRemovedMissingFuture === 0 &&
+              resultRemovedMissingFutureJobs === 0 &&
+              resultErrors === 0
+            ) return "";
+            return `${propertyName} / ${source}: ${resultCreated} created, ${resultUpdatedJobs} updated, ${resultBookingEvents} booking saved, ${resultRemovedMissingFuture} bookings removed, ${resultRemovedMissingFutureJobs} jobs removed${resultErrors > 0 ? `, ${resultErrors} issue${resultErrors === 1 ? "" : "s"}` : ""}`;
           })
           .filter(Boolean)
           .slice(0, 4)
@@ -4100,8 +4111,9 @@ export default function AdminPage() {
 
     const parts = [`Calendar sync finished${errors > 0 ? " with issues" : ""}: ${calendarsFound} active feed${calendarsFound === 1 ? "" : "s"}`];
     parts.push(`${created} job${created === 1 ? "" : "s"} created`);
+    parts.push(`${updatedJobs} job${updatedJobs === 1 ? "" : "s"} updated`);
     parts.push(`${skippedExisting} existing, ${skippedPast} past, ${skippedNonBooking} blocked/non-booking skipped`);
-    parts.push(`${bookingEventsSaved} booking history saved, ${removedMissingFuture} missing future removed`);
+    parts.push(`${bookingEventsSaved} booking history saved, ${removedMissingFuture} missing bookings removed, ${removedMissingFutureJobs} old synced job${removedMissingFutureJobs === 1 ? "" : "s"} removed`);
 
     if (propertySummaries) {
       parts.push(propertySummaries);

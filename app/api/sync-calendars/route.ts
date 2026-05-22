@@ -22,6 +22,8 @@ type TurnoverJobRow = {
   id: string;
   property_id: string;
   notes: string | null;
+  scheduled_for: string | null;
+  status: string | null;
 };
 
 type ParsedEvent = {
@@ -284,6 +286,48 @@ function buildSyncMarker(source: string, uid: string): string {
   return `[AUTO_SYNC:${source}:${uid}]`;
 }
 
+function getSyncMarkerPrefix(source: string): string {
+  return `[AUTO_SYNC:${source}:`;
+}
+
+function getSyncMarkerUid(notes: string | null, source: string): string | null {
+  if (!notes) return null;
+
+  const prefix = getSyncMarkerPrefix(source);
+  const start = notes.indexOf(prefix);
+  if (start < 0) return null;
+
+  const uidStart = start + prefix.length;
+  const end = notes.indexOf("]", uidStart);
+  if (end < 0) return null;
+
+  return notes.slice(uidStart, end);
+}
+
+function getCheckoutDateFromNotes(notes: string | null): string | null {
+  if (!notes) return null;
+  const match = notes.match(/Checkout date:\s*(\d{4}-\d{2}-\d{2})/i);
+  return match?.[1] ?? null;
+}
+
+function buildAutoSyncNotes(
+  calendar: PropertyCalendarRow,
+  propertyName: string,
+  event: ParsedEvent,
+  marker: string
+) {
+  return [
+    `Auto-created from ${calendar.source.toUpperCase()} calendar sync.`,
+    `Property: ${propertyName}`,
+    `Guest / reservation: ${event.summary || "Reservation"}`,
+    event.guestCount ? `Guest count: ${event.guestCount}` : "Guest count: Not provided by calendar feed",
+    `Check-in date: ${event.checkinDate || "Unknown"}`,
+    `Checkout date: ${event.checkoutDate}`,
+    "",
+    marker,
+  ].join("\n");
+}
+
 function getTodayYmd() {
   const today = new Date();
   return new Date(
@@ -364,18 +408,83 @@ async function loadPropertiesMap(organizationIds?: string[] | null) {
   return map;
 }
 
-async function jobAlreadyExists(propertyId: string, marker: string): Promise<boolean> {
+async function findSyncedJob(propertyId: string, marker: string): Promise<TurnoverJobRow | null> {
   const { data, error } = await supabase
     .from("turnover_jobs")
-    .select("id, notes")
+    .select("id, property_id, notes, scheduled_for, status")
     .eq("property_id", propertyId)
     .limit(200);
 
   if (error) throw error;
 
-  return ((data ?? []) as Array<{ id: string; notes: string | null }>).some(
-    (row) => (row.notes || "").includes(marker)
+  return (
+    ((data ?? []) as TurnoverJobRow[]).find((row) => (row.notes || "").includes(marker)) ??
+    null
   );
+}
+
+async function updateSyncedJobIfChanged(
+  job: TurnoverJobRow,
+  event: ParsedEvent,
+  notes: string
+) {
+  if (job.scheduled_for === event.checkoutDate && (job.notes || "") === notes) {
+    return false;
+  }
+
+  const { error } = await supabase
+    .from("turnover_jobs")
+    .update({
+      scheduled_for: event.checkoutDate,
+      notes,
+    })
+    .eq("id", job.id);
+
+  if (error) throw error;
+  return true;
+}
+
+async function deleteStaleUpcomingSyncedJobs(
+  propertyId: string,
+  source: string,
+  seenExternalUids: Set<string>
+) {
+  const todayYmd = getTodayYmd();
+  const { data, error } = await supabase
+    .from("turnover_jobs")
+    .select("id, property_id, notes, scheduled_for, status")
+    .eq("property_id", propertyId)
+    .limit(500);
+
+  if (error) throw error;
+
+  const staleJobIds = ((data ?? []) as TurnoverJobRow[])
+    .filter((job) => {
+      const uid = getSyncMarkerUid(job.notes, source);
+      if (!uid || seenExternalUids.has(uid)) return false;
+
+      const jobDate = job.scheduled_for || getCheckoutDateFromNotes(job.notes) || "";
+      return jobDate >= todayYmd;
+    })
+    .map((job) => job.id);
+
+  if (staleJobIds.length === 0) return 0;
+
+  const { error: slotDeleteError } = await supabase
+    .from("turnover_job_slots")
+    .delete()
+    .in("job_id", staleJobIds);
+
+  if (slotDeleteError) throw slotDeleteError;
+
+  const { error: jobDeleteError } = await supabase
+    .from("turnover_jobs")
+    .delete()
+    .in("id", staleJobIds);
+
+  if (jobDeleteError) throw jobDeleteError;
+
+  return staleJobIds.length;
 }
 
 async function getCalendarEvents(calendar: PropertyCalendarRow): Promise<ParsedEvent[]> {
@@ -561,8 +670,11 @@ export async function POST(request: Request) {
       skipped_non_booking: number;
       booking_events_saved: number;
       removed_missing_future: number;
+      removed_missing_future_jobs: number;
+      updated_jobs: number;
       created_dates: string[];
       existing_dates: string[];
+      updated_dates: string[];
       errors: string[];
     }> = [];
 
@@ -580,8 +692,11 @@ export async function POST(request: Request) {
         skipped_non_booking: 0,
         booking_events_saved: 0,
         removed_missing_future: 0,
+        removed_missing_future_jobs: 0,
+        updated_jobs: 0,
         created_dates: [] as string[],
         existing_dates: [] as string[],
+        updated_dates: [] as string[],
         errors: [] as string[],
       };
 
@@ -619,44 +734,47 @@ export async function POST(request: Request) {
           }
 
           const marker = buildSyncMarker(calendar.source, uid);
-          const exists = await jobAlreadyExists(calendar.property_id, marker);
+          const notes = buildAutoSyncNotes(calendar, propertyName, event, marker);
+          const existingJob = await findSyncedJob(calendar.property_id, marker);
 
-          if (exists) {
+          if (existingJob) {
+            try {
+              const updated = await updateSyncedJobIfChanged(existingJob, event, notes);
+              if (updated) {
+                resultBucket.updated_jobs += 1;
+                resultBucket.updated_dates.push(event.checkoutDate);
+              }
+            } catch (updateError: any) {
+              resultBucket.errors.push(
+                `Failed to update job for ${event.summary || "reservation"} on ${event.checkoutDate}: ${updateError?.message || "Unknown update error"}`
+              );
+            }
             resultBucket.skipped_existing += 1;
             resultBucket.existing_dates.push(event.checkoutDate);
             continue;
           }
 
-       const notes = [
-  `Auto-created from ${calendar.source.toUpperCase()} calendar sync.`,
-  `Property: ${propertyName}`,
-  `Guest / reservation: ${event.summary || "Reservation"}`,
-  event.guestCount ? `Guest count: ${event.guestCount}` : "Guest count: Not provided by calendar feed",
-  `Check-in date: ${event.checkinDate || "Unknown"}`,
-  `Checkout date: ${event.checkoutDate}`,
-  "",
-  marker,
-].join("\n");
-if (!property?.organization_id) {
-  resultBucket.errors.push(`Missing organization_id for property ${propertyName}`);
-  continue;
-}
-         const { data: insertedJob, error: insertError } = await supabase
-  .from("turnover_jobs")
-  .insert({
-    organization_id: property?.organization_id,
-    property_id: calendar.property_id,
-    status: "pending",
-    notes,
-    scheduled_for: event.checkoutDate,
-    cleaners_needed: 1,
-    cleaners_required_strict: false,
-    cleaner_units_needed: 1,
-    cleaner_units_required_strict: false,
-    show_team_status_to_cleaners: true,
-  })
-  .select("id")
-  .single();
+          if (!property?.organization_id) {
+            resultBucket.errors.push(`Missing organization_id for property ${propertyName}`);
+            continue;
+          }
+
+          const { data: insertedJob, error: insertError } = await supabase
+            .from("turnover_jobs")
+            .insert({
+              organization_id: property?.organization_id,
+              property_id: calendar.property_id,
+              status: "pending",
+              notes,
+              scheduled_for: event.checkoutDate,
+              cleaners_needed: 1,
+              cleaners_required_strict: false,
+              cleaner_units_needed: 1,
+              cleaner_units_required_strict: false,
+              show_team_status_to_cleaners: true,
+            })
+            .select("id")
+            .single();
 
           if (insertError || !insertedJob) {
             resultBucket.errors.push(
@@ -705,6 +823,11 @@ if (!property?.organization_id) {
           calendar.id,
           seenExternalUids
         );
+        resultBucket.removed_missing_future_jobs = await deleteStaleUpcomingSyncedJobs(
+          calendar.property_id,
+          calendar.source,
+          seenExternalUids
+        );
       } catch (calendarError: any) {
         resultBucket.errors.push(calendarError?.message || "Calendar processing failed");
       }
@@ -720,6 +843,8 @@ if (!property?.organization_id) {
         acc.skipped_non_booking += item.skipped_non_booking;
         acc.booking_events_saved += item.booking_events_saved;
         acc.removed_missing_future += item.removed_missing_future;
+        acc.removed_missing_future_jobs += item.removed_missing_future_jobs;
+        acc.updated_jobs += item.updated_jobs;
         acc.errors += item.errors.length;
         return acc;
       },
@@ -730,6 +855,8 @@ if (!property?.organization_id) {
         skipped_non_booking: 0,
         booking_events_saved: 0,
         removed_missing_future: 0,
+        removed_missing_future_jobs: 0,
+        updated_jobs: 0,
         errors: 0,
       }
     );
