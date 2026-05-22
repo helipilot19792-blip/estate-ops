@@ -4064,6 +4064,8 @@ export default function AdminPage() {
     const bookingEventsSaved = Number(totals.booking_events_saved ?? 0);
     const removedMissingFuture = Number(totals.removed_missing_future ?? 0);
     const removedMissingFutureJobs = Number(totals.removed_missing_future_jobs ?? 0);
+    const cancellationNotificationsSent = Number(totals.cancellation_notifications_sent ?? 0);
+    const cancellationPushNotificationsSent = Number(totals.cancellation_push_notifications_sent ?? 0);
     const updatedJobs = Number(totals.updated_jobs ?? 0);
     const errors = Number(totals.errors ?? 0);
     const results = Array.isArray(payload?.results) ? payload.results : [];
@@ -4089,6 +4091,8 @@ export default function AdminPage() {
             const resultBookingEvents = Number(result?.booking_events_saved ?? 0);
             const resultRemovedMissingFuture = Number(result?.removed_missing_future ?? 0);
             const resultRemovedMissingFutureJobs = Number(result?.removed_missing_future_jobs ?? 0);
+            const resultCancellationNotificationsSent = Number(result?.cancellation_notifications_sent ?? 0);
+            const resultCancellationPushNotificationsSent = Number(result?.cancellation_push_notifications_sent ?? 0);
             const resultErrors = Array.isArray(result?.errors) ? result.errors.length : 0;
             if (
               resultCreated === 0 &&
@@ -4096,9 +4100,11 @@ export default function AdminPage() {
               resultBookingEvents === 0 &&
               resultRemovedMissingFuture === 0 &&
               resultRemovedMissingFutureJobs === 0 &&
+              resultCancellationNotificationsSent === 0 &&
+              resultCancellationPushNotificationsSent === 0 &&
               resultErrors === 0
             ) return "";
-            return `${propertyName} / ${source}: ${resultCreated} created, ${resultUpdatedJobs} updated, ${resultBookingEvents} booking saved, ${resultRemovedMissingFuture} bookings removed, ${resultRemovedMissingFutureJobs} jobs removed${resultErrors > 0 ? `, ${resultErrors} issue${resultErrors === 1 ? "" : "s"}` : ""}`;
+            return `${propertyName} / ${source}: ${resultCreated} created, ${resultUpdatedJobs} updated, ${resultBookingEvents} booking saved, ${resultRemovedMissingFuture} bookings removed, ${resultRemovedMissingFutureJobs} jobs removed, ${resultCancellationNotificationsSent} cancellation email${resultCancellationNotificationsSent === 1 ? "" : "s"}, ${resultCancellationPushNotificationsSent} push${resultCancellationPushNotificationsSent === 1 ? "" : "es"}${resultErrors > 0 ? `, ${resultErrors} issue${resultErrors === 1 ? "" : "s"}` : ""}`;
           })
           .filter(Boolean)
           .slice(0, 4)
@@ -4114,6 +4120,7 @@ export default function AdminPage() {
     parts.push(`${updatedJobs} job${updatedJobs === 1 ? "" : "s"} updated`);
     parts.push(`${skippedExisting} existing, ${skippedPast} past, ${skippedNonBooking} blocked/non-booking skipped`);
     parts.push(`${bookingEventsSaved} booking history saved, ${removedMissingFuture} missing bookings removed, ${removedMissingFutureJobs} old synced job${removedMissingFutureJobs === 1 ? "" : "s"} removed`);
+    parts.push(`${cancellationNotificationsSent} cancellation email${cancellationNotificationsSent === 1 ? "" : "s"} sent, ${cancellationPushNotificationsSent} cancellation push${cancellationPushNotificationsSent === 1 ? "" : "es"} sent`);
 
     if (propertySummaries) {
       parts.push(propertySummaries);

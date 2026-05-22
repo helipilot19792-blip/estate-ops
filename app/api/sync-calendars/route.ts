@@ -1,5 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
-import { sendJobOfferEmailsForSlots } from "@/lib/server/job-notifications";
+import {
+  sendJobCancellationNotificationsForJobs,
+  sendJobOfferEmailsForSlots,
+} from "@/lib/server/job-notifications";
 
 export const dynamic = "force-dynamic";
 
@@ -447,7 +450,8 @@ async function updateSyncedJobIfChanged(
 async function deleteStaleUpcomingSyncedJobs(
   propertyId: string,
   source: string,
-  seenExternalUids: Set<string>
+  seenExternalUids: Set<string>,
+  origin: string
 ) {
   const todayYmd = getTodayYmd();
   const { data, error } = await supabase
@@ -468,7 +472,20 @@ async function deleteStaleUpcomingSyncedJobs(
     })
     .map((job) => job.id);
 
-  if (staleJobIds.length === 0) return 0;
+  if (staleJobIds.length === 0) {
+    return {
+      removed: 0,
+      notificationSent: 0,
+      pushSent: 0,
+      notificationErrors: [] as string[],
+    };
+  }
+
+  const notificationResult = await sendJobCancellationNotificationsForJobs(
+    "cleaner",
+    staleJobIds,
+    origin
+  );
 
   const { error: slotDeleteError } = await supabase
     .from("turnover_job_slots")
@@ -484,7 +501,12 @@ async function deleteStaleUpcomingSyncedJobs(
 
   if (jobDeleteError) throw jobDeleteError;
 
-  return staleJobIds.length;
+  return {
+    removed: staleJobIds.length,
+    notificationSent: notificationResult.sent,
+    pushSent: notificationResult.pushSent,
+    notificationErrors: notificationResult.errors,
+  };
 }
 
 async function getCalendarEvents(calendar: PropertyCalendarRow): Promise<ParsedEvent[]> {
@@ -671,6 +693,8 @@ export async function POST(request: Request) {
       booking_events_saved: number;
       removed_missing_future: number;
       removed_missing_future_jobs: number;
+      cancellation_notifications_sent: number;
+      cancellation_push_notifications_sent: number;
       updated_jobs: number;
       created_dates: string[];
       existing_dates: string[];
@@ -693,6 +717,8 @@ export async function POST(request: Request) {
         booking_events_saved: 0,
         removed_missing_future: 0,
         removed_missing_future_jobs: 0,
+        cancellation_notifications_sent: 0,
+        cancellation_push_notifications_sent: 0,
         updated_jobs: 0,
         created_dates: [] as string[],
         existing_dates: [] as string[],
@@ -823,11 +849,20 @@ export async function POST(request: Request) {
           calendar.id,
           seenExternalUids
         );
-        resultBucket.removed_missing_future_jobs = await deleteStaleUpcomingSyncedJobs(
+        const staleJobCleanup = await deleteStaleUpcomingSyncedJobs(
           calendar.property_id,
           calendar.source,
-          seenExternalUids
+          seenExternalUids,
+          new URL(request.url).origin
         );
+        resultBucket.removed_missing_future_jobs = staleJobCleanup.removed;
+        resultBucket.cancellation_notifications_sent = staleJobCleanup.notificationSent;
+        resultBucket.cancellation_push_notifications_sent = staleJobCleanup.pushSent;
+        if (staleJobCleanup.notificationErrors.length > 0) {
+          resultBucket.errors.push(
+            `Cancellation notification issue: ${staleJobCleanup.notificationErrors.join("; ")}`
+          );
+        }
       } catch (calendarError: any) {
         resultBucket.errors.push(calendarError?.message || "Calendar processing failed");
       }
@@ -844,6 +879,8 @@ export async function POST(request: Request) {
         acc.booking_events_saved += item.booking_events_saved;
         acc.removed_missing_future += item.removed_missing_future;
         acc.removed_missing_future_jobs += item.removed_missing_future_jobs;
+        acc.cancellation_notifications_sent += item.cancellation_notifications_sent;
+        acc.cancellation_push_notifications_sent += item.cancellation_push_notifications_sent;
         acc.updated_jobs += item.updated_jobs;
         acc.errors += item.errors.length;
         return acc;
@@ -856,6 +893,8 @@ export async function POST(request: Request) {
         booking_events_saved: 0,
         removed_missing_future: 0,
         removed_missing_future_jobs: 0,
+        cancellation_notifications_sent: 0,
+        cancellation_push_notifications_sent: 0,
         updated_jobs: 0,
         errors: 0,
       }

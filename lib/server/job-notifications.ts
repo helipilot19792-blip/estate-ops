@@ -33,6 +33,18 @@ type SlotBundle = {
   recipients: Recipient[];
 };
 
+type JobCancellationBundle = {
+  organizationId: string;
+  kind: JobNotificationKind;
+  jobId: string;
+  propertyName: string;
+  propertyAddress: string | null;
+  jobDate: string | null;
+  detailLabel: string;
+  accountLabels: string[];
+  recipients: Recipient[];
+};
+
 function getServiceClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -147,6 +159,18 @@ function getPortalUrl(kind: JobNotificationKind, origin: string) {
   const url = new URL("/login", origin);
   url.searchParams.set("portal", kind);
   return url.toString();
+}
+
+function getUniqueRecipients(recipients: Recipient[]) {
+  const unique = new Map<string, Recipient>();
+
+  for (const recipient of recipients) {
+    const key = recipient.email.trim().toLowerCase();
+    if (!key || unique.has(key)) continue;
+    unique.set(key, recipient);
+  }
+
+  return [...unique.values()];
 }
 
 function getSlotTable(kind: JobNotificationKind) {
@@ -368,6 +392,111 @@ async function loadSlotBundle(
   };
 }
 
+async function loadJobCancellationBundle(
+  service: ReturnType<typeof getServiceClient>,
+  kind: JobNotificationKind,
+  jobId: string
+): Promise<JobCancellationBundle | null> {
+  const slotTable = getSlotTable(kind);
+  const accountTable = getAccountTable(kind);
+  const accountIdColumn = getAccountIdColumn(kind);
+
+  const { data: slots, error: slotError } = await (service
+    .from(slotTable as any)
+    .select(`id, job_id, ${accountIdColumn}, status`)
+    .eq("job_id", jobId)
+    .in("status", ["offered", "accepted"])) as any;
+
+  if (slotError) throw new Error(slotError.message);
+
+  const accountIds = [
+    ...new Set((slots ?? []).map((slot: any) => slot[accountIdColumn]).filter(Boolean)),
+  ];
+
+  if (accountIds.length === 0) return null;
+
+  const { data: accounts, error: accountError } = await (service
+    .from(accountTable as any)
+    .select("id,display_name,email")
+    .in("id", accountIds)) as any;
+
+  if (accountError) throw new Error(accountError.message);
+
+  const recipients: Recipient[] = [];
+  const accountLabels: string[] = [];
+
+  for (const account of accounts ?? []) {
+    const accountLabel =
+      String(account.display_name || "").trim() ||
+      String(account.email || "").trim() ||
+      (kind === "cleaner" ? "Cleaner team" : "Grounds team");
+    accountLabels.push(accountLabel);
+    recipients.push(...(await loadRecipients(service, kind, account.id, account.email || null, accountLabel)));
+  }
+
+  if (kind === "cleaner") {
+    const { data: job, error: jobError } = await service
+      .from("turnover_jobs")
+      .select("id,property_id,scheduled_for,notes")
+      .eq("id", jobId)
+      .maybeSingle();
+
+    if (jobError) throw new Error(jobError.message);
+    if (!job) return null;
+
+    const { data: property, error: propertyError } = await service
+      .from("properties")
+      .select("id,organization_id,name,address")
+      .eq("id", job.property_id)
+      .maybeSingle();
+
+    if (propertyError) throw new Error(propertyError.message);
+    if (!property) return null;
+
+    return {
+      organizationId: property.organization_id || "",
+      kind,
+      jobId,
+      propertyName: property.name || property.address || "Property",
+      propertyAddress: property.address || null,
+      jobDate: getCleanerJobDate(job),
+      detailLabel: "Cleaning job",
+      accountLabels,
+      recipients: getUniqueRecipients(recipients),
+    };
+  }
+
+  const { data: job, error: jobError } = await service
+    .from("grounds_jobs")
+    .select("id,property_id,scheduled_for,job_type")
+    .eq("id", jobId)
+    .maybeSingle();
+
+  if (jobError) throw new Error(jobError.message);
+  if (!job) return null;
+
+  const { data: property, error: propertyError } = await service
+    .from("properties")
+    .select("id,organization_id,name,address")
+    .eq("id", job.property_id)
+    .maybeSingle();
+
+  if (propertyError) throw new Error(propertyError.message);
+  if (!property) return null;
+
+  return {
+    organizationId: property.organization_id || "",
+    kind,
+    jobId,
+    propertyName: property.name || property.address || "Property",
+    propertyAddress: property.address || null,
+    jobDate: job.scheduled_for || null,
+    detailLabel: getGroundsJobTypeLabel(job.job_type),
+    accountLabels,
+    recipients: getUniqueRecipients(recipients),
+  };
+}
+
 function buildEmailCopy(bundle: SlotBundle, mode: JobNotificationMode, origin: string) {
   const portalUrl = getPortalUrl(bundle.kind, origin);
   const dateLabel = formatDateLabel(bundle.jobDate);
@@ -480,6 +609,78 @@ async function sendNotificationPush(
     body: `${emailCopy.propertyLine} - ${emailCopy.dateLabel}`,
     url: emailCopy.portalUrl,
     tag: `${bundle.kind}-${mode}-${bundle.slotId}`,
+  });
+
+  return {
+    successCount: result.sent,
+    failures: result.errors,
+  };
+}
+
+async function sendCancellationEmail(bundle: JobCancellationBundle, origin: string) {
+  const resend = getResendClient();
+  const portalUrl = getPortalUrl(bundle.kind, origin);
+  const dateLabel = formatDateLabel(bundle.jobDate);
+  const kindLabel = bundle.kind === "cleaner" ? "cleaning" : "grounds";
+  const propertyLine = bundle.propertyAddress
+    ? `${bundle.propertyName} - ${bundle.propertyAddress}`
+    : bundle.propertyName;
+  const accountLine = bundle.accountLabels.length > 0 ? bundle.accountLabels.join(", ") : "Assigned team";
+
+  let successCount = 0;
+  const failures: string[] = [];
+
+  for (const recipient of bundle.recipients) {
+    const greeting = recipient.name ? `Hi ${recipient.name},` : "Hello,";
+    const html = `
+      <div style="font-family: Arial, sans-serif; padding: 20px; color: #241c15;">
+        <p style="margin: 0 0 12px;">${greeting}</p>
+        <h2 style="margin: 0 0 12px;">This ${bundle.detailLabel.toLowerCase()} was removed from the schedule.</h2>
+        <p style="margin: 0 0 8px;"><strong>Property:</strong> ${propertyLine}</p>
+        <p style="margin: 0 0 8px;"><strong>Original scheduled date:</strong> ${dateLabel}</p>
+        <p style="margin: 0 0 16px;"><strong>Team / account:</strong> ${accountLine}</p>
+        <p style="margin: 0 0 16px;">This usually happens when a booking is cancelled, moved, or replaced by a new reservation.</p>
+        <a href="${portalUrl}" style="display:inline-block;padding:10px 16px;background:#241c15;color:#ffffff;border-radius:999px;text-decoration:none;margin-top:8px;">
+          Open portal
+        </a>
+        <p style="margin-top:20px; font-size:14px; color:#5f5245;">Please check the portal for your current ${kindLabel} schedule.</p>
+      </div>
+    `;
+
+    const result = await resend.emails.send({
+      from: process.env.INVITE_FROM_EMAIL!,
+      to: recipient.email,
+      subject: `${bundle.detailLabel} removed: ${bundle.propertyName} on ${dateLabel}`,
+      html,
+    });
+
+    if (result.error) {
+      failures.push(`${recipient.email}: ${result.error.message || "Email send failed"}`);
+      continue;
+    }
+
+    successCount += 1;
+  }
+
+  return { successCount, failures };
+}
+
+async function sendCancellationPush(bundle: JobCancellationBundle, origin: string) {
+  const portalUrl = getPortalUrl(bundle.kind, origin);
+  const dateLabel = formatDateLabel(bundle.jobDate);
+  const profileIds = bundle.recipients
+    .map((recipient) => recipient.profileId)
+    .filter((profileId): profileId is string => Boolean(profileId));
+
+  if (profileIds.length === 0) {
+    return { successCount: 0, failures: [] as string[] };
+  }
+
+  const result = await sendStaffPushNotifications(bundle.kind, profileIds, {
+    title: `${bundle.detailLabel} removed`,
+    body: `${bundle.propertyName} - ${dateLabel}`,
+    url: portalUrl,
+    tag: `${bundle.kind}-canceled-${bundle.jobId}`,
   });
 
   return {
@@ -603,6 +804,58 @@ export async function sendJobOfferEmailsForSlots(
       }
     } catch (error) {
       errors.push(error instanceof Error ? error.message : "Unknown notification error.");
+    }
+  }
+
+  return {
+    sent,
+    pushSent,
+    skipped,
+    errors,
+  };
+}
+
+export async function sendJobCancellationNotificationsForJobs(
+  kind: JobNotificationKind,
+  jobIds: string[],
+  origin: string,
+  options?: {
+    allowedOrganizationIds?: Set<string> | null;
+  }
+) {
+  const service = getServiceClient();
+  const uniqueJobIds = [...new Set(jobIds.filter(Boolean))];
+
+  let sent = 0;
+  let pushSent = 0;
+  let skipped = 0;
+  const errors: string[] = [];
+
+  for (const jobId of uniqueJobIds) {
+    try {
+      const bundle = await loadJobCancellationBundle(service, kind, jobId);
+      if (!bundle) {
+        skipped += 1;
+        continue;
+      }
+
+      if (
+        options?.allowedOrganizationIds &&
+        !options.allowedOrganizationIds.has(bundle.organizationId)
+      ) {
+        errors.push(`Job ${jobId} is outside the allowed organization scope.`);
+        continue;
+      }
+
+      const emailResult = await sendCancellationEmail(bundle, origin);
+      sent += emailResult.successCount;
+      errors.push(...emailResult.failures);
+
+      const pushResult = await sendCancellationPush(bundle, origin);
+      pushSent += pushResult.successCount;
+      errors.push(...pushResult.failures);
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : "Unknown cancellation notification error.");
     }
   }
 
