@@ -156,9 +156,9 @@ export default function HelpAssistant() {
           type="button"
           onClick={() => setOpen((current) => !current)}
           aria-label={open ? "Close AI helper" : "Open AI helper"}
-          className="flex h-14 w-14 items-center justify-center rounded-full border border-[#e8d8bf] bg-[#241c15] text-xl font-semibold text-[#f8f2e8] shadow-[0_14px_35px_rgba(36,28,21,0.24)] transition hover:-translate-y-0.5 hover:bg-[#33271c]"
+          className="flex h-12 items-center justify-center rounded-full border border-[#e8d8bf] bg-[#241c15] px-4 text-sm font-semibold text-[#f8f2e8] shadow-[0_14px_35px_rgba(36,28,21,0.24)] transition hover:-translate-y-0.5 hover:bg-[#33271c]"
         >
-          ?
+          AI Helper
         </button>
     </div>
   );
