@@ -1156,6 +1156,7 @@ export default function AdminPage() {
   const [uploadingExternalInvoice, setUploadingExternalInvoice] = useState(false);
   const [sendingInvoiceId, setSendingInvoiceId] = useState<string | null>(null);
   const [sendingInvoiceReminderId, setSendingInvoiceReminderId] = useState<string | null>(null);
+  const [combiningInvoices, setCombiningInvoices] = useState(false);
   const [viewingInvoicePdfId, setViewingInvoicePdfId] = useState<string | null>(null);
   const [updatingInvoiceStatusId, setUpdatingInvoiceStatusId] = useState<string | null>(null);
   const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
@@ -1201,6 +1202,8 @@ export default function AdminPage() {
   const [invoiceHistorySearch, setInvoiceHistorySearch] = useState("");
   const [invoiceHistoryStatusFilter, setInvoiceHistoryStatusFilter] = useState<InvoiceHistoryFilter>("all");
   const [invoiceHistoryPropertyFilter, setInvoiceHistoryPropertyFilter] = useState("all");
+  const [selectedInvoiceIdsToCombine, setSelectedInvoiceIdsToCombine] = useState<string[]>([]);
+  const [voidCombinedOriginalInvoices, setVoidCombinedOriginalInvoices] = useState(true);
   const [propertyInvoiceRateDrafts, setPropertyInvoiceRateDrafts] = useState<Record<string, { turnover: string; grounds: string; billTurnover: boolean; billGrounds: boolean }>>({});
   const [invoiceSettingsDirty, setInvoiceSettingsDirty] = useState(false);
   const [invoiceDraftDirty, setInvoiceDraftDirty] = useState(false);
@@ -10675,6 +10678,12 @@ This removes its linked members and deletes the grounds account.`
     }));
   }
 
+  function toggleInvoiceCombineSelection(invoiceId: string) {
+    setSelectedInvoiceIdsToCombine((ids) =>
+      ids.includes(invoiceId) ? ids.filter((id) => id !== invoiceId) : [...ids, invoiceId]
+    );
+  }
+
   function getValidInvoiceLineItems() {
     return invoiceLineItems
       .map((item) => ({
@@ -11326,6 +11335,109 @@ This removes its linked members and deletes the grounds account.`
     }
   }
 
+  async function createCombinedOwnerInvoiceDraft(invoicesToCombine: OwnerInvoiceRow[]) {
+    if (!currentOrganizationId || invoicesToCombine.length < 2) return;
+
+    const unpaidInvoices = invoicesToCombine.filter((invoice) => invoice.status === "sent");
+    const ownerIds = Array.from(new Set(unpaidInvoices.map((invoice) => invoice.owner_account_id)));
+    if (unpaidInvoices.length !== invoicesToCombine.length || ownerIds.length !== 1) {
+      setError("Choose two or more unpaid invoices for the same owner before combining.");
+      return;
+    }
+
+    const owner = ownerAccounts.find((account) => account.id === ownerIds[0]);
+    const propertyIds = Array.from(new Set(unpaidInvoices.map((invoice) => invoice.property_id || "")));
+    const combinedPropertyId = propertyIds.length === 1 ? propertyIds[0] || null : null;
+    const total = unpaidInvoices.reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
+    const invoiceNumbers = unpaidInvoices.map((invoice) => invoice.invoice_number).join(", ");
+    const confirmed = window.confirm(
+      `Create one combined draft for ${owner?.full_name || owner?.email || "this owner"}?\n\nIncluded invoices: ${invoiceNumbers}\nTotal: ${formatCurrency(total)}${
+        voidCombinedOriginalInvoices ? "\n\nThe original invoices will be marked void so they stop showing as outstanding." : ""
+      }`
+    );
+    if (!confirmed) return;
+
+    setCombiningInvoices(true);
+    setError("");
+    setActionMessage("");
+
+    try {
+      const timestamp = new Date().toISOString();
+      const issueDate = getTodayYmd();
+      const combinedLineItems: OwnerInvoiceLineItem[] = unpaidInvoices.map((invoice) => {
+        const property = properties.find((item) => item.id === invoice.property_id);
+        const propertyLabel = property?.name || property?.address || "All properties";
+        const issueLabel = invoice.issue_date ? ` from ${invoice.issue_date}` : "";
+        return {
+          id: `combined-${invoice.id}`,
+          description: `${invoice.invoice_number}${issueLabel} - ${propertyLabel}`,
+          category: "other",
+          quantity: 1,
+          rate: Number(invoice.total || 0),
+          taxable: false,
+          source_id: invoice.id,
+        };
+      });
+      const combinedNotes = [
+        `Combined invoice created from ${unpaidInvoices.length} outstanding invoices: ${invoiceNumbers}.`,
+        "Original invoice totals are listed as non-taxable lines to avoid charging tax twice.",
+        invoiceNotes.trim(),
+      ].filter(Boolean).join("\n\n");
+
+      const { data, error } = await supabase
+        .from("owner_invoices")
+        .insert({
+          organization_id: currentOrganizationId,
+          owner_account_id: ownerIds[0],
+          property_id: combinedPropertyId,
+          invoice_number: `INV-${Date.now().toString().slice(-8)}`,
+          status: "draft",
+          issue_date: issueDate,
+          due_date: getDefaultDueDateYmd(),
+          company_name: invoiceCompanyName.trim() || invoiceSettings?.company_name || null,
+          logo_url: invoiceLogoUrl.trim() || invoiceSettings?.logo_url || null,
+          from_email: invoiceFromEmail.trim().toLowerCase() || invoiceSettings?.from_email || null,
+          reply_to_email: invoiceReplyToEmail.trim().toLowerCase() || invoiceSettings?.reply_to_email || null,
+          header_text: invoiceHeaderText.trim() || invoiceSettings?.header_text || null,
+          notes: combinedNotes,
+          payment_instructions: invoicePaymentInstructions.trim() || invoiceSettings?.payment_instructions || null,
+          line_items: combinedLineItems,
+          subtotal: total,
+          tax_lines: [],
+          tax_total: 0,
+          total,
+          created_by_profile_id: currentAdminUserId,
+          updated_at: timestamp,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      if (voidCombinedOriginalInvoices) {
+        const { error: voidError } = await supabase
+          .from("owner_invoices")
+          .update({ status: "void", updated_at: timestamp })
+          .in("id", unpaidInvoices.map((invoice) => invoice.id))
+          .eq("organization_id", currentOrganizationId);
+
+        if (voidError) throw voidError;
+      }
+
+      setSelectedInvoiceIdsToCombine([]);
+      setInvoiceWorkflowTab("running");
+      setInvoiceHistoryOpenSections((sections) => ({ ...sections, drafts: true, active: true }));
+      setActionMessage(
+        `Combined ${unpaidInvoices.length} invoices into draft ${data?.invoice_number || "invoice"}.`
+      );
+      await loadData();
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Could not combine invoices."));
+    } finally {
+      setCombiningInvoices(false);
+    }
+  }
+
   async function updateOwnerInvoiceStatus(invoice: OwnerInvoiceRow, status: OwnerInvoiceRow["status"]) {
     setUpdatingInvoiceStatusId(invoice.id);
     setError("");
@@ -11486,6 +11598,12 @@ This removes its linked members and deletes the grounds account.`
     const draftInvoices = filteredOwnerInvoices.filter((invoice) => invoice.status === "draft");
     const activeInvoices = filteredOwnerInvoices.filter((invoice) => invoice.status === "sent");
     const paidInvoices = filteredOwnerInvoices.filter((invoice) => invoice.status === "paid" || invoice.status === "void");
+    const selectedInvoicesToCombine = selectedInvoiceIdsToCombine
+      .map((id) => ownerInvoices.find((invoice) => invoice.id === id))
+      .filter((invoice): invoice is OwnerInvoiceRow => invoice?.status === "sent");
+    const selectedCombineOwnerIds = Array.from(new Set(selectedInvoicesToCombine.map((invoice) => invoice.owner_account_id)));
+    const canCombineSelectedInvoices = selectedInvoicesToCombine.length >= 2 && selectedCombineOwnerIds.length === 1;
+    const selectedCombineTotal = selectedInvoicesToCombine.reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
     const filteredUnpaidTotal = activeInvoices.reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
     const invoiceFilterActive =
       !!normalizedInvoiceSearch ||
@@ -11616,6 +11734,8 @@ This removes its linked members and deletes the grounds account.`
       const property = properties.find((item) => item.id === invoice.property_id);
       const isPaidInvoice = invoice.status === "paid";
       const isDraftInvoice = invoice.status === "draft";
+      const isSentUnpaidInvoice = invoice.status === "sent";
+      const isSelectedForCombine = selectedInvoiceIdsToCombine.includes(invoice.id);
       const documentKind = getInvoiceDocumentKind(invoice);
 
       return (
@@ -11632,6 +11752,17 @@ This removes its linked members and deletes the grounds account.`
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <div className="flex flex-wrap items-center gap-2">
+                {isSentUnpaidInvoice ? (
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-[#f0b8b8] bg-white px-2.5 py-1 text-xs font-semibold text-[#7f1d1d]">
+                    <input
+                      type="checkbox"
+                      className="h-3.5 w-3.5 accent-[#ef4444]"
+                      checked={isSelectedForCombine}
+                      onChange={() => toggleInvoiceCombineSelection(invoice.id)}
+                    />
+                    combine
+                  </label>
+                ) : null}
                 <span className={`font-semibold ${
                   isDraftInvoice ? "text-[#5f3f86]" : isPaidInvoice ? "text-[#123f1b]" : "text-[#7f1d1d]"
                 }`}>
@@ -12781,6 +12912,51 @@ This removes its linked members and deletes the grounds account.`
             >
               Clear invoice filters
             </button>
+          ) : null}
+          {selectedInvoicesToCombine.length > 0 ? (
+            <div className="mt-4 rounded-[22px] border border-[#fecaca] bg-[#fff7f7] p-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <div className="text-sm font-semibold text-[#7f1d1d]">
+                    {selectedInvoicesToCombine.length} selected for combining | {formatCurrency(selectedCombineTotal)}
+                  </div>
+                  <p className="mt-1 text-xs leading-5 text-[#9b4b4b]">
+                    Select unpaid invoices for the same owner. The combined draft keeps a note showing which invoice numbers were included.
+                  </p>
+                  {!canCombineSelectedInvoices ? (
+                    <p className="mt-1 text-xs font-semibold text-[#b91c1c]">
+                      Choose at least two unpaid invoices for one owner before combining.
+                    </p>
+                  ) : null}
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <label className="inline-flex items-center gap-2 rounded-full border border-[#f0b8b8] bg-white px-3 py-2 text-xs font-semibold text-[#7f1d1d]">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 accent-[#ef4444]"
+                      checked={voidCombinedOriginalInvoices}
+                      onChange={(e) => setVoidCombinedOriginalInvoices(e.target.checked)}
+                    />
+                    Void originals
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedInvoiceIdsToCombine([])}
+                    className="rounded-full border border-[#f0b8b8] bg-white px-4 py-2 text-sm font-semibold text-[#7f1d1d] transition hover:bg-[#fff1f1]"
+                  >
+                    Clear
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void createCombinedOwnerInvoiceDraft(selectedInvoicesToCombine)}
+                    disabled={!canCombineSelectedInvoices || combiningInvoices}
+                    className="rounded-full bg-[#241c15] px-4 py-2 text-sm font-semibold text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60"
+                  >
+                    {combiningInvoices ? "Combining..." : "Create combined draft"}
+                  </button>
+                </div>
+              </div>
+            </div>
           ) : null}
           <div className="mt-4 space-y-3">
             {renderInvoiceHistoryGroup("drafts", "Running drafts", draftInvoices, "No running invoice drafts yet.")}
