@@ -12279,6 +12279,11 @@ This removes its linked members and deletes the grounds account.`
                           step="0.01"
                           className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
                           value={item.rate}
+                          onFocus={() => {
+                            if (Number(item.rate || 0) === 0) {
+                              updateInvoiceLineItem(item.id, { rate: "" });
+                            }
+                          }}
                           onChange={(e) => updateInvoiceLineItem(item.id, { rate: e.target.value })}
                         />
                       </label>
