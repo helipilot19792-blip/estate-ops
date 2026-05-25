@@ -517,6 +517,7 @@ async function deleteOrganizationWorkspace(
   await track("chat_messages", deleteRowsByOrganization(serviceClient, "chat_messages", organizationId));
   await track("chat_participants", deleteRowsByOrganization(serviceClient, "chat_participants", organizationId));
   await track("chat_conversations", deleteRowsByOrganization(serviceClient, "chat_conversations", organizationId));
+  await track("owner_invoice_events", deleteRowsByIds(serviceClient, "owner_invoice_events", "invoice_id", ownerInvoiceIds));
   await track("owner_invoice_hidden_items", deleteRowsByIds(serviceClient, "owner_invoice_hidden_items", "invoice_id", ownerInvoiceIds));
   await track("owner_invoices", deleteRowsByOrganization(serviceClient, "owner_invoices", organizationId));
   await track("property_invoice_rates", deleteRowsByOrganization(serviceClient, "property_invoice_rates", organizationId));

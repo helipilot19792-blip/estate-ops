@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 import { createInvoicePdfBuffer } from "@/lib/server/invoice-pdf";
 import { sendStaffPushNotifications } from "@/lib/server/staff-push-notifications";
+import { recordOwnerInvoiceEvent } from "@/lib/server/owner-invoice-reminders";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const publicSupabaseKey =
@@ -349,18 +350,38 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: result.error.message || "Invoice email failed." }, { status: 500 });
     }
 
+    const now = new Date().toISOString();
+    const invoiceWasDraft = invoice.status === "draft";
     const { error: updateError } = await service
       .from("owner_invoices")
       .update({
-        status: invoice.status === "draft" ? "sent" : invoice.status,
-        sent_at: new Date().toISOString(),
+        status: invoiceWasDraft ? "sent" : invoice.status,
+        sent_at: now,
         sent_by_profile_id: profile.id,
-        updated_at: new Date().toISOString(),
+        updated_at: now,
       })
       .eq("id", invoice.id);
 
     if (updateError) {
       return NextResponse.json({ error: updateError.message }, { status: 500 });
+    }
+
+    try {
+      await recordOwnerInvoiceEvent(service, {
+        organization_id: invoice.organization_id,
+        invoice_id: invoice.id,
+        event_type: invoiceWasDraft ? "invoice_sent" : "invoice_resent",
+        recipient_email: owner.email,
+        cc_emails: ccEmails,
+        resend_email_id: result.data?.id ?? null,
+        actor_profile_id: profile.id,
+        metadata: {
+          invoice_number: invoice.invoice_number,
+          total: Number(invoice.total || 0),
+        },
+      });
+    } catch (eventError) {
+      console.warn("[send-owner-invoice] invoice event could not be recorded", eventError);
     }
 
     const pushResult = owner.profile_id

@@ -605,6 +605,10 @@ type InvoiceSettingsRow = {
   auto_add_turnover: boolean | null;
   auto_add_grounds: boolean | null;
   payment_instructions: string | null;
+  invoice_reminders_enabled?: boolean | null;
+  invoice_reminder_days_after_sent?: number | null;
+  invoice_reminder_repeat_days?: number | null;
+  invoice_reminder_max_count?: number | null;
 };
 type OwnerInvoiceTaxLine = {
   id: string;
@@ -660,6 +664,20 @@ type OwnerInvoiceRow = {
   tax_total: number;
   total: number;
   sent_at?: string | null;
+  last_reminder_sent_at?: string | null;
+  reminder_count?: number | null;
+  created_at?: string | null;
+};
+type OwnerInvoiceEventRow = {
+  id: string;
+  organization_id: string;
+  invoice_id: string;
+  event_type: "invoice_sent" | "invoice_resent" | "reminder_sent" | "auto_reminder_sent" | "marked_paid" | "marked_unpaid";
+  recipient_email?: string | null;
+  cc_emails?: string[] | null;
+  resend_email_id?: string | null;
+  actor_profile_id?: string | null;
+  metadata?: Record<string, unknown> | null;
   created_at?: string | null;
 };
 function getMonthGrid(baseDate: Date) {
@@ -710,6 +728,11 @@ function diffDays(startYmd: string, endYmd: string) {
   start.setHours(0, 0, 0, 0);
   end.setHours(0, 0, 0, 0);
   return Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function isOptionalTableError(error: { code?: string | null; message?: string | null } | null | undefined) {
+  const message = String(error?.message || "").toLowerCase();
+  return error?.code === "42P01" || error?.code === "PGRST205" || message.includes("does not exist");
 }
 
 function formatDateLabel(dateString: string | null) {
@@ -1082,6 +1105,7 @@ export default function AdminPage() {
   const [invoiceSettings, setInvoiceSettings] = useState<InvoiceSettingsRow | null>(null);
   const [propertyInvoiceRates, setPropertyInvoiceRates] = useState<PropertyInvoiceRateRow[]>([]);
   const [ownerInvoices, setOwnerInvoices] = useState<OwnerInvoiceRow[]>([]);
+  const [ownerInvoiceEvents, setOwnerInvoiceEvents] = useState<OwnerInvoiceEventRow[]>([]);
   const [chatConversations, setChatConversations] = useState<ChatConversationRow[]>([]);
   const [chatParticipants, setChatParticipants] = useState<ChatParticipantRow[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessageRow[]>([]);
@@ -1131,6 +1155,7 @@ export default function AdminPage() {
   const [uploadingReceiptLineItemId, setUploadingReceiptLineItemId] = useState<string | null>(null);
   const [uploadingExternalInvoice, setUploadingExternalInvoice] = useState(false);
   const [sendingInvoiceId, setSendingInvoiceId] = useState<string | null>(null);
+  const [sendingInvoiceReminderId, setSendingInvoiceReminderId] = useState<string | null>(null);
   const [viewingInvoicePdfId, setViewingInvoicePdfId] = useState<string | null>(null);
   const [updatingInvoiceStatusId, setUpdatingInvoiceStatusId] = useState<string | null>(null);
   const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
@@ -1156,6 +1181,10 @@ export default function AdminPage() {
   const [invoiceReplyToEmail, setInvoiceReplyToEmail] = useState("");
   const [invoiceHeaderText, setInvoiceHeaderText] = useState("");
   const [invoicePaymentInstructions, setInvoicePaymentInstructions] = useState("");
+  const [invoiceRemindersEnabled, setInvoiceRemindersEnabled] = useState(false);
+  const [invoiceReminderDaysAfterSent, setInvoiceReminderDaysAfterSent] = useState("15");
+  const [invoiceReminderRepeatDays, setInvoiceReminderRepeatDays] = useState("15");
+  const [invoiceReminderMaxCount, setInvoiceReminderMaxCount] = useState("3");
   const [invoiceDocumentKind, setInvoiceDocumentKind] = useState<InvoiceDocumentKind>("invoice");
   const [editingOwnerInvoiceId, setEditingOwnerInvoiceId] = useState<string | null>(null);
   const [invoiceWorkflowTab, setInvoiceWorkflowTab] = useState<InvoiceWorkflowTab>("create");
@@ -1775,6 +1804,10 @@ export default function AdminPage() {
     setInvoiceTaxLines(normalizeTaxLines(invoiceSettings?.tax_lines));
     setInvoiceAutoTurnover(invoiceSettings?.auto_add_turnover ?? true);
     setInvoiceAutoGrounds(invoiceSettings?.auto_add_grounds ?? true);
+    setInvoiceRemindersEnabled(invoiceSettings?.invoice_reminders_enabled ?? false);
+    setInvoiceReminderDaysAfterSent(String(invoiceSettings?.invoice_reminder_days_after_sent ?? 15));
+    setInvoiceReminderRepeatDays(String(invoiceSettings?.invoice_reminder_repeat_days ?? 15));
+    setInvoiceReminderMaxCount(String(invoiceSettings?.invoice_reminder_max_count ?? 3));
   }, [invoiceSettings, currentOrganizationBilling, invoiceSettingsDirty]);
 
   useEffect(() => {
@@ -1980,6 +2013,7 @@ export default function AdminPage() {
     setInvoiceSettings((data.invoiceSettings ?? null) as InvoiceSettingsRow | null);
     setPropertyInvoiceRates((data.propertyInvoiceRates ?? []) as PropertyInvoiceRateRow[]);
     setOwnerInvoices((data.ownerInvoices ?? []) as OwnerInvoiceRow[]);
+    setOwnerInvoiceEvents((data.ownerInvoiceEvents ?? []) as OwnerInvoiceEventRow[]);
     setChatConversations((data.chatConversations ?? []) as ChatConversationRow[]);
     setChatParticipants((data.chatParticipants ?? []) as ChatParticipantRow[]);
     setChatMessages((data.chatMessages ?? []) as ChatMessageRow[]);
@@ -2071,6 +2105,7 @@ export default function AdminPage() {
       invoiceSettingsRes,
       propertyInvoiceRatesRes,
       ownerInvoicesRes,
+      ownerInvoiceEventsRes,
       chatConversationsRes,
       chatParticipantsRes,
       chatMessagesRes,
@@ -2200,6 +2235,11 @@ export default function AdminPage() {
         .order("created_at", { ascending: false }),
       supabase
         .from("owner_invoices")
+        .select("*")
+        .eq("organization_id", currentOrganizationId)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("owner_invoice_events")
         .select("*")
         .eq("organization_id", currentOrganizationId)
         .order("created_at", { ascending: false }),
@@ -2389,6 +2429,11 @@ export default function AdminPage() {
       propertyInvoiceRatesRes.error ? [] : ((propertyInvoiceRatesRes.data ?? []) as PropertyInvoiceRateRow[])
     );
     setOwnerInvoices((ownerInvoicesRes.data ?? []) as OwnerInvoiceRow[]);
+    setOwnerInvoiceEvents(
+      ownerInvoiceEventsRes.error && isOptionalTableError(ownerInvoiceEventsRes.error)
+        ? []
+        : ((ownerInvoiceEventsRes.data ?? []) as OwnerInvoiceEventRow[])
+    );
     setChatConversations(
       chatConversationsRes.error ? [] : ((chatConversationsRes.data ?? []) as ChatConversationRow[])
     );
@@ -10125,6 +10170,7 @@ This removes its linked members and deletes the grounds account.`
         turnover_jobs: jobs.length,
         grounds_jobs: groundsJobs.length,
         owner_invoices: ownerInvoices.length,
+        owner_invoice_events: ownerInvoiceEvents.length,
         document_vault_files: documentVaultRows.length,
         maintenance_flags: maintenanceFlags.length,
       },
@@ -10148,6 +10194,7 @@ This removes its linked members and deletes the grounds account.`
         owner_accounts: ownerAccounts,
         owner_property_access: ownerPropertyAccess,
         owner_invoices: ownerInvoices,
+        owner_invoice_events: ownerInvoiceEvents,
         invoice_settings: invoiceSettings,
         property_invoice_rates: propertyInvoiceRates,
         document_vault_files: documentVaultRows,
@@ -10761,6 +10808,10 @@ This removes its linked members and deletes the grounds account.`
         tax_lines: savedTaxLines,
         auto_add_turnover: invoiceAutoTurnover,
         auto_add_grounds: invoiceAutoGrounds,
+        invoice_reminders_enabled: invoiceRemindersEnabled,
+        invoice_reminder_days_after_sent: Math.max(1, Math.round(Number(invoiceReminderDaysAfterSent || 15))),
+        invoice_reminder_repeat_days: Math.max(1, Math.round(Number(invoiceReminderRepeatDays || 15))),
+        invoice_reminder_max_count: Math.max(1, Math.round(Number(invoiceReminderMaxCount || 3))),
         payment_instructions: invoicePaymentInstructions.trim() || null,
         updated_at: new Date().toISOString(),
       });
@@ -11082,6 +11133,31 @@ This removes its linked members and deletes the grounds account.`
     }
   }
 
+  async function sendOwnerInvoiceReminder(invoiceId: string) {
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (sessionError || !session?.access_token) {
+      throw new Error("Could not verify your admin session.");
+    }
+
+    const response = await fetch("/api/admin/send-owner-invoice-reminder", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ invoiceId, ccEmails: invoiceCcEmails }),
+    });
+
+    const result = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(result?.error || "Could not send invoice reminder.");
+    }
+  }
+
   async function previewInvoicePdf() {
     const validLineItems = getValidInvoiceLineItems();
     const documentLabelLower = invoiceDocumentKind === "statement" ? "statement" : "invoice";
@@ -11234,6 +11310,22 @@ This removes its linked members and deletes the grounds account.`
     }
   }
 
+  async function sendExistingOwnerInvoiceReminder(invoiceId: string) {
+    setSendingInvoiceReminderId(invoiceId);
+    setError("");
+    setActionMessage("");
+
+    try {
+      await sendOwnerInvoiceReminder(invoiceId);
+      setActionMessage("Invoice reminder sent to owner.");
+      await loadData();
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Could not send invoice reminder."));
+    } finally {
+      setSendingInvoiceReminderId(null);
+    }
+  }
+
   async function updateOwnerInvoiceStatus(invoice: OwnerInvoiceRow, status: OwnerInvoiceRow["status"]) {
     setUpdatingInvoiceStatusId(invoice.id);
     setError("");
@@ -11256,6 +11348,18 @@ This removes its linked members and deletes the grounds account.`
         .eq("organization_id", currentOrganizationId);
 
       if (error) throw error;
+
+      const { error: eventError } = await supabase.from("owner_invoice_events").insert({
+        organization_id: currentOrganizationId,
+        invoice_id: invoice.id,
+        event_type: status === "paid" ? "marked_paid" : "marked_unpaid",
+        actor_profile_id: currentAdminUserId,
+        metadata: {
+          invoice_number: invoice.invoice_number,
+          total: Number(invoice.total || 0),
+        },
+      });
+      if (eventError && !isOptionalTableError(eventError)) throw eventError;
 
       setOwnerInvoices((invoices) =>
         invoices.map((item) => (item.id === invoice.id ? { ...item, status } : item))
@@ -11423,6 +11527,55 @@ This removes its linked members and deletes the grounds account.`
     const showExistingInvoiceUpload = invoiceWorkflowTab === "existing";
     const showInvoiceBuilder = invoiceWorkflowTab === "create" || invoiceWorkflowTab === "running";
     const showInvoiceHistory = invoiceWorkflowTab === "history" || invoiceWorkflowTab === "running";
+    const getInvoiceEventLabel = (event: OwnerInvoiceEventRow) => {
+      const date = formatDateTime(event.created_at);
+      switch (event.event_type) {
+        case "invoice_sent":
+          return `Sent ${date}`;
+        case "invoice_resent":
+          return `Sent again ${date}`;
+        case "reminder_sent":
+          return `Reminder sent ${date}`;
+        case "auto_reminder_sent":
+          return `Auto reminder sent ${date}`;
+        case "marked_paid":
+          return `Marked paid ${date}`;
+        case "marked_unpaid":
+          return `Marked unpaid ${date}`;
+        default:
+          return date;
+      }
+    };
+    const getInvoiceHistorySummary = (invoice: OwnerInvoiceRow) => {
+      const events = ownerInvoiceEvents
+        .filter((event) => event.invoice_id === invoice.id)
+        .sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
+
+      if (events.length > 0) {
+        const sendEvents = events.filter((event) => event.event_type === "invoice_sent" || event.event_type === "invoice_resent");
+        const reminderEvents = events.filter((event) => event.event_type === "reminder_sent" || event.event_type === "auto_reminder_sent");
+        const statusEvents = events.filter((event) => event.event_type === "marked_paid" || event.event_type === "marked_unpaid");
+        const pieces = [
+          ...sendEvents.slice(-1).map(getInvoiceEventLabel),
+          reminderEvents.length > 1
+            ? `${reminderEvents.length} reminders, last ${formatDateTime(reminderEvents[reminderEvents.length - 1].created_at)}`
+            : reminderEvents[0]
+              ? getInvoiceEventLabel(reminderEvents[0])
+              : "",
+          ...statusEvents.slice(-1).map(getInvoiceEventLabel),
+        ].filter(Boolean);
+        return pieces.length > 0 ? pieces.join(" | ") : events.slice(-2).map(getInvoiceEventLabel).join(" | ");
+      }
+
+      const fallbackPieces = [
+        invoice.sent_at ? `Sent ${formatDateTime(invoice.sent_at)}` : "",
+        invoice.last_reminder_sent_at
+          ? `${Number(invoice.reminder_count || 1)} reminder${Number(invoice.reminder_count || 1) === 1 ? "" : "s"}, last ${formatDateTime(invoice.last_reminder_sent_at)}`
+          : "",
+      ].filter(Boolean);
+
+      return fallbackPieces.join(" | ");
+    };
     const renderInvoiceHistoryCard = (invoice: OwnerInvoiceRow) => {
       const owner = ownerAccounts.find((item) => item.id === invoice.owner_account_id);
       const property = properties.find((item) => item.id === invoice.property_id);
@@ -11474,6 +11627,13 @@ This removes its linked members and deletes the grounds account.`
               }`}>
                 {owner?.full_name || owner?.email || "Owner"} | {property?.name || property?.address || "All properties"}
               </div>
+              {getInvoiceHistorySummary(invoice) ? (
+                <div className={`mt-1 text-xs ${
+                  isDraftInvoice ? "text-[#7c5aa2]" : isPaidInvoice ? "text-[#3d7046]" : "text-[#9b4b4b]"
+                }`}>
+                  {getInvoiceHistorySummary(invoice)}
+                </div>
+              ) : null}
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <div className={`text-lg font-semibold ${
@@ -11537,6 +11697,16 @@ This removes its linked members and deletes the grounds account.`
                       ? "Send PDF"
                       : "Resend PDF"}
               </button>
+              {!isDraftInvoice && !isPaidInvoice ? (
+                <button
+                  type="button"
+                  onClick={() => void sendExistingOwnerInvoiceReminder(invoice.id)}
+                  disabled={sendingInvoiceReminderId === invoice.id}
+                  className="rounded-full border border-[#f1cf8f] bg-[#fff8e8] px-4 py-2 text-sm font-medium text-[#8a6112] transition hover:bg-[#fff4d8] disabled:opacity-60"
+                >
+                  {sendingInvoiceReminderId === invoice.id ? "Sending..." : "Send reminder"}
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => void deleteOwnerInvoice(invoice)}
@@ -11768,6 +11938,69 @@ This removes its linked members and deletes the grounds account.`
                     setInvoicePaymentInstructions(e.target.value);
                   }}
                 />
+                <div className="rounded-[18px] border border-[#eadfce] bg-white p-3">
+                  <label className="flex items-start gap-3 text-sm font-semibold text-[#241c15]">
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={invoiceRemindersEnabled}
+                      onChange={(e) => {
+                        setInvoiceSettingsDirty(true);
+                        setInvoiceRemindersEnabled(e.target.checked);
+                      }}
+                    />
+                    <span>
+                      Automatically remind owners about unpaid invoices
+                      <span className="mt-1 block text-xs font-normal leading-5 text-[#7f7263]">
+                        The daily reminder job only emails invoices still marked sent and unpaid.
+                      </span>
+                    </span>
+                  </label>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                    <label className="text-xs font-medium text-[#5f5245]">
+                      First reminder after days
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-[#fcfaf7] px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                        value={invoiceReminderDaysAfterSent}
+                        onChange={(e) => {
+                          setInvoiceSettingsDirty(true);
+                          setInvoiceReminderDaysAfterSent(e.target.value);
+                        }}
+                      />
+                    </label>
+                    <label className="text-xs font-medium text-[#5f5245]">
+                      Repeat every days
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-[#fcfaf7] px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                        value={invoiceReminderRepeatDays}
+                        onChange={(e) => {
+                          setInvoiceSettingsDirty(true);
+                          setInvoiceReminderRepeatDays(e.target.value);
+                        }}
+                      />
+                    </label>
+                    <label className="text-xs font-medium text-[#5f5245]">
+                      Max reminders
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-[#fcfaf7] px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                        value={invoiceReminderMaxCount}
+                        onChange={(e) => {
+                          setInvoiceSettingsDirty(true);
+                          setInvoiceReminderMaxCount(e.target.value);
+                        }}
+                      />
+                    </label>
+                  </div>
+                </div>
                 <div className="rounded-[18px] border border-[#eadfce] bg-white p-3">
                   <div className="flex items-center justify-between gap-3">
                     <div>
