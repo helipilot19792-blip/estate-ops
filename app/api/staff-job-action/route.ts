@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { sendStaffPushNotifications } from "@/lib/server/staff-push-notifications";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const publicSupabaseKey =
@@ -28,7 +30,13 @@ async function refreshCleanerJobStaffing(service: any, jobId: string) {
 
   const slotRows = slots ?? [];
   const needed = Math.max(1, Number(job.cleaner_units_needed || 1));
-  const acceptedSlots = slotRows.filter((slot: any) => slot.status === "accepted");
+  const activeSlots = slotRows.filter((slot: any) =>
+    ["accepted", "in_progress", "completed"].includes(String(slot.status || "").toLowerCase())
+  );
+  const acceptedSlots = slotRows.filter((slot: any) =>
+    ["accepted", "in_progress"].includes(String(slot.status || "").toLowerCase())
+  );
+  const completedSlots = slotRows.filter((slot: any) => slot.status === "completed");
   const offeredSlots = slotRows.filter((slot: any) => slot.status === "offered");
   const stillStranded = slotRows.some(
     (slot: any) => slot.status === "stranded" || !slot.cleaner_account_id
@@ -36,14 +44,18 @@ async function refreshCleanerJobStaffing(service: any, jobId: string) {
 
   const staffingStatus = stillStranded
     ? "stranded"
-    : acceptedSlots.length >= needed
+    : activeSlots.length >= needed
       ? "fully_staffed"
-      : acceptedSlots.length > 0 || offeredSlots.length > 0
+      : activeSlots.length > 0 || offeredSlots.length > 0
         ? "partially_filled"
         : "unassigned";
 
   const status =
-    acceptedSlots.length > 0
+    completedSlots.length >= needed
+      ? "completed"
+      : acceptedSlots.some((slot: any) => slot.status === "in_progress")
+        ? "in_progress"
+        : activeSlots.length > 0
       ? "accepted"
       : offeredSlots.length > 0
         ? "offered"
@@ -73,6 +85,61 @@ async function refreshCleanerJobStaffing(service: any, jobId: string) {
   if (updateError) throw new Error(updateError.message);
 }
 
+async function sendCleanerProgressPush(
+  service: any,
+  jobId: string,
+  cleanerAccountId: string,
+  action: "start" | "finish",
+  origin: string
+) {
+  const { data: job, error: jobError } = await service
+    .from("turnover_jobs")
+    .select("id, organization_id, property_id, scheduled_for, notes")
+    .eq("id", jobId)
+    .maybeSingle();
+
+  if (jobError || !job?.organization_id) {
+    return { sent: 0, errors: jobError?.message ? [jobError.message] : [] };
+  }
+
+  const [{ data: cleaner }, { data: property }, { data: adminMembers, error: adminError }] = await Promise.all([
+    service
+      .from("cleaner_accounts")
+      .select("display_name, email")
+      .eq("id", cleanerAccountId)
+      .maybeSingle(),
+    service
+      .from("properties")
+      .select("name")
+      .eq("id", job.property_id)
+      .maybeSingle(),
+    service
+      .from("organization_members")
+      .select("profile_id")
+      .eq("organization_id", job.organization_id)
+      .eq("role", "admin"),
+  ]);
+
+  if (adminError) {
+    return { sent: 0, errors: [adminError.message] };
+  }
+
+  const profileIds: string[] = [...new Set<string>((adminMembers || []).map((row: any) => String(row.profile_id || "")).filter(Boolean))];
+  const cleanerName = cleaner?.display_name || cleaner?.email || "Cleaner";
+  const propertyName = property?.name || "a property";
+  const verb = action === "start" ? "started" : "finished";
+  const tag = `cleaner-job-${action}-${jobId}`;
+
+  const result = await sendStaffPushNotifications("admin", profileIds, {
+    title: `Cleaner ${verb} a job`,
+    body: `${cleanerName} ${verb} the cleaning job for ${propertyName}.`,
+    url: `${origin}/admin?open=jobs`,
+    tag,
+  });
+
+  return { sent: result.sent, errors: result.errors };
+}
+
 export async function POST(request: NextRequest) {
   if (!supabaseUrl || !publicSupabaseKey || !serviceRoleKey) {
     return NextResponse.json(
@@ -91,7 +158,16 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json().catch(() => null);
     const portal = body?.portal === "cleaner" ? "cleaner" : null;
-    const action = body?.action === "accept" ? "accept" : body?.action === "decline" ? "decline" : null;
+    const action =
+      body?.action === "accept"
+        ? "accept"
+        : body?.action === "decline"
+          ? "decline"
+          : body?.action === "start"
+            ? "start"
+            : body?.action === "finish"
+              ? "finish"
+              : null;
     const slotId = String(body?.slotId || "").trim();
 
     if (!portal || !action || !slotId) {
@@ -133,11 +209,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "This sign-in is not linked to a cleaner account." }, { status: 403 });
     }
 
-    const { data: slot, error: slotError } = await service
+    let slotResult = await service
       .from("turnover_job_slots")
-      .select("id, job_id, cleaner_account_id, status")
+      .select("id, job_id, cleaner_account_id, status, started_at, started_by_profile_id")
       .eq("id", slotId)
       .maybeSingle();
+
+    if (slotResult.error?.code === "42703") {
+      slotResult = await service
+        .from("turnover_job_slots")
+        .select("id, job_id, cleaner_account_id, status")
+        .eq("id", slotId)
+        .maybeSingle();
+    }
+
+    const slot = slotResult.data;
+    const slotError = slotResult.error;
 
     if (slotError) {
       return NextResponse.json({ error: slotError.message }, { status: 500 });
@@ -152,7 +239,13 @@ export async function POST(request: NextRequest) {
     }
 
     const now = new Date().toISOString();
-    const slotUpdate =
+    const currentSlotStatus = String(slot.status || "").toLowerCase().trim();
+
+    if ((action === "start" || action === "finish") && !["accepted", "in_progress", "completed"].includes(currentSlotStatus)) {
+      return NextResponse.json({ error: "Accept the job before using progress buttons." }, { status: 409 });
+    }
+
+    const slotUpdate: Record<string, unknown> =
       action === "accept"
         ? {
             status: "accepted",
@@ -161,23 +254,43 @@ export async function POST(request: NextRequest) {
             accepted_by_profile_id: user.id,
             declined_by_profile_id: null,
           }
-        : {
+        : action === "decline"
+          ? {
             status: "declined",
             declined_at: now,
             accepted_at: null,
             declined_by_profile_id: user.id,
             accepted_by_profile_id: null,
-          };
+          }
+          : action === "start"
+            ? {
+                status: "in_progress",
+                started_at: now,
+                started_by_profile_id: user.id,
+              }
+            : {
+                status: "completed",
+                finished_at: now,
+                finished_by_profile_id: user.id,
+                started_at: slot.started_at || now,
+                started_by_profile_id: slot.started_by_profile_id || user.id,
+              };
 
     const { data: updatedSlot, error: updateError } = await service
       .from("turnover_job_slots")
       .update(slotUpdate)
       .eq("id", slotId)
       .eq("cleaner_account_id", slot.cleaner_account_id)
-      .select("id, job_id, status")
+      .select("id, job_id, status, cleaner_account_id")
       .maybeSingle();
 
     if (updateError) {
+      if (updateError.code === "42703" && (action === "start" || action === "finish")) {
+        return NextResponse.json(
+          { error: "Cleaner progress tracking fields are missing. Run supabase/add_cleaner_job_progress_tracking.sql first." },
+          { status: 500 }
+        );
+      }
       return NextResponse.json({ error: updateError.message }, { status: 500 });
     }
 
@@ -186,11 +299,22 @@ export async function POST(request: NextRequest) {
     }
 
     await refreshCleanerJobStaffing(service, updatedSlot.job_id);
+    const progressPush =
+      action === "start" || action === "finish"
+        ? await sendCleanerProgressPush(
+            service,
+            updatedSlot.job_id,
+            updatedSlot.cleaner_account_id || slot.cleaner_account_id,
+            action,
+            request.nextUrl.origin
+          )
+        : { sent: 0, errors: [] as string[] };
 
     return NextResponse.json({
       ok: true,
       action,
       slot: updatedSlot,
+      progressPush,
     });
   } catch (error) {
     return NextResponse.json(

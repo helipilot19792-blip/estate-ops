@@ -358,6 +358,8 @@ function JobCard({
   actionLoading,
   handleAcceptJob,
   handleDeclineJob,
+  handleStartJob,
+  handleFinishJob,
   handleCloseDetails,
   availableProperties,
   currentProfileId,
@@ -383,6 +385,8 @@ function JobCard({
   actionLoading: CleanerViewProps["actionLoading"];
   handleAcceptJob: CleanerViewProps["handleAcceptJob"];
   handleDeclineJob: CleanerViewProps["handleDeclineJob"];
+  handleStartJob: CleanerViewProps["handleStartJob"];
+  handleFinishJob: CleanerViewProps["handleFinishJob"];
   handleCloseDetails: CleanerViewProps["handleCloseDetails"];
   availableProperties: CleanerViewProps["properties"];
   currentProfileId: string | null;
@@ -393,6 +397,8 @@ function JobCard({
   const selectedStatus = (item.slot.status || "").toLowerCase().trim();
   const isOffered = selectedStatus === "offered";
   const isAccepted = selectedStatus === "accepted";
+  const isInProgress = selectedStatus === "in_progress";
+  const isCompleted = selectedStatus === "completed";
 
   return (
     <div
@@ -511,6 +517,18 @@ function JobCard({
             </div>
           </div>
 
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-4">
+              <p className="text-xs uppercase tracking-[0.16em] text-[#b08b47]">Job Started</p>
+              <p className="mt-2 text-sm text-[#e8ddca]">{formatDateTimeLabel(item.slot.started_at)}</p>
+            </div>
+
+            <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-4">
+              <p className="text-xs uppercase tracking-[0.16em] text-[#b08b47]">Job Finished</p>
+              <p className="mt-2 text-sm text-[#e8ddca]">{formatDateTimeLabel(item.slot.finished_at)}</p>
+            </div>
+          </div>
+
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
             <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-4">
               <p className="text-xs uppercase tracking-[0.16em] text-[#b08b47]">Team Slots</p>
@@ -554,6 +572,34 @@ function JobCard({
                 </button>
               </>
             )}
+
+            {isAccepted ? (
+              <button
+                type="button"
+                onClick={() => void handleStartJob()}
+                disabled={actionLoading !== null}
+                className="rounded-full border border-amber-500/45 bg-amber-500/15 px-5 py-2 text-sm font-medium text-amber-100 transition hover:bg-amber-500/25 disabled:opacity-50"
+              >
+                {actionLoading === "start" ? "Starting..." : "Start Job"}
+              </button>
+            ) : null}
+
+            {(isAccepted || isInProgress) ? (
+              <button
+                type="button"
+                onClick={() => void handleFinishJob()}
+                disabled={actionLoading !== null}
+                className="rounded-full border border-sky-500/45 bg-sky-500/15 px-5 py-2 text-sm font-medium text-sky-100 transition hover:bg-sky-500/25 disabled:opacity-50"
+              >
+                {actionLoading === "finish" ? "Finishing..." : "Finish Job"}
+              </button>
+            ) : null}
+
+            {isCompleted ? (
+              <span className="rounded-full border border-sky-500/35 bg-sky-500/15 px-5 py-2 text-sm font-medium text-sky-100">
+                Finished
+              </span>
+            ) : null}
 
             <button
               type="button"
@@ -721,6 +767,8 @@ export default function CleanerDesktopView({
   scrollToJobsSection,
   handleAcceptJob,
   handleDeclineJob,
+  handleStartJob,
+  handleFinishJob,
   handleCloseDetails,
   handleSignOut,
   formatMonthLabel,
@@ -825,6 +873,8 @@ export default function CleanerDesktopView({
               actionLoading={actionLoading}
               handleAcceptJob={handleAcceptJob}
               handleDeclineJob={handleDeclineJob}
+              handleStartJob={handleStartJob}
+              handleFinishJob={handleFinishJob}
               handleCloseDetails={handleCloseDetails}
               availableProperties={properties}
               currentProfileId={profile?.id || null}
@@ -1348,6 +1398,8 @@ export default function CleanerDesktopView({
                         actionLoading={actionLoading}
                         handleAcceptJob={handleAcceptJob}
                         handleDeclineJob={handleDeclineJob}
+                        handleStartJob={handleStartJob}
+                        handleFinishJob={handleFinishJob}
                         handleCloseDetails={handleCloseDetails}
                         availableProperties={properties}
                         currentProfileId={profile?.id || null}

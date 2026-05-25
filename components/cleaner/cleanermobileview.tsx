@@ -316,6 +316,8 @@ export default function CleanerMobileView({
   setSelectedSlotId,
   handleAcceptJob,
   handleDeclineJob,
+  handleStartJob,
+  handleFinishJob,
   handleCloseDetails,
   handleSignOut,
   signingOut,
@@ -431,6 +433,14 @@ export default function CleanerMobileView({
 
   function isAccepted(status: string | null | undefined) {
     return (status || "").toLowerCase().trim() === "accepted";
+  }
+
+  function isInProgress(status: string | null | undefined) {
+    return (status || "").toLowerCase().trim() === "in_progress";
+  }
+
+  function isCompleted(status: string | null | undefined) {
+    return (status || "").toLowerCase().trim() === "completed";
   }
 
   function handleCardTap(slotId: string) {
@@ -620,6 +630,10 @@ export default function CleanerMobileView({
                     <br />
                     Accepted: {formatDateTimeLabel(selectedCleanerJob.slot.accepted_at)}
                     <br />
+                    Started: {formatDateTimeLabel(selectedCleanerJob.slot.started_at)}
+                    <br />
+                    Finished: {formatDateTimeLabel(selectedCleanerJob.slot.finished_at)}
+                    <br />
                     Declined: {formatDateTimeLabel(selectedCleanerJob.slot.declined_at)}
                   </div>
                 </div>
@@ -698,6 +712,34 @@ export default function CleanerMobileView({
                 ) : null}
 
                 {isAccepted(selectedCleanerJob.slot.status) ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleStartJob()}
+                    disabled={actionLoading !== null}
+                    className="min-h-[46px] rounded-full border border-amber-500/40 bg-amber-500/20 px-4 py-3 text-sm font-semibold text-amber-100 transition hover:bg-amber-500/30 disabled:opacity-50"
+                  >
+                    {actionLoading === "start" ? "Starting..." : "Start Job"}
+                  </button>
+                ) : null}
+
+                {(isAccepted(selectedCleanerJob.slot.status) || isInProgress(selectedCleanerJob.slot.status)) ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleFinishJob()}
+                    disabled={actionLoading !== null}
+                    className="min-h-[46px] rounded-full border border-sky-500/40 bg-sky-500/20 px-4 py-3 text-sm font-semibold text-sky-100 transition hover:bg-sky-500/30 disabled:opacity-50"
+                  >
+                    {actionLoading === "finish" ? "Finishing..." : "Finish Job"}
+                  </button>
+                ) : null}
+
+                {isCompleted(selectedCleanerJob.slot.status) ? (
+                  <span className="min-h-[46px] rounded-full border border-sky-500/35 bg-sky-500/15 px-4 py-3 text-sm font-semibold text-sky-100">
+                    Finished
+                  </span>
+                ) : null}
+
+                {isAccepted(selectedCleanerJob.slot.status) || isInProgress(selectedCleanerJob.slot.status) ? (
                   <a
                     href={getCalendarUrl(selectedCleanerJob.job.id)}
                     className="min-h-[46px] rounded-full border border-[#b08b47]/40 bg-[#b08b47]/15 px-4 py-3 text-sm font-semibold text-[#f5efe4] transition hover:bg-[#b08b47]/25"

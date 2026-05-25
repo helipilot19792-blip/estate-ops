@@ -178,11 +178,22 @@ async function loadCleanerDashboard(profileId: string) {
     };
   }
 
-  const { data: accountSlots, error: slotError } = await serviceClient
+  let accountSlotsRes: any = await serviceClient
     .from("turnover_job_slots")
-    .select("id, job_id, slot_number, cleaner_account_id, status, offered_at, accepted_at, declined_at, expires_at, accepted_by_profile_id, declined_by_profile_id, created_at, updated_at")
+    .select("id, job_id, slot_number, cleaner_account_id, status, offered_at, accepted_at, declined_at, started_at, finished_at, expires_at, accepted_by_profile_id, declined_by_profile_id, started_by_profile_id, finished_by_profile_id, created_at, updated_at")
     .eq("cleaner_account_id", account.id)
     .order("created_at", { ascending: false });
+
+  if (accountSlotsRes.error?.code === "42703") {
+    accountSlotsRes = await serviceClient
+      .from("turnover_job_slots")
+      .select("id, job_id, slot_number, cleaner_account_id, status, offered_at, accepted_at, declined_at, expires_at, accepted_by_profile_id, declined_by_profile_id, created_at, updated_at")
+      .eq("cleaner_account_id", account.id)
+      .order("created_at", { ascending: false });
+  }
+
+  const accountSlots = accountSlotsRes.data;
+  const slotError = accountSlotsRes.error;
 
   if (slotError) throw new Error(slotError.message);
 
@@ -217,7 +228,9 @@ async function loadCleanerDashboard(profileId: string) {
   for (const slot of allSlotsRes.data ?? []) {
     const current = slotCounts.get(slot.job_id) || { total: 0, accepted: 0 };
     current.total += 1;
-    if ((slot.status || "").toLowerCase().trim() === "accepted") current.accepted += 1;
+    if (["accepted", "in_progress", "completed"].includes((slot.status || "").toLowerCase().trim())) {
+      current.accepted += 1;
+    }
     slotCounts.set(slot.job_id, current);
   }
 
@@ -235,7 +248,7 @@ async function loadCleanerDashboard(profileId: string) {
           totalSlots: counts.total,
         };
       })
-      .filter((item): item is {
+      .filter((item: any): item is {
         slot: any;
         job: { scheduled_for?: string | null; notes?: string | null; property_id?: string };
         jobDate: string | null;

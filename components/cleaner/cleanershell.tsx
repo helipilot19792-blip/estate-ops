@@ -67,9 +67,13 @@ type TurnoverJobSlot = {
   offered_at?: string | null;
   accepted_at?: string | null;
   declined_at?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
   expires_at?: string | null;
   accepted_by_profile_id?: string | null;
   declined_by_profile_id?: string | null;
+  started_by_profile_id?: string | null;
+  finished_by_profile_id?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -117,7 +121,7 @@ export type CleanerViewProps = {
   loading: boolean;
   parseJobNotes: (notes: string | null) => ParsedJobNotes;
   signingOut: boolean;
-  actionLoading: "accept" | "decline" | null;
+  actionLoading: "accept" | "decline" | "start" | "finish" | null;
   profile: Profile | null;
   cleanerAccount: CleanerAccount | null;
   properties: Property[];
@@ -163,6 +167,8 @@ export type CleanerViewProps = {
   scrollToJobsSection: () => void;
   handleAcceptJob: () => Promise<void>;
   handleDeclineJob: () => Promise<void>;
+  handleStartJob: () => Promise<void>;
+  handleFinishJob: () => Promise<void>;
   handleCloseDetails: () => void;
   handleSignOut: () => Promise<void>;
   refreshCleanerJobs: () => Promise<void>;
@@ -395,6 +401,8 @@ function getSlotDisplayStatus(
     return "Waiting for your response";
   }
 
+  if (slot === "in_progress") return "Job started";
+  if (slot === "completed") return "Job finished";
   if (slot === "declined") return "Declined";
   if (slot === "stranded") return "Stranded";
   return slotStatus || "Unknown";
@@ -406,6 +414,26 @@ function getStatusTone(
 ) {
   const slot = (slotStatus || "").toLowerCase().trim();
   const staffing = (staffingStatus || "").toLowerCase().trim();
+
+  if (slot === "completed") {
+    return {
+      badge: "border border-sky-400/30 bg-sky-500/15 text-sky-200",
+      card:
+        "border-sky-500/25 bg-[linear-gradient(180deg,rgba(15,30,45,0.35)_0%,rgba(16,13,10,1)_100%)]",
+      dot: "bg-sky-400",
+      selectedRing: "ring-2 ring-sky-300/60",
+    };
+  }
+
+  if (slot === "in_progress") {
+    return {
+      badge: "border border-amber-400/35 bg-amber-500/15 text-amber-200",
+      card:
+        "border-amber-500/25 bg-[linear-gradient(180deg,rgba(48,35,15,0.35)_0%,rgba(16,13,10,1)_100%)]",
+      dot: "bg-amber-400",
+      selectedRing: "ring-2 ring-amber-300/60",
+    };
+  }
 
   if (slot === "accepted") {
     return {
@@ -469,6 +497,9 @@ function getTeamMessage(item: CleanerJob) {
   const slotStatus = (item.slot.status || "").toLowerCase().trim();
   const staffing = (item.job.staffing_status || "").toLowerCase().trim();
 
+  if (slotStatus === "completed") return "Job finished";
+  if (slotStatus === "in_progress") return "Job started";
+
   if (needed <= 1) {
     return slotStatus === "accepted" ? "Solo clean • you accepted this job" : "Solo clean";
   }
@@ -520,7 +551,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
 
   const [loading, setLoading] = useState(true);
   const [signingOut, setSigningOut] = useState(false);
-  const [actionLoading, setActionLoading] = useState<"accept" | "decline" | null>(null);
+  const [actionLoading, setActionLoading] = useState<CleanerViewProps["actionLoading"]>(null);
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [cleanerAccount, setCleanerAccount] = useState<CleanerAccount | null>(null);
@@ -804,13 +835,26 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     setJobsWarning(null);
 
     try {
-      const { data: slotData, error: slotError } = await supabase
+      let slotResult: any = await supabase
         .from("turnover_job_slots")
         .select(
-          "id, job_id, slot_number, cleaner_account_id, status, offered_at, accepted_at, declined_at, expires_at, accepted_by_profile_id, declined_by_profile_id, created_at, updated_at"
+          "id, job_id, slot_number, cleaner_account_id, status, offered_at, accepted_at, declined_at, started_at, finished_at, expires_at, accepted_by_profile_id, declined_by_profile_id, started_by_profile_id, finished_by_profile_id, created_at, updated_at"
         )
         .eq("cleaner_account_id", cleanerAccountId)
         .order("created_at", { ascending: false });
+
+      if (slotResult.error?.code === "42703") {
+        slotResult = await supabase
+          .from("turnover_job_slots")
+          .select(
+            "id, job_id, slot_number, cleaner_account_id, status, offered_at, accepted_at, declined_at, expires_at, accepted_by_profile_id, declined_by_profile_id, created_at, updated_at"
+          )
+          .eq("cleaner_account_id", cleanerAccountId)
+          .order("created_at", { ascending: false });
+      }
+
+      const slotData = slotResult.data;
+      const slotError = slotResult.error;
 
       if (slotError) throw slotError;
 
@@ -851,7 +895,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
       for (const slot of allSlots) {
         const current = slotCounts.get(slot.job_id) || { total: 0, accepted: 0 };
         current.total += 1;
-        if ((slot.status || "").toLowerCase().trim() === "accepted") {
+        if (["accepted", "in_progress", "completed"].includes((slot.status || "").toLowerCase().trim())) {
           current.accepted += 1;
         }
         slotCounts.set(slot.job_id, current);
@@ -1065,6 +1109,63 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     }
   }
 
+  async function handleProgressAction(action: "start" | "finish") {
+    if (!selectedCleanerJob || !profile?.id) return;
+
+    setJobsWarning(null);
+    setActionLoading(action);
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("Your login session expired. Please log in again.");
+      }
+
+      const response = await fetch("/api/staff-job-action", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          portal: "cleaner",
+          action,
+          slotId: selectedCleanerJob.slot.id,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || `Could not ${action} job.`);
+      }
+
+      const slotId = selectedCleanerJob.slot.id;
+      await refreshCleanerJobs();
+      setSelectedSlotId(slotId);
+
+      const pushErrors = Array.isArray(payload.progressPush?.errors) ? payload.progressPush.errors : [];
+      if (pushErrors.length > 0) {
+        setJobsWarning(`Job ${action === "start" ? "started" : "finished"}, but admin push notification failed: ${pushErrors[0]}`);
+      }
+    } catch (error: any) {
+      setJobsWarning(error?.message || `Could not ${action} job.`);
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function handleStartJob() {
+    await handleProgressAction("start");
+  }
+
+  async function handleFinishJob() {
+    await handleProgressAction("finish");
+  }
+
   useEffect(() => {
     let active = true;
 
@@ -1231,6 +1332,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
       const isUrgent = slotStatus === "offered" || slotStatus === "stranded" || staffingStatus === "stranded";
 
       if (isUrgent) return true;
+      if (slotStatus === "completed") return false;
       return !isPastHistoryJob(item, todayYmd);
     });
   }, [filteredJobs, now]);
@@ -1244,6 +1346,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
       const isUrgent = slotStatus === "offered" || slotStatus === "stranded" || staffingStatus === "stranded";
 
       if (isUrgent) return false;
+      if (slotStatus === "completed") return true;
       return isPastHistoryJob(item, todayYmd);
     });
   }, [filteredJobs, now]);
@@ -1429,6 +1532,8 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     scrollToJobsSection,
     handleAcceptJob,
     handleDeclineJob,
+    handleStartJob,
+    handleFinishJob,
     handleCloseDetails,
     handleSignOut,
     refreshCleanerJobs,
