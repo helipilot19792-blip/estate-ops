@@ -47,6 +47,7 @@ type BookingEvent = {
   property_id: string;
   source: string | null;
   summary: string | null;
+  guest_count?: number | null;
   checkin_date: string;
   checkout_date: string;
   created_at?: string | null;
@@ -156,9 +157,10 @@ type TimelineItem = {
   tone?: "gold" | "emerald" | "sky" | "rose";
 };
 
-type OwnerTab = "overview" | "insights" | "invoices" | "chat";
+type OwnerTab = "overview" | "calendar" | "insights" | "invoices" | "chat";
 const OWNER_FEATURE_LABELS: Record<OwnerTab, string> = {
   overview: "Owner Overview",
+  calendar: "Owner Calendar",
   insights: "Booking Insights",
   invoices: "Owner Invoices",
   chat: "Owner Chat",
@@ -271,6 +273,41 @@ function getTodayYmd() {
     `${today.getMonth() + 1}`.padStart(2, "0"),
     `${today.getDate()}`.padStart(2, "0"),
   ].join("-");
+}
+
+function toYmd(date: Date) {
+  return [
+    date.getFullYear(),
+    `${date.getMonth() + 1}`.padStart(2, "0"),
+    `${date.getDate()}`.padStart(2, "0"),
+  ].join("-");
+}
+
+function getMonthGrid(date: Date) {
+  const first = new Date(date.getFullYear(), date.getMonth(), 1);
+  const start = new Date(first);
+  start.setDate(first.getDate() - first.getDay());
+
+  return Array.from({ length: 42 }, (_, index) => {
+    const day = new Date(start);
+    day.setDate(start.getDate() + index);
+    return day;
+  });
+}
+
+function getMonthLongLabel(date: Date, locale?: string) {
+  return date.toLocaleDateString(locale, {
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function getSourceTone(source?: string | null) {
+  const normalized = String(source || "").trim().toLowerCase();
+  if (normalized === "airbnb") return "border-[#ff8a7a]/35 bg-[#ff5a5f]/18 text-[#ffd1cc]";
+  if (normalized === "vrbo") return "border-[#5cc8ff]/35 bg-[#1d78c1]/20 text-[#c9edff]";
+  if (normalized === "booking" || normalized === "booking.com") return "border-[#7da7ff]/35 bg-[#3057b7]/20 text-[#d9e4ff]";
+  return "border-[#b08b47]/35 bg-[#b08b47]/16 text-[#f1d9a5]";
 }
 
 function getGuestNameFromSummary(summary?: string | null) {
@@ -451,6 +488,15 @@ function countBookedNightsInWindow(bookings: BookingInsight[], days: number) {
 
     return total + Math.max(0, nights);
   }, 0);
+}
+
+function bookingTouchesDay(booking: BookingInsight, dayYmd: string) {
+  return booking.checkinDate <= dayYmd && booking.checkoutDate > dayYmd;
+}
+
+function bookingTouchesMonth(booking: BookingInsight, monthDate: Date) {
+  const monthKey = getMonthKey(monthDate);
+  return countBookedNightsInMonth(booking, monthKey) > 0;
 }
 
 type OwnerTranslator = (path: TranslationPath) => string;
@@ -918,6 +964,10 @@ export default function OwnerPage() {
   const [downloadingInvoiceId, setDownloadingInvoiceId] = useState<string | null>(null);
   const [selectedPropertyId, setSelectedPropertyId] = useState("");
   const [activeOwnerTab, setActiveOwnerTab] = useState<OwnerTab>("overview");
+  const [ownerCalendarMonth, setOwnerCalendarMonth] = useState(() => {
+    const today = new Date();
+    return new Date(today.getFullYear(), today.getMonth(), 1);
+  });
   const [ownerChatParticipants, setOwnerChatParticipants] = useState<OwnerChatParticipantRow[]>([]);
   const [ownerChatMessages, setOwnerChatMessages] = useState<OwnerChatMessageRow[]>([]);
   const [ownerChatUnreadCount, setOwnerChatUnreadCount] = useState(0);
@@ -1188,7 +1238,7 @@ export default function OwnerPage() {
         .order("created_at", { ascending: false }),
       supabase
         .from("property_booking_events")
-        .select("id,property_id,source,summary,checkin_date,checkout_date,created_at")
+        .select("id,property_id,source,summary,guest_count,checkin_date,checkout_date,created_at")
         .in("property_id", propertyIds)
         .order("checkin_date", { ascending: false }),
       supabase
@@ -1387,7 +1437,7 @@ export default function OwnerPage() {
 
     const params = new URLSearchParams(window.location.search);
     const tabFromUrl = params.get("tab");
-    if (tabFromUrl === "overview" || tabFromUrl === "insights" || tabFromUrl === "invoices" || tabFromUrl === "chat") {
+    if (tabFromUrl === "overview" || tabFromUrl === "calendar" || tabFromUrl === "insights" || tabFromUrl === "invoices" || tabFromUrl === "chat") {
       setActiveOwnerTab(tabFromUrl);
     }
   }, []);
@@ -1883,6 +1933,32 @@ export default function OwnerPage() {
     };
   }, [bookingInsights, locale, t]);
 
+  const ownerCalendarDays = useMemo(() => getMonthGrid(ownerCalendarMonth), [ownerCalendarMonth]);
+  const ownerCalendarMonthBookings = useMemo(
+    () => bookingInsights.filter((booking) => bookingTouchesMonth(booking, ownerCalendarMonth)),
+    [bookingInsights, ownerCalendarMonth]
+  );
+  const ownerCalendarBookedNights = useMemo(
+    () =>
+      ownerCalendarMonthBookings.reduce(
+        (total, booking) => total + countBookedNightsInMonth(booking, getMonthKey(ownerCalendarMonth)),
+        0
+      ),
+    [ownerCalendarMonthBookings, ownerCalendarMonth]
+  );
+  const ownerCalendarOccupancy = useMemo(() => {
+    const days = getDaysInMonth(getMonthKey(ownerCalendarMonth));
+    return days > 0 ? Math.round((ownerCalendarBookedNights / days) * 100) : 0;
+  }, [ownerCalendarBookedNights, ownerCalendarMonth]);
+  const ownerCalendarSourceMix = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const booking of ownerCalendarMonthBookings) {
+      const label = booking.sourceLabel || "Source unavailable";
+      counts.set(label, (counts.get(label) || 0) + 1);
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  }, [ownerCalendarMonthBookings]);
+
   if (loading) {
     return (
     <main className="owner-shell min-h-screen bg-[#0f0d0a] px-4 py-10 text-[#f7f1e8]">
@@ -2040,9 +2116,10 @@ export default function OwnerPage() {
         </section>
 
         <section className="rounded-[26px] border border-white/8 bg-[#15110d] p-2">
-          <div className="grid gap-2 lg:grid-cols-4">
+          <div className="grid gap-2 lg:grid-cols-5">
             {[
               { key: "overview" as OwnerTab, label: t("ownerPortal.tabs.overview.label"), subtext: t("ownerPortal.tabs.overview.subtext") },
+              { key: "calendar" as OwnerTab, label: "Calendar", subtext: "Monthly booked dates by source" },
               { key: "insights" as OwnerTab, label: t("ownerPortal.tabs.insights.label"), subtext: t("ownerPortal.tabs.insights.subtext") },
               { key: "invoices" as OwnerTab, label: t("ownerPortal.tabs.invoices.label"), subtext: t("ownerPortal.tabs.invoices.subtext") },
               { key: "chat" as OwnerTab, label: t("ownerPortal.tabs.chat.label"), subtext: t("ownerPortal.tabs.chat.subtext") },
@@ -2297,6 +2374,151 @@ export default function OwnerPage() {
           </div>
         </section>
           </>
+        ) : activeOwnerTab === "calendar" ? (
+          <section className="rounded-[30px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">
+                  Owner Calendar
+                </div>
+                <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#f7f1e8]">
+                  {getMonthLongLabel(ownerCalendarMonth, locale)}
+                </h2>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-[#e6d8bf]">
+                  Synced bookings for {selectedProperty.name || t("ownerPortal.hero.thisProperty")}, grouped by source.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setOwnerCalendarMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}
+                  className="rounded-full border border-[#b08b47]/35 bg-[#100d0a] px-4 py-2 text-sm font-semibold text-[#f7f1e8] transition hover:bg-[#1d1711]"
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const today = new Date();
+                    setOwnerCalendarMonth(new Date(today.getFullYear(), today.getMonth(), 1));
+                  }}
+                  className="rounded-full border border-[#b08b47]/35 bg-[#b08b47]/15 px-4 py-2 text-sm font-semibold text-[#f1d9a5] transition hover:bg-[#b08b47]/24"
+                >
+                  Today
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOwnerCalendarMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}
+                  className="rounded-full border border-[#b08b47]/35 bg-[#100d0a] px-4 py-2 text-sm font-semibold text-[#f7f1e8] transition hover:bg-[#1d1711]"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-3 md:grid-cols-3">
+              <StatCard label="Booked nights" value={String(ownerCalendarBookedNights)} subtext="Occupied nights in this month" />
+              <StatCard label="Reservations" value={String(ownerCalendarMonthBookings.length)} subtext="Synced stays touching this month" />
+              <StatCard label="Occupancy" value={`${ownerCalendarOccupancy}%`} subtext="Booked-night coverage" />
+            </div>
+
+            <div className="mt-5 flex flex-wrap gap-2">
+              {ownerCalendarSourceMix.length > 0 ? (
+                ownerCalendarSourceMix.map(([source, count]) => (
+                  <span
+                    key={source}
+                    className={`rounded-full border px-3 py-1 text-xs font-semibold ${getSourceTone(source)}`}
+                  >
+                    {source}: {count}
+                  </span>
+                ))
+              ) : (
+                <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-xs text-[#ccb99a]">
+                  No bookings in this month
+                </span>
+              )}
+            </div>
+
+            <div className="mt-6 hidden overflow-hidden rounded-[24px] border border-white/8 md:block">
+              <div className="grid grid-cols-7 border-b border-white/8 bg-black/20">
+                {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+                  <div key={day} className="px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.18em] text-[#ccb99a]">
+                    {day}
+                  </div>
+                ))}
+              </div>
+              <div className="grid grid-cols-7">
+                {ownerCalendarDays.map((day) => {
+                  const ymd = toYmd(day);
+                  const dayBookings = bookingInsights.filter((booking) => bookingTouchesDay(booking, ymd));
+                  const isCurrentMonth = day.getMonth() === ownerCalendarMonth.getMonth();
+                  const isToday = ymd === getTodayYmd();
+
+                  return (
+                    <div
+                      key={ymd}
+                      className={`min-h-[132px] border-b border-r border-white/7 p-3 ${
+                        isCurrentMonth ? "bg-[#120f0b]" : "bg-black/25 opacity-55"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className={`text-sm font-semibold ${isToday ? "text-[#f1d9a5]" : "text-[#f7f1e8]"}`}>
+                          {day.getDate()}
+                        </span>
+                        {dayBookings.length > 0 ? (
+                          <span className="rounded-full bg-[#b08b47]/20 px-2 py-0.5 text-[10px] font-semibold text-[#f1d9a5]">
+                            {dayBookings.length}
+                          </span>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-3 space-y-1.5">
+                        {dayBookings.slice(0, 3).map((booking) => (
+                          <div
+                            key={`${ymd}-${booking.id}`}
+                            className={`truncate rounded-lg border px-2 py-1 text-[11px] font-semibold ${getSourceTone(booking.sourceLabel)}`}
+                            title={`${booking.sourceLabel || "Booking"}: ${booking.checkinDate} to ${booking.checkoutDate}`}
+                          >
+                            {booking.sourceLabel || "Booking"}
+                          </div>
+                        ))}
+                        {dayBookings.length > 3 ? (
+                          <div className="text-[11px] text-[#ccb99a]">+{dayBookings.length - 3} more</div>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="mt-6 space-y-3 md:hidden">
+              {ownerCalendarMonthBookings.length > 0 ? (
+                ownerCalendarMonthBookings.map((booking) => (
+                  <div key={booking.id} className="rounded-2xl border border-white/8 bg-black/20 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-[#f7f1e8]">
+                          {formatOwnerDateLabel(booking.checkinDate)} to {formatOwnerDateLabel(booking.checkoutDate)}
+                        </div>
+                        <div className="mt-1 text-sm text-[#ccb99a]">
+                          {booking.nights} night{booking.nights === 1 ? "" : "s"}
+                        </div>
+                      </div>
+                      <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${getSourceTone(booking.sourceLabel)}`}>
+                        {booking.sourceLabel || "Booking"}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-2xl border border-white/8 bg-black/20 p-4 text-sm text-[#e6d8bf]">
+                  No synced bookings touch this month.
+                </div>
+              )}
+            </div>
+          </section>
         ) : activeOwnerTab === "insights" ? (
           <>
             <section className="overflow-hidden rounded-[32px] border border-white/8 bg-[radial-gradient(circle_at_top_left,rgba(176,139,71,0.22),transparent_30%),linear-gradient(180deg,#18130f_0%,#100d0a_100%)] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.26)] sm:p-6">
