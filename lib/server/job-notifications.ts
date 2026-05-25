@@ -393,6 +393,137 @@ async function loadSlotBundle(
   };
 }
 
+function buildDigestJobRow(bundle: SlotBundle, recipient: Recipient, origin: string) {
+  const acceptUrl = createJobEmailActionUrl(origin, bundle.kind, "accept", bundle.slotId, recipient.email);
+  const declineUrl = createJobEmailActionUrl(origin, bundle.kind, "decline", bundle.slotId, recipient.email);
+  const propertyLine = bundle.propertyAddress
+    ? `${bundle.propertyName} - ${bundle.propertyAddress}`
+    : bundle.propertyName;
+
+  return `
+    <div style="border:1px solid #eadfce;border-radius:14px;padding:14px;margin:0 0 12px;background:#fffaf4;">
+      <p style="margin:0 0 6px;font-weight:700;color:#241c15;">${propertyLine}</p>
+      <p style="margin:0 0 6px;color:#5f5245;"><strong>Scheduled:</strong> ${formatDateLabel(bundle.jobDate)}</p>
+      <p style="margin:0 0 12px;color:#5f5245;"><strong>Team / account:</strong> ${bundle.accountLabel}</p>
+      <a href="${acceptUrl}" style="display:inline-block;padding:10px 14px;background:#1f6f3d;color:#ffffff;border-radius:999px;text-decoration:none;margin:0 8px 8px 0;font-weight:700;">
+        Accept
+      </a>
+      <a href="${declineUrl}" style="display:inline-block;padding:10px 14px;background:#8a2e22;color:#ffffff;border-radius:999px;text-decoration:none;margin:0 8px 8px 0;font-weight:700;">
+        Decline
+      </a>
+    </div>
+  `;
+}
+
+export async function sendJobOfferDigestEmailForSlots(
+  kind: JobNotificationKind,
+  slotIds: string[],
+  origin: string,
+  options?: {
+    allowedOrganizationIds?: Set<string> | null;
+    subjectPrefix?: string;
+  }
+) {
+  const service = getServiceClient();
+  const resend = getResendClient();
+  const uniqueSlotIds = [...new Set(slotIds.filter(Boolean))];
+  const recipientBundles = new Map<string, { recipient: Recipient; bundles: SlotBundle[] }>();
+  const bundleBySlotId = new Map<string, SlotBundle>();
+  let skipped = 0;
+  const errors: string[] = [];
+
+  for (const slotId of uniqueSlotIds) {
+    try {
+      const bundle = await loadSlotBundle(service, kind, slotId);
+
+      if (!bundle) {
+        skipped += 1;
+        continue;
+      }
+
+      if (
+        options?.allowedOrganizationIds &&
+        !options.allowedOrganizationIds.has(bundle.organizationId)
+      ) {
+        errors.push(`Slot ${slotId} is outside the allowed organization scope.`);
+        continue;
+      }
+
+      if ((bundle.status || "").toLowerCase().trim() !== "offered") {
+        skipped += 1;
+        continue;
+      }
+
+      if (bundle.offerEmailSentAt) {
+        skipped += 1;
+        continue;
+      }
+
+      bundleBySlotId.set(slotId, bundle);
+
+      for (const recipient of bundle.recipients) {
+        const key = recipient.email.trim().toLowerCase();
+        if (!key) continue;
+        const row = recipientBundles.get(key) || { recipient, bundles: [] };
+        row.bundles.push(bundle);
+        recipientBundles.set(key, row);
+      }
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : "Unknown digest notification error.");
+    }
+  }
+
+  let sent = 0;
+  const slotsWithSuccessfulEmail = new Set<string>();
+  const kindLabel = kind === "cleaner" ? "cleaning" : "grounds";
+
+  for (const { recipient, bundles } of recipientBundles.values()) {
+    const greeting = recipient.name ? `Hi ${recipient.name},` : "Hello,";
+    const count = bundles.length;
+    const rows = bundles.map((bundle) => buildDigestJobRow(bundle, recipient, origin)).join("");
+
+    const result = await resend.emails.send({
+      from: process.env.INVITE_FROM_EMAIL!,
+      to: recipient.email,
+      subject: `${options?.subjectPrefix || "New"} ${kindLabel} job offers (${count})`,
+      html: `
+        <div style="font-family: Arial, sans-serif; padding: 20px; color: #241c15;">
+          <p style="margin: 0 0 12px;">${greeting}</p>
+          <h2 style="margin: 0 0 12px;">You have ${count} ${kindLabel} job offer${count === 1 ? "" : "s"} waiting for your response.</h2>
+          <p style="margin: 0 0 16px; color:#5f5245;">You can accept or decline each job below. These buttons work without installing the app or logging in.</p>
+          ${rows}
+          <a href="${getPortalUrl(kind, origin)}" style="display:inline-block;padding:10px 16px;background:#241c15;color:#ffffff;border-radius:999px;text-decoration:none;margin-top:8px;">
+            Open portal for full details
+          </a>
+        </div>
+      `,
+    });
+
+    if (result.error) {
+      errors.push(`${recipient.email}: ${result.error.message || "Digest email send failed"}`);
+      continue;
+    }
+
+    sent += 1;
+    for (const bundle of bundles) {
+      slotsWithSuccessfulEmail.add(bundle.slotId);
+    }
+  }
+
+  for (const slotId of slotsWithSuccessfulEmail) {
+    await markNotificationSent(service, kind, slotId, "offer", "email");
+  }
+
+  return {
+    sent,
+    skipped,
+    digestsSent: sent,
+    slotsMarkedSent: slotsWithSuccessfulEmail.size,
+    errors,
+    considered: bundleBySlotId.size,
+  };
+}
+
 async function loadJobCancellationBundle(
   service: ReturnType<typeof getServiceClient>,
   kind: JobNotificationKind,

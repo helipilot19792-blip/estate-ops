@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { sendJobOfferEmailsForSlots } from "@/lib/server/job-notifications";
+import { sendJobOfferDigestEmailForSlots, sendJobOfferEmailsForSlots } from "@/lib/server/job-notifications";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +13,7 @@ const supabase = createClient(
 );
 
 type ReleaseMode = "reoffer_to_backups" | "leave_unassigned";
+type NotifyMode = "digest" | "immediate" | "none";
 
 function getTodayYmd() {
   const d = new Date();
@@ -43,9 +44,41 @@ function getResponseWindowHours(jobDate: string | null) {
 
 export async function POST(req: NextRequest) {
   try {
+    const authHeader = req.headers.get("authorization");
+    const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+
+    if (!token) {
+      return Response.json({ ok: false, error: "Missing access token." }, { status: 401 });
+    }
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const publicSupabaseKey =
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !publicSupabaseKey) {
+      return Response.json({ ok: false, error: "Missing Supabase auth environment variables." }, { status: 500 });
+    }
+
+    const authClient = createClient(supabaseUrl, publicSupabaseKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+      global: { headers: { Authorization: `Bearer ${token}` } },
+    });
+
+    const {
+      data: { user },
+      error: userError,
+    } = await authClient.auth.getUser();
+
+    if (userError || !user) {
+      return Response.json({ ok: false, error: "Not authenticated." }, { status: 401 });
+    }
+
     const body = await req.json();
     const cleanerAccountId = body?.cleanerAccountId;
     const mode: ReleaseMode = body?.mode || "reoffer_to_backups";
+    const notifyMode: NotifyMode =
+      body?.notifyMode === "immediate" ? "immediate" : body?.notifyMode === "none" ? "none" : "digest";
 
     if (!cleanerAccountId) {
       return Response.json({ ok: false, error: "Missing cleanerAccountId" }, { status: 400 });
@@ -63,6 +96,9 @@ export async function POST(req: NextRequest) {
       return Response.json({
         ok: true,
         affected: 0,
+        reoffered: 0,
+        stranded: 0,
+        notificationResult: null,
         message: "No accepted jobs found",
       });
     }
@@ -88,8 +124,48 @@ export async function POST(req: NextRequest) {
       return Response.json({
         ok: true,
         affected: 0,
+        reoffered: 0,
+        stranded: 0,
+        notificationResult: null,
         message: "No future jobs found",
       });
+    }
+
+    const { data: cleanerAccount, error: cleanerAccountError } = await supabase
+      .from("cleaner_accounts")
+      .select("id, organization_id")
+      .eq("id", cleanerAccountId)
+      .maybeSingle();
+
+    if (cleanerAccountError) throw cleanerAccountError;
+    if (!cleanerAccount?.organization_id) {
+      return Response.json({ ok: false, error: "Cleaner account not found." }, { status: 404 });
+    }
+
+    const { data: currentProfile, error: profileError } = await supabase
+      .from("profiles")
+      .select("id, role")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (profileError) throw profileError;
+    if (!currentProfile || (currentProfile.role !== "admin" && currentProfile.role !== "platform_admin")) {
+      return Response.json({ ok: false, error: "Admin access required." }, { status: 403 });
+    }
+
+    if (currentProfile.role !== "platform_admin") {
+      const { data: membership, error: membershipError } = await supabase
+        .from("organization_members")
+        .select("role")
+        .eq("organization_id", cleanerAccount.organization_id)
+        .eq("profile_id", user.id)
+        .eq("role", "admin")
+        .maybeSingle();
+
+      if (membershipError) throw membershipError;
+      if (!membership) {
+        return Response.json({ ok: false, error: "Admin access required for this organization." }, { status: 403 });
+      }
     }
 
     const propertyIds = [...new Set(futureSlots.map((s) => jobsMap.get(s.job_id)?.property_id))];
@@ -170,14 +246,21 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    let notificationErrors: string[] = [];
-    if (reofferedSlotIds.length > 0) {
-      const notifyResult = await sendJobOfferEmailsForSlots(
-        "cleaner",
-        reofferedSlotIds,
-        new URL(req.url).origin
-      );
-      notificationErrors = notifyResult.errors;
+    let notificationResult: Awaited<ReturnType<typeof sendJobOfferEmailsForSlots>> | Awaited<ReturnType<typeof sendJobOfferDigestEmailForSlots>> | null = null;
+    if (reofferedSlotIds.length > 0 && notifyMode !== "none") {
+      notificationResult =
+        notifyMode === "digest"
+          ? await sendJobOfferDigestEmailForSlots(
+              "cleaner",
+              reofferedSlotIds,
+              new URL(req.url).origin,
+              { subjectPrefix: "Backup" }
+            )
+          : await sendJobOfferEmailsForSlots(
+              "cleaner",
+              reofferedSlotIds,
+              new URL(req.url).origin
+            );
     }
 
     return Response.json({
@@ -185,7 +268,9 @@ export async function POST(req: NextRequest) {
       affected: futureSlots.length,
       reoffered,
       stranded,
-      notificationErrors,
+      notifyMode,
+      notificationResult,
+      notificationErrors: notificationResult?.errors ?? [],
     });
   } catch (err: any) {
     return Response.json(

@@ -4926,6 +4926,57 @@ This removes its linked members and deletes the grounds account.`
     }
   }
 
+  async function releaseCleanerFutureJobs(account: CleanerAccount) {
+    const displayName = account.display_name || account.email || "this cleaner account";
+    const confirmed = window.confirm(
+      `Release future accepted jobs for ${displayName}?\n\nFuture accepted jobs will be offered to the next assigned backup cleaner when one exists. If no backup exists, those jobs will become stranded so you can assign them later. Backup cleaners receive one digest email instead of one email per job.`
+    );
+    if (!confirmed) return;
+
+    setError("");
+    setActionMessage("");
+    setReassigningJobId(account.id);
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("Could not verify your admin session.");
+      }
+
+      const response = await fetch("/api/admin/release-cleaner-future-jobs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          cleanerAccountId: account.id,
+          mode: "reoffer_to_backups",
+          notifyMode: "digest",
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || "Could not release future cleaner jobs.");
+      }
+
+      const digestsSent = Number(payload.notificationResult?.digestsSent || 0);
+      setActionMessage(
+        `Released ${payload.affected || 0} future accepted job${payload.affected === 1 ? "" : "s"}. ${payload.reoffered || 0} reoffered, ${payload.stranded || 0} stranded.${digestsSent > 0 ? ` ${digestsSent} digest email${digestsSent === 1 ? "" : "s"} sent.` : ""}`
+      );
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Could not release future cleaner jobs.");
+    } finally {
+      setReassigningJobId(null);
+    }
+  }
+
   async function saveSelectedPropertyDefaults() {
     if (!selectedPropertyId) return;
     setError("");
@@ -13621,6 +13672,13 @@ This removes its linked members and deletes the grounds account.`
                   </div>
 
                   <div className="w-full md:w-[220px]">
+                    <button
+                      className="mb-2 w-full rounded-[14px] border border-[#e5caa6] bg-[#fffaf4] px-3 py-2 text-sm text-[#8a650d] transition hover:bg-[#fff4dd] disabled:opacity-50"
+                      onClick={() => void releaseCleanerFutureJobs(account)}
+                      disabled={reassigningJobId === account.id}
+                    >
+                      {reassigningJobId === account.id ? "Working..." : "Release future jobs"}
+                    </button>
                     <button
                       className="w-full rounded-[14px] border border-[#efc6c6] bg-[#fff5f5] px-3 py-2 text-sm text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-50"
                       onClick={() => void deleteCleanerAccount(account)}
