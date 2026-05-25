@@ -11491,36 +11491,71 @@ This removes its linked members and deletes the grounds account.`
       !!normalizedInvoiceSearch ||
       invoiceHistoryStatusFilter !== "all" ||
       invoiceHistoryPropertyFilter !== "all";
-    const invoiceWorkflowOptions: Array<{ key: InvoiceWorkflowTab; title: string; description: string; meta: string }> = [
+    const invoiceWorkflowOptions: Array<{
+      key: InvoiceWorkflowTab;
+      title: string;
+      description: string;
+      meta: string;
+      accent: string;
+      activeClass: string;
+      idleClass: string;
+      railClass: string;
+      metaClass: string;
+    }> = [
       {
         key: "create",
         title: "Create invoice or statement",
         description: "Build a regular invoice or owner statement, preview the PDF, then send it.",
         meta: `${allActiveInvoices.length} unpaid`,
+        accent: "bg-[#3b82f6]",
+        activeClass: "border-[#3b82f6] bg-[#eff6ff] text-[#12305d] shadow-[0_18px_36px_rgba(59,130,246,0.18)]",
+        idleClass: "border-[#bfdbfe] bg-[#f8fbff] text-[#12305d] hover:border-[#3b82f6] hover:bg-[#eff6ff]",
+        railClass: "bg-[#3b82f6]",
+        metaClass: "border-[#bfdbfe] bg-white text-[#1d4ed8]",
       },
       {
         key: "running",
         title: "Create running invoice",
         description: "Open or save a draft that you add to throughout the month before sending.",
         meta: `${allDraftInvoices.length} draft${allDraftInvoices.length === 1 ? "" : "s"}`,
+        accent: "bg-[#8b5cf6]",
+        activeClass: "border-[#8b5cf6] bg-[#f5f3ff] text-[#3b236f] shadow-[0_18px_36px_rgba(139,92,246,0.18)]",
+        idleClass: "border-[#ddd6fe] bg-[#fbfaff] text-[#3b236f] hover:border-[#8b5cf6] hover:bg-[#f5f3ff]",
+        railClass: "bg-[#8b5cf6]",
+        metaClass: "border-[#ddd6fe] bg-white text-[#6d28d9]",
       },
       {
         key: "existing",
         title: "Send existing invoice",
         description: "Upload a PDF or image invoice from another system and email it through the portal.",
         meta: "Upload file",
+        accent: "bg-[#14b8a6]",
+        activeClass: "border-[#14b8a6] bg-[#f0fdfa] text-[#134e4a] shadow-[0_18px_36px_rgba(20,184,166,0.16)]",
+        idleClass: "border-[#99f6e4] bg-[#f7fffd] text-[#134e4a] hover:border-[#14b8a6] hover:bg-[#f0fdfa]",
+        railClass: "bg-[#14b8a6]",
+        metaClass: "border-[#99f6e4] bg-white text-[#0f766e]",
       },
       {
         key: "defaults",
         title: "Defaults and rates",
         description: "Set branding, taxes, payment instructions, and property-specific cleaning rates.",
         meta: `${properties.length} propert${properties.length === 1 ? "y" : "ies"}`,
+        accent: "bg-[#f59e0b]",
+        activeClass: "border-[#f59e0b] bg-[#fffbeb] text-[#5f3206] shadow-[0_18px_36px_rgba(245,158,11,0.18)]",
+        idleClass: "border-[#fde68a] bg-[#fffdf4] text-[#5f3206] hover:border-[#f59e0b] hover:bg-[#fffbeb]",
+        railClass: "bg-[#f59e0b]",
+        metaClass: "border-[#fde68a] bg-white text-[#b45309]",
       },
       {
         key: "history",
         title: "Invoice history",
         description: "Review drafts, sent invoices, paid invoices, downloads, and resend actions.",
         meta: `${ownerInvoices.length} total`,
+        accent: "bg-[#ef4444]",
+        activeClass: "border-[#241c15] bg-[#241c15] text-[#f8f2e8] shadow-[0_18px_36px_rgba(36,28,21,0.18)]",
+        idleClass: "border-[#fecaca] bg-[#fff7f7] text-[#6f1d1b] hover:border-[#ef4444] hover:bg-[#fff1f1]",
+        railClass: "bg-[#ef4444]",
+        metaClass: "border-[#fecaca] bg-white text-[#b91c1c]",
       },
     ];
     const showInvoiceDefaults = invoiceWorkflowTab === "defaults";
@@ -11769,22 +11804,21 @@ This removes its linked members and deletes the grounds account.`
                   key={option.key}
                   type="button"
                   onClick={() => setInvoiceWorkflowTab(option.key)}
-                  className={`rounded-[20px] border p-4 text-left transition ${
-                    selected
-                      ? "border-[#241c15] bg-[#241c15] text-[#f8f2e8] shadow-[0_16px_34px_rgba(36,28,21,0.16)]"
-                      : "border-[#eadfce] bg-[#fcfaf7] text-[#241c15] hover:border-[#d8c7ab] hover:bg-white"
+                  className={`group relative overflow-hidden rounded-[20px] border p-4 pl-5 text-left transition hover:-translate-y-0.5 ${
+                    selected ? option.activeClass : option.idleClass
                   }`}
                 >
-                  <div className={`text-sm font-semibold ${selected ? "text-white" : "text-[#241c15]"}`}>
+                  <span className={`absolute inset-y-4 left-3 w-1 rounded-full ${selected ? option.accent : option.railClass}`} />
+                  <div className={`text-sm font-semibold ${selected && option.key === "history" ? "text-white" : ""}`}>
                     {option.title}
                   </div>
-                  <p className={`mt-2 text-xs leading-5 ${selected ? "text-[#eadfce]" : "text-[#6f6255]"}`}>
+                  <p className={`mt-2 text-xs leading-5 ${selected && option.key === "history" ? "text-[#eadfce]" : "text-[#6f6255]"}`}>
                     {option.description}
                   </p>
                   <div className={`mt-3 inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
-                    selected
+                    selected && option.key === "history"
                       ? "border-white/20 bg-white/10 text-[#f8f2e8]"
-                      : "border-[#d8c7ab] bg-white text-[#6f6255]"
+                      : option.metaClass
                   }`}>
                     {option.meta}
                   </div>
