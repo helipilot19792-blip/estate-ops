@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 import { sendStaffPushNotifications } from "@/lib/server/staff-push-notifications";
+import { createJobEmailActionUrl } from "@/lib/server/job-email-actions";
 
 export type JobNotificationKind = "cleaner" | "grounds";
 type JobNotificationMode = "offer" | "offer_reminder" | "day_of";
@@ -510,7 +511,7 @@ function buildEmailCopy(bundle: SlotBundle, mode: JobNotificationMode, origin: s
     return {
       subject: `New ${kindLabel} job offer: ${bundle.propertyName} on ${dateLabel}`,
       intro: `You have a new ${bundle.detailLabel.toLowerCase()} waiting for your response.`,
-      actionText: "Open portal to review and accept",
+      actionText: "Open portal for full details",
       footer: `Please respond by ${deadlineLabel} if possible.`,
       portalUrl,
       propertyLine,
@@ -522,7 +523,7 @@ function buildEmailCopy(bundle: SlotBundle, mode: JobNotificationMode, origin: s
     return {
       subject: `Reminder: ${kindLabel} job still waiting for response`,
       intro: `This ${bundle.detailLabel.toLowerCase()} has not been accepted yet.`,
-      actionText: "Open portal and respond",
+      actionText: "Open portal for full details",
       footer: `Current response deadline: ${deadlineLabel}.`,
       portalUrl,
       propertyLine,
@@ -554,6 +555,9 @@ async function sendNotificationEmail(
 
   for (const recipient of bundle.recipients) {
     const greeting = recipient.name ? `Hi ${recipient.name},` : "Hello,";
+    const acceptUrl = createJobEmailActionUrl(origin, bundle.kind, "accept", bundle.slotId, recipient.email);
+    const declineUrl = createJobEmailActionUrl(origin, bundle.kind, "decline", bundle.slotId, recipient.email);
+    const showResponseButtons = mode === "offer" || mode === "offer_reminder";
 
     const html = `
       <div style="font-family: Arial, sans-serif; padding: 20px; color: #241c15;">
@@ -562,6 +566,21 @@ async function sendNotificationEmail(
         <p style="margin: 0 0 8px;"><strong>Property:</strong> ${emailCopy.propertyLine}</p>
         <p style="margin: 0 0 8px;"><strong>Scheduled:</strong> ${emailCopy.dateLabel}</p>
         <p style="margin: 0 0 16px;"><strong>Team / account:</strong> ${bundle.accountLabel}</p>
+        ${
+          showResponseButtons
+            ? `
+              <div style="margin: 18px 0 10px;">
+                <a href="${acceptUrl}" style="display:inline-block;padding:12px 18px;background:#1f6f3d;color:#ffffff;border-radius:999px;text-decoration:none;margin:0 8px 8px 0;font-weight:700;">
+                  Accept job
+                </a>
+                <a href="${declineUrl}" style="display:inline-block;padding:12px 18px;background:#8a2e22;color:#ffffff;border-radius:999px;text-decoration:none;margin:0 8px 8px 0;font-weight:700;">
+                  Decline
+                </a>
+              </div>
+              <p style="margin: 0 0 14px; font-size:13px; color:#6f6255;">These buttons work without installing the app or logging in.</p>
+            `
+            : ""
+        }
         <a href="${emailCopy.portalUrl}" style="display:inline-block;padding:10px 16px;background:#241c15;color:#ffffff;border-radius:999px;text-decoration:none;margin-top:8px;">
           ${emailCopy.actionText}
         </a>
