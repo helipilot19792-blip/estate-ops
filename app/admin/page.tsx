@@ -1282,6 +1282,8 @@ export default function AdminPage() {
   const [showAdminNav, setShowAdminNav] = useState(false);
   const [adminMenuOrientation, setAdminMenuOrientation] = useState<AdminMenuOrientation>("side");
   const [adminMenuOrder, setAdminMenuOrder] = useState<AdminSection[]>([]);
+  const [adminMenuSeenCounts, setAdminMenuSeenCounts] = useState<Partial<Record<AdminSection, number>>>({});
+  const [adminMenuSeenCountsReady, setAdminMenuSeenCountsReady] = useState(false);
   const [showMobileWorkspaceStats, setShowMobileWorkspaceStats] = useState(false);
   const [draggingAdminMenuKey, setDraggingAdminMenuKey] = useState<AdminSection | null>(null);
   const [supportSubject, setSupportSubject] = useState("");
@@ -7947,14 +7949,81 @@ This removes its linked members and deletes the grounds account.`
     [notificationCenterItems]
   );
 
+  useEffect(() => {
+    setAdminMenuSeenCountsReady(false);
+    if (!currentOrganizationId || typeof window === "undefined") {
+      setAdminMenuSeenCounts({});
+      return;
+    }
+
+    const raw = window.localStorage.getItem(`admin-menu-seen-counts:${currentOrganizationId}`);
+    if (!raw) {
+      setAdminMenuSeenCounts({});
+      setAdminMenuSeenCountsReady(true);
+      return;
+    }
+
+    try {
+      setAdminMenuSeenCounts(JSON.parse(raw));
+    } catch {
+      setAdminMenuSeenCounts({});
+    }
+    setAdminMenuSeenCountsReady(true);
+  }, [currentOrganizationId]);
+
+  useEffect(() => {
+    if (!adminMenuSeenCountsReady || !currentOrganizationId || typeof window === "undefined") return;
+    window.localStorage.setItem(
+      `admin-menu-seen-counts:${currentOrganizationId}`,
+      JSON.stringify(adminMenuSeenCounts)
+    );
+  }, [adminMenuSeenCounts, adminMenuSeenCountsReady, currentOrganizationId]);
+
+  useEffect(() => {
+    const currentCount = getRawAdminMenuBadgeCount(activeSection);
+    if (currentCount <= 0) return;
+
+    setAdminMenuSeenCounts((prev) =>
+      prev[activeSection] === currentCount
+        ? prev
+        : {
+            ...prev,
+            [activeSection]: currentCount,
+          }
+    );
+  }, [
+    activeSection,
+    notificationCenterCount,
+    unreadChatCount,
+    strandedJobs.length,
+    maintenanceFlagCounts.urgent,
+    dueInspectionRules.length,
+    recentlyAcceptedInvites.length,
+    ownerInvoices.length,
+  ]);
+
+  function getRawAdminMenuBadgeCount(section: AdminSection) {
+    if (section === "notifications") return notificationCenterCount;
+    if (section === "chat") return unreadChatCount;
+    if (section === "jobs") return strandedJobs.length;
+    if (section === "maintenance") return maintenanceFlagCounts.urgent;
+    if (section === "inspections") return dueInspectionRules.length;
+    if (section === "team") return recentlyAcceptedInvites.length;
+    if (section === "invoices") return ownerInvoices.length;
+    return 0;
+  }
+
   function getAdminMenuBadge(section: AdminSection) {
-    if (section === "notifications" && notificationCenterCount > 0) return notificationCenterCount > 99 ? "99+" : String(notificationCenterCount);
-    if (section === "chat" && unreadChatCount > 0) return unreadChatCount > 99 ? "99+" : String(unreadChatCount);
-    if (section === "jobs" && strandedJobs.length > 0) return String(strandedJobs.length);
-    if (section === "maintenance" && maintenanceFlagCounts.urgent > 0) return String(maintenanceFlagCounts.urgent);
-    if (section === "inspections" && dueInspectionRules.length > 0) return String(dueInspectionRules.length);
-    if (section === "team" && recentlyAcceptedInvites.length > 0) return String(recentlyAcceptedInvites.length);
-    if (section === "invoices" && ownerInvoices.length > 0) return String(ownerInvoices.length);
+    if (section === activeSection) return "";
+
+    const currentCount = getRawAdminMenuBadgeCount(section);
+    const seenCount = adminMenuSeenCounts[section] || 0;
+    const newCount = Math.max(0, currentCount - seenCount);
+
+    if (newCount > 0) {
+      return newCount > 99 ? "99+" : String(newCount);
+    }
+
     return "";
   }
 
@@ -7991,6 +8060,15 @@ This removes its linked members and deletes the grounds account.`
     if (section === "properties") {
       setPropertyWorkflowTab("directory");
     }
+    const currentCount = getRawAdminMenuBadgeCount(section);
+    setAdminMenuSeenCounts((prev) =>
+      prev[section] === currentCount
+        ? prev
+        : {
+            ...prev,
+            [section]: currentCount,
+          }
+    );
     setActiveSection(section);
     setShowAdminNav(false);
   }
