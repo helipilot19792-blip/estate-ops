@@ -103,9 +103,7 @@ export async function GET(request: Request) {
     const hasOwner = !!ownerAccounts?.length;
     let destination = "/login";
 
-    if (profile.role === "platform_admin") {
-      destination = "/platform";
-    } else if (profile.role === "admin") {
+    if (profile.role === "platform_admin" || profile.role === "admin") {
       destination = "/admin";
     } else if (hasCleaner && hasGrounds) {
       destination = "/choose-portal";
