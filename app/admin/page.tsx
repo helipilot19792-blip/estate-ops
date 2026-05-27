@@ -8587,35 +8587,36 @@ This removes its linked members and deletes the grounds account.`
     return "Unknown user";
   }
 
-  async function notifyChatPush(messageId: string) {
+  async function sendChatMessage(conversationId: string, body: string) {
     const {
       data: { session },
     } = await supabase.auth.getSession();
 
     if (!session?.access_token) {
-      return { ok: false, sent: 0, errors: ["Missing auth token for push notification."] };
+      throw new Error("Missing auth token for chat message.");
     }
 
-    const response = await fetch("/api/chat/push", {
+    const response = await fetch("/api/chat/message", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${session.access_token}`,
       },
-      body: JSON.stringify({ messageId }),
+      body: JSON.stringify({ conversationId, body }),
     });
     const payload = await response.json().catch(() => null);
 
+    if (!response.ok || payload?.ok === false) {
+      throw new Error(payload?.error || "Could not send chat message.");
+    }
+
     return {
-      ok: response.ok && payload?.ok !== false,
-      sent: Number(payload?.sent || 0),
-      errors: Array.isArray(payload?.errors)
-        ? payload.errors
-        : payload?.error
-          ? [String(payload.error)]
-          : response.ok
-            ? []
-            : ["Push notification failed."],
+      message: payload?.message || null,
+      push: {
+        ok: payload?.push?.ok !== false,
+        sent: Number(payload?.push?.sent || 0),
+        errors: Array.isArray(payload?.push?.errors) ? payload.push.errors : [],
+      },
     };
   }
 
@@ -10253,27 +10254,14 @@ This removes its linked members and deletes the grounds account.`
       const { error: participantsError } = await supabase.from("chat_participants").insert(participants);
       if (participantsError) throw participantsError;
 
-      const { data: insertedMessage, error: messageError } = await supabase
-        .from("chat_messages")
-        .insert({
-          organization_id: currentOrganizationId,
-          conversation_id: conversation.id,
-          sender_profile_id: currentAdminUserId,
-          body,
-        })
-        .select("id")
-        .single();
-
-      if (messageError) throw messageError;
-
-      const pushResult = insertedMessage?.id ? await notifyChatPush(insertedMessage.id) : null;
+      const messageResult = await sendChatMessage(conversation.id, body);
       setSelectedChatConversationId(conversation.id);
       setChatRecipientTarget("");
       setChatSubject("");
       setChatMessageBody("");
       setActionMessage(
-        pushResult && !pushResult.ok
-          ? `Conversation started, but push notification failed: ${pushResult.errors.join(" ")}`
+        messageResult.push && !messageResult.push.ok
+          ? `Conversation started, but push notification failed: ${messageResult.push.errors.join(" ")}`
           : "Conversation started."
       );
       await loadData();
@@ -10306,24 +10294,11 @@ This removes its linked members and deletes the grounds account.`
     setActionMessage("");
 
     try {
-      const { data: insertedMessage, error: messageError } = await supabase
-        .from("chat_messages")
-        .insert({
-          organization_id: currentOrganizationId,
-          conversation_id: activeConversation.id,
-          sender_profile_id: currentAdminUserId,
-          body,
-        })
-        .select("id")
-        .single();
-
-      if (messageError) throw messageError;
-
-      const pushResult = insertedMessage?.id ? await notifyChatPush(insertedMessage.id) : null;
+      const messageResult = await sendChatMessage(activeConversation.id, body);
       setChatReplyBody("");
       setActionMessage(
-        pushResult && !pushResult.ok
-          ? `Chat reply sent, but push notification failed: ${pushResult.errors.join(" ")}`
+        messageResult.push && !messageResult.push.ok
+          ? `Chat reply sent, but push notification failed: ${messageResult.push.errors.join(" ")}`
           : "Chat reply sent."
       );
       await loadData();
