@@ -2496,6 +2496,9 @@ export default function AdminPage() {
         },
         (payload) => {
           const incoming = payload.new as ChatMessageRow;
+          setChatHiddenItems((current) =>
+            current.filter((item) => !(item.conversation_id === incoming.conversation_id && !item.message_id))
+          );
           setChatMessages((current) =>
             current.some((message) => message.id === incoming.id) ? current : [...current, incoming]
           );

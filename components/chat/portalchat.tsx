@@ -404,6 +404,9 @@ export default function PortalChat({
           const incoming = payload.new as ChatMessageRow;
           if (!conversationIds.has(incoming.conversation_id)) return;
 
+          setHiddenItems((current) =>
+            current.filter((item) => !(item.conversation_id === incoming.conversation_id && !item.message_id))
+          );
           setMessages((current) =>
             current.some((message) => message.id === incoming.id) ? current : [...current, incoming]
           );

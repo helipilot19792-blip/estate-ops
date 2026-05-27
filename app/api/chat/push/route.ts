@@ -121,6 +121,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const { error: unhideError } = await service
+      .from("chat_hidden_items")
+      .delete()
+      .eq("conversation_id", message.conversation_id)
+      .is("message_id", null);
+
+    if (unhideError) {
+      return NextResponse.json(
+        { ok: false, error: `Message sent, but the conversation could not be restored: ${unhideError.message}` },
+        { status: 500 }
+      );
+    }
+
     const ownerIdsToNotify = participantRows
       .filter((participant: any) => participant.participant_type === "owner")
       .map((participant: any) => participant.participant_owner_account_id)
