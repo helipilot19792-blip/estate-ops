@@ -2465,19 +2465,65 @@ export default function AdminPage() {
 
     const readAt = new Date().toISOString();
     setChatParticipants((participants) =>
-      participants.map((participant) =>
-        participant.conversation_id === conversationId && participant.participant_profile_id === currentAdminUserId
-          ? { ...participant, last_read_at: readAt }
-          : participant
+      participants.some(
+        (participant) =>
+          participant.conversation_id === conversationId && participant.participant_profile_id === currentAdminUserId
       )
+        ? participants.map((participant) =>
+            participant.conversation_id === conversationId && participant.participant_profile_id === currentAdminUserId
+              ? { ...participant, last_read_at: readAt }
+              : participant
+          )
+        : [
+            ...participants,
+            {
+              id: `local-admin-read-${conversationId}`,
+              organization_id: currentOrganizationId || "",
+              conversation_id: conversationId,
+              participant_type: "profile",
+              participant_profile_id: currentAdminUserId,
+              participant_role: "admin",
+              display_name: currentAdminProfile?.full_name || currentAdminProfile?.email || "Admin",
+              email: currentAdminProfile?.email || null,
+              last_read_at: readAt,
+              created_at: readAt,
+            },
+          ]
     );
 
-    const { error: readError } = await supabase.rpc("mark_chat_conversation_read", {
-      conversation_id_to_mark: conversationId,
-    });
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
 
-    if (readError) {
-      console.warn("Could not mark chat conversation read", readError);
+    if (!session?.access_token) {
+      console.warn("Could not mark chat conversation read", "Missing auth token.");
+      return;
+    }
+
+    const response = await fetch("/api/chat/admin-read", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ conversationId }),
+    });
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok || payload?.ok === false) {
+      console.warn("Could not mark chat conversation read", payload?.error || response.statusText);
+      return;
+    }
+
+    if (payload?.participant) {
+      const participant = payload.participant as ChatParticipantRow;
+      setChatParticipants((participants) =>
+        participants.some((row) => row.id === participant.id || row.id === `local-admin-read-${conversationId}`)
+          ? participants.map((row) =>
+              row.id === participant.id || row.id === `local-admin-read-${conversationId}` ? participant : row
+            )
+          : [...participants, participant]
+      );
     }
   }
 
@@ -8330,6 +8376,14 @@ This removes its linked members and deletes the grounds account.`
     }).length;
   }
 
+  function getFirstUnreadChatConversationId() {
+    return (
+      chatConversations
+        .filter((conversation) => !isChatConversationHidden(conversation.id))
+        .find((conversation) => getChatConversationUnreadCount(conversation.id) > 0)?.id || ""
+    );
+  }
+
   function isChatConversationHidden(conversationId: string) {
     return chatHiddenItems.some((item) => item.conversation_id === conversationId && !item.message_id);
   }
@@ -8341,6 +8395,12 @@ This removes its linked members and deletes the grounds account.`
   function selectAdminSection(section: AdminSection) {
     if (section === "properties") {
       setPropertyWorkflowTab("directory");
+    }
+    if (section === "chat") {
+      const firstUnreadConversationId = getFirstUnreadChatConversationId();
+      if (firstUnreadConversationId) {
+        setSelectedChatConversationId(firstUnreadConversationId);
+      }
     }
     const currentCount = getRawAdminMenuBadgeCount(section);
     setAdminMenuSeenCounts((prev) =>
@@ -9605,7 +9665,7 @@ This removes its linked members and deletes the grounds account.`
                             selected
                               ? "border-[#241c15] bg-[#241c15] text-[#f8f2e8]"
                               : conversationUnreadCount > 0
-                                ? "border-[#a5f3fc] bg-[#ecfeff] text-[#0e7490] shadow-[0_10px_22px_rgba(6,182,212,0.10)]"
+                                ? "border-[#06b6d4] bg-[#ecfeff] text-[#0e7490] shadow-[0_10px_22px_rgba(6,182,212,0.16)] ring-2 ring-[#67e8f9]/55"
                               : "border-[#eadfce] bg-[#fcfaf7] text-[#241c15] hover:bg-white"
                           }`}
                         >
