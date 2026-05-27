@@ -8353,6 +8353,34 @@ This removes its linked members and deletes the grounds account.`
     setShowAdminNav(false);
   }
 
+  function openTeamInvite(role: TeamInviteRole) {
+    setTeamInviteRole(role);
+    setTeamWorkflowTab("invites");
+    setActiveSection("team");
+    setShowAdminNav(false);
+  }
+
+  function openAssignmentsSection() {
+    setActiveSection("assignments");
+    setShowAdminNav(false);
+  }
+
+  function openAddPropertySection() {
+    setPropertyWorkflowTab("add");
+    setActiveSection("properties");
+    setShowAdminNav(false);
+  }
+
+  function openPropertyOwnerSetup(propertyId?: string) {
+    if (propertyId) {
+      setSelectedPropertyId(propertyId);
+    }
+    setPropertyWorkflowTab("setup");
+    setPropertySetupTab("overview");
+    setActiveSection("properties");
+    setShowAdminNav(false);
+  }
+
   function toggleAdminMenuOrientation() {
     setAdminMenuOrientation((current) => {
       const next = current === "side" ? "top" : "side";
@@ -12488,7 +12516,14 @@ This removes its linked members and deletes the grounds account.`
               <div className="mt-4 max-h-[280px] space-y-3 overflow-y-auto pr-1">
                 {properties.length === 0 ? (
                   <div className="rounded-[18px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] p-4 text-sm text-[#7f7263]">
-                    Add properties before setting invoice rates.
+                    <div>Add properties before setting invoice rates.</div>
+                    <button
+                      type="button"
+                      onClick={openAddPropertySection}
+                      className="mt-3 rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#f7f1e8]"
+                    >
+                      Add Property
+                    </button>
                   </div>
                 ) : (
                   properties.map((property) => {
@@ -12818,6 +12853,22 @@ This removes its linked members and deletes the grounds account.`
                     </option>
                   ))}
                 </select>
+                <div className="flex flex-wrap gap-2 rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] p-3 md:col-span-2">
+                  <button
+                    type="button"
+                    onClick={() => openPropertyOwnerSetup(invoicePropertyId || selectedPropertyId || undefined)}
+                    className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#f7f1e8]"
+                  >
+                    Add or Link Owner
+                  </button>
+                  <button
+                    type="button"
+                    onClick={openAddPropertySection}
+                    className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#f7f1e8]"
+                  >
+                    Add Property
+                  </button>
+                </div>
                 <input
                   type="date"
                   className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
@@ -14873,9 +14924,18 @@ This removes its linked members and deletes the grounds account.`
               <option value="3">Second Backup</option>
             </select>
 
-            <button className="inline-flex items-center justify-center rounded-full bg-[#17637f] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#124d63]" onClick={() => void addAssignment()}>
-              Save Assignment
-            </button>
+            <div className="flex flex-wrap gap-3">
+              <button className="inline-flex items-center justify-center rounded-full bg-[#17637f] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#124d63]" onClick={() => void addAssignment()}>
+                Save Assignment
+              </button>
+              <button
+                type="button"
+                className="inline-flex items-center justify-center rounded-full border border-[#b8d8ea] bg-white px-5 py-2.5 text-sm font-medium text-[#17637f] transition hover:bg-[#eef8fd]"
+                onClick={() => openTeamInvite("cleaner")}
+              >
+                Invite Cleaner
+              </button>
+            </div>
           </div>
         </section>
 
@@ -15007,9 +15067,18 @@ This removes its linked members and deletes the grounds account.`
               <option value="3">Second Backup</option>
             </select>
 
-            <button className="inline-flex items-center justify-center rounded-full bg-[#2f6f36] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#24562a]" onClick={() => void addGroundsAssignment()}>
-              Save Grounds Assignment
-            </button>
+            <div className="flex flex-wrap gap-3">
+              <button className="inline-flex items-center justify-center rounded-full bg-[#2f6f36] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#24562a]" onClick={() => void addGroundsAssignment()}>
+                Save Grounds Assignment
+              </button>
+              <button
+                type="button"
+                className="inline-flex items-center justify-center rounded-full border border-[#bddbbd] bg-white px-5 py-2.5 text-sm font-medium text-[#2f6f36] transition hover:bg-[#eff9ee]"
+                onClick={() => openTeamInvite("grounds")}
+              >
+                Invite Grounds
+              </button>
+            </div>
           </div>
         </section>
 
@@ -15157,10 +15226,21 @@ This removes its linked members and deletes the grounds account.`
 
         {jobWorkflowTab === "cleaning" ? (
         <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-          <h2 className="text-xl font-semibold tracking-tight">Create Cleaning Job</h2>
-          <p className="mt-1 text-sm text-[#7f7263]">
-            Create a turnover job. Slots are created automatically from cleaner account assignments.
-          </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 className="text-xl font-semibold tracking-tight">Create Cleaning Job</h2>
+              <p className="mt-1 text-sm text-[#7f7263]">
+                Create a turnover job. Slots are created automatically from cleaner account assignments.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={openAssignmentsSection}
+              className="inline-flex items-center justify-center rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-medium text-[#5f5245] transition hover:bg-white"
+            >
+              Manage Cleaner Assignments
+            </button>
+          </div>
 
           <div className="mt-5 space-y-3">
             <select className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" value={jobPropertyId} onChange={(e) => setJobPropertyId(e.target.value)}>
@@ -15219,10 +15299,21 @@ This removes its linked members and deletes the grounds account.`
         {jobWorkflowTab === "grounds" ? (
         <>
         <section className="rounded-[30px] border border-[#d8e8d8] bg-[linear-gradient(180deg,#f8fcf8_0%,#f2f8f2_100%)] p-5 shadow-[0_18px_45px_rgba(28,86,39,0.08)]">
-          <h2 className="text-xl font-semibold tracking-tight text-[#23422c]">Create Grounds Job</h2>
-          <p className="mt-1 text-sm text-[#5b7460]">
-            Create a grounds job. Grounds slots are offered automatically from the property&apos;s grounds assignments.
-          </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 className="text-xl font-semibold tracking-tight text-[#23422c]">Create Grounds Job</h2>
+              <p className="mt-1 text-sm text-[#5b7460]">
+                Create a grounds job. Grounds slots are offered automatically from the property&apos;s grounds assignments.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={openAssignmentsSection}
+              className="inline-flex items-center justify-center rounded-full border border-[#b7cfb7] bg-white px-4 py-2 text-sm font-medium text-[#23422c] transition hover:bg-[#eff9ee]"
+            >
+              Manage Grounds Assignments
+            </button>
+          </div>
 
           <div className="mt-4 flex gap-3">
             <button
