@@ -88,6 +88,7 @@ const QUIRKY_SYNCING_COPY = [
 ];
 
 const SHOW_ADMIN_TOP_BANNER = false;
+const MAINTENANCE_FLAG_SNOOZE_DAYS = 3;
 const SHOW_ADMIN_TOP_OVERVIEW = false;
 
 type Property = {
@@ -1147,6 +1148,7 @@ export default function AdminPage() {
   const [maintenanceEditCategory, setMaintenanceEditCategory] = useState("");
   const [maintenanceEditUrgency, setMaintenanceEditUrgency] = useState("normal");
   const [maintenanceEditNotes, setMaintenanceEditNotes] = useState("");
+  const [maintenanceFlagSnoozes, setMaintenanceFlagSnoozes] = useState<Record<string, string>>({});
   const [maintenanceHistoryExpanded, setMaintenanceHistoryExpanded] = useState(false);
   const [deletingResolvedMaintenanceFlags, setDeletingResolvedMaintenanceFlags] = useState(false);
   const [savingInvoiceSettings, setSavingInvoiceSettings] = useState(false);
@@ -1530,10 +1532,9 @@ export default function AdminPage() {
 
   const openMaintenanceFlagsCount = useMemo(() => {
     return maintenanceFlags.filter((flag) => {
-      const status = (flag.status || "").toLowerCase();
-      return status !== "resolved" && status !== "closed";
+      return !isMaintenanceFlagResolved(flag) && !isMaintenanceFlagSnoozed(flag);
     }).length;
-  }, [maintenanceFlags]);
+  }, [maintenanceFlags, maintenanceFlagSnoozes, now]);
 
   const currentTrialStatus = (currentOrganizationBilling?.subscription_status || "trialing").toLowerCase();
   const currentAccountType = (currentOrganizationBilling?.account_type || "beta").toLowerCase();
@@ -1566,6 +1567,30 @@ export default function AdminPage() {
     const interval = window.setInterval(() => setNow(new Date()), 1000);
     return () => window.clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !currentOrganizationId) {
+      setMaintenanceFlagSnoozes({});
+      return;
+    }
+
+    const storageKey = `maintenance-flag-snoozes:${currentOrganizationId}`;
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem(storageKey) || "{}");
+      setMaintenanceFlagSnoozes(parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {});
+    } catch {
+      window.localStorage.removeItem(storageKey);
+      setMaintenanceFlagSnoozes({});
+    }
+  }, [currentOrganizationId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !currentOrganizationId) return;
+    window.localStorage.setItem(
+      `maintenance-flag-snoozes:${currentOrganizationId}`,
+      JSON.stringify(maintenanceFlagSnoozes)
+    );
+  }, [currentOrganizationId, maintenanceFlagSnoozes]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -6271,6 +6296,50 @@ This removes its linked members and deletes the grounds account.`
     return flag.status || "open";
   }
 
+  function isMaintenanceFlagResolved(flag: MaintenanceFlagRow) {
+    const stateLower = String(getMaintenanceFlagState(flag) || "").toLowerCase();
+    return stateLower.includes("resolved") || stateLower.includes("closed") || stateLower.includes("done");
+  }
+
+  function getMaintenanceFlagSnoozedUntil(flagId: string) {
+    const value = maintenanceFlagSnoozes[flagId];
+    if (!value) return null;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  function isMaintenanceFlagSnoozed(flag: MaintenanceFlagRow) {
+    if (isMaintenanceFlagResolved(flag)) return false;
+    const snoozedUntil = getMaintenanceFlagSnoozedUntil(flag.id);
+    return !!snoozedUntil && snoozedUntil.getTime() > now.getTime();
+  }
+
+  function snoozeMaintenanceFlag(flag: MaintenanceFlagRow) {
+    if (!flag.owner_notified_at) {
+      setError("Email the owner before snoozing this maintenance flag.");
+      return;
+    }
+
+    const snoozedUntil = new Date();
+    snoozedUntil.setDate(snoozedUntil.getDate() + MAINTENANCE_FLAG_SNOOZE_DAYS);
+
+    setMaintenanceFlagSnoozes((current) => ({
+      ...current,
+      [flag.id]: snoozedUntil.toISOString(),
+    }));
+    setActionMessage(
+      `Maintenance flag hidden until ${snoozedUntil.toLocaleDateString()} unless it is marked resolved first.`
+    );
+  }
+
+  function unsnoozeMaintenanceFlag(flagId: string) {
+    setMaintenanceFlagSnoozes((current) => {
+      const next = { ...current };
+      delete next[flagId];
+      return next;
+    });
+  }
+
   function resetMaintenanceForm() {
     setMaintenanceFormPropertyId(selectedJobsPropertyFilter !== "all" ? selectedJobsPropertyFilter : "");
     setMaintenanceFormCategory("");
@@ -6565,6 +6634,7 @@ This removes its linked members and deletes the grounds account.`
       }
 
       setActionMessage("Maintenance flag resolved.");
+      unsnoozeMaintenanceFlag(flagId);
       await loadData();
     } catch (err: any) {
       setError(err?.message || "Could not resolve maintenance flag.");
@@ -6609,6 +6679,7 @@ This removes its linked members and deletes the grounds account.`
       }
 
       setActionMessage("Maintenance flag deleted.");
+      unsnoozeMaintenanceFlag(flagId);
       await loadData();
     } catch (err: any) {
       setError(err?.message || "Could not delete maintenance flag.");
@@ -7215,14 +7286,14 @@ This removes its linked members and deletes the grounds account.`
     let urgent = 0;
 
     for (const flag of filteredMaintenanceFlags) {
-      const state = String(getMaintenanceFlagState(flag) || "").toLowerCase();
       const urgency = String(flag.urgency || flag.priority || flag.severity || "").toLowerCase();
-      const isResolved = state.includes("resolved") || state.includes("closed") || state.includes("done");
+      const isResolved = isMaintenanceFlagResolved(flag);
+      const isSnoozed = isMaintenanceFlagSnoozed(flag);
       const isUrgent = urgency.includes("high") || urgency.includes("urgent") || urgency.includes("critical");
 
       if (isResolved) {
         resolved += 1;
-      } else {
+      } else if (!isSnoozed) {
         open += 1;
         if (isUrgent) urgent += 1;
       }
@@ -7234,15 +7305,19 @@ This removes its linked members and deletes the grounds account.`
       resolved,
       urgent,
     };
-  }, [filteredMaintenanceFlags]);
+  }, [filteredMaintenanceFlags, maintenanceFlagSnoozes, now]);
 
   const openMaintenanceFlags = useMemo(
     () =>
       filteredMaintenanceFlags.filter((flag) => {
-        const stateLower = String(getMaintenanceFlagState(flag) || "").toLowerCase();
-        return !(stateLower.includes("resolved") || stateLower.includes("closed") || stateLower.includes("done"));
+        return !isMaintenanceFlagResolved(flag) && !isMaintenanceFlagSnoozed(flag);
       }),
-    [filteredMaintenanceFlags]
+    [filteredMaintenanceFlags, maintenanceFlagSnoozes, now]
+  );
+
+  const snoozedMaintenanceFlags = useMemo(
+    () => filteredMaintenanceFlags.filter((flag) => isMaintenanceFlagSnoozed(flag)),
+    [filteredMaintenanceFlags, maintenanceFlagSnoozes, now]
   );
 
 
@@ -17672,6 +17747,15 @@ This removes its linked members and deletes the grounds account.`
                                       ? "Email owner again"
                                       : "Notify owner"}
                                 </button>
+                                {ownerNotified && !isResolved ? (
+                                  <button
+                                    className="rounded-[16px] border border-[#f1d59a] bg-[#fffbeb] px-4 py-2.5 text-sm font-medium text-[#8a5a12] transition hover:bg-[#fef3c7] disabled:opacity-60"
+                                    onClick={() => snoozeMaintenanceFlag(flag)}
+                                    disabled={deletingMaintenanceFlagId === flag.id || resolvingMaintenanceFlagId === flag.id || isEditing}
+                                  >
+                                    Ignore for {MAINTENANCE_FLAG_SNOOZE_DAYS} days
+                                  </button>
+                                ) : null}
                                 {!isResolved ? (
                                   <button
                                     className="rounded-[16px] bg-[#241c15] px-4 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60"
@@ -17698,6 +17782,47 @@ This removes its linked members and deletes the grounds account.`
                   </div>
                 )}
               </div>
+
+              {snoozedMaintenanceFlags.length > 0 ? (
+                <div className="rounded-[24px] border border-[#f1d59a] bg-[#fffbeb] p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <h3 className="text-base font-semibold text-[#241c15]">Temporarily Ignored</h3>
+                      <div className="mt-1 text-sm text-[#7f7263]">
+                        These flags are hidden from active alerts until their reminder date.
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-3 grid gap-2">
+                    {snoozedMaintenanceFlags.map((flag) => {
+                      const snoozedUntil = getMaintenanceFlagSnoozedUntil(flag.id);
+                      return (
+                        <div
+                          key={flag.id}
+                          className="flex flex-col gap-2 rounded-[18px] border border-[#f1d59a] bg-white px-3 py-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+                        >
+                          <div>
+                            <div className="font-semibold text-[#241c15]">
+                              {flag.category || getMaintenanceFlagLabel(flag, [])}
+                            </div>
+                            <div className="text-[#7f7263]">
+                              {getPropertyName(flag.property_id ?? null)} | Returns{" "}
+                              {snoozedUntil ? snoozedUntil.toLocaleDateString() : "soon"}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1.5 text-xs font-semibold text-[#6f6255] transition hover:bg-[#f7f3ee]"
+                            onClick={() => unsnoozeMaintenanceFlag(flag.id)}
+                          >
+                            Show now
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
 
               <div className="rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] p-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
