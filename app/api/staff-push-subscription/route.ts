@@ -170,6 +170,7 @@ export async function GET(request: NextRequest) {
   try {
     const token = getBearerToken(request);
     const portal = getPortal(request.nextUrl.searchParams.get("portal"));
+    const endpoint = String(request.nextUrl.searchParams.get("endpoint") || "").trim();
     const publicKey = getVapidPublicKey();
 
     if (!token) {
@@ -188,21 +189,42 @@ export async function GET(request: NextRequest) {
     const { service, profile } = await getSignedInProfile(token);
     await assertPortalMembership(service, profile.id, portal, profile.role);
 
-    const { count, error } = await service
+    let query = service
       .from("staff_push_subscriptions")
       .select("id", { count: "exact", head: true })
       .eq("profile_id", profile.id)
       .eq("portal", portal)
       .is("disabled_at", null);
 
+    if (endpoint) {
+      query = query.eq("endpoint", endpoint);
+    }
+
+    const { count, error } = await query;
+
     if (error) {
       throw new Error(error.message);
+    }
+
+    if (endpoint && (count ?? 0) > 0) {
+      await service
+        .from("staff_push_subscriptions")
+        .update({
+          last_seen_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          user_agent: request.headers.get("user-agent"),
+        })
+        .eq("profile_id", profile.id)
+        .eq("portal", portal)
+        .eq("endpoint", endpoint)
+        .is("disabled_at", null);
     }
 
     return NextResponse.json({
       ok: true,
       subscribed: (count ?? 0) > 0,
       publicKey,
+      endpointScoped: !!endpoint,
     });
   } catch (error) {
     return NextResponse.json(

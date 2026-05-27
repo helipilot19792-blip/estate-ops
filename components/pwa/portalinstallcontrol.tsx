@@ -63,6 +63,34 @@ async function loadPushStatus(portal: AppPortal, token?: string) {
   return { response, payload };
 }
 
+async function loadCurrentDevicePushStatus(portal: AppPortal, token: string, endpoint?: string | null) {
+  const query = new URLSearchParams({ portal });
+  if (endpoint) query.set("endpoint", endpoint);
+
+  const response = await fetch(`/api/staff-push-subscription?${query.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const payload = await response.json().catch(() => null);
+
+  return { response, payload };
+}
+
+async function savePushSubscription(portal: AppPortal, token: string, pushSubscription: PushSubscription) {
+  const response = await fetch("/api/staff-push-subscription", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      portal,
+      subscription: pushSubscription.toJSON(),
+    }),
+  });
+  const payload = await response.json().catch(() => null);
+  return { response, payload };
+}
+
 export default function PortalInstallControl({
   portal = "cleaner",
   enablePush = true,
@@ -131,7 +159,9 @@ export default function PortalInstallControl({
         setSubscription(existing);
         setStatus("ready");
 
-        const { response, payload } = await loadPushStatus(portal, token);
+        const { response, payload } = token
+          ? await loadCurrentDevicePushStatus(portal, token, existing?.endpoint)
+          : await loadPushStatus(portal, token);
         publicKey = getBrowserVapidPublicKey(payload?.publicKey, publicKey);
 
         if (active && publicKey) {
@@ -142,21 +172,31 @@ export default function PortalInstallControl({
           if (active && payload?.subscribed && existing) {
             setStatus("active");
           } else if (active && existing && response.ok) {
-            const saveResponse = await fetch("/api/staff-push-subscription", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-              },
-              body: JSON.stringify({
-                portal,
-                subscription: existing.toJSON(),
-              }),
-            });
-            const savePayload = await saveResponse.json().catch(() => null);
+            const { response: saveResponse, payload: savePayload } = await savePushSubscription(portal, token, existing);
             if (active && saveResponse.ok && savePayload?.ok) {
               setStatus("active");
               setMessage("Alerts are on for this portal.");
+            }
+          } else if (
+            active &&
+            !existing &&
+            response.ok &&
+            publicKey &&
+            Notification.permission === "granted"
+          ) {
+            const restoredSubscription = await registration.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: urlBase64ToUint8Array(publicKey),
+            });
+            const { response: saveResponse, payload: savePayload } = await savePushSubscription(
+              portal,
+              token,
+              restoredSubscription
+            );
+            if (active && saveResponse.ok && savePayload?.ok) {
+              setSubscription(restoredSubscription);
+              setStatus("active");
+              setMessage("Alerts are on for this device.");
             }
           }
         }
@@ -247,19 +287,7 @@ export default function PortalInstallControl({
           applicationServerKey: urlBase64ToUint8Array(publicKey),
         }));
 
-      const response = await fetch("/api/staff-push-subscription", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          portal,
-          subscription: sub.toJSON(),
-        }),
-      });
-
-      const payload = await response.json().catch(() => null);
+      const { response, payload } = await savePushSubscription(portal, token, sub);
       if (!response.ok || !payload?.ok) {
         throw new Error(payload?.error || "Could not save push subscription.");
       }
