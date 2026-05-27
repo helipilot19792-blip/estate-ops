@@ -202,6 +202,7 @@ export async function POST(request: NextRequest) {
 
     let sent = 0;
     const errors: string[] = [];
+    const deliveries: unknown[] = [];
     const senderLabel = senderParticipant?.display_name || senderParticipant?.email || "Gulera OS";
     const summary = trimBody(message.body);
 
@@ -215,13 +216,14 @@ export async function POST(request: NextRequest) {
 
       sent += result.sent;
       errors.push(...result.errors);
+      deliveries.push(...(result.deliveries || []));
     }
 
     if (recipientCount > 0 && sent === 0 && errors.length > 0) {
-      return NextResponse.json({ ok: false, sent, recipientCount, errors }, { status: 500 });
+      return NextResponse.json({ ok: false, sent, recipientCount, errors, deliveries }, { status: 500 });
     }
 
-    return NextResponse.json({ ok: true, sent, recipientCount, errors });
+    return NextResponse.json({ ok: true, sent, recipientCount, errors, deliveries });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not send chat push.";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });

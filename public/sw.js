@@ -19,6 +19,7 @@ self.addEventListener("push", (event) => {
     badge: data.badge || "/estateoslogo.png",
     tag: data.tag || "estate-ops-update",
     renotify: true,
+    silent: false,
     timestamp: Date.now(),
     vibrate: [180, 80, 180],
     data: {

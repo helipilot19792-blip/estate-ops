@@ -10,6 +10,17 @@ type PushPayload = {
   tag?: string;
 };
 
+type PushDelivery = {
+  subscriptionId: string;
+  profileId: string;
+  portal: PushPortal;
+  userAgent: string | null;
+  endpointHost: string;
+  ok: boolean;
+  statusCode: number | null;
+  error?: string;
+};
+
 let vapidConfigured = false;
 
 const DEFAULT_VAPID_PUBLIC_KEY = "BMqODVFZyHzmPlYyb_nlVwHA2HacRBq7V1O5j-_4jFNj368GIDjqX5vrCytVoOxkWSSKo8zsO6tgTrCwT2TTGe4";
@@ -175,7 +186,7 @@ export async function sendStaffPushNotifications(
   const service = getServiceClient();
   const { data, error } = await service
     .from("staff_push_subscriptions")
-    .select("id, subscription")
+    .select("id, profile_id, portal, subscription, user_agent, endpoint")
     .eq("portal", portal)
     .in("profile_id", uniqueProfileIds)
     .is("disabled_at", null);
@@ -188,20 +199,52 @@ export async function sendStaffPushNotifications(
   let skipped = 0;
   const errors: string[] = [];
   const staleSubscriptionIds: string[] = [];
+  const deliveries: PushDelivery[] = [];
+
+  function getEndpointHost(endpoint?: string | null) {
+    try {
+      return new URL(String(endpoint || "")).host;
+    } catch {
+      return "";
+    }
+  }
 
   for (const row of data ?? []) {
     try {
-      await webpush.sendNotification(
+      const response = await webpush.sendNotification(
         row.subscription as webpush.PushSubscription,
         JSON.stringify({
           ...payload,
           icon: "/estateoslogo.png",
           badge: "/estateoslogo.png",
-        })
+        }),
+        {
+          TTL: 60 * 60 * 24 * 28,
+          urgency: "high",
+        }
       );
+      deliveries.push({
+        subscriptionId: row.id,
+        profileId: row.profile_id,
+        portal: row.portal as PushPortal,
+        userAgent: row.user_agent,
+        endpointHost: getEndpointHost(row.endpoint),
+        ok: true,
+        statusCode: Number(response.statusCode || 0) || null,
+      });
       sent += 1;
     } catch (error: any) {
       const statusCode = Number(error?.statusCode || 0);
+      deliveries.push({
+        subscriptionId: row.id,
+        profileId: row.profile_id,
+        portal: row.portal as PushPortal,
+        userAgent: row.user_agent,
+        endpointHost: getEndpointHost(row.endpoint),
+        ok: false,
+        statusCode: statusCode || null,
+        error: error?.message || "Push notification failed.",
+      });
       if (statusCode === 404 || statusCode === 410) {
         staleSubscriptionIds.push(row.id);
         skipped += 1;
@@ -222,5 +265,5 @@ export async function sendStaffPushNotifications(
       .in("id", staleSubscriptionIds);
   }
 
-  return { sent, skipped, errors };
+  return { sent, skipped, errors, deliveries };
 }
