@@ -7014,6 +7014,13 @@ This removes its linked members and deletes the grounds account.`
 
   const todayAtGlanceItems = useMemo(() => {
     const propertyById = new Map(properties.map((property) => [property.id, property]));
+    const getCleanerFirstName = (cleanerAccountId: string | null) => {
+      if (!cleanerAccountId) return "";
+      const account = cleanerAccounts.find((item) => item.id === cleanerAccountId);
+      const member = (cleanerMembersByAccountId[cleanerAccountId] ?? [])[0];
+      const label = account?.display_name || member?.full_name || account?.email || member?.email || "";
+      return label.split(/\s+/)[0]?.split("@")[0] || "";
+    };
 
     const cleaningItems = jobs
       .filter((job) => {
@@ -7024,6 +7031,18 @@ This removes its linked members and deletes the grounds account.`
         const property = propertyById.get(job.property_id) || null;
         const slots = jobSlotsByJobId[job.id] ?? [];
         const waiting = slots.some((slot) => slot.status === "offered" || slot.status === "stranded");
+        const acceptedCleanerNames = slots
+          .filter((slot) => slot.status === "accepted")
+          .map((slot) => getCleanerFirstName(slot.cleaner_account_id))
+          .filter(Boolean);
+        const stranded = slots.some((slot) => slot.status === "stranded" || !slot.cleaner_account_id);
+        const cleaningStatus = acceptedCleanerNames.length > 0
+          ? acceptedCleanerNames.join(", ")
+          : stranded
+            ? "UNASSIGNED"
+            : waiting
+              ? "WAITING"
+              : "UNASSIGNED";
         return {
           id: `cleaning-${job.id}`,
           date: todayYmd,
@@ -7032,7 +7051,8 @@ This removes its linked members and deletes the grounds account.`
           title: "Cleaning",
           propertyName: property?.name || getPropertyName(job.property_id),
           city: getCityFromAddress(property?.address),
-          status: waiting ? "Waiting" : job.status || "Scheduled",
+          status: cleaningStatus,
+          needsAttention: acceptedCleanerNames.length === 0,
         };
       });
 
@@ -7053,13 +7073,14 @@ This removes its linked members and deletes the grounds account.`
           propertyName: property?.name || getPropertyName(job.property_id),
           city: getCityFromAddress(property?.address),
           status: getGroundsJobDisplayStatus(job, slots),
+          needsAttention: false,
         };
       });
 
     return [...cleaningItems, ...groundsItems].sort((a, b) =>
       a.sortDate.localeCompare(b.sortDate) || a.propertyName.localeCompare(b.propertyName)
     );
-  }, [jobs, groundsJobs, properties, todayYmd, jobSlotsByJobId, groundsJobSlots]);
+  }, [jobs, groundsJobs, properties, todayYmd, jobSlotsByJobId, groundsJobSlots, cleanerAccounts, cleanerMembersByAccountId]);
 
   const occupiedTodayProperties = useMemo(() => {
     const propertyById = new Map(properties.map((property) => [property.id, property]));
@@ -7140,6 +7161,13 @@ This removes its linked members and deletes the grounds account.`
     const dateSet = new Set(serviceLookaheadYmds);
     const horizonEndYmd = serviceLookaheadYmds[serviceLookaheadYmds.length - 1] || todayYmd;
     const propertyById = new Map(properties.map((property) => [property.id, property]));
+    const getCleanerFirstName = (cleanerAccountId: string | null) => {
+      if (!cleanerAccountId) return "";
+      const account = cleanerAccounts.find((item) => item.id === cleanerAccountId);
+      const member = (cleanerMembersByAccountId[cleanerAccountId] ?? [])[0];
+      const label = account?.display_name || member?.full_name || account?.email || member?.email || "";
+      return label.split(/\s+/)[0]?.split("@")[0] || "";
+    };
     const labelDate = (dateYmd: string) => {
       if (dateYmd === todayYmd) return "Today";
       if (dateYmd === tomorrowYmd) return "Tomorrow";
@@ -7154,15 +7182,30 @@ This removes its linked members and deletes the grounds account.`
       .map((job) => {
         const dateYmd = job.scheduled_for || extractCheckoutDate(job.notes) || "";
         const property = propertyById.get(job.property_id);
+        const slots = jobSlotsByJobId[job.id] ?? [];
+        const acceptedCleanerNames = slots
+          .filter((slot) => slot.status === "accepted")
+          .map((slot) => getCleanerFirstName(slot.cleaner_account_id))
+          .filter(Boolean);
+        const stranded = slots.some((slot) => slot.status === "stranded" || !slot.cleaner_account_id);
+        const offered = slots.some((slot) => slot.status === "offered");
+        const cleanerDetail = acceptedCleanerNames.length > 0
+          ? `Cleaner: ${acceptedCleanerNames.join(", ")}`
+          : stranded
+            ? "UNASSIGNED"
+            : offered
+              ? "WAITING FOR ACCEPTANCE"
+              : "UNASSIGNED";
+        const city = getCityFromAddress(property?.address);
         return {
           id: `cleaning-${job.id}`,
           dateYmd,
           sortKey: `${dateYmd}-10-${property?.name || job.property_id}`,
           kind: "Cleaning",
-          tone: "blue" as const,
+          tone: acceptedCleanerNames.length > 0 ? "blue" as const : "red" as const,
           label: labelDate(dateYmd),
           title: property?.name || property?.address || "Unknown property",
-          detail: getCityFromAddress(property?.address) || "Turnover cleaning",
+          detail: [city, cleanerDetail].filter(Boolean).join(" - "),
         };
       })
       .filter((item) => dateSet.has(item.dateYmd));
@@ -7246,6 +7289,9 @@ This removes its linked members and deletes the grounds account.`
     jobs,
     groundsJobs,
     properties,
+    jobSlotsByJobId,
+    cleanerAccounts,
+    cleanerMembersByAccountId,
     propertyBookingEvents,
     serviceLookaheadYmds,
     upcomingWastePickups,
@@ -8619,6 +8665,8 @@ This removes its linked members and deletes the grounds account.`
                           ? "bg-[#0f766e] text-white"
                           : item.tone === "purple"
                             ? "bg-[#7c3aed] text-white"
+                          : item.tone === "red"
+                            ? "bg-[#dc2626] text-white"
                           : item.tone === "amber"
                             ? "bg-[#b45309] text-white"
                             : "bg-[#2563eb] text-white";
@@ -8629,6 +8677,8 @@ This removes its linked members and deletes the grounds account.`
                           ? "bg-[#dcfce7] text-[#166534]"
                           : item.tone === "purple"
                             ? "bg-[#f3e8ff] text-[#6d28d9]"
+                          : item.tone === "red"
+                            ? "bg-[#fee2e2] text-[#991b1b]"
                           : item.tone === "amber"
                             ? "bg-[#fff7ed] text-[#9a6206]"
                             : "bg-[#e8f1ff] text-[#2f62b6]";
@@ -8639,6 +8689,8 @@ This removes its linked members and deletes the grounds account.`
                           ? "border-[#bfe7cf]"
                           : item.tone === "purple"
                             ? "border-[#d8b4fe]"
+                          : item.tone === "red"
+                            ? "border-[#fca5a5]"
                           : item.tone === "amber"
                             ? "border-[#f1cf8f]"
                             : "border-[#b9d1fb]";
@@ -8715,6 +8767,8 @@ This removes its linked members and deletes the grounds account.`
                           ? "bg-[#0f766e] text-white"
                           : item.tone === "purple"
                             ? "bg-[#7c3aed] text-white"
+                          : item.tone === "red"
+                            ? "bg-[#dc2626] text-white"
                           : item.tone === "amber"
                             ? "bg-[#b45309] text-white"
                             : "bg-[#2563eb] text-white";
@@ -8725,6 +8779,8 @@ This removes its linked members and deletes the grounds account.`
                           ? "bg-[#dcfce7] text-[#166534]"
                           : item.tone === "purple"
                             ? "bg-[#f3e8ff] text-[#6d28d9]"
+                          : item.tone === "red"
+                            ? "bg-[#fee2e2] text-[#991b1b]"
                           : item.tone === "amber"
                             ? "bg-[#fff7ed] text-[#9a6206]"
                             : "bg-[#e8f1ff] text-[#2f62b6]";
@@ -8735,6 +8791,8 @@ This removes its linked members and deletes the grounds account.`
                           ? "border-[#bfe7cf]"
                           : item.tone === "purple"
                             ? "border-[#d8b4fe]"
+                          : item.tone === "red"
+                            ? "border-[#fca5a5]"
                           : item.tone === "amber"
                             ? "border-[#f1cf8f]"
                             : "border-[#b9d1fb]";
@@ -18774,7 +18832,13 @@ This removes its linked members and deletes the grounds account.`
                               {item.propertyName}{item.city ? ` · ${item.city}` : ""}
                             </div>
                           </div>
-                          <div className="text-xs font-medium text-[#8a7b68]">{item.status}</div>
+                          <div className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                            item.needsAttention
+                              ? "bg-[#fee2e2] text-[#991b1b]"
+                              : "bg-[#f4f1eb] text-[#6f6255]"
+                          }`}>
+                            {item.status}
+                          </div>
                         </div>
                       </div>
                     ))
