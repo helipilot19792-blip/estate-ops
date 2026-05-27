@@ -146,6 +146,35 @@ export async function POST(request: NextRequest) {
       recipients.add(profileId);
     }
 
+    const senderParticipant = participantRows.find((participant: any) => {
+      if (participant.participant_profile_id === userId) return true;
+      const ownerProfileId = ownerProfileById.get(participant.participant_owner_account_id);
+      return ownerProfileId === userId;
+    });
+    const senderPortal =
+      senderParticipant?.participant_type === "owner"
+        ? "owner"
+        : getPortalForProfileParticipant(senderParticipant?.participant_role);
+    const hasAdminParticipant = participantRows.some(
+      (participant: any) => getPortalForProfileParticipant(participant.participant_role) === "admin"
+    );
+
+    if (senderPortal !== "admin" && hasAdminParticipant) {
+      const { data: adminMembers, error: adminMembersError } = await service
+        .from("organization_members")
+        .select("profile_id")
+        .eq("organization_id", message.organization_id)
+        .eq("role", "admin");
+
+      if (adminMembersError) {
+        return NextResponse.json({ ok: false, error: adminMembersError.message }, { status: 500 });
+      }
+
+      for (const member of adminMembers || []) {
+        addRecipient("admin", member.profile_id);
+      }
+    }
+
     for (const participant of participantRows as any[]) {
       if (participant.participant_type === "owner") {
         addRecipient("owner", ownerProfileById.get(participant.participant_owner_account_id));
@@ -160,12 +189,7 @@ export async function POST(request: NextRequest) {
 
     let sent = 0;
     const errors: string[] = [];
-    const sender = participantRows.find((participant: any) => {
-      if (participant.participant_profile_id === userId) return true;
-      const ownerProfileId = ownerProfileById.get(participant.participant_owner_account_id);
-      return ownerProfileId === userId;
-    });
-    const senderLabel = sender?.display_name || sender?.email || "Gulera OS";
+    const senderLabel = senderParticipant?.display_name || senderParticipant?.email || "Gulera OS";
     const summary = trimBody(message.body);
 
     for (const [portal, profileIds] of recipientsByPortal.entries()) {

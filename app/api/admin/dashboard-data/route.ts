@@ -168,7 +168,7 @@ export async function GET(request: Request) {
         `)
         .eq("organization_id", organizationId)
         .order("created_at", { ascending: false }),
-      serviceClient.from("owner_accounts").select("*").order("created_at", { ascending: false }),
+      serviceClient.from("owner_accounts").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
       serviceClient.from("owner_property_access").select("*").order("created_at", { ascending: false }),
       serviceClient.from("property_calendars").select("*").order("created_at", { ascending: false }),
       serviceClient

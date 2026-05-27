@@ -126,6 +126,30 @@ async function notifyChatPush(messageId: string) {
   };
 }
 
+async function hideChatItem(conversationId: string, messageId?: string | null) {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session?.access_token) {
+    throw new Error("Missing auth token for chat delete.");
+  }
+
+  const response = await fetch("/api/chat/hide", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ conversationId, messageId: messageId || null }),
+  });
+  const payload = await response.json().catch(() => null);
+
+  if (!response.ok || payload?.ok === false) {
+    throw new Error(payload?.error || "Could not delete that chat item from your view.");
+  }
+}
+
 export default function PortalChat({
   participant,
   title = "Chat",
@@ -532,15 +556,9 @@ export default function PortalChat({
         : [...current, hiddenItem]
     );
 
-    const { error: hideError } = await supabase.from("chat_hidden_items").insert({
-      organization_id: conversation.organization_id,
-      conversation_id: conversation.id,
-      message_id: null,
-      hidden_by_profile_id: participantType === "profile" ? participantProfileId : null,
-      hidden_by_owner_account_id: participantType === "owner" ? participantOwnerAccountId : null,
-    });
-
-    if (hideError && hideError.code !== "23505") {
+    try {
+      await hideChatItem(conversation.id);
+    } catch (hideError) {
       setHiddenItems((current) => current.filter((item) => item.id !== hiddenItem.id));
       setError(getErrorMessage(hideError, "Could not delete that chat from your view yet."));
     }
@@ -564,15 +582,9 @@ export default function PortalChat({
       current.some((item) => item.message_id === message.id) ? current : [...current, hiddenItem]
     );
 
-    const { error: hideError } = await supabase.from("chat_hidden_items").insert({
-      organization_id: message.organization_id,
-      conversation_id: message.conversation_id,
-      message_id: message.id,
-      hidden_by_profile_id: participantType === "profile" ? participantProfileId : null,
-      hidden_by_owner_account_id: participantType === "owner" ? participantOwnerAccountId : null,
-    });
-
-    if (hideError && hideError.code !== "23505") {
+    try {
+      await hideChatItem(message.conversation_id, message.id);
+    } catch (hideError) {
       setHiddenItems((current) => current.filter((item) => item.id !== hiddenItem.id));
       setError(getErrorMessage(hideError, "Could not delete that message from your view yet."));
     }
