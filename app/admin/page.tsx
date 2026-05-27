@@ -108,6 +108,8 @@ type Property = {
   default_cleaner_units_needed: number;
   cleaner_units_required_strict: boolean;
   show_team_status_to_cleaners: boolean;
+  cleaner_assignment_mode?: "priority" | "training_rotation" | null;
+  cleaner_rotation_next_cleaner_account_id?: string | null;
 };
 
 type CleanerAccount = {
@@ -1391,6 +1393,7 @@ export default function AdminPage() {
 
   const [linkSelections, setLinkSelections] = useState<Record<string, string>>({});
   const [groundsLinkSelections, setGroundsLinkSelections] = useState<Record<string, string>>({});
+  const [savingCleanerRotationPropertyId, setSavingCleanerRotationPropertyId] = useState<string | null>(null);
 
   const todayYmd = toYmd(now);
   const todayEmptyCopy = useMemo(
@@ -3957,6 +3960,157 @@ export default function AdminPage() {
     await loadData();
   }
 
+  async function applyCleanerTrainingRotationToJob(jobId: string, propertyId: string) {
+    const property = properties.find((item) => item.id === propertyId);
+    if (property?.cleaner_assignment_mode !== "training_rotation") return;
+
+    const rotationOrder = getTrainingRotationOrder(property);
+    if (rotationOrder.length < 2) return;
+
+    const { data: slots, error: slotsError } = await supabase
+      .from("turnover_job_slots")
+      .select("id, slot_number")
+      .eq("job_id", jobId)
+      .order("slot_number", { ascending: true });
+
+    if (slotsError) throw slotsError;
+
+    const slotRows = slots ?? [];
+    const assignedCount = Math.min(slotRows.length, rotationOrder.length);
+    if (assignedCount === 0) return;
+
+    const nowIso = new Date().toISOString();
+    for (let index = 0; index < assignedCount; index += 1) {
+      const { error: slotUpdateError } = await supabase
+        .from("turnover_job_slots")
+        .update({
+          cleaner_account_id: rotationOrder[index].cleaner_account_id,
+          status: "offered",
+          offered_at: nowIso,
+          accepted_at: null,
+          declined_at: null,
+          accepted_by_profile_id: null,
+          declined_by_profile_id: null,
+          offer_email_sent_at: null,
+          offer_reminder_sent_at: null,
+          day_of_reminder_sent_at: null,
+        })
+        .eq("id", slotRows[index].id);
+
+      if (slotUpdateError) throw slotUpdateError;
+    }
+
+    const nextAssignment = rotationOrder[assignedCount % rotationOrder.length];
+    const { error: propertyUpdateError } = await supabase
+      .from("properties")
+      .update({
+        cleaner_rotation_next_cleaner_account_id: nextAssignment.cleaner_account_id,
+      })
+      .eq("id", propertyId)
+      .eq("organization_id", currentOrganizationId);
+
+    if (propertyUpdateError) throw propertyUpdateError;
+  }
+
+  async function updateCleanerAssignmentMode(property: Property, mode: "priority" | "training_rotation") {
+    const propertyAssignments = getCleanerAssignmentsForProperty(property.id);
+    if (mode === "training_rotation" && propertyAssignments.length < 2) {
+      setError("Add at least two cleaner assignments before turning on Training Rotation.");
+      return;
+    }
+
+    setSavingCleanerRotationPropertyId(property.id);
+    setError("");
+    setActionMessage("");
+
+    try {
+      const nextCleanerId =
+        mode === "training_rotation"
+          ? property.cleaner_rotation_next_cleaner_account_id || propertyAssignments[0]?.cleaner_account_id || null
+          : null;
+
+      const { error } = await supabase
+        .from("properties")
+        .update({
+          cleaner_assignment_mode: mode,
+          cleaner_rotation_next_cleaner_account_id: nextCleanerId,
+        })
+        .eq("id", property.id)
+        .eq("organization_id", currentOrganizationId);
+
+      if (error) throw error;
+
+      setProperties((rows) =>
+        rows.map((row) =>
+          row.id === property.id
+            ? {
+                ...row,
+                cleaner_assignment_mode: mode,
+                cleaner_rotation_next_cleaner_account_id: nextCleanerId,
+              }
+            : row
+        )
+      );
+      setActionMessage(
+        mode === "training_rotation"
+          ? `Training Rotation turned on for ${property.name || property.address || "property"}.`
+          : `Primary/backup mode restored for ${property.name || property.address || "property"}.`
+      );
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Could not update cleaner assignment mode. Run the Training Rotation SQL first if you have not already."));
+    } finally {
+      setSavingCleanerRotationPropertyId(null);
+    }
+  }
+
+  async function finishCleanerTrainingRotation(property: Property, primaryCleanerAccountId: string) {
+    const propertyAssignments = getCleanerAssignmentsForProperty(property.id);
+    if (propertyAssignments.length === 0) return;
+
+    const confirmed = window.confirm(
+      `Make ${getCleanerAccountName(primaryCleanerAccountId)} the primary cleaner for ${property.name || property.address || "this property"}?\n\nTraining Rotation will turn off and the remaining cleaner assignments will become backups.`
+    );
+    if (!confirmed) return;
+
+    setSavingCleanerRotationPropertyId(property.id);
+    setError("");
+    setActionMessage("");
+
+    try {
+      const orderedAssignments = [
+        ...propertyAssignments.filter((assignment) => assignment.cleaner_account_id === primaryCleanerAccountId),
+        ...propertyAssignments.filter((assignment) => assignment.cleaner_account_id !== primaryCleanerAccountId),
+      ];
+
+      for (let index = 0; index < orderedAssignments.length; index += 1) {
+        const { error: assignmentError } = await supabase
+          .from("property_cleaner_account_assignments")
+          .update({ priority: Math.min(index + 1, 3) })
+          .eq("id", orderedAssignments[index].id);
+
+        if (assignmentError) throw assignmentError;
+      }
+
+      const { error: propertyError } = await supabase
+        .from("properties")
+        .update({
+          cleaner_assignment_mode: "priority",
+          cleaner_rotation_next_cleaner_account_id: null,
+        })
+        .eq("id", property.id)
+        .eq("organization_id", currentOrganizationId);
+
+      if (propertyError) throw propertyError;
+
+      setActionMessage(`${getCleanerAccountName(primaryCleanerAccountId)} is now primary for ${property.name || property.address || "property"}.`);
+      await loadData();
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Could not finish Training Rotation."));
+    } finally {
+      setSavingCleanerRotationPropertyId(null);
+    }
+  }
+
   async function createJob() {
     if (!jobPropertyId) return;
 
@@ -4026,6 +4180,14 @@ export default function AdminPage() {
         await loadData();
         return;
       }
+    }
+
+    try {
+      await applyCleanerTrainingRotationToJob(insertedJob.id, jobPropertyId);
+    } catch (rotationError: unknown) {
+      setError(getErrorMessage(rotationError, "Job created, but training rotation could not be applied."));
+      await loadData();
+      return;
     }
 
     const { data: createdOfferSlots, error: createdOfferSlotsError } = await supabase
@@ -5953,6 +6115,30 @@ This removes its linked members and deletes the grounds account.`
   function getCleanerAccountName(id: string | null) {
     if (!id) return "Unassigned";
     return cleanerAccounts.find((c) => c.id === id)?.display_name || id;
+  }
+
+  function getCleanerAssignmentsForProperty(propertyId: string) {
+    return assignments
+      .filter((assignment) => {
+        if (assignment.property_id !== propertyId) return false;
+        const account = cleanerAccounts.find((item) => item.id === assignment.cleaner_account_id);
+        return account?.active !== false;
+      })
+      .sort((a, b) => a.priority - b.priority);
+  }
+
+  function getTrainingRotationOrder(property: Property | null | undefined) {
+    if (!property) return [];
+    const propertyAssignments = getCleanerAssignmentsForProperty(property.id);
+    if (propertyAssignments.length === 0) return [];
+
+    const nextCleanerId = property.cleaner_rotation_next_cleaner_account_id;
+    const startIndex = nextCleanerId
+      ? propertyAssignments.findIndex((assignment) => assignment.cleaner_account_id === nextCleanerId)
+      : -1;
+
+    if (startIndex <= 0) return propertyAssignments;
+    return [...propertyAssignments.slice(startIndex), ...propertyAssignments.slice(0, startIndex)];
   }
 
   function getGroundsAccountName(id: string | null) {
@@ -14697,6 +14883,75 @@ This removes its linked members and deletes the grounds account.`
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-xl font-semibold tracking-tight text-[#12394a]">Cleaner Assignments</h2>
             <span className="rounded-full border border-[#b8d8ea] bg-white px-3 py-1 text-xs font-medium text-[#26708f]">{assignments.length}</span>
+          </div>
+          <div className="mb-4 grid gap-3 lg:grid-cols-2">
+            {properties
+              .filter((property) => getCleanerAssignmentsForProperty(property.id).length > 0)
+              .map((property) => {
+                const propertyAssignments = getCleanerAssignmentsForProperty(property.id);
+                const trainingEnabled = property.cleaner_assignment_mode === "training_rotation";
+                const rotationOrder = getTrainingRotationOrder(property);
+                const nextCleanerId = rotationOrder[0]?.cleaner_account_id || propertyAssignments[0]?.cleaner_account_id || null;
+                return (
+                  <div key={`rotation-${property.id}`} className={`rounded-[22px] border p-4 shadow-sm ${
+                    trainingEnabled
+                      ? "border-[#f1cf8f] bg-[#fff8e8]"
+                      : "border-[#b8d8ea] bg-white"
+                  }`}>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <div className="text-sm font-semibold text-[#12394a]">{property.name || property.address || "Property"}</div>
+                        <div className="mt-1 text-xs leading-5 text-[#4f6e7c]">
+                          {trainingEnabled
+                            ? `Training Rotation on. Next job starts with ${getCleanerAccountName(nextCleanerId)}.`
+                            : "Primary/backup mode. The primary cleaner is offered new jobs first."}
+                        </div>
+                        {trainingEnabled ? (
+                          <div className="mt-2 text-xs text-[#8a6112]">
+                            Order: {rotationOrder.map((assignment) => getCleanerAccountName(assignment.cleaner_account_id)).join(" -> ")}
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          disabled={savingCleanerRotationPropertyId === property.id || !trainingEnabled}
+                          onClick={() => void updateCleanerAssignmentMode(property, "priority")}
+                          className="rounded-full border border-[#b8d8ea] bg-white px-3 py-1.5 text-xs font-semibold text-[#26708f] transition hover:bg-[#eef8fd] disabled:opacity-50"
+                        >
+                          Primary/backup
+                        </button>
+                        <button
+                          type="button"
+                          disabled={savingCleanerRotationPropertyId === property.id || trainingEnabled}
+                          onClick={() => void updateCleanerAssignmentMode(property, "training_rotation")}
+                          className="rounded-full border border-[#f1cf8f] bg-[#fff8e8] px-3 py-1.5 text-xs font-semibold text-[#8a6112] transition hover:bg-[#fff4d8] disabled:opacity-50"
+                        >
+                          Training Rotation
+                        </button>
+                      </div>
+                    </div>
+                    {trainingEnabled ? (
+                      <div className="mt-3 flex flex-wrap gap-2 border-t border-[#f1cf8f] pt-3">
+                        <span className="w-full text-xs font-semibold uppercase tracking-[0.16em] text-[#8a6112]">
+                          End training and choose primary
+                        </span>
+                        {propertyAssignments.map((assignment) => (
+                          <button
+                            key={`finish-${property.id}-${assignment.id}`}
+                            type="button"
+                            disabled={savingCleanerRotationPropertyId === property.id}
+                            onClick={() => void finishCleanerTrainingRotation(property, assignment.cleaner_account_id)}
+                            className="rounded-full border border-[#f1cf8f] bg-white px-3 py-1.5 text-xs font-semibold text-[#8a6112] transition hover:bg-[#fff4d8] disabled:opacity-50"
+                          >
+                            {getCleanerAccountName(assignment.cleaner_account_id)}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
           </div>
           <div className="space-y-3">
             {assignments.map((a) => {
