@@ -6,6 +6,7 @@ import {
   refreshJobStaffing,
   verifyJobEmailActionUrl,
 } from "@/lib/server/job-email-actions";
+import { sendAdminJobStatusPush } from "@/lib/server/admin-job-status-notifications";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -159,6 +160,7 @@ export async function GET(request: NextRequest) {
 
     const now = new Date().toISOString();
     const slotTable = verification.kind === "cleaner" ? "turnover_job_slots" : "grounds_job_slots";
+    const accountIdColumn = verification.kind === "cleaner" ? "cleaner_account_id" : "grounds_account_id";
     const update =
       verification.action === "accept"
         ? {
@@ -181,7 +183,7 @@ export async function GET(request: NextRequest) {
       .update(update)
       .eq("id", verification.slotId)
       .eq("status", "offered")
-      .select("id, job_id, status")
+      .select(`id, job_id, status, ${accountIdColumn}`)
       .maybeSingle()) as any;
 
     if (updateError) {
@@ -201,6 +203,17 @@ export async function GET(request: NextRequest) {
     }
 
     await refreshJobStaffing(service, verification.kind, updatedSlot.job_id);
+
+    if (verification.action === "accept") {
+      await sendAdminJobStatusPush(
+        service,
+        verification.kind,
+        updatedSlot.job_id,
+        updatedSlot[accountIdColumn] || null,
+        "accepted",
+        request.nextUrl.origin
+      );
+    }
 
     const calendarUrl =
       verification.action === "accept"

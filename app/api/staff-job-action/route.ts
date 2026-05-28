@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { sendStaffPushNotifications } from "@/lib/server/staff-push-notifications";
+import { sendAdminJobStatusPush } from "@/lib/server/admin-job-status-notifications";
 import { sendJobOfferEmailsForSlots } from "@/lib/server/job-notifications";
 import { reofferExpiredCleanerTrainingSlot } from "@/lib/server/cleaner-training-rotation";
 
@@ -85,61 +85,6 @@ async function refreshCleanerJobStaffing(service: any, jobId: string) {
     .eq("id", jobId);
 
   if (updateError) throw new Error(updateError.message);
-}
-
-async function sendCleanerProgressPush(
-  service: any,
-  jobId: string,
-  cleanerAccountId: string,
-  action: "start" | "finish",
-  origin: string
-) {
-  const { data: job, error: jobError } = await service
-    .from("turnover_jobs")
-    .select("id, organization_id, property_id, scheduled_for, notes")
-    .eq("id", jobId)
-    .maybeSingle();
-
-  if (jobError || !job?.organization_id) {
-    return { sent: 0, errors: jobError?.message ? [jobError.message] : [] };
-  }
-
-  const [{ data: cleaner }, { data: property }, { data: adminMembers, error: adminError }] = await Promise.all([
-    service
-      .from("cleaner_accounts")
-      .select("display_name, email")
-      .eq("id", cleanerAccountId)
-      .maybeSingle(),
-    service
-      .from("properties")
-      .select("name")
-      .eq("id", job.property_id)
-      .maybeSingle(),
-    service
-      .from("organization_members")
-      .select("profile_id")
-      .eq("organization_id", job.organization_id)
-      .eq("role", "admin"),
-  ]);
-
-  if (adminError) {
-    return { sent: 0, errors: [adminError.message] };
-  }
-
-  const profileIds: string[] = [...new Set<string>((adminMembers || []).map((row: any) => String(row.profile_id || "")).filter(Boolean))];
-  const cleanerName = cleaner?.display_name || cleaner?.email || "Cleaner";
-  const propertyName = property?.name || "a property";
-  const verb = action === "start" ? "started" : "finished";
-  const tag = `cleaner-job-${action}-${jobId}`;
-
-  const result = await sendStaffPushNotifications("admin", profileIds, {
-    title: `Cleaner ${verb} a job`,
-    body: `${cleanerName} ${verb} the cleaning job for ${propertyName}.`,
-    url: `${origin}/admin?open=jobs&jobId=${encodeURIComponent(jobId)}`,
-    tag,
-  });
-
-  return { sent: result.sent, errors: result.errors };
 }
 
 export async function POST(request: NextRequest) {
@@ -309,13 +254,14 @@ export async function POST(request: NextRequest) {
       trainingReoffer.offeredSlotIds.length > 0
         ? await sendJobOfferEmailsForSlots("cleaner", trainingReoffer.offeredSlotIds, request.nextUrl.origin)
         : null;
-    const progressPush =
-      action === "start" || action === "finish"
-        ? await sendCleanerProgressPush(
+    const adminPush =
+      action === "accept" || action === "start" || action === "finish"
+        ? await sendAdminJobStatusPush(
             service,
+            "cleaner",
             updatedSlot.job_id,
             updatedSlot.cleaner_account_id || slot.cleaner_account_id,
-            action,
+            action === "accept" ? "accepted" : action === "start" ? "started" : "completed",
             request.nextUrl.origin
           )
         : { sent: 0, errors: [] as string[] };
@@ -326,7 +272,7 @@ export async function POST(request: NextRequest) {
       slot: updatedSlot,
       trainingReoffer,
       trainingReofferNotification,
-      progressPush,
+      adminPush,
     });
   } catch (error) {
     return NextResponse.json(
