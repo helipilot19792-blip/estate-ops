@@ -16,7 +16,7 @@ self.addEventListener("push", (event) => {
   const options = {
     body: data.body || "You have a new portal update.",
     icon: data.icon || "/estateoslogo.png",
-    badge: data.badge || "/estateoslogo.png",
+    badge: data.badge || "/notification-badge.png",
     tag: data.tag || "estate-ops-update",
     renotify: true,
     silent: false,

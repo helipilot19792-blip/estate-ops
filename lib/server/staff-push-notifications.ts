@@ -216,7 +216,7 @@ export async function sendStaffPushNotifications(
         JSON.stringify({
           ...payload,
           icon: "/estateoslogo.png",
-          badge: "/estateoslogo.png",
+          badge: "/notification-badge.png",
         }),
         {
           TTL: 60 * 60 * 24 * 28,
