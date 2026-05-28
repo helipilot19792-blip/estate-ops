@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 
 type HelpMessage = {
@@ -28,6 +28,15 @@ export default function HelpAssistant() {
   const [loading, setLoading] = useState(false);
 
   const canSend = useMemo(() => input.trim().length > 0 && !loading, [input, loading]);
+
+  useEffect(() => {
+    function handleOpen() {
+      setOpen(true);
+    }
+
+    window.addEventListener("gulera:open-help-assistant", handleOpen);
+    return () => window.removeEventListener("gulera:open-help-assistant", handleOpen);
+  }, []);
 
   async function ask(question: string) {
     const trimmed = question.trim();
@@ -76,9 +85,10 @@ export default function HelpAssistant() {
     void ask(input);
   }
 
+  if (!open) return null;
+
   return (
-    <div className="fixed bottom-4 right-4 z-[90] flex max-w-[calc(100vw-2rem)] flex-col items-end gap-3 sm:bottom-5 sm:right-5">
-      {open ? (
+    <div className="fixed right-4 top-20 z-[90] flex max-w-[calc(100vw-2rem)] flex-col items-end gap-3 sm:right-5">
         <section className="w-[min(390px,calc(100vw-2rem))] overflow-hidden rounded-[22px] border border-[#d8c7ad] bg-white shadow-[0_22px_60px_rgba(36,28,21,0.24)]">
           <div className="flex items-start justify-between gap-3 border-b border-[#eadfce] bg-[#fcfaf7] px-4 py-3">
             <div>
@@ -150,16 +160,7 @@ export default function HelpAssistant() {
             </form>
           </div>
         </section>
-      ) : null}
 
-        <button
-          type="button"
-          onClick={() => setOpen((current) => !current)}
-          aria-label={open ? "Close AI helper" : "Open AI helper"}
-          className="flex h-12 items-center justify-center rounded-full border border-[#e8d8bf] bg-[#241c15] px-4 text-sm font-semibold text-[#f8f2e8] shadow-[0_14px_35px_rgba(36,28,21,0.24)] transition hover:-translate-y-0.5 hover:bg-[#33271c]"
-        >
-          AI Helper
-        </button>
     </div>
   );
 }

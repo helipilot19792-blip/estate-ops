@@ -777,12 +777,16 @@ function isOptionalTableError(error: { code?: string | null; message?: string | 
 function formatDateLabel(dateString: string | null) {
   if (!dateString) return "Not set";
   const d = ymdToLocalDate(dateString);
-  return d.toLocaleDateString(undefined, {
-    weekday: "long",
+  return formatLongDate(d);
+}
+
+function formatLongDate(date: Date) {
+  if (Number.isNaN(date.getTime())) return "Not set";
+  return date.toLocaleDateString("en-US", {
     month: "long",
     day: "numeric",
     year: "numeric",
-  });
+  }).replace(",", "");
 }
 
 function formatCurrency(value: number | null | undefined) {
@@ -1059,6 +1063,11 @@ function createInviteToken() {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function openAiHelper() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event("gulera:open-help-assistant"));
 }
 
 async function loadPlatformAdminOrganizations(accessToken: string): Promise<MyOrganizationRow[]> {
@@ -4791,51 +4800,63 @@ export default function AdminPage() {
   }
 
   async function deleteJob(jobId: string) {
-    const confirmed = window.confirm("Delete this job? This cannot be undone.");
+    const job = jobs.find((item) => item.id === jobId);
+    const propertyName = getPropertyName(job?.property_id || null);
+    const confirmed = window.confirm(
+      `Delete this job${propertyName ? ` for ${propertyName}` : ""}? This removes the job and its cleaner slots. This cannot be undone.`
+    );
     if (!confirmed) return;
 
     setError("");
     setActionMessage("");
+    setReassigningJobId(jobId);
 
-    const { error } = await supabase
-      .from("turnover_jobs")
-      .delete()
-      .eq("id", jobId);
+    try {
+      if (!currentOrganizationId) {
+        throw new Error("No organization selected.");
+      }
 
-    if (error) {
-      setError(error.message);
-      alert(error.message);
-      return;
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        throw new Error("Could not verify your admin session.");
+      }
+
+      const response = await fetch("/api/admin/stranded-job", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          action: "delete",
+          organizationId: currentOrganizationId,
+          jobId,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || "Could not delete job.");
+      }
+
+      setActionMessage("Job deleted.");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Could not delete job.");
+    } finally {
+      setReassigningJobId(null);
     }
-
-    setActionMessage("Job deleted.");
-    await loadData();
   }
   async function reassignOpenJob(jobId: string) {
     const cleanerAccountId = reassignSelections[jobId];
     if (!cleanerAccountId) {
       setError("Please select a cleaner account before reassigning.");
       return;
-    }
-    async function deleteJob(jobId: string) {
-      const confirmDelete = confirm("Delete this job? This cannot be undone.");
-      if (!confirmDelete) return;
-
-      setError("");
-      setActionMessage("");
-
-      const { error } = await supabase
-        .from("turnover_jobs")
-        .delete()
-        .eq("id", jobId);
-
-      if (error) {
-        setError(error.message);
-        return;
-      }
-
-      setActionMessage("Job deleted.");
-      await loadData();
     }
     const slot = getNextOpenSlot(jobId);
 
@@ -6381,14 +6402,19 @@ This removes its linked members and deletes the grounds account.`
     if (!value) return "Unknown time";
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value;
-    return date.toLocaleString();
+    const dateLabel = formatLongDate(date);
+    const timeLabel = date.toLocaleTimeString(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+    return `${dateLabel}, ${timeLabel}`;
   }
 
   function formatScheduledFor(value?: string | null) {
     if (!value) return "Not set";
     const d = new Date(`${value}T12:00:00`);
     if (Number.isNaN(d.getTime())) return value;
-    return d.toLocaleDateString();
+    return formatLongDate(d);
   }
 
   function formatFileSize(bytes?: number | null) {
@@ -6450,7 +6476,7 @@ This removes its linked members and deletes the grounds account.`
       [flag.id]: snoozedUntil.toISOString(),
     }));
     setActionMessage(
-      `Maintenance flag hidden until ${snoozedUntil.toLocaleDateString()} unless it is marked resolved first.`
+      `Maintenance flag hidden until ${formatLongDate(snoozedUntil)} unless it is marked resolved first.`
     );
   }
 
@@ -7588,7 +7614,7 @@ This removes its linked members and deletes the grounds account.`
               ? "Today"
               : dateYmd === tomorrowYmd
                 ? "Tomorrow"
-                : ymdToLocalDate(dateYmd).toLocaleDateString(undefined, { weekday: "long" }),
+                : formatDateLabel(dateYmd),
           pickupLabel,
           notes: property.garbage_notes?.trim() || "",
         });
@@ -7612,11 +7638,7 @@ This removes its linked members and deletes the grounds account.`
     const labelDate = (dateYmd: string) => {
       if (dateYmd === todayYmd) return "Today";
       if (dateYmd === tomorrowYmd) return "Tomorrow";
-      return ymdToLocalDate(dateYmd).toLocaleDateString(undefined, {
-        weekday: "short",
-        month: "short",
-        day: "numeric",
-      });
+      return formatDateLabel(dateYmd);
     };
 
     const cleaningItems = jobs
@@ -9216,12 +9238,7 @@ This removes its linked members and deletes the grounds account.`
                 Today at a glance
               </h2>
               <p className="mt-1 text-sm text-[#7f7263]">
-                {new Date().toLocaleDateString(undefined, {
-                  weekday: "long",
-                  month: "long",
-                  day: "numeric",
-                  year: "numeric",
-                })}
+                {formatLongDate(new Date())}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -9252,6 +9269,13 @@ This removes its linked members and deletes the grounds account.`
                 className="inline-flex items-center justify-center rounded-full border border-[#d8c7ab] bg-[#fff7ed] px-4 py-2 text-sm font-medium text-[#7a4b1f] hover:bg-[#ffedd5]"
               >
                 Support
+              </button>
+              <button
+                type="button"
+                onClick={openAiHelper}
+                className="inline-flex items-center justify-center rounded-full border border-[#d8c7ab] bg-[#241c15] px-4 py-2 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]"
+              >
+                AI Helper
               </button>
             </div>
           </div>
@@ -9752,8 +9776,8 @@ This removes its linked members and deletes the grounds account.`
                       <div className="text-sm text-[#7f7263]">{invite.email}</div>
                       <div className="mt-1 text-xs text-[#8a7b68]">
                         Status: {invite.status || "sent"}
-                        {invite.sent_at ? ` • Sent ${new Date(invite.sent_at).toLocaleDateString()}` : ""}
-                        {invite.expires_at ? ` • Expires ${new Date(invite.expires_at).toLocaleDateString()}` : ""}
+                        {invite.sent_at ? ` • Sent ${formatLongDate(new Date(invite.sent_at))}` : ""}
+                        {invite.expires_at ? ` • Expires ${formatLongDate(new Date(invite.expires_at))}` : ""}
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -14712,10 +14736,10 @@ This removes its linked members and deletes the grounds account.`
                           <div className="mt-1 text-xs text-[#8a7b68]">
                             Status: {invite.status || "sent"}
                             {invite.sent_at
-                              ? ` • Sent ${new Date(invite.sent_at).toLocaleDateString()}`
+                              ? ` • Sent ${formatLongDate(new Date(invite.sent_at))}`
                               : ""}
                             {invite.expires_at
-                              ? ` • Expires ${new Date(invite.expires_at).toLocaleDateString()}`
+                              ? ` • Expires ${formatLongDate(new Date(invite.expires_at))}`
                               : ""}
                           </div>
                         </div>
@@ -14988,10 +15012,10 @@ This removes its linked members and deletes the grounds account.`
                           <div className="mt-1 text-xs text-[#8a7b68]">
                             Status: {invite.status || "sent"}
                             {invite.sent_at
-                              ? ` • Sent ${new Date(invite.sent_at).toLocaleDateString()}`
+                              ? ` • Sent ${formatLongDate(new Date(invite.sent_at))}`
                               : ""}
                             {invite.expires_at
-                              ? ` • Expires ${new Date(invite.expires_at).toLocaleDateString()}`
+                              ? ` • Expires ${formatLongDate(new Date(invite.expires_at))}`
                               : ""}
                           </div>
                         </div>
@@ -18051,7 +18075,7 @@ This removes its linked members and deletes the grounds account.`
                             </div>
                             <div className="text-[#7f7263]">
                               {getPropertyName(flag.property_id ?? null)} | Returns{" "}
-                              {snoozedUntil ? snoozedUntil.toLocaleDateString() : "soon"}
+                              {snoozedUntil ? formatLongDate(snoozedUntil) : "soon"}
                             </div>
                           </div>
                           <button
@@ -19309,6 +19333,13 @@ This removes its linked members and deletes the grounds account.`
                   Support
                 </button>
                 <button
+                  type="button"
+                  onClick={openAiHelper}
+                  className="inline-flex items-center justify-center rounded-full border border-[#cbd5e1] bg-[#241c15] px-5 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-[#352a21]"
+                >
+                  AI Helper
+                </button>
+                <button
                   className="inline-flex items-center justify-center rounded-full border border-[#cbd5e1] bg-[#17202a] px-5 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-[#263241]"
                   onClick={async () => {
                     await supabase.auth.signOut();
@@ -19346,7 +19377,7 @@ This removes its linked members and deletes the grounds account.`
                   <div>
                     <div className="admin-kicker text-[11px] uppercase text-[#3563a8]">Today at a glance</div>
                     <div className="mt-1 text-sm font-semibold text-[#17202a]">
-                      {now.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+                      {formatLongDate(now)}
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -19522,7 +19553,7 @@ This removes its linked members and deletes the grounds account.`
                 <div className="mt-1 text-xs opacity-80">
                   Status: {isInternalWorkspace ? "internal" : currentTrialStatus} | Plan: {currentPlanName}
                   {currentOrganizationBilling.trial_ends_at
-                    ? ` • Trial ends ${new Date(currentOrganizationBilling.trial_ends_at).toLocaleDateString()}`
+                    ? ` • Trial ends ${formatLongDate(new Date(currentOrganizationBilling.trial_ends_at))}`
                     : ""}
                 </div>
               </div>
@@ -19593,7 +19624,7 @@ This removes its linked members and deletes the grounds account.`
               <div className="flex flex-wrap items-center gap-3">
                 <div className="hidden text-xs uppercase tracking-[0.24em] text-[#8a7b68]">Today at a Glance</div>
                 <div className="hidden rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-medium text-[#6f6255]">
-                  {now.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+                  {formatLongDate(now)}
                 </div>
               </div>
               <div className="mt-3 hidden grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
