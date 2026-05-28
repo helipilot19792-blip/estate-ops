@@ -226,10 +226,11 @@ export async function POST(request: NextRequest) {
     const organizationId = String(body?.organizationId || "").trim();
     const propertyId = String(body?.propertyId || "").trim();
     const profileId = String(body?.profileId || "").trim();
+    const requestedAccountId = String(body?.accountId || "").trim();
     const priority = Number(body?.priority || 1);
     const kind = body?.kind === "grounds" ? "grounds" : body?.kind === "cleaner" ? "cleaner" : null;
 
-    if (!organizationId || !propertyId || !profileId || !kind) {
+    if (!organizationId || !propertyId || !kind || (!profileId && !requestedAccountId)) {
       return NextResponse.json({ error: "Missing assignment details." }, { status: 400 });
     }
 
@@ -294,105 +295,127 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Property not found in this organization." }, { status: 404 });
     }
 
-    const { data: targetProfile, error: targetProfileError } = await serviceClient
-      .from("profiles")
-      .select("id, role, email, full_name, phone")
-      .eq("id", profileId)
-      .maybeSingle();
-
-    if (targetProfileError) {
-      return NextResponse.json({ error: targetProfileError.message }, { status: 500 });
-    }
-
-    if (!targetProfile || !roleCanBeAssigned(kind, targetProfile.role)) {
-      return NextResponse.json({ error: "Selected user is not eligible for this assignment." }, { status: 400 });
-    }
-
-    const { data: targetMembership, error: targetMembershipError } = await serviceClient
-      .from("organization_members")
-      .select("role")
-      .eq("organization_id", organizationId)
-      .eq("profile_id", profileId)
-      .maybeSingle();
-
-    if (targetMembershipError) {
-      return NextResponse.json({ error: targetMembershipError.message }, { status: 500 });
-    }
-
-    if (!targetMembership) {
-      return NextResponse.json(
-        { error: "Selected user is not linked to this organization." },
-        { status: 400 }
-      );
-    }
-
     const tables = getTables(kind);
     let accountId: string | null = null;
 
-    const { data: existingMemberships, error: existingMembershipError } = await serviceClient
-      .from(tables.memberTable)
-      .select(tables.accountIdColumn)
-      .eq("profile_id", profileId);
-
-    if (existingMembershipError) {
-      return NextResponse.json({ error: existingMembershipError.message }, { status: 500 });
-    }
-
-    const existingAccountIds = (existingMemberships || [])
-      .map((membership: any) => membership?.[tables.accountIdColumn] as string | undefined)
-      .filter(Boolean) as string[];
-
-    if (existingAccountIds.length > 0) {
+    if (requestedAccountId) {
       const { data: existingAccount, error: existingAccountError } = await serviceClient
         .from(tables.accountTable)
-        .select("id")
+        .select("id, active")
         .eq("organization_id", organizationId)
-        .in("id", existingAccountIds)
-        .limit(1)
+        .eq("id", requestedAccountId)
         .maybeSingle();
 
       if (existingAccountError) {
         return NextResponse.json({ error: existingAccountError.message }, { status: 500 });
       }
 
-      accountId = existingAccount?.id || null;
-    }
+      if (!existingAccount) {
+        return NextResponse.json({ error: "Selected account is not linked to this organization." }, { status: 400 });
+      }
 
-    if (!accountId) {
-      const { data: insertedAccount, error: insertedAccountError } = await serviceClient
-        .from(tables.accountTable)
-        .insert({
-          organization_id: organizationId,
-          display_name:
-            targetProfile.full_name || targetProfile.email || `${kind === "cleaner" ? "Cleaner" : "Grounds"} account`,
-          email: targetProfile.email || null,
-          phone: targetProfile.phone || null,
-          active: true,
-        })
-        .select("id")
-        .single();
+      if (existingAccount.active === false) {
+        return NextResponse.json({ error: "Selected account is inactive." }, { status: 400 });
+      }
 
-      if (insertedAccountError || !insertedAccount) {
+      accountId = existingAccount.id;
+    } else {
+      const { data: targetProfile, error: targetProfileError } = await serviceClient
+        .from("profiles")
+        .select("id, role, email, full_name, phone")
+        .eq("id", profileId)
+        .maybeSingle();
+
+      if (targetProfileError) {
+        return NextResponse.json({ error: targetProfileError.message }, { status: 500 });
+      }
+
+      if (!targetProfile || !roleCanBeAssigned(kind, targetProfile.role)) {
+        return NextResponse.json({ error: "Selected user is not eligible for this assignment." }, { status: 400 });
+      }
+
+      const { data: targetMembership, error: targetMembershipError } = await serviceClient
+        .from("organization_members")
+        .select("role")
+        .eq("organization_id", organizationId)
+        .eq("profile_id", profileId)
+        .maybeSingle();
+
+      if (targetMembershipError) {
+        return NextResponse.json({ error: targetMembershipError.message }, { status: 500 });
+      }
+
+      if (!targetMembership) {
         return NextResponse.json(
-          { error: insertedAccountError?.message || `Could not create ${kind} account.` },
-          { status: 500 }
+          { error: "Selected user is not linked to this organization." },
+          { status: 400 }
         );
       }
 
-      accountId = insertedAccount.id;
-
-      const { error: memberInsertError } = await serviceClient
+      const { data: existingMemberships, error: existingMembershipError } = await serviceClient
         .from(tables.memberTable)
-        .insert({
-          [tables.accountIdColumn]: accountId,
-          profile_id: profileId,
-        });
+        .select(tables.accountIdColumn)
+        .eq("profile_id", profileId);
 
-      if (memberInsertError) {
-        return NextResponse.json({ error: memberInsertError.message }, { status: 500 });
+      if (existingMembershipError) {
+        return NextResponse.json({ error: existingMembershipError.message }, { status: 500 });
+      }
+
+      const existingAccountIds = (existingMemberships || [])
+        .map((membership: any) => membership?.[tables.accountIdColumn] as string | undefined)
+        .filter(Boolean) as string[];
+
+      if (existingAccountIds.length > 0) {
+        const { data: existingAccount, error: existingAccountError } = await serviceClient
+          .from(tables.accountTable)
+          .select("id")
+          .eq("organization_id", organizationId)
+          .in("id", existingAccountIds)
+          .limit(1)
+          .maybeSingle();
+
+        if (existingAccountError) {
+          return NextResponse.json({ error: existingAccountError.message }, { status: 500 });
+        }
+
+        accountId = existingAccount?.id || null;
+      }
+
+      if (!accountId) {
+        const { data: insertedAccount, error: insertedAccountError } = await serviceClient
+          .from(tables.accountTable)
+          .insert({
+            organization_id: organizationId,
+            display_name:
+              targetProfile.full_name || targetProfile.email || `${kind === "cleaner" ? "Cleaner" : "Grounds"} account`,
+            email: targetProfile.email || null,
+            phone: targetProfile.phone || null,
+            active: true,
+          })
+          .select("id")
+          .single();
+
+        if (insertedAccountError || !insertedAccount) {
+          return NextResponse.json(
+            { error: insertedAccountError?.message || `Could not create ${kind} account.` },
+            { status: 500 }
+          );
+        }
+
+        accountId = insertedAccount.id;
+
+        const { error: memberInsertError } = await serviceClient
+          .from(tables.memberTable)
+          .insert({
+            [tables.accountIdColumn]: accountId,
+            profile_id: profileId,
+          });
+
+        if (memberInsertError) {
+          return NextResponse.json({ error: memberInsertError.message }, { status: 500 });
+        }
       }
     }
-
     const { data: assignment, error: assignmentError } = await serviceClient
       .from(tables.assignmentTable)
       .insert({

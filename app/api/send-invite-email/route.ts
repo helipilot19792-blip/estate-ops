@@ -9,6 +9,8 @@ type InviteEmailBody = {
   name?: string;
 };
 
+type TeamInviteRole = "cleaner" | "grounds";
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const publicSupabaseKey =
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
@@ -19,6 +21,69 @@ const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 function getBearerToken(req: Request) {
   const authHeader = req.headers.get("authorization") || "";
   return authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+}
+
+async function ensureAssignableTeamAccount(params: {
+  service: any;
+  organizationId: string;
+  role: TeamInviteRole;
+  email: string;
+  name?: string | null;
+  phone?: string | null;
+}) {
+  const accountTable = params.role === "cleaner" ? "cleaner_accounts" : "grounds_accounts";
+  const fallbackName = params.role === "cleaner" ? "Cleaner account" : "Grounds account";
+
+  const { data: existingAccountData, error: existingAccountError } = await params.service
+    .from(accountTable)
+    .select("id, display_name, email")
+    .eq("organization_id", params.organizationId)
+    .eq("email", params.email)
+    .limit(1)
+    .maybeSingle();
+
+  if (existingAccountError) {
+    throw new Error(existingAccountError.message);
+  }
+
+  const existingAccount = existingAccountData as { id: string; display_name?: string | null } | null;
+  const displayName = params.name?.trim() || existingAccount?.display_name || params.email || fallbackName;
+
+  if (existingAccount) {
+    const { error: updateError } = await params.service
+      .from(accountTable)
+      .update({
+        display_name: displayName,
+        email: params.email,
+        phone: params.phone || null,
+        active: true,
+      })
+      .eq("id", existingAccount.id);
+
+    if (updateError) {
+      throw new Error(updateError.message);
+    }
+
+    return existingAccount.id;
+  }
+
+  const { data: insertedAccount, error: insertError } = await params.service
+    .from(accountTable)
+    .insert({
+      organization_id: params.organizationId,
+      display_name: displayName,
+      email: params.email,
+      phone: params.phone || null,
+      active: true,
+    })
+    .select("id")
+    .single();
+
+  if (insertError || !insertedAccount) {
+    throw new Error(insertError?.message || `Could not create ${params.role} account.`);
+  }
+
+  return insertedAccount.id;
 }
 
 export async function POST(req: Request) {
@@ -109,7 +174,7 @@ export async function POST(req: Request) {
 
     const { data: invite, error: inviteError } = await service
       .from("organization_invites")
-      .select("id, organization_id, email, role, status")
+      .select("id, organization_id, email, full_name, phone, role, status")
       .eq("token", inviteToken)
       .maybeSingle();
 
@@ -148,6 +213,18 @@ export async function POST(req: Request) {
       }
     }
 
+    let assignableAccountId: string | null = null;
+    if (invite.role === "cleaner" || invite.role === "grounds") {
+      assignableAccountId = await ensureAssignableTeamAccount({
+        service,
+        organizationId: invite.organization_id,
+        role: invite.role,
+        email,
+        name: invite.full_name || name,
+        phone: invite.phone || null,
+      });
+    }
+
     const resend = new Resend(resendApiKey);
     const subject = `You're invited to join GuleraOS as ${role}`;
 
@@ -183,6 +260,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       id: result.data?.id ?? null,
+      assignableAccountId,
     });
   } catch (error) {
     return NextResponse.json(

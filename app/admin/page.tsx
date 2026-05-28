@@ -3903,6 +3903,7 @@ export default function AdminPage() {
     setInviteCleanerName("");
     setInviteCleanerEmail("");
     setInviteCleanerPhone("");
+    await loadData();
   }
 
   async function inviteAdminFromForm() {
@@ -4051,7 +4052,8 @@ export default function AdminPage() {
   async function saveTeamAssignment(params: {
     kind: "cleaner" | "grounds";
     propertyId: string;
-    profileId: string;
+    profileId?: string;
+    accountId?: string;
     priority: string;
   }) {
     if (!currentOrganizationId) {
@@ -4078,6 +4080,7 @@ export default function AdminPage() {
         kind: params.kind,
         propertyId: params.propertyId,
         profileId: params.profileId,
+        accountId: params.accountId,
         priority: Number(params.priority),
       }),
     });
@@ -4106,7 +4109,7 @@ export default function AdminPage() {
       assignmentResult = await saveTeamAssignment({
         kind: "cleaner",
         propertyId: assignmentPropertyId,
-        profileId: assignmentCleanerProfileId,
+        accountId: assignmentCleanerProfileId,
         priority: assignmentPriority,
       });
     } catch (err) {
@@ -4961,6 +4964,7 @@ export default function AdminPage() {
     setInviteGroundsName("");
     setInviteGroundsEmail("");
     setInviteGroundsPhone("");
+    await loadData();
   }
   async function addGroundsAccount() {
     if (!groundsAccountName.trim()) {
@@ -6964,6 +6968,16 @@ This removes its linked members and deletes the grounds account.`
   const eligibleCleanerProfiles = useMemo(
     () => profiles.filter((profile) => profile.role === "cleaner"),
     [profiles]
+  );
+
+  const assignableCleanerAccounts = useMemo(
+    () =>
+      cleanerAccounts
+        .filter((account) => account.active !== false)
+        .sort((a, b) =>
+          (a.display_name || a.email || "").localeCompare(b.display_name || b.email || "")
+        ),
+    [cleanerAccounts]
   );
 
   const eligibleGroundsProfiles = useMemo(
@@ -15280,7 +15294,7 @@ This removes its linked members and deletes the grounds account.`
             <span className="rounded-full border border-[#b8d8ea] bg-white px-3 py-1 text-xs font-semibold text-[#26708f]">Turnovers</span>
           </div>
           <p className="mt-1 text-sm text-[#4f6e7c]">
-            Choose an approved cleaner and assign them as primary or backup. If they are not linked to a cleaner account yet, the system will create that link automatically.
+            Choose a cleaner account and assign it as primary or backup. Pending invitees can be assigned here before they ever log into the app.
           </p>
 
           <div className="mt-5 space-y-3">
@@ -15291,9 +15305,10 @@ This removes its linked members and deletes the grounds account.`
 
             <select className="w-full rounded-[20px] border border-[#b8d8ea] bg-white px-4 py-3 text-sm outline-none focus:border-[#26708f]" value={assignmentCleanerProfileId} onChange={(e) => setAssignmentCleanerProfileId(e.target.value)}>
               <option value="">Select cleaner</option>
-              {eligibleCleanerProfiles.map((profile) => (
-                <option key={profile.id} value={profile.id}>
-                  {profile.full_name || profile.email || profile.id}
+              {assignableCleanerAccounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.display_name || account.email || "Unnamed cleaner account"}
+                  {cleanerAccountMembers.some((member) => member.cleaner_account_id === account.id) ? "" : " (invite pending)"}
                 </option>
               ))}
             </select>
