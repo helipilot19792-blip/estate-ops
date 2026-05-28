@@ -8420,6 +8420,10 @@ This removes its linked members and deletes the grounds account.`
     if (section === activeSection) return "";
 
     const currentCount = getRawAdminMenuBadgeCount(section);
+    if (section === "chat") {
+      return currentCount > 0 ? (currentCount > 99 ? "99+" : String(currentCount)) : "";
+    }
+
     const seenCount = adminMenuSeenCounts[section] || 0;
     const newCount = Math.max(0, currentCount - seenCount);
 

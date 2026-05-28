@@ -211,13 +211,26 @@ export async function POST(request: NextRequest) {
         title: `New chat from ${senderLabel}`,
         body: summary || "Open Gulera OS to read the message.",
         url: portal === "owner" ? "/owner?tab=chat" : portal === "admin" ? "/admin?open=chat" : `/${portal}`,
-        tag: `chat-${message.conversation_id}`,
+        tag: `chat-${message.conversation_id}-${message.id}`,
       });
 
       sent += result.sent;
       errors.push(...result.errors);
       deliveries.push(...(result.deliveries || []));
     }
+
+    console.info(
+      "chat push delivery",
+      JSON.stringify({
+        messageId: message.id,
+        conversationId: message.conversation_id,
+        senderProfileId: message.sender_profile_id,
+        recipientCount,
+        sent,
+        errors,
+        deliveries,
+      })
+    );
 
     if (recipientCount > 0 && sent === 0 && errors.length > 0) {
       return NextResponse.json({ ok: false, sent, recipientCount, errors, deliveries }, { status: 500 });
