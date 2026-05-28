@@ -46,6 +46,14 @@ function urlBase64ToUint8Array(base64String: string) {
   return outputArray;
 }
 
+function isInstalledAppExperience() {
+  const standaloneMedia = window.matchMedia("(display-mode: standalone)").matches;
+  const navigatorStandalone =
+    "standalone" in navigator && Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
+
+  return standaloneMedia || navigatorStandalone;
+}
+
 async function getAccessToken() {
   const {
     data: { session },
@@ -107,7 +115,7 @@ export default function PortalInstallControl({
   useEffect(() => {
     let active = true;
 
-    setIsStandalone(window.matchMedia("(display-mode: standalone)").matches);
+    setIsStandalone(isInstalledAppExperience());
     setIsIOS(/iPad|iPhone|iPod/.test(navigator.userAgent));
 
     function handleBeforeInstallPrompt(event: Event) {

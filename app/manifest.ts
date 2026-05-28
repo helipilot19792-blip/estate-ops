@@ -2,6 +2,7 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
+    id: "/",
     name: "Gulera OS",
     short_name: "Gulera OS",
     description: "STR operations portal for teams and owners",

@@ -493,6 +493,42 @@ type TeamWorkflowTab = "invites" | "users" | "cleaners" | "grounds";
 type TeamInviteRole = "admin" | "cleaner" | "grounds";
 type InvoiceHistoryFilter = "all" | "unpaid" | "paid" | "draft" | "void";
 type AdminMenuOrientation = "side" | "top";
+type PushDiagnosticsDevice = {
+  id: string;
+  profileId: string;
+  status: "active" | "disabled";
+  endpointHost: string;
+  deviceKind: string;
+  deviceLabel: string;
+  lastSeenAt: string | null;
+  updatedAt: string | null;
+};
+type PushDiagnosticsPortal = {
+  portal: "admin" | "cleaner" | "grounds" | "owner";
+  activeCount: number;
+  disabledCount: number;
+  androidActive: number;
+  appleActive: number;
+  desktopActive: number;
+  unknownActive: number;
+  devices: PushDiagnosticsDevice[];
+};
+type PushDiagnosticsPayload = {
+  generatedAt: string;
+  environment: {
+    publicKeyValid?: boolean;
+    selectedPrivateKeyName?: string | null;
+  };
+  totals: {
+    active: number;
+    disabled: number;
+    androidActive: number;
+    appleActive: number;
+    desktopActive: number;
+    unknownActive: number;
+  };
+  portals: PushDiagnosticsPortal[];
+};
 const ADMIN_FEATURE_LABELS: Record<AdminSection, string> = {
   home: "Admin Home",
   notifications: "Notification Center",
@@ -1113,6 +1149,9 @@ export default function AdminPage() {
   const [chatParticipants, setChatParticipants] = useState<ChatParticipantRow[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessageRow[]>([]);
   const [chatHiddenItems, setChatHiddenItems] = useState<ChatHiddenItemRow[]>([]);
+  const [pushDiagnostics, setPushDiagnostics] = useState<PushDiagnosticsPayload | null>(null);
+  const [pushDiagnosticsLoading, setPushDiagnosticsLoading] = useState(false);
+  const [pushDiagnosticsError, setPushDiagnosticsError] = useState("");
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
 
   const [error, setError] = useState("");
@@ -1753,6 +1792,12 @@ export default function AdminPage() {
   }, [checkingAuth, currentOrganizationId]);
 
   useEffect(() => {
+    if (!checkingAuth && currentOrganizationId && activeSection === "notifications") {
+      void loadPushDiagnostics();
+    }
+  }, [checkingAuth, currentOrganizationId, activeSection]);
+
+  useEffect(() => {
     if (checkingAuth || !currentOrganizationId) return;
 
     trackFeatureUsage({
@@ -2058,6 +2103,63 @@ export default function AdminPage() {
       return next;
     });
     setAdminDataLoaded(true);
+  }
+
+  async function loadPushDiagnostics() {
+    if (!currentOrganizationId) {
+      setPushDiagnostics(null);
+      return;
+    }
+
+    setPushDiagnosticsLoading(true);
+    setPushDiagnosticsError("");
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        setPushDiagnosticsError("No active admin session was found.");
+        return;
+      }
+
+      const response = await fetch(
+        `/api/admin/push-diagnostics?organizationId=${encodeURIComponent(currentOrganizationId)}`,
+        {
+          cache: "no-store",
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        }
+      );
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || !payload?.ok) {
+        setPushDiagnosticsError(payload?.error || "Could not load push diagnostics.");
+        return;
+      }
+
+      setPushDiagnostics({
+        generatedAt: payload.generatedAt,
+        environment: payload.environment || {},
+        totals: payload.totals || {
+          active: 0,
+          disabled: 0,
+          androidActive: 0,
+          appleActive: 0,
+          desktopActive: 0,
+          unknownActive: 0,
+        },
+        portals: payload.portals || [],
+      });
+    } catch (diagnosticsError) {
+      setPushDiagnosticsError(
+        diagnosticsError instanceof Error ? diagnosticsError.message : "Could not load push diagnostics."
+      );
+    } finally {
+      setPushDiagnosticsLoading(false);
+    }
   }
 
   async function loadData() {
@@ -8795,6 +8897,13 @@ This removes its linked members and deletes the grounds account.`
       green: "border-[#bbdfc0] bg-[#f0fbf2] text-[#236b30]",
       purple: "border-[#ddd6fe] bg-[#f5f3ff] text-[#6d28d9]",
     };
+    const pushPortalLabels: Record<PushDiagnosticsPortal["portal"], string> = {
+      admin: "Admin",
+      cleaner: "Cleaner",
+      grounds: "Grounds",
+      owner: "Owner",
+    };
+    const pushPortals = pushDiagnostics?.portals || [];
 
     return (
       <div className="space-y-6">
@@ -8871,6 +8980,106 @@ This removes its linked members and deletes the grounds account.`
                 </div>
               ))
             )}
+          </div>
+        </section>
+
+        <section className="rounded-[30px] border border-[#dbeafe] bg-[linear-gradient(180deg,#f8fbff_0%,#eef6ff_100%)] p-5 shadow-[0_18px_45px_rgba(59,130,246,0.08)]">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#2563eb]">Push Diagnostics</p>
+              <h3 className="mt-2 text-xl font-semibold tracking-tight text-[#1e3a8a]">Installed app alerts</h3>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-[#475569]">
+                Shows which portals have active push devices registered for this organization.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void loadPushDiagnostics()}
+              disabled={pushDiagnosticsLoading}
+              className="rounded-full border border-[#bfdbfe] bg-white px-4 py-2 text-sm font-semibold text-[#1d4ed8] transition hover:bg-[#eff6ff] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {pushDiagnosticsLoading ? "Checking..." : "Check devices"}
+            </button>
+          </div>
+
+          {pushDiagnosticsError ? (
+            <div className="mt-4 rounded-[18px] border border-[#fecaca] bg-[#fff1f2] px-4 py-3 text-sm text-[#b91c1c]">
+              {pushDiagnosticsError}
+            </div>
+          ) : null}
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {[
+              { label: "Active devices", value: pushDiagnostics?.totals.active ?? 0 },
+              { label: "Android", value: pushDiagnostics?.totals.androidActive ?? 0 },
+              { label: "Apple", value: pushDiagnostics?.totals.appleActive ?? 0 },
+              { label: "Desktop", value: pushDiagnostics?.totals.desktopActive ?? 0 },
+            ].map((stat) => (
+              <div key={stat.label} className="rounded-[20px] border border-[#bfdbfe] bg-white px-4 py-3 text-[#1e3a8a] shadow-sm">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">{stat.label}</div>
+                <div className="mt-2 text-3xl font-semibold">{stat.value}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+            {(pushPortals.length > 0 ? pushPortals : (["admin", "cleaner", "grounds", "owner"] as PushDiagnosticsPortal["portal"][]).map((portal) => ({
+              portal,
+              activeCount: 0,
+              disabledCount: 0,
+              androidActive: 0,
+              appleActive: 0,
+              desktopActive: 0,
+              unknownActive: 0,
+              devices: [],
+            }))).map((portal) => (
+              <div key={portal.portal} className="rounded-[20px] border border-[#bfdbfe] bg-white p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h4 className="font-semibold text-[#1e3a8a]">{pushPortalLabels[portal.portal]}</h4>
+                  <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                    portal.activeCount > 0
+                      ? "border-[#bbdfc0] bg-[#f0fbf2] text-[#236b30]"
+                      : "border-[#e5e7eb] bg-[#f8fafc] text-[#64748b]"
+                  }`}>
+                    {portal.activeCount} active
+                  </span>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
+                  <span className="rounded-full border border-[#dbeafe] bg-[#eff6ff] px-2.5 py-1 text-[#1d4ed8]">
+                    Android {portal.androidActive}
+                  </span>
+                  <span className={`rounded-full border px-2.5 py-1 ${
+                    portal.appleActive > 0
+                      ? "border-[#bbdfc0] bg-[#f0fbf2] text-[#236b30]"
+                      : "border-[#e5e7eb] bg-[#f8fafc] text-[#64748b]"
+                  }`}>
+                    Apple {portal.appleActive}
+                  </span>
+                  <span className="rounded-full border border-[#dbeafe] bg-[#eff6ff] px-2.5 py-1 text-[#1d4ed8]">
+                    Desktop {portal.desktopActive}
+                  </span>
+                </div>
+                <div className="mt-3 space-y-2">
+                  {portal.devices.filter((device) => device.status === "active").slice(0, 3).map((device) => (
+                    <div key={device.id} className="rounded-[14px] border border-[#e2e8f0] bg-[#f8fafc] px-3 py-2 text-xs text-[#475569]">
+                      <div className="font-semibold text-[#334155]">{device.deviceLabel}</div>
+                      <div className="mt-0.5">Last seen: {formatDateTime(device.lastSeenAt || device.updatedAt)}</div>
+                      <div className="mt-0.5 truncate">{device.endpointHost || "Endpoint host unknown"}</div>
+                    </div>
+                  ))}
+                  {portal.activeCount === 0 ? (
+                    <div className="rounded-[14px] border border-dashed border-[#cbd5e1] bg-[#f8fafc] px-3 py-3 text-xs text-[#64748b]">
+                      No active installed-app alert devices yet.
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 rounded-[18px] border border-[#bfdbfe] bg-white px-4 py-3 text-sm leading-6 text-[#475569]">
+            VAPID public key: {pushDiagnostics?.environment.publicKeyValid ? "valid" : "not confirmed"}.
+            Apple devices should appear here after an iPhone or iPad opens the Home Screen app and enables alerts.
           </div>
         </section>
 

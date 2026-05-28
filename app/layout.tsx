@@ -19,11 +19,20 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Estate of Mind Portal",
   description: "Cleaner scheduling and STR operations portal",
+  appleWebApp: {
+    capable: true,
+    title: "Gulera OS",
+    statusBarStyle: "black-translucent",
+  },
+  icons: {
+    apple: "/gulera-pwa-icon-192.png?v=2",
+  },
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  themeColor: "#0f0d0a",
 };
 
 export default function RootLayout({
