@@ -214,6 +214,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Cleaner account was not found in this organization." }, { status: 404 });
     }
 
+    const { data: assignment, error: assignmentError } = await service
+      .from("property_cleaner_account_assignments")
+      .select("id")
+      .eq("property_id", job.property_id)
+      .eq("cleaner_account_id", cleanerAccountId)
+      .maybeSingle();
+
+    if (assignmentError) {
+      return NextResponse.json({ error: assignmentError.message }, { status: 500 });
+    }
+
+    if (!assignment) {
+      return NextResponse.json(
+        { error: "That cleaner is not assigned to this property. Add them on the Assignments tab first." },
+        { status: 400 }
+      );
+    }
+
     const { data: slot, error: slotError } = await service
       .from("turnover_job_slots")
       .select("id, slot_number")

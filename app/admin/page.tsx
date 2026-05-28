@@ -4132,10 +4132,8 @@ export default function AdminPage() {
     setError("");
     setActionMessage("");
 
-    let assignmentResult: any = null;
-
     try {
-      assignmentResult = await saveTeamAssignment({
+      await saveTeamAssignment({
         kind: "cleaner",
         propertyId: assignmentPropertyId,
         accountId: assignmentCleanerProfileId,
@@ -4149,21 +4147,7 @@ export default function AdminPage() {
     setAssignmentPropertyId("");
     setAssignmentCleanerProfileId("");
     setAssignmentPriority("1");
-    const repair = assignmentResult?.cleanerOfferRepair;
-    const offeredCount = Array.isArray(repair?.offeredSlotIds) ? repair.offeredSlotIds.length : 0;
-    const sentCount = Number(repair?.notificationResult?.sent ?? 0);
-    const notificationErrors = Array.isArray(repair?.notificationResult?.errors)
-      ? repair.notificationResult.errors
-      : [];
-    setActionMessage(
-      notificationErrors.length > 0
-        ? "Cleaner assigned to property. Existing job offers were created, but email notification needs attention."
-        : sentCount > 0
-          ? `Cleaner assigned to property. ${sentCount} offer email${sentCount === 1 ? "" : "s"} sent.`
-          : offeredCount > 0
-            ? "Cleaner assigned to property. Existing stranded jobs were offered."
-            : "Cleaner assigned to property."
-    );
+    setActionMessage("Cleaner assigned to property. Existing jobs were left unchanged so you can choose Training Rotation or reassign them manually.");
     await loadData();
   }
 
@@ -4649,6 +4633,15 @@ export default function AdminPage() {
       return;
     }
 
+    const job = strandedJobs.find((item) => item.id === jobId) || jobs.find((item) => item.id === jobId);
+    const cleanerIsAssignedToProperty = getCleanerAccountsForProperty(job?.property_id || null).some(
+      (account) => account.id === cleanerAccountId
+    );
+    if (!cleanerIsAssignedToProperty) {
+      setError("That cleaner is not assigned to this property. Add them on the Assignments tab first.");
+      return;
+    }
+
     const slot = jobSlots
       .filter((x) => x.job_id === jobId)
       .sort((a, b) => a.slot_number - b.slot_number)
@@ -4876,6 +4869,14 @@ export default function AdminPage() {
     const cleanerAccountId = reassignSelections[jobId];
     if (!cleanerAccountId) {
       setError("Please select a cleaner account before reassigning.");
+      return;
+    }
+    const job = jobs.find((item) => item.id === jobId);
+    const cleanerIsAssignedToProperty = getCleanerAccountsForProperty(job?.property_id || null).some(
+      (account) => account.id === cleanerAccountId
+    );
+    if (!cleanerIsAssignedToProperty) {
+      setError("That cleaner is not assigned to this property. Add them on the Assignments tab first.");
       return;
     }
     const slot = getNextOpenSlot(jobId);
@@ -6361,6 +6362,14 @@ This removes its linked members and deletes the grounds account.`
         return account?.active !== false;
       })
       .sort((a, b) => a.priority - b.priority);
+  }
+
+  function getCleanerAccountsForProperty(propertyId: string | null) {
+    if (!propertyId) return [];
+
+    return getCleanerAssignmentsForProperty(propertyId)
+      .map((assignment) => cleanerAccounts.find((account) => account.id === assignment.cleaner_account_id) || null)
+      .filter((account): account is CleanerAccount => !!account);
   }
 
   function getTrainingRotationOrder(property: Property | null | undefined) {
@@ -16295,6 +16304,7 @@ This removes its linked members and deletes the grounds account.`
             {visibleJobs.map((job) => {
               const slots = jobSlotsByJobId[job.id] ?? [];
               const acceptedCount = slots.filter((slot) => slot.status === "accepted").length;
+              const propertyCleanerAccounts = getCleanerAccountsForProperty(job.property_id);
 
               return (
                 <div
@@ -16357,7 +16367,12 @@ This removes its linked members and deletes the grounds account.`
                           }
                         >
                           <option value="">Select cleaner account</option>
-                          {cleanerAccounts.map((account) => (
+                          {propertyCleanerAccounts.length === 0 ? (
+                            <option value="" disabled>
+                              No cleaners assigned to this property
+                            </option>
+                          ) : null}
+                          {propertyCleanerAccounts.map((account) => (
                             <option key={account.id} value={account.id}>
                               {account.display_name || "Unnamed cleaner account"}
                             </option>
@@ -16370,7 +16385,7 @@ This removes its linked members and deletes the grounds account.`
                             e.stopPropagation();
                             void reassignOpenJob(job.id);
                           }}
-                          disabled={reassigningJobId === job.id}
+                          disabled={reassigningJobId === job.id || propertyCleanerAccounts.length === 0}
                         >
                           {reassigningJobId === job.id ? "Reassigning..." : "Reassign next open slot"}
                         </button>
@@ -16419,6 +16434,7 @@ This removes its linked members and deletes the grounds account.`
               {filteredStrandedJobs.map((job) => {
                 const slots = jobSlotsByJobId[job.id] ?? [];
                 const remainingMs = getActiveCountdownMs(job.id);
+                const propertyCleanerAccounts = getCleanerAccountsForProperty(job.property_id);
 
                 return (
                   <div key={job.id} className="rounded-[22px] border border-[#f0d0d0] bg-white px-4 py-4 shadow-sm">
@@ -16449,7 +16465,12 @@ This removes its linked members and deletes the grounds account.`
                           }
                         >
                           <option value="">Select cleaner account</option>
-                          {cleanerAccounts.map((account) => (
+                          {propertyCleanerAccounts.length === 0 ? (
+                            <option value="" disabled>
+                              No cleaners assigned to this property
+                            </option>
+                          ) : null}
+                          {propertyCleanerAccounts.map((account) => (
                             <option key={account.id} value={account.id}>
                               {account.display_name || "Unnamed cleaner account"}
                             </option>
@@ -16459,7 +16480,7 @@ This removes its linked members and deletes the grounds account.`
                         <button
                           className="mt-3 w-full rounded-full bg-[#7e1f1f] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#6a1717] disabled:opacity-60"
                           onClick={() => void reassignStrandedJob(job.id)}
-                          disabled={reassigningJobId === job.id}
+                          disabled={reassigningJobId === job.id || propertyCleanerAccounts.length === 0}
                         >
                           {reassigningJobId === job.id ? "Reassigning..." : "Reassign Stranded Job"}
                         </button>
