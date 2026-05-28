@@ -94,36 +94,35 @@ function getErrorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
-async function sendChatMessage(conversationId: string, body: string) {
+async function notifyChatPush(messageId: string) {
   const {
     data: { session },
   } = await supabase.auth.getSession();
 
   if (!session?.access_token) {
-    throw new Error("Missing auth token for chat message.");
+    return { ok: false, sent: 0, errors: ["Missing auth token for push notification."] };
   }
 
-  const response = await fetch("/api/chat/message", {
+  const response = await fetch("/api/chat/push", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${session.access_token}`,
     },
-    body: JSON.stringify({ conversationId, body }),
+    body: JSON.stringify({ messageId }),
   });
   const payload = await response.json().catch(() => null);
 
-  if (!response.ok || payload?.ok === false) {
-    throw new Error(payload?.error || "Could not send chat message.");
-  }
-
   return {
-    message: payload?.message || null,
-    push: {
-      ok: payload?.push?.ok !== false,
-      sent: Number(payload?.push?.sent || 0),
-      errors: Array.isArray(payload?.push?.errors) ? payload.push.errors : [],
-    },
+    ok: response.ok && payload?.ok !== false,
+    sent: Number(payload?.sent || 0),
+    errors: Array.isArray(payload?.errors)
+      ? payload.errors
+      : payload?.error
+        ? [String(payload.error)]
+        : response.ok
+          ? []
+          : ["Push notification failed."],
   };
 }
 
@@ -512,10 +511,23 @@ export default function PortalChat({
     setError("");
 
     try {
-      const result = await sendChatMessage(selectedConversation.id, body);
+      const { data: insertedMessage, error: insertError } = await supabase
+        .from("chat_messages")
+        .insert({
+          organization_id: selectedConversation.organization_id,
+          conversation_id: selectedConversation.id,
+          sender_profile_id: ownProfileId,
+          body,
+        })
+        .select("id")
+        .single();
+
+      if (insertError) throw insertError;
+
       setReplyBody("");
-      if (result.push && !result.push.ok) {
-        setError(`Reply sent, but push notification failed: ${result.push.errors.join(" ")}`);
+      const pushResult = insertedMessage?.id ? await notifyChatPush(insertedMessage.id) : null;
+      if (pushResult && !pushResult.ok) {
+        setError(`Reply sent, but push notification failed: ${pushResult.errors.join(" ")}`);
       }
       await loadChat();
     } catch (err) {
