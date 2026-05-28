@@ -67,6 +67,7 @@ type PortalChatProps = {
   title?: string;
   subtitle?: string;
   className?: string;
+  targetConversationId?: string;
   onUnreadCountChange?: (count: number) => void;
   onConversationRead?: (conversationId: string, readAt: string) => void;
 };
@@ -155,6 +156,7 @@ export default function PortalChat({
   title = "Chat",
   subtitle = "Chat with property management without sending an email for every reply.",
   className = "",
+  targetConversationId = "",
   onUnreadCountChange,
   onConversationRead,
 }: PortalChatProps) {
@@ -265,16 +267,18 @@ export default function PortalChat({
       setMessages((messageResult.data || []) as ChatMessageRow[]);
       setHiddenItems(hiddenResult.error ? [] : ((hiddenResult.data || []) as ChatHiddenItemRow[]));
       setSelectedConversationId((current) =>
-        current && loadedConversations.some((conversation) => conversation.id === current)
-          ? current
-          : loadedConversations[0]?.id || ""
+        targetConversationId && loadedConversations.some((conversation) => conversation.id === targetConversationId)
+          ? targetConversationId
+          : current && loadedConversations.some((conversation) => conversation.id === current)
+            ? current
+            : loadedConversations[0]?.id || ""
       );
     } catch (err) {
       setError(getErrorMessage(err, "Could not load chat yet. Make sure the chat SQL has been run."));
     } finally {
       setLoading(false);
     }
-  }, [participantOwnerAccountId, participantProfileId, participantType]);
+  }, [participantOwnerAccountId, participantProfileId, participantType, targetConversationId]);
 
   useEffect(() => {
     void loadChat();
@@ -439,6 +443,12 @@ export default function PortalChat({
     if (!activeConversationId) return;
     void markConversationRead(activeConversationId);
   }, [activeConversationId, selectedMessages.length]);
+
+  useEffect(() => {
+    if (!targetConversationId) return;
+    if (!visibleConversations.some((conversation) => conversation.id === targetConversationId)) return;
+    setSelectedConversationId(targetConversationId);
+  }, [targetConversationId, visibleConversations]);
 
   useEffect(() => {
     onUnreadCountChange?.(unreadCount);

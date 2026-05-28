@@ -579,6 +579,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
   const [jobsCollapsed, setJobsCollapsed] = useState(true);
   const [now, setNow] = useState(() => new Date());
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
+  const [targetChatConversationId, setTargetChatConversationId] = useState("");
 
   const hasAutoSelectedInitialJob = useRef(false);
   const realtimeRefreshTimeoutRef = useRef<number | null>(null);
@@ -1482,6 +1483,18 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     chatSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const conversationId = params.get("conversationId")?.trim() || "";
+    if (conversationId) {
+      setTargetChatConversationId(conversationId);
+    }
+    if (params.get("open") === "chat") {
+      window.setTimeout(() => scrollToChatSection(), 250);
+    }
+  }, []);
+
   const viewProps: CleanerViewProps = {
     loading,
     signingOut,
@@ -1580,6 +1593,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
               }}
               title="Cleaner Chat"
               subtitle="Read and reply to chat from property management without email notifications for every message."
+              targetConversationId={targetChatConversationId}
               onUnreadCountChange={setChatUnreadCount}
             />
           </div>

@@ -157,9 +157,10 @@ function getGroundsJobTypeLabel(jobType: string | null | undefined) {
   }
 }
 
-function getPortalUrl(kind: JobNotificationKind, origin: string) {
+function getPortalUrl(kind: JobNotificationKind, origin: string, slotId?: string | null) {
   const url = new URL("/login", origin);
   url.searchParams.set("portal", kind);
+  if (slotId) url.searchParams.set("slotId", slotId);
   return url.toString();
 }
 
@@ -631,7 +632,7 @@ async function loadJobCancellationBundle(
 }
 
 function buildEmailCopy(bundle: SlotBundle, mode: JobNotificationMode, origin: string) {
-  const portalUrl = getPortalUrl(bundle.kind, origin);
+  const portalUrl = getPortalUrl(bundle.kind, origin, bundle.slotId);
   const dateLabel = formatDateLabel(bundle.jobDate);
   const deadlineLabel = formatDateTimeLabel(bundle.expiresAt);
   const kindLabel = bundle.kind === "cleaner" ? "cleaning" : "grounds";

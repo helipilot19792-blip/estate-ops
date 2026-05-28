@@ -205,12 +205,18 @@ export async function POST(request: NextRequest) {
     const deliveries: unknown[] = [];
     const senderLabel = senderParticipant?.display_name || senderParticipant?.email || "Gulera OS";
     const summary = trimBody(message.body);
+    const chatTargetByPortal = {
+      owner: `/owner?tab=chat&conversationId=${encodeURIComponent(message.conversation_id)}`,
+      admin: `/admin?open=chat&conversationId=${encodeURIComponent(message.conversation_id)}`,
+      cleaner: `/cleaner?open=chat&conversationId=${encodeURIComponent(message.conversation_id)}`,
+      grounds: `/grounds?open=chat&conversationId=${encodeURIComponent(message.conversation_id)}`,
+    } satisfies Record<PushPortal, string>;
 
     for (const [portal, profileIds] of recipientsByPortal.entries()) {
       const result = await sendStaffPushNotifications(portal, [...profileIds], {
         title: `New chat from ${senderLabel}`,
         body: summary || "Open Gulera OS to read the message.",
-        url: portal === "owner" ? "/owner?tab=chat" : portal === "admin" ? "/admin?open=chat" : `/${portal}`,
+        url: chatTargetByPortal[portal],
         tag: `chat-${message.conversation_id}-${message.id}`,
       });
 

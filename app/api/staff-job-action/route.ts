@@ -135,7 +135,7 @@ async function sendCleanerProgressPush(
   const result = await sendStaffPushNotifications("admin", profileIds, {
     title: `Cleaner ${verb} a job`,
     body: `${cleanerName} ${verb} the cleaning job for ${propertyName}.`,
-    url: `${origin}/admin?open=jobs`,
+    url: `${origin}/admin?open=jobs&jobId=${encodeURIComponent(jobId)}`,
     tag,
   });
 

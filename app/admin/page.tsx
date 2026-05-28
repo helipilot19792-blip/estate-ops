@@ -1788,12 +1788,32 @@ export default function AdminPage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const open = new URLSearchParams(window.location.search).get("open");
+    const params = new URLSearchParams(window.location.search);
+    const open = params.get("open");
+    const conversationId = params.get("conversationId")?.trim() || "";
 
     if (open === "add-property") {
       setActiveSection("properties");
     }
+    if (open === "chat") {
+      setActiveSection("chat");
+      if (conversationId) setSelectedChatConversationId(conversationId);
+    }
+    if (open === "jobs") {
+      setActiveSection("jobs");
+    }
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || activeSection !== "chat") return;
+
+    const conversationId = new URLSearchParams(window.location.search).get("conversationId")?.trim() || "";
+    if (!conversationId) return;
+    if (selectedChatConversationId === conversationId) return;
+    if (!chatConversations.some((conversation) => conversation.id === conversationId)) return;
+
+    setSelectedChatConversationId(conversationId);
+  }, [activeSection, chatConversations, selectedChatConversationId]);
   useEffect(() => {
     if (!checkingAuth && currentOrganizationId) {
       void loadData();

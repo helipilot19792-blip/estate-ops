@@ -971,6 +971,7 @@ export default function OwnerPage() {
   const [ownerChatParticipants, setOwnerChatParticipants] = useState<OwnerChatParticipantRow[]>([]);
   const [ownerChatMessages, setOwnerChatMessages] = useState<OwnerChatMessageRow[]>([]);
   const [ownerChatUnreadCount, setOwnerChatUnreadCount] = useState(0);
+  const [targetChatConversationId, setTargetChatConversationId] = useState("");
 
   const formatOwnerDateLabel = (dateString: string | null | undefined) =>
     formatDateLabel(dateString, locale, t("ownerPortal.overview.notScheduled"));
@@ -1437,8 +1438,12 @@ export default function OwnerPage() {
 
     const params = new URLSearchParams(window.location.search);
     const tabFromUrl = params.get("tab");
+    const conversationId = params.get("conversationId")?.trim() || "";
     if (tabFromUrl === "overview" || tabFromUrl === "calendar" || tabFromUrl === "insights" || tabFromUrl === "invoices" || tabFromUrl === "chat") {
       setActiveOwnerTab(tabFromUrl);
+    }
+    if (conversationId) {
+      setTargetChatConversationId(conversationId);
     }
   }, []);
 
@@ -2981,6 +2986,7 @@ export default function OwnerPage() {
             }
             title={t("ownerPortal.chat.title")}
             subtitle={t("ownerPortal.chat.subtitle")}
+            targetConversationId={targetChatConversationId}
             onUnreadCountChange={setOwnerChatUnreadCount}
             onConversationRead={handleOwnerChatConversationRead}
           />
