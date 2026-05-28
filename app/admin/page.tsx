@@ -6014,10 +6014,6 @@ This removes its linked members and deletes the grounds account.`
     setSavingCalendars(true);
 
     try {
-      const existingRows = propertyCalendars.filter(
-        (x) => x.property_id === selectedPropertyId
-      );
-
       const normalizedRows = calendarRowsDraft
         .map((row) => ({
           id: row.id,
@@ -6039,45 +6035,36 @@ This removes its linked members and deletes the grounds account.`
         }
       }
 
-      const draftIds = new Set(
-        normalizedRows
-          .map((row) => row.id)
-          .filter((id): id is string => typeof id === "string" && id.length > 0)
-      );
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
 
-      const rowsToDelete = existingRows.filter((row) => !draftIds.has(row.id));
-
-      if (rowsToDelete.length > 0) {
-        const { error } = await supabase
-          .from("property_calendars")
-          .delete()
-          .in("id", rowsToDelete.map((row) => row.id));
-
-        if (error) throw error;
+      if (sessionError || !session?.access_token) {
+        throw new Error("Could not verify your admin session.");
       }
 
-      for (const row of normalizedRows) {
-        if (row.id) {
-          const { error } = await supabase
-            .from("property_calendars")
-            .update({
-              source: row.source,
-              ical_url: row.ical_url,
-              is_active: row.is_active,
-            })
-            .eq("id", row.id);
+      if (!currentOrganizationId) {
+        throw new Error("No organization selected.");
+      }
 
-          if (error) throw error;
-        } else {
-          const { error } = await supabase.from("property_calendars").insert({
-            property_id: selectedPropertyId,
-            source: row.source,
-            ical_url: row.ical_url,
-            is_active: row.is_active,
-          });
+      const response = await fetch("/api/admin/property-calendars", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          organizationId: currentOrganizationId,
+          propertyId: selectedPropertyId,
+          calendars: normalizedRows,
+        }),
+      });
 
-          if (error) throw error;
-        }
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || "Could not save calendars.");
       }
 
       setCalendarDraftDirty(false);
