@@ -4052,7 +4052,19 @@ export default function AdminPage() {
     const assignedCount = Math.min(slotRows.length, rotationOrder.length);
     if (assignedCount === 0) return;
 
-    const nowIso = new Date().toISOString();
+    const { data: job, error: jobError } = await supabase
+      .from("turnover_jobs")
+      .select("scheduled_for, notes")
+      .eq("id", jobId)
+      .maybeSingle();
+
+    if (jobError) throw jobError;
+
+    const now = new Date();
+    const nowIso = now.toISOString();
+    const jobDate = job?.scheduled_for || extractCheckoutDate(job?.notes || null);
+    const responseHours = getResponseWindowHours(jobDate, now);
+    const expiresAt = new Date(now.getTime() + responseHours * 60 * 60 * 1000).toISOString();
     for (let index = 0; index < assignedCount; index += 1) {
       const { error: slotUpdateError } = await supabase
         .from("turnover_job_slots")
@@ -4060,6 +4072,7 @@ export default function AdminPage() {
           cleaner_account_id: rotationOrder[index].cleaner_account_id,
           status: "offered",
           offered_at: nowIso,
+          expires_at: expiresAt,
           accepted_at: null,
           declined_at: null,
           accepted_by_profile_id: null,
@@ -4067,6 +4080,9 @@ export default function AdminPage() {
           offer_email_sent_at: null,
           offer_reminder_sent_at: null,
           day_of_reminder_sent_at: null,
+          offer_push_sent_at: null,
+          offer_reminder_push_sent_at: null,
+          day_of_reminder_push_sent_at: null,
         })
         .eq("id", slotRows[index].id);
 

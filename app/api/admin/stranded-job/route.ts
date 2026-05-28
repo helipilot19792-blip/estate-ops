@@ -247,6 +247,9 @@ export async function POST(request: NextRequest) {
         offer_email_sent_at: null,
         offer_reminder_sent_at: null,
         day_of_reminder_sent_at: null,
+        offer_push_sent_at: null,
+        offer_reminder_push_sent_at: null,
+        day_of_reminder_push_sent_at: null,
       })
       .eq("id", slot.id)
       .select("id")

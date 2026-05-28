@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 import { sendStaffPushNotifications } from "@/lib/server/staff-push-notifications";
 import { createJobEmailActionUrl } from "@/lib/server/job-email-actions";
+import { processExpiredCleanerTrainingOffers } from "@/lib/server/cleaner-training-rotation";
 
 export type JobNotificationKind = "cleaner" | "grounds";
 type JobNotificationMode = "offer" | "offer_reminder" | "day_of";
@@ -1104,7 +1105,41 @@ async function runSlotNotificationSweep(
   };
 }
 
+async function runOfferDigestEmailSweep(kind: JobNotificationKind, origin: string) {
+  const service = getServiceClient();
+  const slotTable = getSlotTable(kind);
+  const accountIdColumn = getAccountIdColumn(kind);
+
+  const { data: rows, error } = await (service
+    .from(slotTable as any)
+    .select(`id, ${accountIdColumn}`)
+    .eq("status", "offered")
+    .not(accountIdColumn, "is", null)
+    .is("offer_email_sent_at", null)) as any;
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const slotIds = (rows ?? []).map((row: any) => row.id).filter(Boolean);
+  if (slotIds.length === 0) {
+    return { sent: 0, skipped: 0, digestsSent: 0, slotsMarkedSent: 0, errors: [] as string[], considered: 0 };
+  }
+
+  return sendJobOfferDigestEmailForSlots(kind, slotIds, origin);
+}
+
 export async function sendScheduledJobNotificationEmails(origin: string) {
+  const service = getServiceClient();
+  const expiredTrainingOffers = await processExpiredCleanerTrainingOffers(service);
+  const expiredTrainingOfferNotifications =
+    expiredTrainingOffers.offeredSlotIds.length > 0
+      ? await sendJobOfferDigestEmailForSlots("cleaner", expiredTrainingOffers.offeredSlotIds, origin, {
+          subjectPrefix: "New",
+        })
+      : null;
+  const cleanerOfferDigests = await runOfferDigestEmailSweep("cleaner", origin);
+  const groundsOfferDigests = await runOfferDigestEmailSweep("grounds", origin);
   const cleanerOffers = await runSlotNotificationSweep("cleaner", "offer", origin);
   const groundsOffers = await runSlotNotificationSweep("grounds", "offer", origin);
   const cleanerReminders = await runSlotNotificationSweep("cleaner", "offer_reminder", origin);
@@ -1113,6 +1148,12 @@ export async function sendScheduledJobNotificationEmails(origin: string) {
   const groundsDayOf = await runSlotNotificationSweep("grounds", "day_of", origin);
 
   return {
+    expiredTrainingOffers: {
+      ...expiredTrainingOffers,
+      notificationResult: expiredTrainingOfferNotifications,
+    },
+    cleanerOfferDigests,
+    groundsOfferDigests,
     cleanerOffers,
     groundsOffers,
     cleanerReminders,

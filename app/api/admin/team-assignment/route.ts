@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { sendJobOfferEmailsForSlots } from "@/lib/server/job-notifications";
+import { sendJobOfferDigestEmailForSlots } from "@/lib/server/job-notifications";
 
 export const dynamic = "force-dynamic";
 
@@ -163,6 +163,9 @@ async function offerOpenCleanerSlotsForProperty(
         offer_email_sent_at: null,
         offer_reminder_sent_at: null,
         day_of_reminder_sent_at: null,
+        offer_push_sent_at: null,
+        offer_reminder_push_sent_at: null,
+        day_of_reminder_push_sent_at: null,
       })
       .eq("id", slot.id);
 
@@ -182,7 +185,7 @@ async function offerOpenCleanerSlotsForProperty(
     await refreshCleanerJobStaffing(serviceClient, jobId);
   }
 
-  const notificationResult = await sendJobOfferEmailsForSlots("cleaner", offeredSlotIds, origin, {
+  const notificationResult = await sendJobOfferDigestEmailForSlots("cleaner", offeredSlotIds, origin, {
     allowedOrganizationIds: new Set([organizationId]),
   });
 

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendStaffPushNotifications } from "@/lib/server/staff-push-notifications";
+import { sendJobOfferEmailsForSlots } from "@/lib/server/job-notifications";
+import { reofferExpiredCleanerTrainingSlot } from "@/lib/server/cleaner-training-rotation";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -299,6 +301,14 @@ export async function POST(request: NextRequest) {
     }
 
     await refreshCleanerJobStaffing(service, updatedSlot.job_id);
+    const trainingReoffer =
+      action === "decline"
+        ? await reofferExpiredCleanerTrainingSlot(service, updatedSlot.id, user.id)
+        : { offeredSlotIds: [] as string[] };
+    const trainingReofferNotification =
+      trainingReoffer.offeredSlotIds.length > 0
+        ? await sendJobOfferEmailsForSlots("cleaner", trainingReoffer.offeredSlotIds, request.nextUrl.origin)
+        : null;
     const progressPush =
       action === "start" || action === "finish"
         ? await sendCleanerProgressPush(
@@ -314,6 +324,8 @@ export async function POST(request: NextRequest) {
       ok: true,
       action,
       slot: updatedSlot,
+      trainingReoffer,
+      trainingReofferNotification,
       progressPush,
     });
   } catch (error) {

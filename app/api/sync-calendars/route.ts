@@ -1,8 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
 import {
   sendJobCancellationNotificationsForJobs,
-  sendJobOfferEmailsForSlots,
+  sendJobOfferDigestEmailForSlots,
 } from "@/lib/server/job-notifications";
+import { applyCleanerTrainingRotationToJob as applyServerCleanerTrainingRotationToJob } from "@/lib/server/cleaner-training-rotation";
 
 export const dynamic = "force-dynamic";
 
@@ -419,88 +420,7 @@ async function loadPropertiesMap(organizationIds?: string[] | null) {
 
 async function applyCleanerTrainingRotationToJob(jobId: string, property: PropertyRow) {
   if (property.cleaner_assignment_mode !== "training_rotation") return;
-
-  const { data: assignmentRows, error: assignmentError } = await supabase
-    .from("property_cleaner_account_assignments")
-    .select("id, cleaner_account_id, priority")
-    .eq("property_id", property.id)
-    .order("priority", { ascending: true });
-
-  if (assignmentError) throw assignmentError;
-
-  const assignments = assignmentRows ?? [];
-  if (assignments.length < 2) return;
-
-  const accountIds = assignments.map((assignment: any) => assignment.cleaner_account_id).filter(Boolean);
-  const { data: accountRows, error: accountError } = await supabase
-    .from("cleaner_accounts")
-    .select("id, active")
-    .in("id", accountIds);
-
-  if (accountError) throw accountError;
-
-  const activeAccountIds = new Set(
-    (accountRows ?? [])
-      .filter((account: any) => account.active !== false)
-      .map((account: any) => account.id)
-  );
-  const activeAssignments = assignments.filter((assignment: any) =>
-    activeAccountIds.has(assignment.cleaner_account_id)
-  );
-
-  if (activeAssignments.length < 2) return;
-
-  const startIndex = property.cleaner_rotation_next_cleaner_account_id
-    ? activeAssignments.findIndex(
-        (assignment: any) => assignment.cleaner_account_id === property.cleaner_rotation_next_cleaner_account_id
-      )
-    : -1;
-  const rotationOrder =
-    startIndex > 0
-      ? [...activeAssignments.slice(startIndex), ...activeAssignments.slice(0, startIndex)]
-      : activeAssignments;
-
-  const { data: slots, error: slotsError } = await supabase
-    .from("turnover_job_slots")
-    .select("id, slot_number")
-    .eq("job_id", jobId)
-    .order("slot_number", { ascending: true });
-
-  if (slotsError) throw slotsError;
-
-  const slotRows = slots ?? [];
-  const assignedCount = Math.min(slotRows.length, rotationOrder.length);
-  if (assignedCount === 0) return;
-
-  const nowIso = new Date().toISOString();
-  for (let index = 0; index < assignedCount; index += 1) {
-    const { error: slotUpdateError } = await supabase
-      .from("turnover_job_slots")
-      .update({
-        cleaner_account_id: rotationOrder[index].cleaner_account_id,
-        status: "offered",
-        offered_at: nowIso,
-        accepted_at: null,
-        declined_at: null,
-        accepted_by_profile_id: null,
-        declined_by_profile_id: null,
-        offer_email_sent_at: null,
-        offer_reminder_sent_at: null,
-        day_of_reminder_sent_at: null,
-      })
-      .eq("id", slotRows[index].id);
-
-    if (slotUpdateError) throw slotUpdateError;
-  }
-
-  const nextAssignment = rotationOrder[assignedCount % rotationOrder.length];
-  const { error: propertyError } = await supabase
-    .from("properties")
-    .update({ cleaner_rotation_next_cleaner_account_id: nextAssignment.cleaner_account_id })
-    .eq("id", property.id)
-    .eq("organization_id", property.organization_id);
-
-  if (propertyError) throw propertyError;
+  await applyServerCleanerTrainingRotationToJob(supabase, jobId);
 }
 
 async function findSyncedJob(propertyId: string, marker: string): Promise<TurnoverJobRow | null> {
@@ -928,7 +848,7 @@ export async function POST(request: Request) {
             .not("cleaner_account_id", "is", null);
 
           if (!offerSlotsError && (offerSlots ?? []).length > 0) {
-            const notificationResult = await sendJobOfferEmailsForSlots(
+            const notificationResult = await sendJobOfferDigestEmailForSlots(
               "cleaner",
               (offerSlots ?? []).map((slot) => slot.id),
               new URL(request.url).origin
