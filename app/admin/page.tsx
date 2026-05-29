@@ -1827,6 +1827,16 @@ export default function AdminPage() {
   }, [checkingAuth, currentOrganizationId, activeSection]);
 
   useEffect(() => {
+    if (!actionMessage || error) return;
+
+    const timeout = window.setTimeout(() => {
+      setActionMessage((message) => (message === actionMessage ? "" : message));
+    }, 5000);
+
+    return () => window.clearTimeout(timeout);
+  }, [actionMessage, error]);
+
+  useEffect(() => {
     if (checkingAuth || !currentOrganizationId) return;
 
     trackFeatureUsage({
@@ -13364,133 +13374,165 @@ This removes its linked members and deletes the grounds account.`
                 <span className="text-xs font-medium text-[#8a7b68]">{invoiceTaxLabel}</span>
               </label>
 
-              <div className="mt-4 space-y-3">
-                {invoiceLineItems.map((item) => (
-                  <div key={item.id} className="rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] p-3">
-                    <div className="grid gap-2 md:grid-cols-[1fr_130px_110px_120px_auto] md:items-end">
-                      <label className="text-xs font-medium text-[#5f5245]">
-                        Description
-                        <input
-                          className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
-                          placeholder="Line item description"
-                          value={item.description}
-                          onChange={(e) => updateInvoiceLineItem(item.id, { description: e.target.value })}
-                        />
-                      </label>
-                      <label className="text-xs font-medium text-[#5f5245]">
-                        Category
-                        <select
-                          className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
-                          value={item.category}
-                          onChange={(e) => updateInvoiceLineItem(item.id, { category: e.target.value as OwnerInvoiceLineItem["category"] })}
-                        >
-                          <option value="turnover">Turnover</option>
-                          <option value="grounds">Grounds</option>
-                          <option value="expense">Expense</option>
-                          <option value="other">Other</option>
-                        </select>
-                      </label>
-                      <label className="text-xs font-medium text-[#5f5245]">
-                        Quantity
-                        <input
-                          type="number"
-                          min="0"
-                          step="1"
-                          className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
-                          value={item.quantity}
-                          onChange={(e) => updateInvoiceLineItem(item.id, { quantity: e.target.value })}
-                          onBlur={(e) => {
-                            const roundedQuantity = Math.max(1, Math.round(Number(e.target.value || 1)));
-                            updateInvoiceLineItem(item.id, { quantity: roundedQuantity });
-                          }}
-                        />
-                      </label>
-                      <label className="text-xs font-medium text-[#5f5245]">
-                        Rate
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
-                          value={item.rate}
-                          onFocus={() => {
-                            if (Number(item.rate || 0) === 0) {
-                              updateInvoiceLineItem(item.id, { rate: "" });
-                            }
-                          }}
-                          onChange={(e) => updateInvoiceLineItem(item.id, { rate: e.target.value })}
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => removeInvoiceLineItem(item.id)}
-                        className="rounded-full border border-[#efc6c6] bg-[#fff5f5] px-3 py-2 text-sm text-[#8a2e22]"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <span className="rounded-full border border-[#eadfce] bg-white px-3 py-1.5 text-xs font-semibold text-[#5f4c3b]">
-                        Line total: {formatCurrency(getLineItemTotal(item))}
-                      </span>
-                      <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-[#d8c7ab] bg-white px-3 py-1.5 text-xs font-medium text-[#5f4c3b] hover:bg-[#f7f1e8]">
-                        <input
-                          type="checkbox"
-                          checked={item.taxable !== false}
-                          onChange={(e) => updateInvoiceLineItem(item.id, { taxable: e.target.checked })}
-                        />
-                        Taxable / subject to configured tax
-                      </label>
-                      <label className="inline-flex cursor-pointer items-center rounded-full border border-[#d8c7ab] bg-white px-3 py-1.5 text-xs font-medium text-[#5f4c3b] hover:bg-[#f7f1e8]">
-                        {uploadingReceiptLineItemId === item.id ? "Uploading..." : "Attach receipt"}
-                        <input
-                          type="file"
-                          multiple
-                          accept="image/*,.pdf"
-                          className="hidden"
-                          disabled={uploadingReceiptLineItemId === item.id}
-                          onChange={(e) => void uploadInvoiceReceipts(item.id, e.target.files)}
-                        />
-                      </label>
-                      <label className="inline-flex cursor-pointer items-center rounded-full border border-[#d8c7ab] bg-white px-3 py-1.5 text-xs font-medium text-[#5f4c3b] hover:bg-[#f7f1e8]">
-                        Take receipt photo
-                        <input
-                          type="file"
-                          accept="image/*"
-                          capture="environment"
-                          className="hidden"
-                          disabled={uploadingReceiptLineItemId === item.id}
-                          onChange={(e) => void uploadInvoiceReceipts(item.id, e.target.files)}
-                        />
-                      </label>
-                      {(item.receipt_urls || []).map((url, receiptIndex) => (
-                        <span key={`${url}-${receiptIndex}`} className="inline-flex items-center gap-2 rounded-full border border-[#d8c7ab] bg-white px-3 py-1.5 text-xs text-[#5f4c3b]">
-                          <a href={url} target="_blank" rel="noreferrer" className="underline">
-                            {item.receipt_names?.[receiptIndex] || `Receipt ${receiptIndex + 1}`}
-                          </a>
+              <section className="mt-5 overflow-hidden rounded-[24px] border border-[#d5ad67] bg-[#fff7e8] shadow-[0_16px_36px_rgba(181,128,48,0.12)]">
+                <div className="flex flex-col gap-3 border-b border-[#e4c78f] bg-[#fff2d4] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[#8a5b18]">Running draft items</div>
+                    <div className="mt-1 text-lg font-semibold text-[#241c15]">Invoice line items</div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-xs font-semibold text-[#5f4c3b]">
+                    <span className="rounded-full border border-[#d5ad67] bg-white px-3 py-1.5">
+                      {invoiceLineItems.length} item{invoiceLineItems.length === 1 ? "" : "s"}
+                    </span>
+                    <span className="rounded-full border border-[#d5ad67] bg-white px-3 py-1.5">
+                      Working subtotal: {formatCurrency(invoiceSubtotal)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-3 p-3">
+                  {invoiceLineItems.map((item, index) => (
+                    <div key={item.id} className="overflow-hidden rounded-[20px] border border-[#dfc18d] bg-white shadow-[0_10px_24px_rgba(95,76,59,0.08)]">
+                      <div className="flex items-center justify-between gap-3 border-b border-[#f0dfc3] bg-[#fffdf8] px-3 py-2">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#241c15] text-xs font-semibold text-[#f8f2e8]">
+                            {index + 1}
+                          </span>
+                          <span className="truncate text-sm font-semibold text-[#241c15]">
+                            {item.description.trim() || "New line item"}
+                          </span>
+                        </div>
+                        <span className="shrink-0 rounded-full border border-[#d5ad67] bg-[#fff7e8] px-3 py-1.5 text-sm font-semibold text-[#5f3e12]">
+                          {formatCurrency(getLineItemTotal(item))}
+                        </span>
+                      </div>
+                      <div className="border-l-4 border-[#c8892c] p-3">
+                        <div className="grid gap-2 md:grid-cols-[1fr_130px_110px_120px_auto] md:items-end">
+                          <label className="text-xs font-medium text-[#5f5245]">
+                            Description
+                            <input
+                              className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                              placeholder="Line item description"
+                              value={item.description}
+                              onChange={(e) => updateInvoiceLineItem(item.id, { description: e.target.value })}
+                            />
+                          </label>
+                          <label className="text-xs font-medium text-[#5f5245]">
+                            Category
+                            <select
+                              className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                              value={item.category}
+                              onChange={(e) => updateInvoiceLineItem(item.id, { category: e.target.value as OwnerInvoiceLineItem["category"] })}
+                            >
+                              <option value="turnover">Turnover</option>
+                              <option value="grounds">Grounds</option>
+                              <option value="expense">Expense</option>
+                              <option value="other">Other</option>
+                            </select>
+                          </label>
+                          <label className="text-xs font-medium text-[#5f5245]">
+                            Quantity
+                            <input
+                              type="number"
+                              min="0"
+                              step="1"
+                              className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                              value={item.quantity}
+                              onChange={(e) => updateInvoiceLineItem(item.id, { quantity: e.target.value })}
+                              onBlur={(e) => {
+                                const roundedQuantity = Math.max(1, Math.round(Number(e.target.value || 1)));
+                                updateInvoiceLineItem(item.id, { quantity: roundedQuantity });
+                              }}
+                            />
+                          </label>
+                          <label className="text-xs font-medium text-[#5f5245]">
+                            Rate
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                              value={item.rate}
+                              onFocus={() => {
+                                if (Number(item.rate || 0) === 0) {
+                                  updateInvoiceLineItem(item.id, { rate: "" });
+                                }
+                              }}
+                              onChange={(e) => updateInvoiceLineItem(item.id, { rate: e.target.value })}
+                            />
+                          </label>
                           <button
                             type="button"
-                            onClick={() => removeInvoiceReceipt(item.id, receiptIndex)}
-                            className="font-semibold text-[#8a2e22]"
+                            onClick={() => removeInvoiceLineItem(item.id)}
+                            className="rounded-full border border-[#efc6c6] bg-[#fff5f5] px-3 py-2 text-sm text-[#8a2e22]"
                           >
-                            x
+                            Remove
                           </button>
-                        </span>
-                      ))}
+                        </div>
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-[#d8c7ab] bg-[#fffdf8] px-3 py-1.5 text-xs font-medium text-[#5f4c3b] hover:bg-[#fff7e8]">
+                            <input
+                              type="checkbox"
+                              checked={item.taxable !== false}
+                              onChange={(e) => updateInvoiceLineItem(item.id, { taxable: e.target.checked })}
+                            />
+                            Taxable / subject to configured tax
+                          </label>
+                          <label className="inline-flex cursor-pointer items-center rounded-full border border-[#d8c7ab] bg-[#fffdf8] px-3 py-1.5 text-xs font-medium text-[#5f4c3b] hover:bg-[#fff7e8]">
+                            {uploadingReceiptLineItemId === item.id ? "Uploading..." : "Attach receipt"}
+                            <input
+                              type="file"
+                              multiple
+                              accept="image/*,.pdf"
+                              className="hidden"
+                              disabled={uploadingReceiptLineItemId === item.id}
+                              onChange={(e) => void uploadInvoiceReceipts(item.id, e.target.files)}
+                            />
+                          </label>
+                          <label className="inline-flex cursor-pointer items-center rounded-full border border-[#d8c7ab] bg-[#fffdf8] px-3 py-1.5 text-xs font-medium text-[#5f4c3b] hover:bg-[#fff7e8]">
+                            Take receipt photo
+                            <input
+                              type="file"
+                              accept="image/*"
+                              capture="environment"
+                              className="hidden"
+                              disabled={uploadingReceiptLineItemId === item.id}
+                              onChange={(e) => void uploadInvoiceReceipts(item.id, e.target.files)}
+                            />
+                          </label>
+                          {(item.receipt_urls || []).map((url, receiptIndex) => (
+                            <span key={`${url}-${receiptIndex}`} className="inline-flex items-center gap-2 rounded-full border border-[#d8c7ab] bg-[#fffdf8] px-3 py-1.5 text-xs text-[#5f4c3b]">
+                              <a href={url} target="_blank" rel="noreferrer" className="underline">
+                                {item.receipt_names?.[receiptIndex] || `Receipt ${receiptIndex + 1}`}
+                              </a>
+                              <button
+                                type="button"
+                                onClick={() => removeInvoiceReceipt(item.id, receiptIndex)}
+                                className="font-semibold text-[#8a2e22]"
+                              >
+                                x
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
 
-              <div className="mt-3 flex justify-end">
-                <button
-                  type="button"
-                  onClick={addInvoiceLineItem}
-                  className="w-full rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#fcfaf7] sm:w-auto"
-                >
-                  Add custom expense
-                </button>
-              </div>
+                <div className="flex flex-col gap-3 border-t border-[#e4c78f] bg-[#fff2d4] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="text-sm font-semibold text-[#5f3e12]">
+                    Line items subtotal: {formatCurrency(invoiceSubtotal)}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addInvoiceLineItem}
+                    className="w-full rounded-full border border-[#b9822b] bg-white px-4 py-2 text-sm font-semibold text-[#5f3e12] transition hover:bg-[#fffaf0] sm:w-auto"
+                  >
+                    + Add custom expense
+                  </button>
+                </div>
+              </section>
 
               <textarea
                 className="mt-4 min-h-[90px] w-full rounded-[20px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
