@@ -11337,6 +11337,13 @@ This removes its linked members and deletes the grounds account.`
     setInvoiceDraftDirty(false);
   }
 
+  function selectInvoiceWorkflowTab(tab: InvoiceWorkflowTab) {
+    if (tab === "create" && (editingOwnerInvoiceId || invoiceWorkflowTab === "running")) {
+      resetInvoiceComposer();
+    }
+    setInvoiceWorkflowTab(tab);
+  }
+
   function loadOwnerInvoiceDraft(invoice: OwnerInvoiceRow) {
     if (invoice.invoice_source === "uploaded") {
       setError("Uploaded invoice files can be resent from history, but they cannot be edited in the invoice builder.");
@@ -12640,7 +12647,7 @@ This removes its linked members and deletes the grounds account.`
                 <button
                   key={option.key}
                   type="button"
-                  onClick={() => setInvoiceWorkflowTab(option.key)}
+                  onClick={() => selectInvoiceWorkflowTab(option.key)}
                   className={`group relative overflow-hidden rounded-[20px] border p-4 pl-5 text-left transition hover:-translate-y-0.5 ${
                     selected ? option.activeClass : option.idleClass
                   }`}
