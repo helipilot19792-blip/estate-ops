@@ -9441,7 +9441,7 @@ This removes its linked members and deletes the grounds account.`
                                     event.stopPropagation();
                                     setSelectedStaffContact(item.staffContacts[0]);
                                   }}
-                                  className="text-left underline decoration-[#9bb7e5] decoration-dotted underline-offset-4 transition hover:text-[#2957a4]"
+                                  className="inline-flex max-w-full items-center rounded-full border border-[#9bb7e5] bg-[#f8fbff] px-2.5 py-1 text-left text-xs font-semibold text-[#2957a4] shadow-sm transition hover:border-[#6f9ad8] hover:bg-[#e8f1ff] focus:outline-none focus:ring-2 focus:ring-[#9bb7e5]"
                                 >
                                   {item.detail}
                                 </button>
@@ -9556,7 +9556,7 @@ This removes its linked members and deletes the grounds account.`
                                     event.stopPropagation();
                                     setSelectedStaffContact(item.staffContacts[0]);
                                   }}
-                                  className="text-left underline decoration-[#9bb7e5] decoration-dotted underline-offset-4 transition hover:text-[#2957a4]"
+                                  className="inline-flex max-w-full items-center rounded-full border border-[#e3cda7] bg-[#fffaf0] px-2.5 py-1 text-left text-xs font-semibold text-[#7a5a23] shadow-sm transition hover:border-[#d2ad68] hover:bg-[#fff3d6] focus:outline-none focus:ring-2 focus:ring-[#e3cda7]"
                                 >
                                   {item.detail}
                                 </button>
@@ -19626,7 +19626,7 @@ This removes its linked members and deletes the grounds account.`
                         <button
                           type="button"
                           onClick={() => setSelectedStaffContact(item.staffContacts[0])}
-                          className="block max-w-full truncate text-left text-xs text-[#2957a4] underline decoration-[#9bb7e5] decoration-dotted underline-offset-4"
+                          className="mt-1 inline-flex max-w-full items-center rounded-full border border-[#9bb7e5] bg-[#f8fbff] px-2.5 py-1 text-left text-xs font-semibold text-[#2957a4] shadow-sm transition hover:border-[#6f9ad8] hover:bg-[#e8f1ff] focus:outline-none focus:ring-2 focus:ring-[#9bb7e5]"
                         >
                           {item.detail}
                         </button>
@@ -19923,7 +19923,7 @@ This removes its linked members and deletes the grounds account.`
                               <button
                                 type="button"
                                 onClick={() => setSelectedStaffContact(item.staffContacts[0])}
-                                className="underline decoration-[#9bb7e5] decoration-dotted underline-offset-4"
+                                className="rounded-full border border-[#9bb7e5] bg-[#f8fbff] px-2 py-0.5 text-[#2957a4] shadow-sm transition hover:border-[#6f9ad8] hover:bg-[#e8f1ff] focus:outline-none focus:ring-2 focus:ring-[#9bb7e5]"
                               >
                                 {item.status}
                               </button>
