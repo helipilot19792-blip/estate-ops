@@ -1550,6 +1550,7 @@ export default function AdminPage() {
     () => [0, 1, 2].map((offset) => toYmd(addDays(now, offset))),
     [now]
   );
+  const bookingCalendarEndYmd = useMemo(() => toYmd(addDays(now, 540)), [now]);
 
   const tomorrowsCleaningJobs = useMemo(() => {
     return jobs.filter(
@@ -2419,7 +2420,7 @@ export default function AdminPage() {
         .from("property_booking_events")
         .select("*")
         .eq("organization_id", currentOrganizationId)
-        .lte("checkin_date", serviceLookaheadYmds[serviceLookaheadYmds.length - 1] || todayYmd)
+        .lte("checkin_date", bookingCalendarEndYmd)
         .gte("checkout_date", todayYmd)
         .order("checkin_date", { ascending: true }),
       supabase
@@ -7520,6 +7521,27 @@ This removes its linked members and deletes the grounds account.`
     return map;
   }, [jobs, properties]);
 
+  const adminBookingEventsByDate = useMemo(() => {
+    const map = new Map<string, PropertyBookingEvent[]>();
+
+    for (const booking of propertyBookingEvents) {
+      if (!booking.checkin_date) continue;
+      if (!map.has(booking.checkin_date)) map.set(booking.checkin_date, []);
+      map.get(booking.checkin_date)!.push(booking);
+    }
+
+    for (const [key, value] of map.entries()) {
+      value.sort((a, b) => {
+        const aName = getPropertyName(a.property_id);
+        const bName = getPropertyName(b.property_id);
+        return aName.localeCompare(bName);
+      });
+      map.set(key, value);
+    }
+
+    return map;
+  }, [propertyBookingEvents, properties]);
+
   const adminCalendarDays = useMemo(() => getMonthGrid(adminCalendarMonth), [adminCalendarMonth]);
 
   const adminSelectedDayJobs = useMemo(() => {
@@ -7529,6 +7551,14 @@ This removes its linked members and deletes the grounds account.`
       ? dayJobs
       : dayJobs.filter((job) => job.property_id === selectedJobsPropertyFilter);
   }, [adminJobsByDate, adminSelectedDate, selectedJobsPropertyFilter]);
+
+  const adminSelectedDayBookingEvents = useMemo(() => {
+    if (!adminSelectedDate) return [];
+    const dayBookings = adminBookingEventsByDate.get(adminSelectedDate) ?? [];
+    return selectedJobsPropertyFilter === "all"
+      ? dayBookings
+      : dayBookings.filter((booking) => booking.property_id === selectedJobsPropertyFilter);
+  }, [adminBookingEventsByDate, adminSelectedDate, selectedJobsPropertyFilter]);
 
   const filteredMaintenanceFlags = useMemo(() => {
     const filteredByProperty =
@@ -16993,6 +17023,8 @@ This removes its linked members and deletes the grounds account.`
             {adminCalendarDays.map((day) => {
               const dateYmd = toYmd(day);
               const dayJobs = adminJobsByDate.get(dateYmd) ?? [];
+              const dayBookings = adminBookingEventsByDate.get(dateYmd) ?? [];
+              const dayItemCount = dayJobs.length + dayBookings.length;
               const urgentCount = dayJobs.filter((job) => {
                 const slots = jobSlotsByJobId[job.id] ?? [];
                 return slots.some((slot) => slot.status === "offered" || slot.status === "stranded");
@@ -17019,15 +17051,15 @@ This removes its linked members and deletes the grounds account.`
                       {day.getDate()}
                     </div>
 
-                    {dayJobs.length > 0 ? (
+                    {dayItemCount > 0 ? (
                       <span className="rounded-full border border-[#d8c7ab] bg-white px-2 py-0.5 text-[11px] font-medium text-[#7f7263]">
-                        {dayJobs.length}
+                        {dayItemCount}
                       </span>
                     ) : null}
                   </div>
 
                   <div className="mt-2 space-y-1">
-                    {dayJobs.slice(0, 2).map((job) => {
+                    {dayJobs.slice(0, dayBookings.length > 0 ? 1 : 2).map((job) => {
                       const propertyColor = getPropertyColor(job.property_id);
                       const isStranded = (jobSlotsByJobId[job.id] ?? []).some((slot) => slot.status === "stranded");
                       const isOffered = (jobSlotsByJobId[job.id] ?? []).some((slot) => slot.status === "offered");
@@ -17047,8 +17079,17 @@ This removes its linked members and deletes the grounds account.`
                       );
                     })}
 
-                    {dayJobs.length > 2 ? (
-                      <div className="text-[11px] text-[#8a7b68]">+{dayJobs.length - 2} more</div>
+                    {dayBookings.slice(0, dayJobs.length > 0 ? 1 : 2).map((booking) => (
+                      <div
+                        key={booking.id}
+                        className="truncate rounded-full border border-[#d8b4fe] bg-[#faf5ff] px-2 py-1 text-[11px] font-medium text-[#6d28d9]"
+                      >
+                        Check-in: {getPropertyName(booking.property_id)}
+                      </div>
+                    ))}
+
+                    {dayItemCount > 2 ? (
+                      <div className="text-[11px] text-[#8a7b68]">+{dayItemCount - 2} more</div>
                     ) : null}
 
                     {urgentCount > 0 ? (
@@ -17068,7 +17109,7 @@ This removes its linked members and deletes the grounds account.`
             <div>
               <h3 className="text-lg font-semibold">Happenings for {formatDateLabel(adminSelectedDate)}</h3>
               <div className="mt-1 text-sm text-[#7f7263]">
-                {adminSelectedDayJobs.length} job{adminSelectedDayJobs.length === 1 ? "" : "s"} on this day
+                {adminSelectedDayJobs.length} job{adminSelectedDayJobs.length === 1 ? "" : "s"} and {adminSelectedDayBookingEvents.length} booking{adminSelectedDayBookingEvents.length === 1 ? "" : "s"} on this day
               </div>
             </div>
 
@@ -17086,12 +17127,74 @@ This removes its linked members and deletes the grounds account.`
           </div>
 
           <div className="mt-4 space-y-3">
-            {adminSelectedDayJobs.length === 0 ? (
+            {adminSelectedDayJobs.length === 0 && adminSelectedDayBookingEvents.length === 0 ? (
               <div className="rounded-[18px] border border-dashed border-[#d8c7ab] bg-white px-4 py-4 text-sm text-[#7f7263]">
                 Nothing scheduled for this day yet.
               </div>
             ) : (
-              adminSelectedDayJobs.map((job) => {
+              <>
+              {adminSelectedDayBookingEvents.map((booking) => {
+                const property = properties.find((item) => item.id === booking.property_id) || null;
+                const sourceLabel = getBookingSourceLabel(booking.source);
+                const guestCount = Number.isFinite(Number(booking.guest_count)) ? Number(booking.guest_count) : null;
+                const checkinTime = formatTimeLabel(property?.default_checkin_time);
+                const checkoutTime = formatTimeLabel(property?.default_checkout_time);
+                const adminNote = booking.admin_note?.trim() || "";
+
+                return (
+                  <div
+                    key={booking.id}
+                    className="rounded-[20px] border border-[#d8b4fe] bg-white p-4 shadow-sm"
+                    style={{ boxShadow: "inset 4px 0 0 #7c3aed" }}
+                  >
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded-full bg-[#7c3aed] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white">
+                            Check-in
+                          </span>
+                          <div className="text-base font-semibold text-[#241c15]">
+                            {property?.name || property?.address || "Unknown property"}
+                          </div>
+                        </div>
+                        <div className="mt-1 text-sm text-[#6f6255]">
+                          {[
+                            checkinTime ? `In ${checkinTime}` : "",
+                            `Out ${formatDateLabel(booking.checkout_date)}${checkoutTime ? ` at ${checkoutTime}` : ""}`,
+                            formatGuestCountLabel(guestCount),
+                            sourceLabel,
+                          ].filter(Boolean).join(" - ")}
+                        </div>
+                        <div className="mt-1 text-sm text-[#8a7b68]">
+                          {booking.summary?.trim() || "Reserved"}
+                        </div>
+                        {adminNote ? (
+                          <div className="mt-3 rounded-[14px] border border-[#eadfce] bg-[#fffaf0] px-3 py-2 text-sm text-[#5f5245]">
+                            Note: {adminNote}
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          openBookingNoteEditor({
+                            bookingEventId: booking.id,
+                            propertyName: property?.name || property?.address || "Booking",
+                            summary: booking.summary || sourceLabel,
+                            adminNote,
+                          })
+                        }
+                        className="shrink-0 rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-semibold text-[#5f5245] transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#d8c7ab]"
+                      >
+                        {adminNote ? "Edit note" : "Add note"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {adminSelectedDayJobs.map((job) => {
                 const slots = jobSlotsByJobId[job.id] ?? [];
                 const acceptedCount = slots.filter((slot) => slot.status === "accepted").length;
                 const offeredCount = slots.filter((slot) => slot.status === "offered").length;
@@ -17155,7 +17258,8 @@ This removes its linked members and deletes the grounds account.`
                     ) : null}
                   </button>
                 );
-              })
+              })}
+              </>
             )}
           </div>
         </div>
@@ -19774,7 +19878,7 @@ This removes its linked members and deletes the grounds account.`
               placeholder="Example: Linen package requested. Bring linens before arrival."
             />
             <div className="mt-2 flex items-center justify-between gap-3 text-xs text-[#8a7b68]">
-              <span>Shown only on admin Today at a glance booking cards.</span>
+              <span>Shown on admin booking cards in Today at a glance and Calendar.</span>
               <span>{bookingNoteDraft.length}/1000</span>
             </div>
 
