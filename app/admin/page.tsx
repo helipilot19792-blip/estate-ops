@@ -9383,7 +9383,20 @@ This removes its linked members and deletes the grounds account.`
                               {item.title}
                             </p>
                             <div className="mt-0.5 text-sm text-[#5f6f86]">
-                              <span>{item.detail}</span>
+                              {item.staffContacts.length > 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setSelectedStaffContact(item.staffContacts[0]);
+                                  }}
+                                  className="text-left underline decoration-[#9bb7e5] decoration-dotted underline-offset-4 transition hover:text-[#2957a4]"
+                                >
+                                  {item.detail}
+                                </button>
+                              ) : (
+                                <span>{item.detail}</span>
+                              )}
                               {item.staffContacts.length > 0 ? (
                                 <span className="ml-1 inline-flex flex-wrap gap-1 align-baseline">
                                   {item.staffContacts.map((contact) => (
@@ -9501,9 +9514,39 @@ This removes its linked members and deletes the grounds account.`
                             <p className="mt-1 text-[15px] font-semibold text-[#1c2b45]">
                               {item.title}
                             </p>
-                            <p className="mt-0.5 text-sm text-[#5f6f86]">
-                              {item.detail}
-                            </p>
+                            <div className="mt-0.5 text-sm text-[#5f6f86]">
+                              {item.staffContacts.length > 0 ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setSelectedStaffContact(item.staffContacts[0]);
+                                    }}
+                                    className="text-left underline decoration-[#9bb7e5] decoration-dotted underline-offset-4 transition hover:text-[#2957a4]"
+                                  >
+                                    {item.detail}
+                                  </button>
+                                  <span className="ml-1 inline-flex flex-wrap gap-1 align-baseline">
+                                    {item.staffContacts.map((contact) => (
+                                      <button
+                                        key={`${item.id}-${contact.id}`}
+                                        type="button"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          setSelectedStaffContact(contact);
+                                        }}
+                                        className="rounded-full border border-[#e3cda7] bg-[#fffaf0] px-2 py-0.5 text-xs font-semibold text-[#7a5a23] transition hover:bg-[#fff3d6]"
+                                      >
+                                        {contact.name}
+                                      </button>
+                                    ))}
+                                  </span>
+                                </>
+                              ) : (
+                                <span>{item.detail}</span>
+                              )}
+                            </div>
                           </div>
                           <div className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${dateClass}`}>
                             {item.label}
@@ -19562,7 +19605,17 @@ This removes its linked members and deletes the grounds account.`
                         {item.kind}
                       </div>
                       <div className="mt-1 truncate text-sm font-semibold text-[#17202a]">{item.title}</div>
-                      <div className="truncate text-xs text-[#64748b]">{item.detail}</div>
+                      {item.staffContacts.length > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedStaffContact(item.staffContacts[0])}
+                          className="block max-w-full truncate text-left text-xs text-[#2957a4] underline decoration-[#9bb7e5] decoration-dotted underline-offset-4"
+                        >
+                          {item.detail}
+                        </button>
+                      ) : (
+                        <div className="truncate text-xs text-[#64748b]">{item.detail}</div>
+                      )}
                     </div>
                   ))}
                   {upcomingCheckInGlanceItems.map((item) => (
@@ -19849,7 +19902,17 @@ This removes its linked members and deletes the grounds account.`
                               ? "bg-[#fee2e2] text-[#991b1b]"
                               : "bg-[#f4f1eb] text-[#6f6255]"
                           }`}>
-                            {item.status}
+                            {item.staffContacts.length > 0 ? (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedStaffContact(item.staffContacts[0])}
+                                className="underline decoration-[#9bb7e5] decoration-dotted underline-offset-4"
+                              >
+                                {item.status}
+                              </button>
+                            ) : (
+                              item.status
+                            )}
                           </div>
                         </div>
                       </div>
