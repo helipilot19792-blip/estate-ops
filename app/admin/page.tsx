@@ -7442,8 +7442,8 @@ This removes its linked members and deletes the grounds account.`
       if (!cleanerAccountId) return null;
       const account = cleanerAccounts.find((item) => item.id === cleanerAccountId);
       const member = (cleanerMembersByAccountId[cleanerAccountId] ?? [])[0];
-      const label = account?.display_name || member?.full_name || account?.email || member?.email || "";
-      const name = label.split(/\s+/)[0]?.split("@")[0] || "";
+      const label = account?.display_name || member?.full_name || account?.email || member?.email || getCleanerAccountName(cleanerAccountId);
+      const name = label.includes("@") ? label.split("@")[0] : label;
       if (!name) return null;
       return {
         id: `cleaner-${cleanerAccountId}`,
@@ -7457,8 +7457,8 @@ This removes its linked members and deletes the grounds account.`
       if (!groundsAccountId) return null;
       const account = groundsAccounts.find((item) => item.id === groundsAccountId);
       const member = (groundsMembersByAccountId[groundsAccountId] ?? [])[0];
-      const label = account?.display_name || member?.full_name || account?.email || member?.email || "";
-      const name = label.split(/\s+/)[0]?.split("@")[0] || "";
+      const label = account?.display_name || member?.full_name || account?.email || member?.email || getGroundsAccountName(groundsAccountId);
+      const name = label.includes("@") ? label.split("@")[0] : label;
       if (!name) return null;
       return {
         id: `grounds-${groundsAccountId}`,
@@ -7623,8 +7623,8 @@ This removes its linked members and deletes the grounds account.`
       if (!cleanerAccountId) return null;
       const account = cleanerAccounts.find((item) => item.id === cleanerAccountId);
       const member = (cleanerMembersByAccountId[cleanerAccountId] ?? [])[0];
-      const label = account?.display_name || member?.full_name || account?.email || member?.email || "";
-      const name = label.split(/\s+/)[0]?.split("@")[0] || "";
+      const label = account?.display_name || member?.full_name || account?.email || member?.email || getCleanerAccountName(cleanerAccountId);
+      const name = label.includes("@") ? label.split("@")[0] : label;
       if (!name) return null;
       return {
         id: `cleaner-${cleanerAccountId}`,
@@ -7638,8 +7638,8 @@ This removes its linked members and deletes the grounds account.`
       if (!groundsAccountId) return null;
       const account = groundsAccounts.find((item) => item.id === groundsAccountId);
       const member = (groundsMembersByAccountId[groundsAccountId] ?? [])[0];
-      const label = account?.display_name || member?.full_name || account?.email || member?.email || "";
-      const name = label.split(/\s+/)[0]?.split("@")[0] || "";
+      const label = account?.display_name || member?.full_name || account?.email || member?.email || getGroundsAccountName(groundsAccountId);
+      const name = label.includes("@") ? label.split("@")[0] : label;
       if (!name) return null;
       return {
         id: `grounds-${groundsAccountId}`,
@@ -7668,7 +7668,7 @@ This removes its linked members and deletes the grounds account.`
         const stranded = slots.some((slot) => slot.status === "stranded" || !slot.cleaner_account_id);
         const offered = slots.some((slot) => slot.status === "offered");
         const cleanerDetail = acceptedCleanerNames.length > 0
-          ? "Cleaner:"
+          ? `Cleaner: ${acceptedCleanerNames.join(", ")}`
           : stranded
             ? "UNASSIGNED"
             : offered
@@ -7710,7 +7710,9 @@ This removes its linked members and deletes the grounds account.`
           tone: "green" as const,
           label: labelDate(job.scheduled_for || ""),
           title: property?.name || property?.address || "Unknown property",
-          detail: acceptedGroundsContacts.length > 0 ? `${groundsDetail} - Grounds:` : groundsDetail,
+          detail: acceptedGroundsContacts.length > 0
+            ? `${groundsDetail} - Grounds: ${acceptedGroundsContacts.map((contact) => contact.name).join(", ")}`
+            : groundsDetail,
           staffContacts: acceptedGroundsContacts,
           staffDetailLabel: "Grounds",
         };

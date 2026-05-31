@@ -3097,6 +3097,7 @@ export default function OwnerPage() {
             title={t("ownerPortal.chat.title")}
             subtitle={t("ownerPortal.chat.subtitle")}
             targetConversationId={targetChatConversationId}
+            allowStartConversation
             onUnreadCountChange={setOwnerChatUnreadCount}
             onConversationRead={handleOwnerChatConversationRead}
           />

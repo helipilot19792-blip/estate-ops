@@ -68,6 +68,7 @@ type PortalChatProps = {
   subtitle?: string;
   className?: string;
   targetConversationId?: string;
+  allowStartConversation?: boolean;
   onUnreadCountChange?: (count: number) => void;
   onConversationRead?: (conversationId: string, readAt: string) => void;
 };
@@ -151,12 +152,42 @@ async function hideChatItem(conversationId: string, messageId?: string | null) {
   }
 }
 
+async function startOwnerChat(ownerAccountId: string, subject: string, message: string) {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session?.access_token) {
+    throw new Error("Missing auth token for chat.");
+  }
+
+  const response = await fetch("/api/chat/owner-start", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ ownerAccountId, subject, message }),
+  });
+  const payload = await response.json().catch(() => null);
+
+  if (!response.ok || payload?.ok === false) {
+    throw new Error(payload?.error || "Could not start chat.");
+  }
+
+  return {
+    conversationId: String(payload?.conversationId || ""),
+    messageId: String(payload?.messageId || ""),
+  };
+}
+
 export default function PortalChat({
   participant,
   title = "Chat",
   subtitle = "Chat with property management without sending an email for every reply.",
   className = "",
   targetConversationId = "",
+  allowStartConversation = false,
   onUnreadCountChange,
   onConversationRead,
 }: PortalChatProps) {
@@ -170,6 +201,8 @@ export default function PortalChat({
   const [hiddenItems, setHiddenItems] = useState<ChatHiddenItemRow[]>([]);
   const [selectedConversationId, setSelectedConversationId] = useState("");
   const [replyBody, setReplyBody] = useState("");
+  const [startSubject, setStartSubject] = useState("");
+  const [startBody, setStartBody] = useState("");
   const [realtimeReady, setRealtimeReady] = useState(false);
   const chatThreadScrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -547,6 +580,39 @@ export default function PortalChat({
     }
   }
 
+  async function createOwnerConversation() {
+    if (participantType !== "owner" || !participantOwnerAccountId) {
+      setError("This chat is not linked to your owner account yet.");
+      return;
+    }
+
+    const body = startBody.trim();
+    if (!body) {
+      setError("Write a message before starting a chat.");
+      return;
+    }
+
+    setSending(true);
+    setError("");
+
+    try {
+      const result = await startOwnerChat(participantOwnerAccountId, startSubject.trim(), body);
+      setStartSubject("");
+      setStartBody("");
+
+      const pushResult = result.messageId ? await notifyChatPush(result.messageId) : null;
+      if (pushResult && !pushResult.ok) {
+        setError(`Chat started, but push notification failed: ${pushResult.errors.join(" ")}`);
+      }
+      await loadChat();
+      if (result.conversationId) setSelectedConversationId(result.conversationId);
+    } catch (err) {
+      setError(getErrorMessage(err, "Could not start chat."));
+    } finally {
+      setSending(false);
+    }
+  }
+
   async function hideConversationForMe(conversation: ChatConversationRow) {
     const confirmed = window.confirm(
       `Delete "${getConversationTitle(conversation)}" from your chat list?\n\nThis only hides it for you. Other participants will still see the chat.`
@@ -649,6 +715,34 @@ export default function PortalChat({
 
       <div className="mt-5 grid gap-4 lg:grid-cols-[320px_1fr]">
         <div className="rounded-[24px] border border-white/8 bg-white/[0.03] p-3">
+          {allowStartConversation && participantType === "owner" ? (
+            <div className="mb-3 rounded-[20px] border border-[#e3c177]/20 bg-[#e3c177]/8 p-3">
+              <div className="text-sm font-semibold text-[#fff8e8]">Start a chat</div>
+              <div className="mt-3 grid gap-2">
+                <input
+                  className="rounded-2xl border border-white/12 bg-[#0f0c09] px-3 py-2 text-sm text-[#f7f1e8] outline-none placeholder:text-[#8f806b] focus:border-[#b08b47]"
+                  placeholder="Subject (optional)"
+                  value={startSubject}
+                  onChange={(event) => setStartSubject(event.target.value)}
+                />
+                <textarea
+                  className="min-h-[92px] rounded-2xl border border-white/12 bg-[#0f0c09] px-3 py-2 text-sm text-[#f7f1e8] outline-none placeholder:text-[#8f806b] focus:border-[#b08b47]"
+                  placeholder="Message property management"
+                  value={startBody}
+                  onChange={(event) => setStartBody(event.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={() => void createOwnerConversation()}
+                  disabled={sending}
+                  className="justify-self-start rounded-full bg-[#e3c177] px-4 py-2 text-sm font-semibold text-[#17120d] transition hover:bg-[#f0d28b] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {sending ? "Starting..." : "Start chat"}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
           <div className="px-1 pb-2 text-sm font-semibold">
             {visibleConversations.length} chat{visibleConversations.length === 1 ? "" : "s"}
           </div>
@@ -710,7 +804,7 @@ export default function PortalChat({
               })
             ) : (
               <div className="rounded-[18px] border border-dashed border-white/12 bg-black/15 px-4 py-5 text-sm leading-6 text-[#e6d8bf]">
-                No chats yet. When admin starts a chat with you, it will show here.
+                No chats yet. Start a chat or reply when property management messages you.
               </div>
             )}
           </div>
