@@ -4161,74 +4161,6 @@ export default function AdminPage() {
     await loadData();
   }
 
-  async function applyCleanerTrainingRotationToJob(jobId: string, propertyId: string) {
-    const property = properties.find((item) => item.id === propertyId);
-    if (property?.cleaner_assignment_mode !== "training_rotation") return;
-
-    const rotationOrder = getTrainingRotationOrder(property);
-    if (rotationOrder.length < 2) return;
-
-    const { data: slots, error: slotsError } = await supabase
-      .from("turnover_job_slots")
-      .select("id, slot_number")
-      .eq("job_id", jobId)
-      .order("slot_number", { ascending: true });
-
-    if (slotsError) throw slotsError;
-
-    const slotRows = slots ?? [];
-    const assignedCount = Math.min(slotRows.length, rotationOrder.length);
-    if (assignedCount === 0) return;
-
-    const { data: job, error: jobError } = await supabase
-      .from("turnover_jobs")
-      .select("scheduled_for, notes")
-      .eq("id", jobId)
-      .maybeSingle();
-
-    if (jobError) throw jobError;
-
-    const now = new Date();
-    const nowIso = now.toISOString();
-    const jobDate = job?.scheduled_for || extractCheckoutDate(job?.notes || null);
-    const responseHours = getResponseWindowHours(jobDate, now);
-    const expiresAt = new Date(now.getTime() + responseHours * 60 * 60 * 1000).toISOString();
-    for (let index = 0; index < assignedCount; index += 1) {
-      const { error: slotUpdateError } = await supabase
-        .from("turnover_job_slots")
-        .update({
-          cleaner_account_id: rotationOrder[index].cleaner_account_id,
-          status: "offered",
-          offered_at: nowIso,
-          expires_at: expiresAt,
-          accepted_at: null,
-          declined_at: null,
-          accepted_by_profile_id: null,
-          declined_by_profile_id: null,
-          offer_email_sent_at: null,
-          offer_reminder_sent_at: null,
-          day_of_reminder_sent_at: null,
-          offer_push_sent_at: null,
-          offer_reminder_push_sent_at: null,
-          day_of_reminder_push_sent_at: null,
-        })
-        .eq("id", slotRows[index].id);
-
-      if (slotUpdateError) throw slotUpdateError;
-    }
-
-    const nextAssignment = rotationOrder[assignedCount % rotationOrder.length];
-    const { error: propertyUpdateError } = await supabase
-      .from("properties")
-      .update({
-        cleaner_rotation_next_cleaner_account_id: nextAssignment.cleaner_account_id,
-      })
-      .eq("id", propertyId)
-      .eq("organization_id", currentOrganizationId);
-
-    if (propertyUpdateError) throw propertyUpdateError;
-  }
-
   async function updateCleanerAssignmentMode(property: Property, mode: "priority" | "training_rotation") {
     const propertyAssignments = getCleanerAssignmentsForProperty(property.id);
     if (mode === "training_rotation" && propertyAssignments.length < 2) {
@@ -4369,63 +4301,53 @@ export default function AdminPage() {
     setError("");
     setActionMessage("");
 
-    const { data: insertedJob, error } = await supabase
-      .from("turnover_jobs")
-      .insert(payload)
-      .select()
-      .single();
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
 
-    if (error || !insertedJob) {
-      const message = error?.message || "Could not create job.";
+    if (sessionError || !session?.access_token) {
+      const message = "Could not verify your admin session.";
       setError(message);
       alert(message);
       return;
     }
 
-    const slotCheck = await supabase
-      .from("turnover_job_slots")
-      .select("id", { count: "exact", head: true })
-      .eq("job_id", insertedJob.id);
+    const response = await fetch("/api/admin/cleaning-job", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        organizationId: payload.organization_id,
+        propertyId: payload.property_id,
+        cleanersNeeded: payload.cleaners_needed,
+        cleanersRequiredStrict: payload.cleaners_required_strict,
+        cleanerUnitsNeeded: payload.cleaner_units_needed,
+        cleanerUnitsRequiredStrict: payload.cleaner_units_required_strict,
+        showTeamStatusToCleaners: payload.show_team_status_to_cleaners,
+        notes: payload.notes,
+        scheduledFor: payload.scheduled_for,
+      }),
+    });
 
-    if (!slotCheck.error && (slotCheck.count ?? 0) === 0) {
-      const slotCreate = await supabase.rpc("create_slots_for_job", {
-        p_job_id: insertedJob.id,
-      });
+    const result = await response.json().catch(() => null);
 
-      if (slotCreate.error) {
-        setError(`Job created, but slot creation failed: ${slotCreate.error.message}`);
-        await loadData();
-        return;
-      }
-    }
-
-    try {
-      await applyCleanerTrainingRotationToJob(insertedJob.id, jobPropertyId);
-    } catch (rotationError: unknown) {
-      setError(getErrorMessage(rotationError, "Job created, but training rotation could not be applied."));
+    if (!response.ok || !result?.ok) {
+      const message = result?.error || "Could not create job.";
+      setError(message);
+      alert(message);
       await loadData();
       return;
     }
 
-    const { data: createdOfferSlots, error: createdOfferSlotsError } = await supabase
-      .from("turnover_job_slots")
-      .select("id")
-      .eq("job_id", insertedJob.id)
-      .eq("status", "offered")
-      .not("cleaner_account_id", "is", null);
-
+    const notification = result.notification || {};
     let notificationNote = "";
-    if (!createdOfferSlotsError && (createdOfferSlots ?? []).length > 0) {
-      const notifyResult = await notifyJobOffers(
-        "cleaner",
-        (createdOfferSlots ?? []).map((slot) => slot.id)
-      );
-
-      if (notifyResult.errors.length > 0) {
-        notificationNote = " Offer email notification needs attention.";
-      } else if (notifyResult.sent > 0) {
-        notificationNote = ` ${notifyResult.sent} offer email${notifyResult.sent === 1 ? "" : "s"} sent.`;
-      }
+    if ((notification.errors ?? []).length > 0) {
+      notificationNote = " Offer email notification needs attention.";
+    } else if (Number(notification.sent || 0) > 0) {
+      notificationNote = ` ${notification.sent} offer email${notification.sent === 1 ? "" : "s"} sent.`;
     }
 
     setJobPropertyId("");
@@ -4439,9 +4361,9 @@ export default function AdminPage() {
     alert("Cleaning job created.");
     await loadData();
     setActiveSection("jobs");
-    setHighlightedJobId(insertedJob.id);
+    setHighlightedJobId(result.jobId);
     setTimeout(() => {
-      document.getElementById(`job-${insertedJob.id}`)?.scrollIntoView({
+      document.getElementById(`job-${result.jobId}`)?.scrollIntoView({
         behavior: "smooth",
         block: "center",
       });
