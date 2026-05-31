@@ -44,6 +44,7 @@ export async function POST(request: NextRequest) {
     const organizationId = String(body?.organizationId || "").trim();
     const bookingEventId = String(body?.bookingEventId || "").trim();
     const noteText = String(body?.adminNote || "").trim();
+    const noteImportant = Boolean(body?.adminNoteImportant);
 
     if (!organizationId || !bookingEventId) {
       return NextResponse.json({ error: "Missing organization or booking." }, { status: 400 });
@@ -106,7 +107,10 @@ export async function POST(request: NextRequest) {
 
     const { data: bookingEvent, error: updateError } = await serviceClient
       .from("property_booking_events")
-      .update({ admin_note: noteText || null })
+      .update({
+        admin_note: noteText || null,
+        admin_note_important: noteText ? noteImportant : false,
+      })
       .eq("id", bookingEventId)
       .eq("organization_id", organizationId)
       .select("*")

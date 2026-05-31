@@ -189,6 +189,7 @@ type PropertyBookingEvent = {
   checkin_date: string;
   checkout_date: string;
   admin_note?: string | null;
+  admin_note_important?: boolean | null;
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -1496,6 +1497,7 @@ export default function AdminPage() {
     summary: string;
   } | null>(null);
   const [bookingNoteDraft, setBookingNoteDraft] = useState("");
+  const [bookingNoteImportant, setBookingNoteImportant] = useState(false);
   const [savingBookingNote, setSavingBookingNote] = useState(false);
 
   const todayYmd = toYmd(now);
@@ -4201,6 +4203,7 @@ export default function AdminPage() {
     summary?: string;
     detail?: string;
     adminNote?: string;
+    adminNoteImportant?: boolean;
   }) {
     const bookingEventId = booking.bookingEventId || booking.id || "";
     if (!bookingEventId) return;
@@ -4211,6 +4214,7 @@ export default function AdminPage() {
       summary: booking.summary || booking.detail || "",
     });
     setBookingNoteDraft(booking.adminNote || "");
+    setBookingNoteImportant(Boolean(booking.adminNoteImportant));
     setError("");
     setActionMessage("");
   }
@@ -4246,6 +4250,7 @@ export default function AdminPage() {
           organizationId: currentOrganizationId,
           bookingEventId: editingBookingNote.id,
           adminNote: bookingNoteDraft,
+          adminNoteImportant: bookingNoteImportant,
         }),
       });
 
@@ -4257,10 +4262,19 @@ export default function AdminPage() {
 
       const updatedBooking = payload?.bookingEvent as PropertyBookingEvent | undefined;
       setPropertyBookingEvents((rows) =>
-        rows.map((row) => (row.id === editingBookingNote.id ? { ...row, admin_note: updatedBooking?.admin_note ?? null } : row))
+        rows.map((row) =>
+          row.id === editingBookingNote.id
+            ? {
+                ...row,
+                admin_note: updatedBooking?.admin_note ?? null,
+                admin_note_important: Boolean(updatedBooking?.admin_note_important),
+              }
+            : row
+        )
       );
       setEditingBookingNote(null);
       setBookingNoteDraft("");
+      setBookingNoteImportant(false);
       setActionMessage("Booking note saved.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save booking note.");
@@ -7733,6 +7747,7 @@ This removes its linked members and deletes the grounds account.`
           checkoutDate: event.checkout_date,
           checkoutTime: formatTimeLabel(property?.default_checkout_time),
           adminNote: event.admin_note?.trim() || "",
+          adminNoteImportant: Boolean(event.admin_note_important),
         };
       })
       .sort((a, b) => a.checkoutDate.localeCompare(b.checkoutDate) || a.propertyName.localeCompare(b.propertyName));
@@ -7866,6 +7881,7 @@ This removes its linked members and deletes the grounds account.`
           staffDetailLabel: "Cleaner",
           bookingEventId: null as string | null,
           adminNote: "",
+          adminNoteImportant: false,
         };
       })
       .filter((item) => dateSet.has(item.dateYmd));
@@ -7897,6 +7913,7 @@ This removes its linked members and deletes the grounds account.`
           staffDetailLabel: "Grounds",
           bookingEventId: null as string | null,
           adminNote: "",
+          adminNoteImportant: false,
         };
       })
       .filter((item) => dateSet.has(item.dateYmd));
@@ -7914,6 +7931,7 @@ This removes its linked members and deletes the grounds account.`
       staffDetailLabel: "",
       bookingEventId: null as string | null,
       adminNote: "",
+      adminNoteImportant: false,
     }));
 
     const checkInItems = propertyBookingEvents
@@ -7938,6 +7956,7 @@ This removes its linked members and deletes the grounds account.`
           staffDetailLabel: "",
           bookingEventId: event.id,
           adminNote: event.admin_note?.trim() || "",
+          adminNoteImportant: Boolean(event.admin_note_important),
         };
       })
       .filter((item) => dateSet.has(item.dateYmd));
@@ -7960,6 +7979,7 @@ This removes its linked members and deletes the grounds account.`
           staffDetailLabel: "",
           bookingEventId: null as string | null,
           adminNote: "",
+          adminNoteImportant: false,
           onClick: () => {
             setActiveSection("inspections");
             startInspectionLog(rule.id);
@@ -9673,7 +9693,11 @@ This removes its linked members and deletes the grounds account.`
                             {item.bookingEventId ? (
                               <div className="mt-2 flex flex-wrap items-center gap-2">
                                 {item.adminNote ? (
-                                  <div className="rounded-[12px] border border-[#eadfce] bg-[#fffaf0] px-3 py-2 text-xs font-medium text-[#5f5245]">
+                                  <div className={`rounded-[12px] border px-3 py-2 text-xs font-medium ${
+                                    item.adminNoteImportant
+                                      ? "animate-pulse border-[#b91c1c] bg-[#fff1f2] text-[#991b1b] shadow-[0_8px_22px_rgba(185,28,28,0.16)]"
+                                      : "border-[#eadfce] bg-[#fffaf0] text-[#5f5245]"
+                                  }`}>
                                     Note: {item.adminNote}
                                   </div>
                                 ) : null}
@@ -9827,7 +9851,11 @@ This removes its linked members and deletes the grounds account.`
                             {item.bookingEventId ? (
                               <div className="mt-2 flex flex-wrap items-center gap-2">
                                 {item.adminNote ? (
-                                  <div className="rounded-[12px] border border-[#eadfce] bg-[#fffaf0] px-3 py-2 text-xs font-medium text-[#5f5245]">
+                                  <div className={`rounded-[12px] border px-3 py-2 text-xs font-medium ${
+                                    item.adminNoteImportant
+                                      ? "animate-pulse border-[#b91c1c] bg-[#fff1f2] text-[#991b1b] shadow-[0_8px_22px_rgba(185,28,28,0.16)]"
+                                      : "border-[#eadfce] bg-[#fffaf0] text-[#5f5245]"
+                                  }`}>
                                     Note: {item.adminNote}
                                   </div>
                                 ) : null}
@@ -9918,7 +9946,11 @@ This removes its linked members and deletes the grounds account.`
                             {item.summary}
                           </p>
                           {item.adminNote ? (
-                            <div className="mt-2 rounded-[12px] border border-[#bde7cf] bg-[#f4fbf4] px-3 py-2 text-xs font-medium text-[#315f41]">
+                            <div className={`mt-2 rounded-[12px] border px-3 py-2 text-xs font-medium ${
+                              item.adminNoteImportant
+                                ? "animate-pulse border-[#b91c1c] bg-[#fff1f2] text-[#991b1b] shadow-[0_8px_22px_rgba(185,28,28,0.16)]"
+                                : "border-[#bde7cf] bg-[#f4fbf4] text-[#315f41]"
+                            }`}>
                               Note: {item.adminNote}
                             </div>
                           ) : null}
@@ -17140,6 +17172,7 @@ This removes its linked members and deletes the grounds account.`
                 const checkinTime = formatTimeLabel(property?.default_checkin_time);
                 const checkoutTime = formatTimeLabel(property?.default_checkout_time);
                 const adminNote = booking.admin_note?.trim() || "";
+                const adminNoteImportant = Boolean(booking.admin_note_important);
 
                 return (
                   <div
@@ -17169,7 +17202,11 @@ This removes its linked members and deletes the grounds account.`
                           {booking.summary?.trim() || "Reserved"}
                         </div>
                         {adminNote ? (
-                          <div className="mt-3 rounded-[14px] border border-[#eadfce] bg-[#fffaf0] px-3 py-2 text-sm text-[#5f5245]">
+                          <div className={`mt-3 rounded-[14px] border px-3 py-2 text-sm ${
+                            adminNoteImportant
+                              ? "animate-pulse border-[#b91c1c] bg-[#fff1f2] text-[#991b1b] shadow-[0_8px_22px_rgba(185,28,28,0.16)]"
+                              : "border-[#eadfce] bg-[#fffaf0] text-[#5f5245]"
+                          }`}>
                             Note: {adminNote}
                           </div>
                         ) : null}
@@ -17183,6 +17220,7 @@ This removes its linked members and deletes the grounds account.`
                             propertyName: property?.name || property?.address || "Booking",
                             summary: booking.summary || sourceLabel,
                             adminNote,
+                            adminNoteImportant,
                           })
                         }
                         className="shrink-0 rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-semibold text-[#5f5245] transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#d8c7ab]"
@@ -19857,6 +19895,7 @@ This removes its linked members and deletes the grounds account.`
                   if (savingBookingNote) return;
                   setEditingBookingNote(null);
                   setBookingNoteDraft("");
+                  setBookingNoteImportant(false);
                 }}
                 className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1.5 text-xs font-semibold text-[#5f5245] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={savingBookingNote}
@@ -19881,12 +19920,31 @@ This removes its linked members and deletes the grounds account.`
               <span>Shown on admin booking cards in Today at a glance and Calendar.</span>
               <span>{bookingNoteDraft.length}/1000</span>
             </div>
+            <label className={`mt-4 flex items-start gap-3 rounded-[18px] border px-4 py-3 text-sm transition ${
+              bookingNoteImportant
+                ? "border-[#b91c1c] bg-[#fff1f2] text-[#991b1b]"
+                : "border-[#d8c7ab] bg-[#fcfaf7] text-[#5f5245]"
+            }`}>
+              <input
+                type="checkbox"
+                checked={bookingNoteImportant}
+                onChange={(event) => setBookingNoteImportant(event.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-[#d8c7ab] text-[#b91c1c] focus:ring-[#fca5a5]"
+              />
+              <span>
+                <span className="block font-semibold">Mark important</span>
+                <span className="mt-0.5 block text-xs">
+                  Important notes pulse red when they appear on Today at a glance.
+                </span>
+              </span>
+            </label>
 
             <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
               <button
                 type="button"
                 onClick={() => {
                   setBookingNoteDraft("");
+                  setBookingNoteImportant(false);
                 }}
                 className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-semibold text-[#5f5245] transition hover:bg-[#fcfaf7]"
                 disabled={savingBookingNote}
@@ -20103,10 +20161,14 @@ This removes its linked members and deletes the grounds account.`
                       ) : (
                         <div className="truncate text-xs text-[#64748b]">{item.detail}</div>
                       )}
-                      {item.bookingEventId ? (
-                        <div className="mt-1 flex flex-wrap items-center gap-2">
-                          {item.adminNote ? (
-                            <div className="truncate rounded-full border border-[#eadfce] bg-[#fffaf0] px-2 py-0.5 text-[11px] font-medium text-[#5f5245]">
+                          {item.bookingEventId ? (
+                            <div className="mt-1 flex flex-wrap items-center gap-2">
+                              {item.adminNote ? (
+                            <div className={`truncate rounded-full border px-2 py-0.5 text-[11px] font-medium ${
+                              item.adminNoteImportant
+                                ? "animate-pulse border-[#b91c1c] bg-[#fff1f2] text-[#991b1b]"
+                                : "border-[#eadfce] bg-[#fffaf0] text-[#5f5245]"
+                            }`}>
                               Note: {item.adminNote}
                             </div>
                           ) : null}
@@ -20132,7 +20194,11 @@ This removes its linked members and deletes the grounds account.`
                       <div className="mt-1 truncate text-sm font-semibold text-[#17202a]">{item.title}</div>
                       <div className="truncate text-xs text-[#64748b]">{item.detail}</div>
                       {item.adminNote ? (
-                        <div className="mt-1 truncate rounded-full border border-[#ddd6fe] bg-[#faf5ff] px-2 py-0.5 text-[11px] font-medium text-[#6d28d9]">
+                        <div className={`mt-1 truncate rounded-full border px-2 py-0.5 text-[11px] font-medium ${
+                          item.adminNoteImportant
+                            ? "animate-pulse border-[#b91c1c] bg-[#fff1f2] text-[#991b1b]"
+                            : "border-[#ddd6fe] bg-[#faf5ff] text-[#6d28d9]"
+                        }`}>
                           Note: {item.adminNote}
                         </div>
                       ) : null}
@@ -20178,7 +20244,11 @@ This removes its linked members and deletes the grounds account.`
                         Checks out {formatDateLabel(property.checkoutDate)}
                       </div>
                       {property.adminNote ? (
-                        <div className="mt-1 truncate rounded-full border border-[#bbf7d0] bg-[#f0fdf4] px-2 py-0.5 text-[11px] font-medium text-[#15803d]">
+                        <div className={`mt-1 truncate rounded-full border px-2 py-0.5 text-[11px] font-medium ${
+                          property.adminNoteImportant
+                            ? "animate-pulse border-[#b91c1c] bg-[#fff1f2] text-[#991b1b]"
+                            : "border-[#bbf7d0] bg-[#f0fdf4] text-[#15803d]"
+                        }`}>
                           Note: {property.adminNote}
                         </div>
                       ) : null}
