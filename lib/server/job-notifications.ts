@@ -753,7 +753,10 @@ async function sendNotificationPush(
     .filter((profileId): profileId is string => Boolean(profileId));
 
   if (profileIds.length === 0) {
-    return { successCount: 0, failures: [] as string[] };
+    return {
+      successCount: 0,
+      failures: [`${bundle.accountLabel}: no linked ${bundle.kind} login profile for push notifications.`],
+    };
   }
 
   const result = await sendStaffPushNotifications(bundle.kind, profileIds, {
@@ -765,7 +768,10 @@ async function sendNotificationPush(
 
   return {
     successCount: result.sent,
-    failures: result.errors,
+    failures:
+      result.sent === 0 && result.errors.length === 0
+        ? [`${bundle.accountLabel}: no active ${bundle.kind} push device is registered.`]
+        : result.errors,
   };
 }
 
@@ -863,6 +869,59 @@ async function markNotificationSent(
   }
 }
 
+async function sendSlotNotificationChannels(
+  service: ReturnType<typeof getServiceClient>,
+  kind: JobNotificationKind,
+  slotId: string,
+  bundle: SlotBundle,
+  mode: JobNotificationMode,
+  origin: string,
+  options?: {
+    sendEmail?: boolean;
+    sendPush?: boolean;
+  }
+) {
+  let sent = 0;
+  let pushSent = 0;
+  const errors: string[] = [];
+
+  if (options?.sendEmail !== false) {
+    try {
+      const result = await sendNotificationEmail(bundle, mode, origin);
+      if (result.failures.length > 0) {
+        errors.push(...result.failures);
+      }
+      if (result.successCount > 0) {
+        await markNotificationSent(service, kind, slotId, mode, "email");
+        sent += result.successCount;
+      }
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : "Unknown email notification error.");
+    }
+  }
+
+  if (options?.sendPush !== false) {
+    try {
+      const result = await sendNotificationPush(bundle, mode, origin);
+      if (result.failures.length > 0) {
+        errors.push(...result.failures);
+      }
+      if (result.successCount > 0) {
+        await markNotificationSent(service, kind, slotId, mode, "push");
+        pushSent += result.successCount;
+      }
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : "Unknown push notification error.");
+    }
+  }
+
+  return {
+    sent,
+    pushSent,
+    errors,
+  };
+}
+
 function shouldSendOfferReminder(bundle: SlotBundle, now = new Date()) {
   if ((bundle.status || "").toLowerCase().trim() !== "offered") return false;
   if (bundle.offerReminderSentAt) return false;
@@ -933,27 +992,13 @@ export async function sendJobOfferEmailsForSlots(
         continue;
       }
 
-      if (needsEmail) {
-        const result = await sendNotificationEmail(bundle, "offer", origin);
-        if (result.failures.length > 0) {
-          errors.push(...result.failures);
-        }
-        if (result.successCount > 0) {
-          await markNotificationSent(service, kind, slotId, "offer", "email");
-          sent += result.successCount;
-        }
-      }
-
-      if (needsPush) {
-        const result = await sendNotificationPush(bundle, "offer", origin);
-        if (result.failures.length > 0) {
-          errors.push(...result.failures);
-        }
-        if (result.successCount > 0) {
-          await markNotificationSent(service, kind, slotId, "offer", "push");
-          pushSent += result.successCount;
-        }
-      }
+      const result = await sendSlotNotificationChannels(service, kind, slotId, bundle, "offer", origin, {
+        sendEmail: needsEmail,
+        sendPush: needsPush,
+      });
+      sent += result.sent;
+      pushSent += result.pushSent;
+      errors.push(...result.errors);
     } catch (error) {
       errors.push(error instanceof Error ? error.message : "Unknown notification error.");
     }
@@ -1072,27 +1117,13 @@ async function runSlotNotificationSweep(
     considered += 1;
 
     try {
-      if (!row[sentColumn]) {
-        const result = await sendNotificationEmail(bundle, mode, origin);
-        if (result.failures.length > 0) {
-          errors.push(...result.failures);
-        }
-        if (result.successCount > 0) {
-          await markNotificationSent(service, kind, row.id, mode, "email");
-          sent += result.successCount;
-        }
-      }
-
-      if (!row[pushSentColumn]) {
-        const result = await sendNotificationPush(bundle, mode, origin);
-        if (result.failures.length > 0) {
-          errors.push(...result.failures);
-        }
-        if (result.successCount > 0) {
-          await markNotificationSent(service, kind, row.id, mode, "push");
-          pushSent += result.successCount;
-        }
-      }
+      const result = await sendSlotNotificationChannels(service, kind, row.id, bundle, mode, origin, {
+        sendEmail: !row[sentColumn],
+        sendPush: !row[pushSentColumn],
+      });
+      sent += result.sent;
+      pushSent += result.pushSent;
+      errors.push(...result.errors);
     } catch (sweepError) {
       errors.push(sweepError instanceof Error ? sweepError.message : "Unknown notification error.");
     }

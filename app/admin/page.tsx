@@ -179,6 +179,9 @@ type JobSlot = {
   offer_email_sent_at?: string | null;
   offer_reminder_sent_at?: string | null;
   day_of_reminder_sent_at?: string | null;
+  offer_push_sent_at?: string | null;
+  offer_reminder_push_sent_at?: string | null;
+  day_of_reminder_push_sent_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -247,6 +250,9 @@ type GroundsJobSlot = {
   offer_email_sent_at?: string | null;
   offer_reminder_sent_at?: string | null;
   day_of_reminder_sent_at?: string | null;
+  offer_push_sent_at?: string | null;
+  offer_reminder_push_sent_at?: string | null;
+  day_of_reminder_push_sent_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -3828,8 +3834,9 @@ export default function AdminPage() {
     if (sessionError || !session?.access_token) {
       return {
         sent: 0,
+        pushSent: 0,
         skipped: uniqueSlotIds.length,
-        errors: ["Could not verify your admin session for email notifications."],
+        errors: ["Could not verify your admin session for job notifications."],
       };
     }
 
@@ -3850,6 +3857,7 @@ export default function AdminPage() {
     if (!response.ok) {
       return {
         sent: 0,
+        pushSent: 0,
         skipped: uniqueSlotIds.length,
         errors: [payload?.error || "Could not send job offer notifications."],
       };
@@ -3857,6 +3865,7 @@ export default function AdminPage() {
 
     return {
       sent: Number(payload?.sent ?? 0),
+      pushSent: Number(payload?.pushSent ?? 0),
       skipped: Number(payload?.skipped ?? 0),
       errors: Array.isArray(payload?.errors) ? payload.errors : [],
     };
@@ -3911,11 +3920,12 @@ export default function AdminPage() {
     try {
       const cleanerResult = cleanerSlotIds.length > 0
         ? await notifyJobOffers("cleaner", cleanerSlotIds)
-        : { sent: 0, skipped: 0, errors: [] as string[] };
+        : { sent: 0, pushSent: 0, skipped: 0, errors: [] as string[] };
       const groundsResult = groundsSlotIds.length > 0
         ? await notifyJobOffers("grounds", groundsSlotIds)
-        : { sent: 0, skipped: 0, errors: [] as string[] };
-      const sent = cleanerResult.sent + groundsResult.sent;
+        : { sent: 0, pushSent: 0, skipped: 0, errors: [] as string[] };
+      const sent = Number(cleanerResult.sent || 0) + Number(groundsResult.sent || 0);
+      const pushSent = Number(cleanerResult.pushSent || 0) + Number(groundsResult.pushSent || 0);
       const errors = [...cleanerResult.errors, ...groundsResult.errors];
 
       if (errors.length > 0) {
@@ -3923,9 +3933,9 @@ export default function AdminPage() {
       }
 
       setActionMessage(
-        sent > 0
-          ? `${sent} pending job offer email${sent === 1 ? "" : "s"} sent.`
-          : "No pending job offer emails were sent."
+        sent > 0 || pushSent > 0
+          ? `${sent} pending job offer email${sent === 1 ? "" : "s"} and ${pushSent} push alert${pushSent === 1 ? "" : "s"} sent.`
+          : "No pending job offer notifications were sent."
       );
 
       await loadData();
@@ -4353,10 +4363,15 @@ export default function AdminPage() {
 
     const notification = result.notification || {};
     let notificationNote = "";
+    const emailSent = Number(notification.sent || 0);
+    const pushSent = Number(notification.pushSent || 0);
     if ((notification.errors ?? []).length > 0) {
-      notificationNote = " Offer email notification needs attention.";
-    } else if (Number(notification.sent || 0) > 0) {
-      notificationNote = ` ${notification.sent} offer email${notification.sent === 1 ? "" : "s"} sent.`;
+      notificationNote = ` Job notification needs attention: ${notification.errors[0]}`;
+    } else if (emailSent > 0 || pushSent > 0) {
+      const parts = [];
+      if (emailSent > 0) parts.push(`${emailSent} email${emailSent === 1 ? "" : "s"}`);
+      if (pushSent > 0) parts.push(`${pushSent} push alert${pushSent === 1 ? "" : "s"}`);
+      notificationNote = ` ${parts.join(" and ")} sent.`;
     }
 
     setJobPropertyId("");
@@ -4632,13 +4647,14 @@ export default function AdminPage() {
 
       const notifyResult = payload.notificationResult || {};
       const sentCount = Number(notifyResult.sent ?? 0);
+      const pushSentCount = Number(notifyResult.pushSent ?? 0);
       const notificationErrors = Array.isArray(notifyResult.errors) ? notifyResult.errors : [];
 
       setActionMessage(
         notificationErrors.length > 0
-          ? "Stranded job reassigned. Offer email notification needs attention."
-          : sentCount > 0
-            ? `Stranded job reassigned. ${sentCount} offer email${sentCount === 1 ? "" : "s"} sent.`
+          ? `Stranded job reassigned. Job notification needs attention: ${notificationErrors[0]}`
+          : sentCount > 0 || pushSentCount > 0
+            ? `Stranded job reassigned. ${sentCount} email${sentCount === 1 ? "" : "s"} and ${pushSentCount} push alert${pushSentCount === 1 ? "" : "s"} sent.`
             : "Stranded job reassigned."
       );
       await loadData();
@@ -4869,11 +4885,13 @@ export default function AdminPage() {
     }
 
     const notifyResult = await notifyJobOffers("cleaner", [slot.id]);
+    const notifyEmailSent = Number(notifyResult.sent || 0);
+    const notifyPushSent = Number(notifyResult.pushSent || 0);
     setActionMessage(
       notifyResult.errors.length > 0
-        ? "Job reassigned. Offer email notification needs attention."
-        : notifyResult.sent > 0
-          ? `Job reassigned. ${notifyResult.sent} offer email${notifyResult.sent === 1 ? "" : "s"} sent.`
+        ? `Job reassigned. Job notification needs attention: ${notifyResult.errors[0]}`
+        : notifyEmailSent > 0 || notifyPushSent > 0
+          ? `Job reassigned. ${notifyEmailSent} email${notifyEmailSent === 1 ? "" : "s"} and ${notifyPushSent} push alert${notifyPushSent === 1 ? "" : "s"} sent.`
           : "Job reassigned."
     );
     await loadData();
@@ -5210,10 +5228,12 @@ export default function AdminPage() {
       );
 
       if (notifyResult.errors.length > 0) {
-        setActionMessage("Grounds job created. Offer email notification needs attention.");
-      } else if (notifyResult.sent > 0) {
+        setActionMessage(`Grounds job created. Job notification needs attention: ${notifyResult.errors[0]}`);
+      } else if (Number(notifyResult.sent || 0) > 0 || Number(notifyResult.pushSent || 0) > 0) {
+        const notifyEmailSent = Number(notifyResult.sent || 0);
+        const notifyPushSent = Number(notifyResult.pushSent || 0);
         setActionMessage(
-          `Grounds job created. ${notifyResult.sent} offer email${notifyResult.sent === 1 ? "" : "s"} sent.`
+          `Grounds job created. ${notifyEmailSent} email${notifyEmailSent === 1 ? "" : "s"} and ${notifyPushSent} push alert${notifyPushSent === 1 ? "" : "s"} sent.`
         );
       }
     }
@@ -7221,6 +7241,8 @@ This removes its linked members and deletes the grounds account.`
       status: string;
       notificationLabel: string;
       notificationTone: string;
+      offerEmailSentAt?: string | null;
+      offerPushSentAt?: string | null;
       offeredAt?: string | null;
       expiresAt?: string | null;
       acceptedAt?: string | null;
@@ -7244,6 +7266,8 @@ This removes its linked members and deletes the grounds account.`
           status: slot.status,
           notificationLabel: getJobNotificationLabel(slot),
           notificationTone: getJobNotificationTone(slot),
+          offerEmailSentAt: slot.offer_email_sent_at,
+          offerPushSentAt: slot.offer_push_sent_at,
           offeredAt: slot.offered_at,
           expiresAt: slot.expires_at,
           acceptedAt: slot.accepted_at,
@@ -7269,6 +7293,8 @@ This removes its linked members and deletes the grounds account.`
           status: slot.status,
           notificationLabel: getJobNotificationLabel(slot),
           notificationTone: getJobNotificationTone(slot),
+          offerEmailSentAt: slot.offer_email_sent_at,
+          offerPushSentAt: slot.offer_push_sent_at,
           offeredAt: slot.offered_at,
           expiresAt: slot.expires_at,
           acceptedAt: slot.accepted_at,
@@ -7279,8 +7305,8 @@ This removes its linked members and deletes the grounds account.`
     }
 
     return rows.sort((a, b) => {
-      const aNeedsAttention = (a.status === "offered" && !a.notificationLabel.includes("sent")) || a.overdue || a.status === "declined";
-      const bNeedsAttention = (b.status === "offered" && !b.notificationLabel.includes("sent")) || b.overdue || b.status === "declined";
+      const aNeedsAttention = (a.status === "offered" && (!a.offerEmailSentAt || !a.offerPushSentAt)) || a.overdue || a.status === "declined";
+      const bNeedsAttention = (b.status === "offered" && (!b.offerEmailSentAt || !b.offerPushSentAt)) || b.overdue || b.status === "declined";
       if (aNeedsAttention !== bNeedsAttention) return aNeedsAttention ? -1 : 1;
       return new Date(b.offeredAt || b.acceptedAt || b.declinedAt || 0).getTime() - new Date(a.offeredAt || a.acceptedAt || a.declinedAt || 0).getTime();
     });
@@ -7292,9 +7318,8 @@ This removes its linked members and deletes the grounds account.`
     const waiting = jobReliabilityRows.filter((row) => row.status === "offered").length;
     const overdue = jobReliabilityRows.filter((row) => row.overdue).length;
     const declined = jobReliabilityRows.filter((row) => row.status === "declined").length;
-    const emailPending = jobReliabilityRows.filter(
-      (row) => row.status === "offered" && row.notificationLabel === "Offer email pending"
-    ).length;
+    const emailPending = jobReliabilityRows.filter((row) => row.status === "offered" && !row.offerEmailSentAt).length;
+    const pushPending = jobReliabilityRows.filter((row) => row.status === "offered" && !row.offerPushSentAt).length;
 
     return {
       total,
@@ -7303,6 +7328,7 @@ This removes its linked members and deletes the grounds account.`
       overdue,
       declined,
       emailPending,
+      pushPending,
       acceptedRate: total > 0 ? Math.round((accepted / total) * 100) : 0,
     };
   }, [jobReliabilityRows]);
@@ -7312,7 +7338,7 @@ This removes its linked members and deletes the grounds account.`
       jobReliabilityRows.filter(
         (row) =>
           row.status === "offered" &&
-          (row.notificationLabel === "Offer email pending" || row.overdue)
+          (!row.offerEmailSentAt || !row.offerPushSentAt || row.overdue)
       ),
     [jobReliabilityRows]
   );
@@ -8197,25 +8223,50 @@ This removes its linked members and deletes the grounds account.`
 
   function getJobNotificationLabel(slot: JobSlot | GroundsJobSlot) {
     if (slot.status === "offered") {
-      if (slot.offer_email_sent_at) return `Offer email sent ${formatDateTime(slot.offer_email_sent_at)}`;
-      return "Offer email pending";
+      const emailLabel = slot.offer_email_sent_at
+        ? `email ${formatDateTime(slot.offer_email_sent_at)}`
+        : "email pending";
+      const pushLabel = slot.offer_push_sent_at
+        ? `push ${formatDateTime(slot.offer_push_sent_at)}`
+        : "push pending";
+      return `Offer: ${emailLabel} | ${pushLabel}`;
     }
 
     if (slot.status === "accepted") {
-      if (slot.day_of_reminder_sent_at) return `Day-of reminder sent ${formatDateTime(slot.day_of_reminder_sent_at)}`;
-      return "Day-of reminder pending";
+      const emailLabel = slot.day_of_reminder_sent_at
+        ? `email ${formatDateTime(slot.day_of_reminder_sent_at)}`
+        : "email pending";
+      const pushLabel = slot.day_of_reminder_push_sent_at
+        ? `push ${formatDateTime(slot.day_of_reminder_push_sent_at)}`
+        : "push pending";
+      return `Day-of reminder: ${emailLabel} | ${pushLabel}`;
     }
 
-    if (slot.offer_reminder_sent_at) return `Reminder sent ${formatDateTime(slot.offer_reminder_sent_at)}`;
-    return "No active email notice";
+    if (slot.offer_reminder_sent_at || slot.offer_reminder_push_sent_at) {
+      const emailLabel = slot.offer_reminder_sent_at
+        ? `email ${formatDateTime(slot.offer_reminder_sent_at)}`
+        : "email pending";
+      const pushLabel = slot.offer_reminder_push_sent_at
+        ? `push ${formatDateTime(slot.offer_reminder_push_sent_at)}`
+        : "push pending";
+      return `Reminder: ${emailLabel} | ${pushLabel}`;
+    }
+    return "No active notice";
   }
 
   function getJobNotificationTone(slot: JobSlot | GroundsJobSlot) {
-    if (slot.status === "offered" && !slot.offer_email_sent_at) {
+    if (slot.status === "offered" && (!slot.offer_email_sent_at || !slot.offer_push_sent_at)) {
       return "border-[#f0b4b4] bg-[#fff5f5] text-[#8a2e22]";
     }
 
-    if (slot.offer_email_sent_at || slot.offer_reminder_sent_at || slot.day_of_reminder_sent_at) {
+    if (
+      slot.offer_email_sent_at ||
+      slot.offer_reminder_sent_at ||
+      slot.day_of_reminder_sent_at ||
+      slot.offer_push_sent_at ||
+      slot.offer_reminder_push_sent_at ||
+      slot.day_of_reminder_push_sent_at
+    ) {
       return "border-[#bbdfc0] bg-[#f0fbf2] text-[#236b30]";
     }
 
@@ -8412,8 +8463,8 @@ This removes its linked members and deletes the grounds account.`
     if (failedNotificationStats.total > 0) {
       items.push({
         key: "notification-queue",
-        title: "Job emails need retry",
-        detail: `${failedNotificationStats.overdue} overdue offer${failedNotificationStats.overdue === 1 ? "" : "s"} and ${failedNotificationStats.total} pending email${failedNotificationStats.total === 1 ? "" : "s"}.`,
+        title: "Job notifications need retry",
+        detail: `${failedNotificationStats.overdue} overdue offer${failedNotificationStats.overdue === 1 ? "" : "s"}, ${jobReliabilityStats.emailPending} pending email${jobReliabilityStats.emailPending === 1 ? "" : "s"}, and ${jobReliabilityStats.pushPending} pending push alert${jobReliabilityStats.pushPending === 1 ? "" : "s"}.`,
         count: failedNotificationStats.total,
         tone: failedNotificationStats.overdue > 0 ? "red" : "amber",
         actionLabel: "Open queue",
