@@ -7973,6 +7973,44 @@ This removes its linked members and deletes the grounds account.`
     [futureHomeHappenings]
   );
 
+  const groupedTodaysHomeHappenings = useMemo(() => {
+    const wasteItems = todaysHomeHappenings.filter((item) => item.kind === "Waste");
+    if (wasteItems.length <= 1) return todaysHomeHappenings;
+
+    const nonWasteItems = todaysHomeHappenings.filter((item) => item.kind !== "Waste");
+    const firstWasteItem = wasteItems[0];
+    return [
+      ...nonWasteItems,
+      {
+        ...firstWasteItem,
+        id: `waste-group-${todayYmd}`,
+        sortKey: firstWasteItem.sortKey,
+        title: "Waste",
+        detail: `${wasteItems.length} properties`,
+        wasteItems,
+      },
+    ].sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+  }, [todaysHomeHappenings, todayYmd]);
+
+  const groupedFutureHomeHappenings = useMemo(() => {
+    const wasteItems = futureHomeHappenings.filter((item) => item.kind === "Waste");
+    if (wasteItems.length <= 1) return futureHomeHappenings;
+
+    const nonWasteItems = futureHomeHappenings.filter((item) => item.kind !== "Waste");
+    const firstWasteItem = wasteItems[0];
+    return [
+      ...nonWasteItems,
+      {
+        ...firstWasteItem,
+        id: "waste-group-upcoming",
+        sortKey: firstWasteItem.sortKey,
+        title: "Waste",
+        detail: `${wasteItems.length} properties`,
+        wasteItems,
+      },
+    ].sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+  }, [futureHomeHappenings]);
+
   const todayAtGlanceCounts = useMemo(() => {
     return {
       cleaning: todayAtGlanceItems.filter((item) => item.kind === "Cleaning").length,
@@ -9514,12 +9552,12 @@ This removes its linked members and deletes the grounds account.`
                     </h3>
                   </div>
                   <div className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-[#2957a4]">
-                    {todaysHomeHappenings.length} today
+                      {groupedTodaysHomeHappenings.length} today
                   </div>
                 </div>
 
                   <div className="mt-3 space-y-2">
-                  {todaysHomeHappenings.map((item) => {
+                  {groupedTodaysHomeHappenings.map((item) => {
                     const badgeClass =
                       item.tone === "green"
                         ? "bg-[#16a34a] text-white"
@@ -9556,6 +9594,10 @@ This removes its linked members and deletes the grounds account.`
                           : item.tone === "amber"
                             ? "border-[#f1cf8f]"
                             : "border-[#b9d1fb]";
+                    const groupedWasteItems =
+                      "wasteItems" in item && Array.isArray(item.wasteItems)
+                        ? item.wasteItems
+                        : null;
                     const content = (
                       <div className={`rounded-[18px] border ${borderClass} bg-white px-4 py-2.5`}>
                         <div className="flex items-start justify-between gap-3">
@@ -9566,22 +9608,38 @@ This removes its linked members and deletes the grounds account.`
                             <p className="mt-1 text-[15px] font-semibold text-[#1c2b45]">
                               {item.title}
                             </p>
-                            <div className="mt-0.5 text-sm text-[#5f6f86]">
-                              {item.staffContacts.length > 0 ? (
-                                <button
-                                  type="button"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    setSelectedStaffContact(item.staffContacts[0]);
-                                  }}
-                                  className="inline-flex max-w-full items-center rounded-full border border-[#9bb7e5] bg-[#f8fbff] px-2.5 py-1 text-left text-xs font-semibold text-[#2957a4] shadow-sm transition hover:border-[#6f9ad8] hover:bg-[#e8f1ff] focus:outline-none focus:ring-2 focus:ring-[#9bb7e5]"
-                                >
-                                  {item.detail}
-                                </button>
-                              ) : (
-                                <span>{item.detail}</span>
-                              )}
-                            </div>
+                            {groupedWasteItems ? (
+                              <div className="mt-2 space-y-1.5">
+                                {groupedWasteItems.map((wasteItem) => (
+                                  <div key={wasteItem.id} className="flex items-start justify-between gap-3 rounded-[12px] bg-[#f0fdf4] px-3 py-2 text-sm">
+                                    <div className="min-w-0">
+                                      <div className="font-semibold text-[#1c2b45]">{wasteItem.title}</div>
+                                      <div className="text-xs text-[#5f6f86]">{wasteItem.detail}</div>
+                                    </div>
+                                    <div className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-[#166534]">
+                                      {wasteItem.label}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="mt-0.5 text-sm text-[#5f6f86]">
+                                {item.staffContacts.length > 0 ? (
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setSelectedStaffContact(item.staffContacts[0]);
+                                    }}
+                                    className="inline-flex max-w-full items-center rounded-full border border-[#9bb7e5] bg-[#f8fbff] px-2.5 py-1 text-left text-xs font-semibold text-[#2957a4] shadow-sm transition hover:border-[#6f9ad8] hover:bg-[#e8f1ff] focus:outline-none focus:ring-2 focus:ring-[#9bb7e5]"
+                                  >
+                                    {item.detail}
+                                  </button>
+                                ) : (
+                                  <span>{item.detail}</span>
+                                )}
+                              </div>
+                            )}
                             {item.bookingEventId ? (
                               <div className="mt-2 flex flex-wrap items-center gap-2">
                                 {item.adminNote ? (
@@ -9629,7 +9687,7 @@ This removes its linked members and deletes the grounds account.`
                     <div className="rounded-[16px] border border-dashed border-[#b9d1fb] bg-white/80 px-4 py-3 text-sm text-[#5f6f86]">
                       {loadingWorkCopy}
                     </div>
-                  ) : todaysHomeHappenings.length === 0 ? (
+                  ) : groupedTodaysHomeHappenings.length === 0 ? (
                     <div className="rounded-[16px] border border-dashed border-[#b9d1fb] bg-white/80 px-4 py-3 text-sm text-[#5f6f86]">
                       {todayEmptyCopy}
                     </div>
@@ -9648,12 +9706,12 @@ This removes its linked members and deletes the grounds account.`
                         </h4>
                       </div>
                       <div className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-[#7a5a23]">
-                        {futureHomeHappenings.length} upcoming
+                        {groupedFutureHomeHappenings.length} upcoming
                       </div>
                     </div>
 
                   <div className="mt-3 space-y-2">
-                  {futureHomeHappenings.map((item) => {
+                  {groupedFutureHomeHappenings.map((item) => {
                     const badgeClass =
                       item.tone === "green"
                         ? "bg-[#16a34a] text-white"
@@ -9690,6 +9748,10 @@ This removes its linked members and deletes the grounds account.`
                           : item.tone === "amber"
                             ? "border-[#f1cf8f]"
                             : "border-[#b9d1fb]";
+                    const groupedWasteItems =
+                      "wasteItems" in item && Array.isArray(item.wasteItems)
+                        ? item.wasteItems
+                        : null;
                     const content = (
                       <div className={`rounded-[18px] border ${borderClass} bg-white px-4 py-2.5`}>
                         <div className="flex items-start justify-between gap-3">
@@ -9700,22 +9762,38 @@ This removes its linked members and deletes the grounds account.`
                             <p className="mt-1 text-[15px] font-semibold text-[#1c2b45]">
                               {item.title}
                             </p>
-                            <div className="mt-0.5 text-sm text-[#5f6f86]">
-                              {item.staffContacts.length > 0 ? (
-                                <button
-                                  type="button"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    setSelectedStaffContact(item.staffContacts[0]);
-                                  }}
-                                  className="inline-flex max-w-full items-center rounded-full border border-[#e3cda7] bg-[#fffaf0] px-2.5 py-1 text-left text-xs font-semibold text-[#7a5a23] shadow-sm transition hover:border-[#d2ad68] hover:bg-[#fff3d6] focus:outline-none focus:ring-2 focus:ring-[#e3cda7]"
-                                >
-                                  {item.detail}
-                                </button>
-                              ) : (
-                                <span>{item.detail}</span>
-                              )}
-                            </div>
+                            {groupedWasteItems ? (
+                              <div className="mt-2 space-y-1.5">
+                                {groupedWasteItems.map((wasteItem) => (
+                                  <div key={wasteItem.id} className="flex items-start justify-between gap-3 rounded-[12px] bg-[#f0fdf4] px-3 py-2 text-sm">
+                                    <div className="min-w-0">
+                                      <div className="font-semibold text-[#1c2b45]">{wasteItem.title}</div>
+                                      <div className="text-xs text-[#5f6f86]">{wasteItem.detail}</div>
+                                    </div>
+                                    <div className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-[#166534]">
+                                      {wasteItem.label}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="mt-0.5 text-sm text-[#5f6f86]">
+                                {item.staffContacts.length > 0 ? (
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setSelectedStaffContact(item.staffContacts[0]);
+                                    }}
+                                    className="inline-flex max-w-full items-center rounded-full border border-[#e3cda7] bg-[#fffaf0] px-2.5 py-1 text-left text-xs font-semibold text-[#7a5a23] shadow-sm transition hover:border-[#d2ad68] hover:bg-[#fff3d6] focus:outline-none focus:ring-2 focus:ring-[#e3cda7]"
+                                  >
+                                    {item.detail}
+                                  </button>
+                                ) : (
+                                  <span>{item.detail}</span>
+                                )}
+                              </div>
+                            )}
                             {item.bookingEventId ? (
                               <div className="mt-2 flex flex-wrap items-center gap-2">
                                 {item.adminNote ? (
@@ -9759,7 +9837,7 @@ This removes its linked members and deletes the grounds account.`
                     );
                   })}
 
-                  {adminDataLoaded && futureHomeHappenings.length === 0 ? (
+                  {adminDataLoaded && groupedFutureHomeHappenings.length === 0 ? (
                     <div className="rounded-[16px] border border-dashed border-[#e3cda7] bg-white/80 px-4 py-3 text-sm text-[#6d5c40]">
                       {upcomingEmptyCopy}
                     </div>
