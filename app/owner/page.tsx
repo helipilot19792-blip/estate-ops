@@ -190,6 +190,15 @@ type BookingInsight = {
   nights: number;
 };
 
+type OwnerInsightRange = "365" | "180" | "90" | "30";
+
+const OWNER_INSIGHT_RANGE_OPTIONS: Array<{ value: OwnerInsightRange; label: string; months: number }> = [
+  { value: "365", label: "12 months", months: 12 },
+  { value: "180", label: "6 months", months: 6 },
+  { value: "90", label: "3 months", months: 3 },
+  { value: "30", label: "30 days", months: 1 },
+];
+
 type CurrentBooking = {
   id: string;
   sourceLabel: string | null;
@@ -497,6 +506,20 @@ function bookingTouchesDay(booking: BookingInsight, dayYmd: string) {
 function bookingTouchesMonth(booking: BookingInsight, monthDate: Date) {
   const monthKey = getMonthKey(monthDate);
   return countBookedNightsInMonth(booking, monthKey) > 0;
+}
+
+function bookingTouchesRecentWindow(booking: BookingInsight, days: number) {
+  const today = new Date();
+  const end = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+  const start = new Date(end);
+  start.setDate(end.getDate() - days);
+
+  const bookingStart = new Date(`${booking.checkinDate}T12:00:00`);
+  const bookingEnd = new Date(`${booking.checkoutDate}T12:00:00`);
+
+  if (Number.isNaN(bookingStart.getTime()) || Number.isNaN(bookingEnd.getTime())) return false;
+
+  return bookingEnd > start && bookingStart < end;
 }
 
 type OwnerTranslator = (path: TranslationPath) => string;
@@ -972,6 +995,9 @@ export default function OwnerPage() {
   const [ownerChatMessages, setOwnerChatMessages] = useState<OwnerChatMessageRow[]>([]);
   const [ownerChatUnreadCount, setOwnerChatUnreadCount] = useState(0);
   const [targetChatConversationId, setTargetChatConversationId] = useState("");
+  const [targetInvoiceId, setTargetInvoiceId] = useState("");
+  const [showPaidInvoiceHistory, setShowPaidInvoiceHistory] = useState(false);
+  const [ownerInsightRange, setOwnerInsightRange] = useState<OwnerInsightRange>("365");
 
   const formatOwnerDateLabel = (dateString: string | null | undefined) =>
     formatDateLabel(dateString, locale, t("ownerPortal.overview.notScheduled"));
@@ -1439,11 +1465,16 @@ export default function OwnerPage() {
     const params = new URLSearchParams(window.location.search);
     const tabFromUrl = params.get("tab");
     const conversationId = params.get("conversationId")?.trim() || "";
+    const invoiceId = params.get("invoiceId")?.trim() || "";
     if (tabFromUrl === "overview" || tabFromUrl === "calendar" || tabFromUrl === "insights" || tabFromUrl === "invoices" || tabFromUrl === "chat") {
       setActiveOwnerTab(tabFromUrl);
     }
     if (conversationId) {
       setTargetChatConversationId(conversationId);
+    }
+    if (invoiceId) {
+      setTargetInvoiceId(invoiceId);
+      setActiveOwnerTab("invoices");
     }
   }, []);
 
@@ -1496,6 +1527,9 @@ export default function OwnerPage() {
 
     const url = new URL(window.location.href);
     url.searchParams.set("tab", tab);
+    if (tab !== "invoices") {
+      url.searchParams.delete("invoiceId");
+    }
     window.history.replaceState(null, "", url.toString());
   }
 
@@ -1550,6 +1584,18 @@ export default function OwnerPage() {
       (invoice) => !invoice.property_id || invoice.property_id === selectedProperty.id
     );
   }, [ownerInvoiceHiddenItems, selectedProperty, ownerInvoices]);
+  const openPropertyOwnerInvoices = useMemo(
+    () => propertyOwnerInvoices.filter((invoice) => invoice.status !== "paid"),
+    [propertyOwnerInvoices]
+  );
+  const paidPropertyOwnerInvoices = useMemo(
+    () => propertyOwnerInvoices.filter((invoice) => invoice.status === "paid"),
+    [propertyOwnerInvoices]
+  );
+  const displayedPropertyOwnerInvoices = useMemo(
+    () => showPaidInvoiceHistory ? propertyOwnerInvoices : openPropertyOwnerInvoices,
+    [openPropertyOwnerInvoices, propertyOwnerInvoices, showPaidInvoiceHistory]
+  );
   const unreadOwnerInvoices = useMemo(
     () =>
       ownerInvoices.filter(
@@ -1563,6 +1609,29 @@ export default function OwnerPage() {
     () => propertyOwnerInvoices.filter((invoice) => !invoice.owner_viewed_at),
     [propertyOwnerInvoices]
   );
+
+  useEffect(() => {
+    if (!targetInvoiceId || ownerInvoices.length === 0) return;
+
+    const invoice = ownerInvoices.find((item) => item.id === targetInvoiceId);
+    if (!invoice) return;
+
+    if (invoice.property_id && selectedPropertyId !== invoice.property_id) {
+      setSelectedPropertyId(invoice.property_id);
+      return;
+    }
+
+    if (invoice.status === "paid") {
+      setShowPaidInvoiceHistory(true);
+    }
+
+    window.setTimeout(() => {
+      document.getElementById(`owner-invoice-${targetInvoiceId}`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 150);
+  }, [ownerInvoices, selectedPropertyId, targetInvoiceId]);
 
   const propertyFlags = useMemo(() => {
     if (!selectedProperty) return [];
@@ -1852,14 +1921,20 @@ export default function OwnerPage() {
       .sort((a, b) => a.checkinDate.localeCompare(b.checkinDate));
   }, [propertyBookingEvents, propertyTurnoverJobs]);
 
+  const ownerInsightRangeOption = OWNER_INSIGHT_RANGE_OPTIONS.find((option) => option.value === ownerInsightRange) || OWNER_INSIGHT_RANGE_OPTIONS[0];
+  const rangedBookingInsights = useMemo(
+    () => bookingInsights.filter((booking) => bookingTouchesRecentWindow(booking, Number(ownerInsightRange))),
+    [bookingInsights, ownerInsightRange]
+  );
+
   const bookingInsightStats = useMemo(() => {
-    const monthKeys = getLastMonthKeys(12);
+    const monthKeys = getLastMonthKeys(ownerInsightRangeOption.months);
     const monthly = monthKeys.map((monthKey) => {
-      const bookedNights = bookingInsights.reduce(
+      const bookedNights = rangedBookingInsights.reduce(
         (total, booking) => total + countBookedNightsInMonth(booking, monthKey),
         0
       );
-      const bookings = bookingInsights.filter((booking) => booking.checkinDate.slice(0, 7) === monthKey);
+      const bookings = rangedBookingInsights.filter((booking) => booking.checkinDate.slice(0, 7) === monthKey);
       const daysInMonth = getDaysInMonth(monthKey);
 
       return {
@@ -1874,8 +1949,8 @@ export default function OwnerPage() {
     const totalBookedNights = monthly.reduce((total, month) => total + month.bookedNights, 0);
     const totalBookingCount = monthly.reduce((total, month) => total + month.bookingCount, 0);
     const averageStay =
-      bookingInsights.length > 0
-        ? bookingInsights.reduce((total, booking) => total + booking.nights, 0) / bookingInsights.length
+      rangedBookingInsights.length > 0
+        ? rangedBookingInsights.reduce((total, booking) => total + booking.nights, 0) / rangedBookingInsights.length
         : 0;
     const averageOccupancy =
       monthly.length > 0
@@ -1888,7 +1963,7 @@ export default function OwnerPage() {
     const next60 = countBookedNightsInWindow(bookingInsights, 60);
     const next90 = countBookedNightsInWindow(bookingInsights, 90);
 
-    const sourceCounts = bookingInsights.reduce<Record<string, number>>((counts, booking) => {
+    const sourceCounts = rangedBookingInsights.reduce<Record<string, number>>((counts, booking) => {
       const label = booking.sourceLabel || "Other";
       counts[label] = (counts[label] || 0) + booking.nights;
       return counts;
@@ -1909,8 +1984,8 @@ export default function OwnerPage() {
       fourPlus: 0,
     };
 
-    for (let i = 1; i < bookingInsights.length; i += 1) {
-      const gap = getDateRangeNights(bookingInsights[i - 1].checkoutDate, bookingInsights[i].checkinDate);
+    for (let i = 1; i < rangedBookingInsights.length; i += 1) {
+      const gap = getDateRangeNights(rangedBookingInsights[i - 1].checkoutDate, rangedBookingInsights[i].checkinDate);
       if (gap <= 0) continue;
       if (gap === 1) gapBuckets.oneNight += 1;
       else if (gap === 2) gapBuckets.twoNight += 1;
@@ -1934,9 +2009,9 @@ export default function OwnerPage() {
       ],
       sourceMix,
       gapBuckets,
-      recentBookings: [...bookingInsights].reverse().slice(0, 6),
+      recentBookings: [...rangedBookingInsights].reverse().slice(0, 6),
     };
-  }, [bookingInsights, locale, t]);
+  }, [bookingInsights, locale, ownerInsightRangeOption.months, rangedBookingInsights, t]);
 
   const ownerCalendarDays = useMemo(() => getMonthGrid(ownerCalendarMonth), [ownerCalendarMonth]);
   const ownerCalendarMonthBookings = useMemo(
@@ -2145,7 +2220,7 @@ export default function OwnerPage() {
                       : "bg-white/[0.03] text-[#f7f1e8] hover:bg-white/[0.06]"
                     }`}
                 >
-                  <div className="flex items-center gap-2 text-sm font-semibold">
+                  <div className="flex items-center gap-2 text-base font-semibold">
                     <span>{tab.label}</span>
                     {unreadCount > 0 ? (
                       <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${isActive ? "bg-[#17120d]/12 text-[#17120d]" : "bg-[#e3c177] text-[#17120d]"}`}>
@@ -2153,7 +2228,7 @@ export default function OwnerPage() {
                       </span>
                     ) : null}
                   </div>
-                  <div className={`mt-1 text-xs ${isActive ? "text-[#382511]" : "text-[#ccb99a]"}`}>
+                  <div className={`mt-1 text-sm ${isActive ? "text-[#382511]" : "text-[#ccb99a]"}`}>
                     {tab.subtext}
                   </div>
                 </button>
@@ -2540,8 +2615,20 @@ export default function OwnerPage() {
                   </p>
                 </div>
 
-                <div className="rounded-full border border-[#b08b47]/30 bg-[#b08b47]/10 px-4 py-2 text-sm font-semibold text-[#f1d9a5]">
-                  {t("ownerPortal.insights.last12Months")}
+                <div>
+                  <label className="sr-only" htmlFor="owner-insight-range">Insights range</label>
+                  <select
+                    id="owner-insight-range"
+                    value={ownerInsightRange}
+                    onChange={(event) => setOwnerInsightRange(event.target.value as OwnerInsightRange)}
+                    className="rounded-full border border-[#b08b47]/30 bg-[#211812] px-4 py-2 text-sm font-semibold text-[#f1d9a5] outline-none transition focus:border-[#e3c177]"
+                  >
+                    {OWNER_INSIGHT_RANGE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -2746,7 +2833,7 @@ export default function OwnerPage() {
                   <h3 className="mt-2 text-xl font-semibold text-[#f7f1e8]">{t("ownerPortal.insights.recentSyncedStays")}</h3>
                 </div>
                 <div className="text-sm text-[#ccb99a]">
-                  {t("ownerPortal.insights.staysFound").replace("{count}", String(bookingInsights.length))}
+                  {t("ownerPortal.insights.staysFound").replace("{count}", String(rangedBookingInsights.length))}
                 </div>
               </div>
 
@@ -2798,9 +2885,29 @@ export default function OwnerPage() {
               </div>
             </div>
 
+            {paidPropertyOwnerInvoices.length > 0 ? (
+              <div className="mt-5 flex flex-col gap-3 rounded-[22px] border border-white/8 bg-black/20 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-sm font-semibold text-[#f7f1e8]">
+                    Paid invoice history
+                  </div>
+                  <div className="mt-1 text-sm text-[#ccb99a]">
+                    {paidPropertyOwnerInvoices.length} paid invoice{paidPropertyOwnerInvoices.length === 1 ? "" : "s"} {showPaidInvoiceHistory ? "shown below" : "collapsed"}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPaidInvoiceHistory((value) => !value)}
+                  className="rounded-full border border-[#b08b47]/35 bg-[#b08b47]/10 px-4 py-2 text-sm font-semibold text-[#f1d9a5] transition hover:bg-[#b08b47]/18"
+                >
+                  {showPaidInvoiceHistory ? "Hide history" : "Show history"}
+                </button>
+              </div>
+            ) : null}
+
             <div className="mt-5 space-y-4">
-              {propertyOwnerInvoices.length > 0 ? (
-                propertyOwnerInvoices.map((invoice) => {
+              {displayedPropertyOwnerInvoices.length > 0 ? (
+                displayedPropertyOwnerInvoices.map((invoice) => {
                   const invoiceProperty = properties.find((property) => property.id === invoice.property_id);
                   const lineItems = Array.isArray(invoice.line_items) ? invoice.line_items : [];
                   const taxLines = getOwnerInvoiceTaxLines(invoice);
@@ -2809,11 +2916,12 @@ export default function OwnerPage() {
                   return (
                     <div
                       key={invoice.id}
+                      id={`owner-invoice-${invoice.id}`}
                       className={`overflow-hidden rounded-[24px] border ${
                         isPaidInvoice
                           ? "border-emerald-400/45 bg-emerald-950/20 shadow-[0_0_0_1px_rgba(16,185,129,0.14)]"
                           : "border-red-400/45 bg-red-950/20 shadow-[0_0_0_1px_rgba(248,113,113,0.14)]"
-                      } ${!invoice.owner_viewed_at ? "ring-1 ring-[#e3c177]/35" : ""}`}
+                      } ${!invoice.owner_viewed_at || targetInvoiceId === invoice.id ? "ring-1 ring-[#e3c177]/45" : ""}`}
                     >
                       <div className="border-b border-white/8 px-5 py-4">
                         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
@@ -2965,7 +3073,9 @@ export default function OwnerPage() {
                 })
               ) : (
                 <div className="rounded-2xl border border-white/7 bg-white/[0.02] px-4 py-5 text-sm text-[#e6d8bf]">
-                  {t("ownerPortal.invoices.none")}
+                  {propertyOwnerInvoices.length > 0
+                    ? "No open invoices. Paid invoices are available in history."
+                    : t("ownerPortal.invoices.none")}
                 </div>
               )}
             </div>

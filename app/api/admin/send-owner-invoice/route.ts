@@ -214,7 +214,7 @@ export async function POST(request: NextRequest) {
     const documentKind = String(invoice.invoice_number || "").toUpperCase().startsWith("STMT-") ? "statement" : "invoice";
     const documentLabel = documentKind === "statement" ? "Statement" : "Invoice";
     const documentLabelLower = documentLabel.toLowerCase();
-    const ownerPortalUrl = `${request.nextUrl.origin}/owner?tab=invoices`;
+    const ownerPortalUrl = `${request.nextUrl.origin}/owner?tab=invoices&invoiceId=${encodeURIComponent(invoice.id)}`;
     const rows = lineItems
       .map((item) => {
         const quantity = Number(item.quantity || 0);
@@ -388,7 +388,7 @@ export async function POST(request: NextRequest) {
       ? await sendStaffPushNotifications("owner", [owner.profile_id], {
           title: `${documentLabel} ${invoice.invoice_number} is ready`,
           body: `${property?.name || property?.address || "Owner portal"} - ${formatCurrency(invoice.total)}`,
-          url: "/owner?tab=invoices",
+          url: `/owner?tab=invoices&invoiceId=${encodeURIComponent(invoice.id)}`,
           tag: `owner-invoice-${invoice.id}`,
         })
       : { sent: 0, skipped: 1, errors: [] as string[] };

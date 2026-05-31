@@ -258,10 +258,12 @@ export async function POST(request: NextRequest) {
     }
     const { data: assignment, error: assignmentError } = await serviceClient
       .from(tables.assignmentTable)
-      .insert({
+      .upsert({
         property_id: propertyId,
         [tables.accountIdColumn]: accountId,
         priority,
+      }, {
+        onConflict: `property_id,${tables.accountIdColumn}`,
       })
       .select("*")
       .single();

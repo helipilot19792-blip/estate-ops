@@ -360,6 +360,14 @@ type ProfileRow = {
   created_at?: string | null;
 };
 
+type StaffContact = {
+  id: string;
+  kind: "Cleaner" | "Grounds";
+  name: string;
+  email: string | null;
+  phone: string | null;
+};
+
 type OwnerAccountRow = {
   id: string;
   organization_id?: string | null;
@@ -1444,6 +1452,7 @@ export default function AdminPage() {
   const [linkSelections, setLinkSelections] = useState<Record<string, string>>({});
   const [groundsLinkSelections, setGroundsLinkSelections] = useState<Record<string, string>>({});
   const [savingCleanerRotationPropertyId, setSavingCleanerRotationPropertyId] = useState<string | null>(null);
+  const [selectedStaffContact, setSelectedStaffContact] = useState<StaffContact | null>(null);
 
   const todayYmd = toYmd(now);
   const todayEmptyCopy = useMemo(
@@ -7429,12 +7438,35 @@ This removes its linked members and deletes the grounds account.`
 
   const todayAtGlanceItems = useMemo(() => {
     const propertyById = new Map(properties.map((property) => [property.id, property]));
-    const getCleanerFirstName = (cleanerAccountId: string | null) => {
-      if (!cleanerAccountId) return "";
+    const getCleanerContact = (cleanerAccountId: string | null): StaffContact | null => {
+      if (!cleanerAccountId) return null;
       const account = cleanerAccounts.find((item) => item.id === cleanerAccountId);
       const member = (cleanerMembersByAccountId[cleanerAccountId] ?? [])[0];
       const label = account?.display_name || member?.full_name || account?.email || member?.email || "";
-      return label.split(/\s+/)[0]?.split("@")[0] || "";
+      const name = label.split(/\s+/)[0]?.split("@")[0] || "";
+      if (!name) return null;
+      return {
+        id: `cleaner-${cleanerAccountId}`,
+        kind: "Cleaner",
+        name,
+        email: account?.email || member?.email || null,
+        phone: account?.phone || member?.phone || null,
+      };
+    };
+    const getGroundsContact = (groundsAccountId: string | null): StaffContact | null => {
+      if (!groundsAccountId) return null;
+      const account = groundsAccounts.find((item) => item.id === groundsAccountId);
+      const member = (groundsMembersByAccountId[groundsAccountId] ?? [])[0];
+      const label = account?.display_name || member?.full_name || account?.email || member?.email || "";
+      const name = label.split(/\s+/)[0]?.split("@")[0] || "";
+      if (!name) return null;
+      return {
+        id: `grounds-${groundsAccountId}`,
+        kind: "Grounds",
+        name,
+        email: account?.email || member?.email || null,
+        phone: account?.phone || member?.phone || null,
+      };
     };
 
     const cleaningItems = jobs
@@ -7446,10 +7478,11 @@ This removes its linked members and deletes the grounds account.`
         const property = propertyById.get(job.property_id) || null;
         const slots = jobSlotsByJobId[job.id] ?? [];
         const waiting = slots.some((slot) => slot.status === "offered" || slot.status === "stranded");
-        const acceptedCleanerNames = slots
+        const acceptedCleanerContacts = slots
           .filter((slot) => slot.status === "accepted")
-          .map((slot) => getCleanerFirstName(slot.cleaner_account_id))
-          .filter(Boolean);
+          .map((slot) => getCleanerContact(slot.cleaner_account_id))
+          .filter((contact): contact is StaffContact => !!contact);
+        const acceptedCleanerNames = acceptedCleanerContacts.map((contact) => contact.name);
         const stranded = slots.some((slot) => slot.status === "stranded" || !slot.cleaner_account_id);
         const cleaningStatus = acceptedCleanerNames.length > 0
           ? acceptedCleanerNames.join(", ")
@@ -7467,6 +7500,8 @@ This removes its linked members and deletes the grounds account.`
           propertyName: property?.name || getPropertyName(job.property_id),
           city: getCityFromAddress(property?.address),
           status: cleaningStatus,
+          staffContacts: acceptedCleanerContacts,
+          staffDetailLabel: "Cleaner",
           needsAttention: acceptedCleanerNames.length === 0,
         };
       });
@@ -7476,6 +7511,10 @@ This removes its linked members and deletes the grounds account.`
       .map((job) => {
         const property = propertyById.get(job.property_id) || null;
         const slots = groundsJobSlots.filter((slot) => slot.job_id === job.id);
+        const acceptedGroundsContacts = slots
+          .filter((slot) => slot.status === "accepted")
+          .map((slot) => getGroundsContact(slot.grounds_account_id))
+          .filter((contact): contact is StaffContact => !!contact);
         return {
           id: `grounds-${job.id}`,
           date: todayYmd,
@@ -7487,7 +7526,11 @@ This removes its linked members and deletes the grounds account.`
             "Grounds job",
           propertyName: property?.name || getPropertyName(job.property_id),
           city: getCityFromAddress(property?.address),
-          status: getGroundsJobDisplayStatus(job, slots),
+          status: acceptedGroundsContacts.length > 0
+            ? acceptedGroundsContacts.map((contact) => contact.name).join(", ")
+            : getGroundsJobDisplayStatus(job, slots),
+          staffContacts: acceptedGroundsContacts,
+          staffDetailLabel: "Grounds",
           needsAttention: false,
         };
       });
@@ -7495,7 +7538,7 @@ This removes its linked members and deletes the grounds account.`
     return [...cleaningItems, ...groundsItems].sort((a, b) =>
       a.sortDate.localeCompare(b.sortDate) || a.propertyName.localeCompare(b.propertyName)
     );
-  }, [jobs, groundsJobs, properties, todayYmd, jobSlotsByJobId, groundsJobSlots, cleanerAccounts, cleanerMembersByAccountId]);
+  }, [jobs, groundsJobs, properties, todayYmd, jobSlotsByJobId, groundsJobSlots, cleanerAccounts, cleanerMembersByAccountId, groundsAccounts, groundsMembersByAccountId]);
 
   const occupiedTodayProperties = useMemo(() => {
     const propertyById = new Map(properties.map((property) => [property.id, property]));
@@ -7576,12 +7619,35 @@ This removes its linked members and deletes the grounds account.`
     const dateSet = new Set(serviceLookaheadYmds);
     const horizonEndYmd = serviceLookaheadYmds[serviceLookaheadYmds.length - 1] || todayYmd;
     const propertyById = new Map(properties.map((property) => [property.id, property]));
-    const getCleanerFirstName = (cleanerAccountId: string | null) => {
-      if (!cleanerAccountId) return "";
+    const getCleanerContact = (cleanerAccountId: string | null): StaffContact | null => {
+      if (!cleanerAccountId) return null;
       const account = cleanerAccounts.find((item) => item.id === cleanerAccountId);
       const member = (cleanerMembersByAccountId[cleanerAccountId] ?? [])[0];
       const label = account?.display_name || member?.full_name || account?.email || member?.email || "";
-      return label.split(/\s+/)[0]?.split("@")[0] || "";
+      const name = label.split(/\s+/)[0]?.split("@")[0] || "";
+      if (!name) return null;
+      return {
+        id: `cleaner-${cleanerAccountId}`,
+        kind: "Cleaner",
+        name,
+        email: account?.email || member?.email || null,
+        phone: account?.phone || member?.phone || null,
+      };
+    };
+    const getGroundsContact = (groundsAccountId: string | null): StaffContact | null => {
+      if (!groundsAccountId) return null;
+      const account = groundsAccounts.find((item) => item.id === groundsAccountId);
+      const member = (groundsMembersByAccountId[groundsAccountId] ?? [])[0];
+      const label = account?.display_name || member?.full_name || account?.email || member?.email || "";
+      const name = label.split(/\s+/)[0]?.split("@")[0] || "";
+      if (!name) return null;
+      return {
+        id: `grounds-${groundsAccountId}`,
+        kind: "Grounds",
+        name,
+        email: account?.email || member?.email || null,
+        phone: account?.phone || member?.phone || null,
+      };
     };
     const labelDate = (dateYmd: string) => {
       if (dateYmd === todayYmd) return "Today";
@@ -7594,14 +7660,15 @@ This removes its linked members and deletes the grounds account.`
         const dateYmd = job.scheduled_for || extractCheckoutDate(job.notes) || "";
         const property = propertyById.get(job.property_id);
         const slots = jobSlotsByJobId[job.id] ?? [];
-        const acceptedCleanerNames = slots
+        const acceptedCleanerContacts = slots
           .filter((slot) => slot.status === "accepted")
-          .map((slot) => getCleanerFirstName(slot.cleaner_account_id))
-          .filter(Boolean);
+          .map((slot) => getCleanerContact(slot.cleaner_account_id))
+          .filter((contact): contact is StaffContact => !!contact);
+        const acceptedCleanerNames = acceptedCleanerContacts.map((contact) => contact.name);
         const stranded = slots.some((slot) => slot.status === "stranded" || !slot.cleaner_account_id);
         const offered = slots.some((slot) => slot.status === "offered");
         const cleanerDetail = acceptedCleanerNames.length > 0
-          ? `Cleaner: ${acceptedCleanerNames.join(", ")}`
+          ? "Cleaner:"
           : stranded
             ? "UNASSIGNED"
             : offered
@@ -7617,6 +7684,8 @@ This removes its linked members and deletes the grounds account.`
           label: labelDate(dateYmd),
           title: property?.name || property?.address || "Unknown property",
           detail: [city, cleanerDetail].filter(Boolean).join(" - "),
+          staffContacts: acceptedCleanerContacts,
+          staffDetailLabel: "Cleaner",
         };
       })
       .filter((item) => dateSet.has(item.dateYmd));
@@ -7624,6 +7693,15 @@ This removes its linked members and deletes the grounds account.`
     const groundsItems = groundsJobs
       .map((job) => {
         const property = propertyById.get(job.property_id);
+        const slots = groundsJobSlots.filter((slot) => slot.job_id === job.id);
+        const acceptedGroundsContacts = slots
+          .filter((slot) => slot.status === "accepted")
+          .map((slot) => getGroundsContact(slot.grounds_account_id))
+          .filter((contact): contact is StaffContact => !!contact);
+        const groundsDetail =
+          GROUNDS_JOB_TYPE_OPTIONS.find((option) => option.value === job.job_type)?.label ||
+          job.job_type ||
+          "Grounds service";
         return {
           id: `grounds-${job.id}`,
           dateYmd: job.scheduled_for || "",
@@ -7632,10 +7710,9 @@ This removes its linked members and deletes the grounds account.`
           tone: "green" as const,
           label: labelDate(job.scheduled_for || ""),
           title: property?.name || property?.address || "Unknown property",
-          detail:
-            GROUNDS_JOB_TYPE_OPTIONS.find((option) => option.value === job.job_type)?.label ||
-            job.job_type ||
-            "Grounds service",
+          detail: acceptedGroundsContacts.length > 0 ? `${groundsDetail} - Grounds:` : groundsDetail,
+          staffContacts: acceptedGroundsContacts,
+          staffDetailLabel: "Grounds",
         };
       })
       .filter((item) => dateSet.has(item.dateYmd));
@@ -7649,6 +7726,8 @@ This removes its linked members and deletes the grounds account.`
       label: pickup.dateLabel,
       title: pickup.propertyName,
       detail: pickup.notes ? `${pickup.pickupLabel} - ${pickup.notes}` : pickup.pickupLabel,
+      staffContacts: [] as StaffContact[],
+      staffDetailLabel: "",
     }));
 
     const checkInItems = propertyBookingEvents
@@ -7668,6 +7747,8 @@ This removes its linked members and deletes the grounds account.`
           label: labelDate(event.checkin_date || ""),
           title: property?.name || property?.address || "Unknown property",
           detail: [summary, guestDetail, sourceLabel].filter(Boolean).join(" - "),
+          staffContacts: [] as StaffContact[],
+          staffDetailLabel: "",
         };
       })
       .filter((item) => dateSet.has(item.dateYmd));
@@ -7686,6 +7767,8 @@ This removes its linked members and deletes the grounds account.`
           label: isOverdue ? "Overdue" : labelDate(effectiveDate),
           title: rule.title,
           detail: getPropertyName(rule.property_id),
+          staffContacts: [] as StaffContact[],
+          staffDetailLabel: "",
           onClick: () => {
             setActiveSection("inspections");
             startInspectionLog(rule.id);
@@ -7703,6 +7786,9 @@ This removes its linked members and deletes the grounds account.`
     jobSlotsByJobId,
     cleanerAccounts,
     cleanerMembersByAccountId,
+    groundsAccounts,
+    groundsMembersByAccountId,
+    groundsJobSlots,
     propertyBookingEvents,
     serviceLookaheadYmds,
     upcomingWastePickups,
@@ -9294,9 +9380,26 @@ This removes its linked members and deletes the grounds account.`
                             <p className="mt-1 text-[15px] font-semibold text-[#1c2b45]">
                               {item.title}
                             </p>
-                            <p className="mt-0.5 text-sm text-[#5f6f86]">
-                              {item.detail}
-                            </p>
+                            <div className="mt-0.5 text-sm text-[#5f6f86]">
+                              <span>{item.detail}</span>
+                              {item.staffContacts.length > 0 ? (
+                                <span className="ml-1 inline-flex flex-wrap gap-1 align-baseline">
+                                  {item.staffContacts.map((contact) => (
+                                    <button
+                                      key={`${item.id}-${contact.id}`}
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        setSelectedStaffContact(contact);
+                                      }}
+                                      className="rounded-full border border-[#b9d1fb] bg-[#f8fbff] px-2 py-0.5 text-xs font-semibold text-[#2957a4] transition hover:bg-[#e8f1ff]"
+                                    >
+                                      {contact.name}
+                                    </button>
+                                  ))}
+                                </span>
+                              ) : null}
+                            </div>
                           </div>
                           <div className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${dateClass}`}>
                             {item.label}
@@ -19217,6 +19320,59 @@ This removes its linked members and deletes the grounds account.`
 
   return (
     <main className="admin-shell min-h-screen">
+      {selectedStaffContact ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4">
+          <div className="w-full max-w-sm rounded-[24px] border border-[#eadfce] bg-white p-5 shadow-[0_24px_70px_rgba(15,23,42,0.24)]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#8a7b68]">
+                  {selectedStaffContact.kind} contact
+                </div>
+                <h2 className="mt-2 text-xl font-semibold text-[#241c15]">
+                  {selectedStaffContact.name}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedStaffContact(null)}
+                className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1.5 text-xs font-semibold text-[#5f5245] transition hover:bg-white"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-3 text-sm">
+              {selectedStaffContact.phone ? (
+                <a
+                  href={`tel:${selectedStaffContact.phone}`}
+                  className="flex items-center justify-between rounded-[18px] border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-3 font-semibold text-[#241c15] transition hover:bg-white"
+                >
+                  <span>{selectedStaffContact.phone}</span>
+                  <span className="text-xs uppercase tracking-[0.14em] text-[#8a7b68]">Call</span>
+                </a>
+              ) : (
+                <div className="rounded-[18px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-4 py-3 text-[#7f7263]">
+                  No phone number saved.
+                </div>
+              )}
+
+              {selectedStaffContact.email ? (
+                <a
+                  href={`mailto:${selectedStaffContact.email}`}
+                  className="flex items-center justify-between gap-3 rounded-[18px] border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-3 font-semibold text-[#241c15] transition hover:bg-white"
+                >
+                  <span className="min-w-0 truncate">{selectedStaffContact.email}</span>
+                  <span className="shrink-0 text-xs uppercase tracking-[0.14em] text-[#8a7b68]">Email</span>
+                </a>
+              ) : (
+                <div className="rounded-[18px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-4 py-3 text-[#7f7263]">
+                  No email saved.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
       <div className={`mx-auto grid w-full max-w-[1800px] gap-4 p-4 pb-[45vh] transition-[grid-template-columns,gap] duration-500 ease-out md:p-6 md:pb-[45vh] 2xl:max-w-[calc(100vw-96px)] ${
         adminMenuOrientation === "side"
           ? "lg:grid-cols-[240px_minmax(0,1fr)] lg:items-start xl:grid-cols-[270px_minmax(0,1fr)] 2xl:gap-8"
