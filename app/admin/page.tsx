@@ -9397,23 +9397,6 @@ This removes its linked members and deletes the grounds account.`
                               ) : (
                                 <span>{item.detail}</span>
                               )}
-                              {item.staffContacts.length > 0 ? (
-                                <span className="ml-1 inline-flex flex-wrap gap-1 align-baseline">
-                                  {item.staffContacts.map((contact) => (
-                                    <button
-                                      key={`${item.id}-${contact.id}`}
-                                      type="button"
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        setSelectedStaffContact(contact);
-                                      }}
-                                      className="rounded-full border border-[#b9d1fb] bg-[#f8fbff] px-2 py-0.5 text-xs font-semibold text-[#2957a4] transition hover:bg-[#e8f1ff]"
-                                    >
-                                      {contact.name}
-                                    </button>
-                                  ))}
-                                </span>
-                              ) : null}
                             </div>
                           </div>
                           <div className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${dateClass}`}>
@@ -9516,33 +9499,16 @@ This removes its linked members and deletes the grounds account.`
                             </p>
                             <div className="mt-0.5 text-sm text-[#5f6f86]">
                               {item.staffContacts.length > 0 ? (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      setSelectedStaffContact(item.staffContacts[0]);
-                                    }}
-                                    className="text-left underline decoration-[#9bb7e5] decoration-dotted underline-offset-4 transition hover:text-[#2957a4]"
-                                  >
-                                    {item.detail}
-                                  </button>
-                                  <span className="ml-1 inline-flex flex-wrap gap-1 align-baseline">
-                                    {item.staffContacts.map((contact) => (
-                                      <button
-                                        key={`${item.id}-${contact.id}`}
-                                        type="button"
-                                        onClick={(event) => {
-                                          event.stopPropagation();
-                                          setSelectedStaffContact(contact);
-                                        }}
-                                        className="rounded-full border border-[#e3cda7] bg-[#fffaf0] px-2 py-0.5 text-xs font-semibold text-[#7a5a23] transition hover:bg-[#fff3d6]"
-                                      >
-                                        {contact.name}
-                                      </button>
-                                    ))}
-                                  </span>
-                                </>
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setSelectedStaffContact(item.staffContacts[0]);
+                                  }}
+                                  className="text-left underline decoration-[#9bb7e5] decoration-dotted underline-offset-4 transition hover:text-[#2957a4]"
+                                >
+                                  {item.detail}
+                                </button>
                               ) : (
                                 <span>{item.detail}</span>
                               )}
