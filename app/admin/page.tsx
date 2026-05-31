@@ -188,6 +188,7 @@ type PropertyBookingEvent = {
   guest_count?: number | null;
   checkin_date: string;
   checkout_date: string;
+  admin_note?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -1489,6 +1490,13 @@ export default function AdminPage() {
   const [groundsLinkSelections, setGroundsLinkSelections] = useState<Record<string, string>>({});
   const [savingCleanerRotationPropertyId, setSavingCleanerRotationPropertyId] = useState<string | null>(null);
   const [selectedStaffContact, setSelectedStaffContact] = useState<StaffContact | null>(null);
+  const [editingBookingNote, setEditingBookingNote] = useState<{
+    id: string;
+    propertyName: string;
+    summary: string;
+  } | null>(null);
+  const [bookingNoteDraft, setBookingNoteDraft] = useState("");
+  const [savingBookingNote, setSavingBookingNote] = useState(false);
 
   const todayYmd = toYmd(now);
   const todayEmptyCopy = useMemo(
@@ -4182,6 +4190,82 @@ export default function AdminPage() {
     }
 
     return payload;
+  }
+
+  function openBookingNoteEditor(booking: {
+    id?: string | null;
+    bookingEventId?: string | null;
+    propertyName?: string;
+    title?: string;
+    summary?: string;
+    detail?: string;
+    adminNote?: string;
+  }) {
+    const bookingEventId = booking.bookingEventId || booking.id || "";
+    if (!bookingEventId) return;
+
+    setEditingBookingNote({
+      id: bookingEventId,
+      propertyName: booking.propertyName || booking.title || "Booking",
+      summary: booking.summary || booking.detail || "",
+    });
+    setBookingNoteDraft(booking.adminNote || "");
+    setError("");
+    setActionMessage("");
+  }
+
+  async function saveBookingNote() {
+    if (!editingBookingNote) return;
+    if (!currentOrganizationId) {
+      setError("No organization selected.");
+      return;
+    }
+
+    setSavingBookingNote(true);
+    setError("");
+    setActionMessage("");
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        throw new Error("Could not verify your admin session.");
+      }
+
+      const response = await fetch("/api/admin/booking-note", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          organizationId: currentOrganizationId,
+          bookingEventId: editingBookingNote.id,
+          adminNote: bookingNoteDraft,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(payload?.error || "Could not save booking note.");
+      }
+
+      const updatedBooking = payload?.bookingEvent as PropertyBookingEvent | undefined;
+      setPropertyBookingEvents((rows) =>
+        rows.map((row) => (row.id === editingBookingNote.id ? { ...row, admin_note: updatedBooking?.admin_note ?? null } : row))
+      );
+      setEditingBookingNote(null);
+      setBookingNoteDraft("");
+      setActionMessage("Booking note saved.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save booking note.");
+    } finally {
+      setSavingBookingNote(false);
+    }
   }
 
   async function addAssignment() {
@@ -7618,6 +7702,7 @@ This removes its linked members and deletes the grounds account.`
           checkinDate: event.checkin_date,
           checkoutDate: event.checkout_date,
           checkoutTime: formatTimeLabel(property?.default_checkout_time),
+          adminNote: event.admin_note?.trim() || "",
         };
       })
       .sort((a, b) => a.checkoutDate.localeCompare(b.checkoutDate) || a.propertyName.localeCompare(b.propertyName));
@@ -7749,6 +7834,8 @@ This removes its linked members and deletes the grounds account.`
           detail: [city, cleanerDetail].filter(Boolean).join(" - "),
           staffContacts: acceptedCleanerContacts,
           staffDetailLabel: "Cleaner",
+          bookingEventId: null as string | null,
+          adminNote: "",
         };
       })
       .filter((item) => dateSet.has(item.dateYmd));
@@ -7778,6 +7865,8 @@ This removes its linked members and deletes the grounds account.`
             : groundsDetail,
           staffContacts: acceptedGroundsContacts,
           staffDetailLabel: "Grounds",
+          bookingEventId: null as string | null,
+          adminNote: "",
         };
       })
       .filter((item) => dateSet.has(item.dateYmd));
@@ -7793,6 +7882,8 @@ This removes its linked members and deletes the grounds account.`
       detail: pickup.notes ? `${pickup.pickupLabel} - ${pickup.notes}` : pickup.pickupLabel,
       staffContacts: [] as StaffContact[],
       staffDetailLabel: "",
+      bookingEventId: null as string | null,
+      adminNote: "",
     }));
 
     const checkInItems = propertyBookingEvents
@@ -7815,6 +7906,8 @@ This removes its linked members and deletes the grounds account.`
           detail: [checkinTime ? `Check-in ${checkinTime}` : "", summary, guestDetail, sourceLabel].filter(Boolean).join(" - "),
           staffContacts: [] as StaffContact[],
           staffDetailLabel: "",
+          bookingEventId: event.id,
+          adminNote: event.admin_note?.trim() || "",
         };
       })
       .filter((item) => dateSet.has(item.dateYmd));
@@ -7835,6 +7928,8 @@ This removes its linked members and deletes the grounds account.`
           detail: getPropertyName(rule.property_id),
           staffContacts: [] as StaffContact[],
           staffDetailLabel: "",
+          bookingEventId: null as string | null,
+          adminNote: "",
           onClick: () => {
             setActiveSection("inspections");
             startInspectionLog(rule.id);
@@ -9487,6 +9582,25 @@ This removes its linked members and deletes the grounds account.`
                                 <span>{item.detail}</span>
                               )}
                             </div>
+                            {item.bookingEventId ? (
+                              <div className="mt-2 flex flex-wrap items-center gap-2">
+                                {item.adminNote ? (
+                                  <div className="rounded-[12px] border border-[#eadfce] bg-[#fffaf0] px-3 py-2 text-xs font-medium text-[#5f5245]">
+                                    Note: {item.adminNote}
+                                  </div>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    openBookingNoteEditor(item);
+                                  }}
+                                  className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-semibold text-[#5f5245] transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#d8c7ab]"
+                                >
+                                  {item.adminNote ? "Edit note" : "Add note"}
+                                </button>
+                              </div>
+                            ) : null}
                           </div>
                           <div className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${dateClass}`}>
                             {item.label}
@@ -9602,6 +9716,25 @@ This removes its linked members and deletes the grounds account.`
                                 <span>{item.detail}</span>
                               )}
                             </div>
+                            {item.bookingEventId ? (
+                              <div className="mt-2 flex flex-wrap items-center gap-2">
+                                {item.adminNote ? (
+                                  <div className="rounded-[12px] border border-[#eadfce] bg-[#fffaf0] px-3 py-2 text-xs font-medium text-[#5f5245]">
+                                    Note: {item.adminNote}
+                                  </div>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    openBookingNoteEditor(item);
+                                  }}
+                                  className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-semibold text-[#5f5245] transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#d8c7ab]"
+                                >
+                                  {item.adminNote ? "Edit note" : "Add note"}
+                                </button>
+                              </div>
+                            ) : null}
                           </div>
                           <div className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${dateClass}`}>
                             {item.label}
@@ -9676,6 +9809,11 @@ This removes its linked members and deletes the grounds account.`
                           <p className="mt-1 text-sm text-[#456452]">
                             {item.summary}
                           </p>
+                          {item.adminNote ? (
+                            <div className="mt-2 rounded-[12px] border border-[#bde7cf] bg-[#f4fbf4] px-3 py-2 text-xs font-medium text-[#315f41]">
+                              Note: {item.adminNote}
+                            </div>
+                          ) : null}
                         </div>
                         <div className="shrink-0 text-left text-sm">
                           <p className="font-semibold text-[#20432f]">
@@ -9687,6 +9825,13 @@ This removes its linked members and deletes the grounds account.`
                           <p className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#2f6b2f]">
                             {item.source}
                           </p>
+                          <button
+                            type="button"
+                            onClick={() => openBookingNoteEditor(item)}
+                            className="mt-3 rounded-full border border-[#bde7cf] bg-[#f4fbf4] px-3 py-1 text-xs font-semibold text-[#2f6b2f] transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#bde7cf]"
+                          >
+                            {item.adminNote ? "Edit note" : "Add note"}
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -19509,6 +19654,75 @@ This removes its linked members and deletes the grounds account.`
           </div>
         </div>
       ) : null}
+      {editingBookingNote ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4">
+          <div className="w-full max-w-lg rounded-[24px] border border-[#eadfce] bg-white p-5 shadow-[0_24px_70px_rgba(15,23,42,0.24)]">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#8a7b68]">
+                  Booking note
+                </div>
+                <h2 className="mt-2 truncate text-xl font-semibold text-[#241c15]">
+                  {editingBookingNote.propertyName}
+                </h2>
+                {editingBookingNote.summary ? (
+                  <p className="mt-1 text-sm text-[#7f7263]">{editingBookingNote.summary}</p>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (savingBookingNote) return;
+                  setEditingBookingNote(null);
+                  setBookingNoteDraft("");
+                }}
+                className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1.5 text-xs font-semibold text-[#5f5245] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={savingBookingNote}
+              >
+                Close
+              </button>
+            </div>
+
+            <label className="mt-5 block text-sm font-semibold text-[#241c15]" htmlFor="booking-note-draft">
+              Internal admin note
+            </label>
+            <textarea
+              id="booking-note-draft"
+              value={bookingNoteDraft}
+              onChange={(event) => setBookingNoteDraft(event.target.value)}
+              maxLength={1000}
+              rows={5}
+              className="mt-2 w-full rounded-[18px] border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-3 text-sm text-[#241c15] outline-none transition focus:border-[#b9975b] focus:bg-white focus:ring-2 focus:ring-[#eadfce]"
+              placeholder="Example: Linen package requested. Bring linens before arrival."
+            />
+            <div className="mt-2 flex items-center justify-between gap-3 text-xs text-[#8a7b68]">
+              <span>Shown only on admin Today at a glance booking cards.</span>
+              <span>{bookingNoteDraft.length}/1000</span>
+            </div>
+
+            <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setBookingNoteDraft("");
+                }}
+                className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-semibold text-[#5f5245] transition hover:bg-[#fcfaf7]"
+                disabled={savingBookingNote}
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                onClick={() => void saveBookingNote()}
+                className="rounded-full bg-[#241c15] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#352a21] disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={savingBookingNote}
+              >
+                {savingBookingNote ? "Saving..." : "Save note"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <div className={`mx-auto grid w-full max-w-[1800px] gap-4 p-4 pb-[45vh] transition-[grid-template-columns,gap] duration-500 ease-out md:p-6 md:pb-[45vh] 2xl:max-w-[calc(100vw-96px)] ${
         adminMenuOrientation === "side"
           ? "lg:grid-cols-[240px_minmax(0,1fr)] lg:items-start xl:grid-cols-[270px_minmax(0,1fr)] 2xl:gap-8"
@@ -19707,6 +19921,22 @@ This removes its linked members and deletes the grounds account.`
                       ) : (
                         <div className="truncate text-xs text-[#64748b]">{item.detail}</div>
                       )}
+                      {item.bookingEventId ? (
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          {item.adminNote ? (
+                            <div className="truncate rounded-full border border-[#eadfce] bg-[#fffaf0] px-2 py-0.5 text-[11px] font-medium text-[#5f5245]">
+                              Note: {item.adminNote}
+                            </div>
+                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() => openBookingNoteEditor(item)}
+                            className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-2 py-0.5 text-[11px] font-semibold text-[#5f5245] transition hover:bg-white"
+                          >
+                            {item.adminNote ? "Edit note" : "Add note"}
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
                   ))}
                   {upcomingCheckInGlanceItems.map((item) => (
@@ -19719,6 +19949,18 @@ This removes its linked members and deletes the grounds account.`
                       </div>
                       <div className="mt-1 truncate text-sm font-semibold text-[#17202a]">{item.title}</div>
                       <div className="truncate text-xs text-[#64748b]">{item.detail}</div>
+                      {item.adminNote ? (
+                        <div className="mt-1 truncate rounded-full border border-[#ddd6fe] bg-[#faf5ff] px-2 py-0.5 text-[11px] font-medium text-[#6d28d9]">
+                          Note: {item.adminNote}
+                        </div>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => openBookingNoteEditor(item)}
+                        className="mt-1 rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-2 py-0.5 text-[11px] font-semibold text-[#5f5245] transition hover:bg-white"
+                      >
+                        {item.adminNote ? "Edit note" : "Add note"}
+                      </button>
                     </div>
                   ))}
                   {adminDataLoaded && todaysHomeHappenings.length === 0 ? (
@@ -19753,6 +19995,11 @@ This removes its linked members and deletes the grounds account.`
                       <div className="truncate text-xs text-[#64748b]">
                         Checks out {formatDateLabel(property.checkoutDate)}
                       </div>
+                      {property.adminNote ? (
+                        <div className="mt-1 truncate rounded-full border border-[#bbf7d0] bg-[#f0fdf4] px-2 py-0.5 text-[11px] font-medium text-[#15803d]">
+                          Note: {property.adminNote}
+                        </div>
+                      ) : null}
                     </div>
                   ))}
                   {occupiedTodayProperties.length === 0 ? (
