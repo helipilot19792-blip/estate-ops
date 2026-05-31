@@ -38,6 +38,21 @@ function formatGuestCountLabel(guestCount?: number | null) {
   return "Number of guests unknown";
 }
 
+function formatTimeLabel(value?: string | null) {
+  const text = String(value || "").trim();
+  const match = text.match(/^(\d{2}):(\d{2})$/);
+  if (!match) return "";
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return "";
+
+  return new Date(2000, 0, 1, hours, minutes).toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 function pickDailyCopy(options: string[], key: string) {
   if (options.length === 0) return "";
   const seed = Array.from(key).reduce((total, char) => total + char.charCodeAt(0), 0);
@@ -90,6 +105,17 @@ const QUIRKY_SYNCING_COPY = [
 const SHOW_ADMIN_TOP_BANNER = false;
 const MAINTENANCE_FLAG_SNOOZE_DAYS = 3;
 const SHOW_ADMIN_TOP_OVERVIEW = false;
+const PROPERTY_TIME_OPTIONS = Array.from({ length: 29 }, (_, index) => {
+  const totalMinutes = 6 * 60 + index * 30;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  const value = `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+  const date = new Date(2000, 0, 1, hours, minutes);
+  return {
+    value,
+    label: date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }),
+  };
+});
 
 type Property = {
   id: string;
@@ -106,6 +132,8 @@ type Property = {
   garbage_rotation_anchor_date?: string | null;
   garbage_week_a_label?: string | null;
   garbage_week_b_label?: string | null;
+  default_checkin_time?: string | null;
+  default_checkout_time?: string | null;
   default_cleaner_units_needed: number;
   cleaner_units_required_strict: boolean;
   show_team_status_to_cleaners: boolean;
@@ -1410,6 +1438,8 @@ export default function AdminPage() {
   const [selectedPropertyGarbageRotationAnchorDate, setSelectedPropertyGarbageRotationAnchorDate] = useState("");
   const [selectedPropertyGarbageWeekALabel, setSelectedPropertyGarbageWeekALabel] = useState("Garbage + recycling");
   const [selectedPropertyGarbageWeekBLabel, setSelectedPropertyGarbageWeekBLabel] = useState("Recycling only");
+  const [selectedPropertyDefaultCheckinTime, setSelectedPropertyDefaultCheckinTime] = useState("");
+  const [selectedPropertyDefaultCheckoutTime, setSelectedPropertyDefaultCheckoutTime] = useState("");
   const [savingSelectedPropertyManualDetails, setSavingSelectedPropertyManualDetails] = useState(false);
   const [propertyManualDetailsDirty, setPropertyManualDetailsDirty] = useState(false);
   const [savingSelectedPropertyDefaults, setSavingSelectedPropertyDefaults] = useState(false);
@@ -2033,6 +2063,8 @@ export default function AdminPage() {
       setSelectedPropertyGarbageRotationAnchorDate(selectedProperty?.garbage_rotation_anchor_date || "");
       setSelectedPropertyGarbageWeekALabel(selectedProperty?.garbage_week_a_label || "Garbage + recycling");
       setSelectedPropertyGarbageWeekBLabel(selectedProperty?.garbage_week_b_label || "Recycling only");
+      setSelectedPropertyDefaultCheckinTime(selectedProperty?.default_checkin_time || "");
+      setSelectedPropertyDefaultCheckoutTime(selectedProperty?.default_checkout_time || "");
     }
   }, [
     selectedPropertyId,
@@ -5619,6 +5651,8 @@ This removes its linked members and deletes the grounds account.`
           garbageRotationAnchorDate: savedAnchorDate,
           garbageWeekALabel: savedWeekALabel,
           garbageWeekBLabel: savedWeekBLabel,
+          defaultCheckinTime: selectedPropertyDefaultCheckinTime,
+          defaultCheckoutTime: selectedPropertyDefaultCheckoutTime,
         }),
       });
       const payload = await response.json().catch(() => null);
@@ -5636,13 +5670,15 @@ This removes its linked members and deletes the grounds account.`
       }
 
       setPropertyManualDetailsDirty(false);
-      setActionMessage("Property WiFi and garbage details saved.");
+      setActionMessage("Property details saved.");
       await loadData();
     } catch (err: any) {
       const message = String(err?.message || "Could not save property details.");
       setError(
         message.includes("wifi_network") || message.includes("garbage_")
           ? `${message} Run supabase/add_property_inspections.sql first.`
+          : message.includes("default_check")
+            ? `${message} Run supabase/add_property_default_times.sql first.`
           : message
       );
     } finally {
@@ -7581,6 +7617,7 @@ This removes its linked members and deletes the grounds account.`
           guestCount: Number.isFinite(Number(event.guest_count)) ? Number(event.guest_count) : null,
           checkinDate: event.checkin_date,
           checkoutDate: event.checkout_date,
+          checkoutTime: formatTimeLabel(property?.default_checkout_time),
         };
       })
       .sort((a, b) => a.checkoutDate.localeCompare(b.checkoutDate) || a.propertyName.localeCompare(b.propertyName));
@@ -7765,6 +7802,7 @@ This removes its linked members and deletes the grounds account.`
         const sourceLabel = getBookingSourceLabel(event.source);
         const guestDetail = formatGuestCountLabel(guestCount);
         const summary = event.summary?.trim();
+        const checkinTime = formatTimeLabel(property?.default_checkin_time);
 
         return {
           id: `checkin-${event.id}`,
@@ -7774,7 +7812,7 @@ This removes its linked members and deletes the grounds account.`
           tone: "purple" as const,
           label: labelDate(event.checkin_date || ""),
           title: property?.name || property?.address || "Unknown property",
-          detail: [summary, guestDetail, sourceLabel].filter(Boolean).join(" - "),
+          detail: [checkinTime ? `Check-in ${checkinTime}` : "", summary, guestDetail, sourceLabel].filter(Boolean).join(" - "),
           staffContacts: [] as StaffContact[],
           staffDetailLabel: "",
         };
@@ -9644,7 +9682,7 @@ This removes its linked members and deletes the grounds account.`
                             {formatGuestCountLabel(item.guestCount)}
                           </p>
                           <p className="mt-1 text-xs font-medium text-[#5d7767]">
-                            Out {formatDateLabel(item.checkoutDate)}
+                            Out {formatDateLabel(item.checkoutDate)}{item.checkoutTime ? ` at ${item.checkoutTime}` : ""}
                           </p>
                           <p className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#2f6b2f]">
                             {item.source}
@@ -17217,6 +17255,42 @@ This removes its linked members and deletes the grounds account.`
                         placeholder="WiFi password"
                         className="w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
                       />
+                      <label className="text-xs font-medium text-[#5e7469]">
+                        Default check-in time
+                        <select
+                          value={selectedPropertyDefaultCheckinTime}
+                          onChange={(e) => {
+                            setSelectedPropertyDefaultCheckinTime(e.target.value);
+                            setPropertyManualDetailsDirty(true);
+                          }}
+                          className="mt-1 w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm text-[#17382d] outline-none transition focus:border-[#4f7c6b]"
+                        >
+                          <option value="">No default check-in time</option>
+                          {PROPERTY_TIME_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="text-xs font-medium text-[#5e7469]">
+                        Default check-out time
+                        <select
+                          value={selectedPropertyDefaultCheckoutTime}
+                          onChange={(e) => {
+                            setSelectedPropertyDefaultCheckoutTime(e.target.value);
+                            setPropertyManualDetailsDirty(true);
+                          }}
+                          className="mt-1 w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm text-[#17382d] outline-none transition focus:border-[#4f7c6b]"
+                        >
+                          <option value="">No default check-out time</option>
+                          {PROPERTY_TIME_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
                       <input
                         value={selectedPropertyGarbageNotes}
                         onChange={(e) => {

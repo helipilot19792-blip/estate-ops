@@ -9,6 +9,12 @@ const publicSupabaseKey =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+function normalizeOptionalTime(value: unknown) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(text) ? text : "";
+}
+
 export async function POST(request: NextRequest) {
   if (!supabaseUrl || !publicSupabaseKey || !serviceRoleKey) {
     return NextResponse.json(
@@ -95,7 +101,13 @@ export async function POST(request: NextRequest) {
       garbage_rotation_anchor_date: String(body?.garbageRotationAnchorDate || "").trim() || null,
       garbage_week_a_label: String(body?.garbageWeekALabel || "").trim() || "Garbage + recycling",
       garbage_week_b_label: String(body?.garbageWeekBLabel || "").trim() || "Recycling only",
+      default_checkin_time: normalizeOptionalTime(body?.defaultCheckinTime),
+      default_checkout_time: normalizeOptionalTime(body?.defaultCheckoutTime),
     };
+
+    if (updatePayload.default_checkin_time === "" || updatePayload.default_checkout_time === "") {
+      return NextResponse.json({ error: "Property check-in/check-out times must use HH:mm format." }, { status: 400 });
+    }
 
     const { data: property, error: updateError } = await serviceClient
       .from("properties")
