@@ -36,6 +36,10 @@ function isOptionalTableError(error: { code?: string | null; message?: string | 
   );
 }
 
+function emptyResult<T = unknown>() {
+  return Promise.resolve({ data: [] as T[], error: null });
+}
+
 async function requireAdminAccess(token: string, organizationId: string) {
   const authClient = createAuthClient(token);
   const {
@@ -92,37 +96,21 @@ export async function GET(request: Request) {
 
     const { user } = await requireAdminAccess(token, organizationId);
     const todayYmd = new Date().toISOString().slice(0, 10);
-    const bookingLookaheadEndYmd = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const bookingLookaheadEndYmd = new Date(Date.now() + 540 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
     const [
       propertiesRes,
       cleanerAccountsRes,
-      cleanerAccountMembersRes,
-      assignmentsRes,
       jobsRes,
-      jobSlotsRes,
       groundsAccountsRes,
-      groundsAccountMembersRes,
-      groundsAssignmentsRes,
       groundsJobsRes,
-      groundsJobSlotsRes,
-      groundsRecurringTasksRes,
-      groundsRecurringRulesRes,
-      strandedJobsRes,
-      accessRowsRes,
-      sopsRes,
-      sopImagesRes,
       documentVaultRes,
       profilesRes,
       ownerAccountsRes,
-      ownerPropertyAccessRes,
-      propertyCalendarsRes,
       propertyBookingEventsRes,
       maintenanceFlagsRes,
-      maintenanceFlagImagesRes,
       inspectionRulesRes,
       inspectionLogsRes,
-      inspectionPhotosRes,
       organizationInvitesRes,
       invoiceSettingsRes,
       propertyInvoiceRatesRes,
@@ -135,21 +123,9 @@ export async function GET(request: Request) {
     ] = await Promise.all([
       serviceClient.from("properties").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
       serviceClient.from("cleaner_accounts").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
-      serviceClient.from("cleaner_account_members").select("*").order("created_at", { ascending: false }),
-      serviceClient.from("property_cleaner_account_assignments").select("*").order("priority", { ascending: true }),
       serviceClient.from("turnover_jobs").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
-      serviceClient.from("turnover_job_slots").select("*").order("job_id", { ascending: true }),
       serviceClient.from("grounds_accounts").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
-      serviceClient.from("grounds_account_members").select("*").order("created_at", { ascending: false }),
-      serviceClient.from("property_grounds_account_assignments").select("*").order("priority", { ascending: true }),
       serviceClient.from("grounds_jobs").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
-      serviceClient.from("grounds_job_slots").select("*").order("job_id", { ascending: true }),
-      serviceClient.from("property_grounds_recurring_tasks").select("*").order("created_at", { ascending: false }),
-      serviceClient.from("property_grounds_recurring_rules").select("*").order("created_at", { ascending: false }),
-      serviceClient.from("admin_stranded_jobs").select("*").order("created_at", { ascending: true }),
-      serviceClient.from("property_access").select("*"),
-      serviceClient.from("property_sops").select("*").order("created_at", { ascending: false }),
-      serviceClient.from("property_sop_images").select("*").order("sort_order", { ascending: true }),
       serviceClient.from("document_vault_files").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
       serviceClient
         .from("organization_members")
@@ -169,8 +145,6 @@ export async function GET(request: Request) {
         .eq("organization_id", organizationId)
         .order("created_at", { ascending: false }),
       serviceClient.from("owner_accounts").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
-      serviceClient.from("owner_property_access").select("*").order("created_at", { ascending: false }),
-      serviceClient.from("property_calendars").select("*").order("created_at", { ascending: false }),
       serviceClient
         .from("property_booking_events")
         .select("*")
@@ -179,15 +153,13 @@ export async function GET(request: Request) {
         .gte("checkout_date", todayYmd)
         .order("checkin_date", { ascending: true }),
       serviceClient.from("property_maintenance_flags").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
-      serviceClient.from("property_maintenance_flag_images").select("*").order("sort_order", { ascending: true }),
       serviceClient.from("property_inspection_rules").select("*").eq("organization_id", organizationId).order("next_due_date", { ascending: true }),
       serviceClient.from("property_inspection_logs").select("*").eq("organization_id", organizationId).order("inspected_at", { ascending: false }),
-      serviceClient.from("property_inspection_photos").select("*").eq("organization_id", organizationId).order("sort_order", { ascending: true }),
       serviceClient.from("organization_invites").select("*").eq("organization_id", organizationId).in("role", ["cleaner", "grounds", "admin"]).order("created_at", { ascending: false }),
       serviceClient.from("organization_invoice_settings").select("*").eq("organization_id", organizationId).maybeSingle(),
       serviceClient.from("property_invoice_rates").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
       serviceClient.from("owner_invoices").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
-      serviceClient.from("owner_invoice_events").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
+      serviceClient.from("owner_invoice_events").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }).limit(1000),
       serviceClient.from("chat_conversations").select("id,organization_id,subject,context_type,context_id,created_by_profile_id,last_message_at,created_at,updated_at").eq("organization_id", organizationId).order("updated_at", { ascending: false }),
       serviceClient.from("chat_participants").select("id,organization_id,conversation_id,participant_type,participant_profile_id,participant_owner_account_id,participant_role,display_name,email,last_read_at,created_at").eq("organization_id", organizationId).order("created_at", { ascending: true }),
       serviceClient.from("chat_messages").select("id,organization_id,conversation_id,sender_profile_id,body,created_at,updated_at").eq("organization_id", organizationId).order("created_at", { ascending: true }),
@@ -197,27 +169,12 @@ export async function GET(request: Request) {
     const requiredResponses = [
       propertiesRes,
       cleanerAccountsRes,
-      cleanerAccountMembersRes,
-      assignmentsRes,
       jobsRes,
-      jobSlotsRes,
       groundsAccountsRes,
-      groundsAccountMembersRes,
-      groundsAssignmentsRes,
       groundsJobsRes,
-      groundsJobSlotsRes,
-      groundsRecurringTasksRes,
-      groundsRecurringRulesRes,
-      strandedJobsRes,
-      accessRowsRes,
-      sopsRes,
-      sopImagesRes,
       profilesRes,
       ownerAccountsRes,
-      ownerPropertyAccessRes,
-      propertyCalendarsRes,
       maintenanceFlagsRes,
-      maintenanceFlagImagesRes,
       organizationInvitesRes,
       ownerInvoicesRes,
     ];
@@ -230,9 +187,110 @@ export async function GET(request: Request) {
 
     const properties = propertiesRes.data ?? [];
     const loadedPropertyIds = new Set(properties.map((property: { id: string }) => property.id));
-    const strandedJobs = ((strandedJobsRes.data ?? []) as Array<{ property_id?: string | null }>).filter(
-      (job) => !!job.property_id && loadedPropertyIds.has(job.property_id)
-    );
+    const propertyIds = Array.from(loadedPropertyIds);
+    const cleanerAccountIds = ((cleanerAccountsRes.data ?? []) as Array<{ id: string }>).map((account) => account.id);
+    const groundsAccountIds = ((groundsAccountsRes.data ?? []) as Array<{ id: string }>).map((account) => account.id);
+    const jobIds = ((jobsRes.data ?? []) as Array<{ id: string }>).map((job) => job.id);
+    const groundsJobIds = ((groundsJobsRes.data ?? []) as Array<{ id: string }>).map((job) => job.id);
+    const ownerAccountIds = ((ownerAccountsRes.data ?? []) as Array<{ id: string }>).map((owner) => owner.id);
+    const maintenanceFlagIds = ((maintenanceFlagsRes.data ?? []) as Array<{ id: string }>).map((flag) => flag.id);
+    const inspectionLogIds = ((inspectionLogsRes.data ?? []) as Array<{ id: string }>).map((log) => log.id);
+
+    const [
+      cleanerAccountMembersRes,
+      assignmentsRes,
+      jobSlotsRes,
+      groundsAccountMembersRes,
+      groundsAssignmentsRes,
+      groundsJobSlotsRes,
+      groundsRecurringTasksRes,
+      groundsRecurringRulesRes,
+      strandedJobsRes,
+      accessRowsRes,
+      sopsRes,
+      ownerPropertyAccessRes,
+      propertyCalendarsRes,
+      maintenanceFlagImagesRes,
+      inspectionPhotosRes,
+    ] = await Promise.all([
+      cleanerAccountIds.length > 0
+        ? serviceClient.from("cleaner_account_members").select("*").in("cleaner_account_id", cleanerAccountIds).order("created_at", { ascending: false })
+        : emptyResult(),
+      propertyIds.length > 0
+        ? serviceClient.from("property_cleaner_account_assignments").select("*").in("property_id", propertyIds).order("priority", { ascending: true })
+        : emptyResult(),
+      jobIds.length > 0
+        ? serviceClient.from("turnover_job_slots").select("*").in("job_id", jobIds).order("job_id", { ascending: true })
+        : emptyResult(),
+      groundsAccountIds.length > 0
+        ? serviceClient.from("grounds_account_members").select("*").in("grounds_account_id", groundsAccountIds).order("created_at", { ascending: false })
+        : emptyResult(),
+      propertyIds.length > 0
+        ? serviceClient.from("property_grounds_account_assignments").select("*").in("property_id", propertyIds).order("priority", { ascending: true })
+        : emptyResult(),
+      groundsJobIds.length > 0
+        ? serviceClient.from("grounds_job_slots").select("*").in("job_id", groundsJobIds).order("job_id", { ascending: true })
+        : emptyResult(),
+      propertyIds.length > 0
+        ? serviceClient.from("property_grounds_recurring_tasks").select("*").in("property_id", propertyIds).order("created_at", { ascending: false })
+        : emptyResult(),
+      propertyIds.length > 0
+        ? serviceClient.from("property_grounds_recurring_rules").select("*").in("property_id", propertyIds).order("created_at", { ascending: false })
+        : emptyResult(),
+      propertyIds.length > 0
+        ? serviceClient.from("admin_stranded_jobs").select("*").in("property_id", propertyIds).order("created_at", { ascending: true })
+        : emptyResult(),
+      propertyIds.length > 0
+        ? serviceClient.from("property_access").select("*").in("property_id", propertyIds)
+        : emptyResult(),
+      propertyIds.length > 0
+        ? serviceClient.from("property_sops").select("*").in("property_id", propertyIds).order("created_at", { ascending: false })
+        : emptyResult(),
+      ownerAccountIds.length > 0
+        ? serviceClient.from("owner_property_access").select("*").in("owner_account_id", ownerAccountIds).order("created_at", { ascending: false })
+        : emptyResult(),
+      propertyIds.length > 0
+        ? serviceClient.from("property_calendars").select("*").in("property_id", propertyIds).order("created_at", { ascending: false })
+        : emptyResult(),
+      maintenanceFlagIds.length > 0
+        ? serviceClient.from("property_maintenance_flag_images").select("*").in("flag_id", maintenanceFlagIds).order("sort_order", { ascending: true })
+        : emptyResult(),
+      inspectionLogIds.length > 0
+        ? serviceClient.from("property_inspection_photos").select("*").in("inspection_log_id", inspectionLogIds).order("sort_order", { ascending: true })
+        : emptyResult(),
+    ]);
+
+    const childRequiredResponses = [
+      cleanerAccountMembersRes,
+      assignmentsRes,
+      jobSlotsRes,
+      groundsAccountMembersRes,
+      groundsAssignmentsRes,
+      groundsJobSlotsRes,
+      groundsRecurringTasksRes,
+      groundsRecurringRulesRes,
+      strandedJobsRes,
+      accessRowsRes,
+      sopsRes,
+      ownerPropertyAccessRes,
+      propertyCalendarsRes,
+      maintenanceFlagImagesRes,
+    ];
+
+    for (const response of childRequiredResponses) {
+      if (response.error) {
+        throw new Error(response.error.message);
+      }
+    }
+
+    const sopIds = ((sopsRes.data ?? []) as Array<{ id: string }>).map((sop) => sop.id);
+    const sopImagesRes = sopIds.length > 0
+      ? await serviceClient.from("property_sop_images").select("*").in("sop_id", sopIds).order("sort_order", { ascending: true })
+      : { data: [], error: null };
+
+    if (sopImagesRes.error) {
+      throw new Error(sopImagesRes.error.message);
+    }
 
     return Response.json({
       ok: true,
@@ -250,7 +308,7 @@ export async function GET(request: Request) {
         groundsJobSlots: groundsJobSlotsRes.data ?? [],
         groundsRecurringTasks: groundsRecurringTasksRes.data ?? [],
         groundsRecurringRules: groundsRecurringRulesRes.data ?? [],
-        strandedJobs,
+        strandedJobs: strandedJobsRes.data ?? [],
         accessRows: accessRowsRes.data ?? [],
         sops: sopsRes.data ?? [],
         sopImages: sopImagesRes.data ?? [],
