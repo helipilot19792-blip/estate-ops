@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Check, Copy, Mail, Phone } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { trackFeatureUsage } from "@/lib/feature-usage";
 import OnboardingChecklist, { type OnboardingStep } from "@/components/onboarding-checklist";
@@ -19810,10 +19811,14 @@ This removes its linked members and deletes the grounds account.`
               {selectedStaffContact.phone ? (
                 <a
                   href={`tel:${selectedStaffContact.phone}`}
-                  className="flex items-center justify-between rounded-[18px] border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-3 font-semibold text-[#241c15] transition hover:bg-white"
+                  className="flex items-center justify-between gap-3 rounded-[18px] border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-3 font-semibold text-[#241c15] transition hover:bg-white"
+                  title="Call phone number"
                 >
                   <span>{selectedStaffContact.phone}</span>
-                  <span className="text-xs uppercase tracking-[0.14em] text-[#8a7b68]">Call</span>
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#d8c7ab] bg-white text-[#8a7b68]">
+                    <Phone size={15} strokeWidth={2.2} aria-hidden="true" />
+                    <span className="sr-only">Call</span>
+                  </span>
                 </a>
               ) : (
                 <div className="rounded-[18px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-4 py-3 text-[#7f7263]">
@@ -19832,16 +19837,23 @@ This removes its linked members and deletes the grounds account.`
                   <button
                     type="button"
                     onClick={() => void copyStaffContactEmail(selectedStaffContact.email!)}
-                    className="shrink-0 rounded-full border border-[#d8c7ab] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-[#8a7b68] transition hover:border-[#0f766e] hover:text-[#0f766e]"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#d8c7ab] bg-white text-[#8a7b68] transition hover:border-[#0f766e] hover:text-[#0f766e]"
                     title="Copy email address"
+                    aria-label="Copy email address"
                   >
-                    {copiedStaffContactEmail ? "Copied" : "Copy"}
+                    {copiedStaffContactEmail ? (
+                      <Check size={15} strokeWidth={2.3} aria-hidden="true" />
+                    ) : (
+                      <Copy size={15} strokeWidth={2.2} aria-hidden="true" />
+                    )}
                   </button>
                   <a
                     href={`mailto:${selectedStaffContact.email}`}
-                    className="shrink-0 rounded-full border border-transparent px-2 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-[#8a7b68] transition hover:text-[#0f766e]"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-transparent text-[#8a7b68] transition hover:text-[#0f766e]"
+                    title="Email contact"
+                    aria-label="Email contact"
                   >
-                    Email
+                    <Mail size={15} strokeWidth={2.2} aria-hidden="true" />
                   </a>
                 </div>
               ) : (
