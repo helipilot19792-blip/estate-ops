@@ -19728,21 +19728,27 @@ This removes its linked members and deletes the grounds account.`
       <section className="rounded-[30px] border border-[#dbeafe] bg-[linear-gradient(180deg,#f8fbff_0%,#eef6ff_100%)] p-5 shadow-[0_18px_45px_rgba(59,130,246,0.08)]">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#3563a8]">Loading workspace</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#3563a8]">
+              {t("admin.shell.loadingWorkspace")}
+            </p>
             <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#17202a]">
-              Bringing in properties, jobs, billing, and team activity.
+              {t("admin.shell.loadingTitle")}
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-[#52657a]">
-              The admin dashboard hydrates the full operating picture first, then refreshes quietly in the background.
+              {t("admin.shell.loadingBody")}
             </p>
           </div>
           <span className="rounded-full border border-[#bfdbfe] bg-white px-3 py-1 text-xs font-semibold text-[#1d4ed8]">
-            First load
+            {t("admin.shell.firstLoad")}
           </span>
         </div>
 
         <div className="mt-5 grid gap-3 md:grid-cols-3">
-          {["Properties and calendars", "Jobs and assignments", "Invoices and messages"].map((label) => (
+          {[
+            t("admin.shell.loadingCards.propertiesCalendars"),
+            t("admin.shell.loadingCards.jobsAssignments"),
+            t("admin.shell.loadingCards.invoicesMessages"),
+          ].map((label) => (
             <div key={label} className="rounded-[20px] border border-[#bfdbfe] bg-white p-4">
               <div className="h-3 w-32 rounded-full bg-[#dbeafe]" />
               <div className="mt-4 h-8 w-16 rounded-full bg-[#eff6ff]" />
@@ -19774,7 +19780,7 @@ This removes its linked members and deletes the grounds account.`
               </div>
               <div>
                 <div className="text-xs uppercase tracking-[0.28em] text-[#8a7b68]">GULERAOS</div>
-                <div className="mt-1 text-2xl font-semibold">Checking admin access...</div>
+                <div className="mt-1 text-2xl font-semibold">{t("admin.shell.checkingAccess")}</div>
               </div>
             </div>
           </div>
@@ -19970,16 +19976,20 @@ This removes its linked members and deletes the grounds account.`
         >
           <div className="admin-premium-surface rounded-[28px] border p-4">
             <div className="mb-5 rounded-[20px] border border-[#dce7ef] bg-white/90 px-4 py-4">
-              <div className="admin-kicker text-xs font-semibold uppercase text-[#64748b]">Admin</div>
-              <div className="mt-1 text-xl font-semibold tracking-tight text-[#17202a]">Workspace</div>
+              <div className="admin-kicker text-xs font-semibold uppercase text-[#64748b]">
+                {t("admin.navigation.admin")}
+              </div>
+              <div className="mt-1 text-xl font-semibold tracking-tight text-[#17202a]">
+                {t("admin.shell.workspace")}
+              </div>
             </div>
             <button
               type="button"
               onClick={toggleAdminMenuOrientation}
               className="mb-4 flex w-full items-center justify-between rounded-[16px] border border-[#d9e3ee] bg-white/90 px-4 py-3 text-sm font-semibold text-[#475569] transition hover:bg-white"
             >
-              <span>Move menu</span>
-              <span className="rounded-full bg-[#17202a] px-3 py-1 text-xs text-white">Top</span>
+              <span>{t("admin.shell.moveMenu")}</span>
+              <span className="rounded-full bg-[#17202a] px-3 py-1 text-xs text-white">{t("admin.shell.top")}</span>
             </button>
             {renderAdminNavigation("side")}
           </div>
@@ -20006,26 +20016,26 @@ This removes its linked members and deletes the grounds account.`
                 <div className="min-w-0">
                   <div className="admin-kicker text-xs font-semibold uppercase text-[#0f766e]">GULERAOS</div>
                   <div className="mt-1 inline-flex max-w-full items-center rounded-full border border-[#cbd5e1] bg-white/85 px-3 py-1 text-sm font-semibold text-[#334155] shadow-sm">
-                    <span className="mr-1 text-[#64748b]">Company:</span>
+                    <span className="mr-1 text-[#64748b]">{t("admin.shell.company")}</span>
                     <span className="truncate">{currentOrganizationLabel}</span>
                   </div>
                   <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[#17202a] md:text-3xl">
-                    Property operations, elevated.
+                    {t("admin.shell.heroTitle")}
                   </h1>
                   {SHOW_ADMIN_TOP_BANNER ? (
                     <>
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-[#475569] md:text-base">
-                    Staffing, scheduling, maintenance, billing, and owner communication in one focused workspace.
+                    {t("admin.shell.heroBody")}
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <span className="rounded-full border border-[#bae6fd] bg-white/80 px-3 py-1 text-xs font-semibold text-[#0369a1]">
-                      Live operations
+                      {t("admin.shell.liveOperations")}
                     </span>
                     <span className="rounded-full border border-[#bbf7d0] bg-white/80 px-3 py-1 text-xs font-semibold text-[#15803d]">
-                      {properties.length} properties
+                      {properties.length} {t("admin.shell.properties")}
                     </span>
                     <span className="rounded-full border border-[#fed7aa] bg-white/80 px-3 py-1 text-xs font-semibold text-[#c2410c]">
-                      {notificationCenterCount} alerts
+                      {notificationCenterCount} {t("admin.shell.alerts")}
                     </span>
                   </div>
                     </>
@@ -20039,7 +20049,7 @@ This removes its linked members and deletes the grounds account.`
                     onClick={() => router.push("/platform")}
                     className="inline-flex items-center justify-center rounded-full border border-[#cbd5e1] bg-white/80 px-5 py-2.5 text-sm font-medium text-[#334155] shadow-sm transition hover:bg-white"
                   >
-                    SaaS Tower
+                    {t("admin.shell.saasTower")}
                   </button>
                 ) : null}
                 {myOrganizations.length > 1 ? (
@@ -20055,11 +20065,11 @@ This removes its linked members and deletes the grounds account.`
                       setCurrentOrganizationId(nextOrganizationId);
                     }}
                     className="rounded-full border border-[#cbd5e1] bg-white/90 px-4 py-2.5 text-sm font-medium text-[#334155] shadow-sm outline-none transition hover:bg-white focus:border-[#38bdf8]"
-                    aria-label="Choose organization"
+                    aria-label={t("admin.shell.chooseOrganization")}
                   >
                     {myOrganizations.map((organization) => (
                       <option key={organization.organization_id} value={organization.organization_id}>
-                        {organization.organization_name || organization.organization_slug || "Organization"}
+                        {organization.organization_name || organization.organization_slug || t("admin.shell.organization")}
                       </option>
                     ))}
                   </select>
@@ -20068,14 +20078,14 @@ This removes its linked members and deletes the grounds account.`
                   onClick={() => setShowSupport(true)}
                   className="inline-flex items-center justify-center rounded-full border border-[#fde68a] bg-[#fef3c7] px-5 py-2.5 text-sm font-medium text-[#7c5a10] shadow-sm hover:bg-[#fde68a]"
                 >
-                  Support
+                  {t("admin.shell.support")}
                 </button>
                 <button
                   type="button"
                   onClick={openAiHelper}
                   className="inline-flex items-center justify-center rounded-full border border-[#cbd5e1] bg-[#241c15] px-5 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-[#352a21]"
                 >
-                  AI Helper
+                  {t("admin.shell.aiHelper")}
                 </button>
                 <button
                   className="inline-flex items-center justify-center rounded-full border border-[#cbd5e1] bg-[#17202a] px-5 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-[#263241]"
@@ -20084,7 +20094,7 @@ This removes its linked members and deletes the grounds account.`
                     window.location.href = "/login";
                   }}
                 >
-                  Logout
+                  {t("admin.shell.logout")}
                 </button>
               </div>
             </div>
@@ -20097,13 +20107,14 @@ This removes its linked members and deletes the grounds account.`
               className="flex w-full items-center justify-between gap-3 rounded-[18px] border border-[#d8e4ef] bg-white/85 px-4 py-3 text-left shadow-sm"
             >
               <span>
-                <span className="block text-sm font-semibold text-[#17202a]">Workspace stats</span>
+                <span className="block text-sm font-semibold text-[#17202a]">{t("admin.shell.workspaceStats")}</span>
                 <span className="mt-0.5 block text-xs text-[#64748b]">
-                  {properties.length} properties | {jobs.length + groundsJobs.length} jobs | {ownerInvoices.length} invoices
+                  {properties.length} {t("admin.shell.properties")} | {jobs.length + groundsJobs.length}{" "}
+                  {t("admin.shell.jobs")} | {ownerInvoices.length} {t("admin.shell.invoices")}
                 </span>
               </span>
               <span className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-semibold text-[#6f6255]">
-                {showMobileWorkspaceStats ? "Hide" : "Show"}
+                {showMobileWorkspaceStats ? t("admin.shell.hide") : t("admin.shell.show")}
               </span>
             </button>
           </div>
@@ -20565,7 +20576,7 @@ This removes its linked members and deletes the grounds account.`
           <div className="flex items-start justify-between gap-3">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.18em]">
-                {error ? "Needs attention" : "Update complete"}
+                {error ? t("admin.shell.needsAttention") : t("admin.shell.updateComplete")}
               </div>
               <div className="mt-1 leading-5">{error || actionMessage}</div>
             </div>
@@ -20598,18 +20609,18 @@ This removes its linked members and deletes the grounds account.`
       {showSupport && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="w-full max-w-lg rounded-[24px] bg-white p-6 shadow-xl">
-            <h2 className="text-lg font-semibold text-[#241c15]">Report an issue</h2>
+            <h2 className="text-lg font-semibold text-[#241c15]">{t("admin.shell.supportModal.title")}</h2>
 
             <input
               type="text"
-              placeholder="Subject"
+              placeholder={t("admin.shell.supportModal.subjectPlaceholder")}
               value={supportSubject}
               onChange={(e) => setSupportSubject(e.target.value)}
               className="mt-4 w-full rounded-[16px] border border-[#eadfce] px-4 py-3"
             />
 
             <textarea
-              placeholder="Describe the issue..."
+              placeholder={t("admin.shell.supportModal.messagePlaceholder")}
               value={supportMessage}
               onChange={(e) => setSupportMessage(e.target.value)}
               className="mt-3 w-full rounded-[16px] border border-[#eadfce] px-4 py-3 min-h-[120px]"
@@ -20620,13 +20631,13 @@ This removes its linked members and deletes the grounds account.`
                 onClick={() => setShowSupport(false)}
                 className="rounded-full border px-4 py-2"
               >
-                Cancel
+                {t("admin.shell.supportModal.cancel")}
               </button>
 
               <button
                 onClick={async () => {
                   if (!supportMessage.trim()) {
-                    alert("Please describe the issue.");
+                    alert(t("admin.shell.supportModal.describeIssue"));
                     return;
                   }
 
@@ -20638,7 +20649,7 @@ This removes its linked members and deletes the grounds account.`
                     } = await supabase.auth.getUser();
 
                     if (!user) {
-                      alert("You must be signed in to submit a support request.");
+                      alert(t("admin.shell.supportModal.signInRequired"));
                       return;
                     }
 
@@ -20655,14 +20666,14 @@ This removes its linked members and deletes the grounds account.`
                     const { error } = await supabase.from("support_tickets").insert({
                       user_id: user.id,
                       organization_id: organizationId,
-                      subject: supportSubject.trim() || "Support request",
+                      subject: supportSubject.trim() || t("admin.shell.supportModal.defaultSubject"),
                       message: supportMessage.trim(),
                       status: "open",
                     });
 
                     if (error) {
                       console.error("Support ticket insert failed:", error);
-                      alert(`Error submitting: ${error.message}`);
+                      alert(t("admin.shell.supportModal.submitError").replace("{message}", error.message));
                       return;
                     }
 
@@ -20683,14 +20694,14 @@ This removes its linked members and deletes the grounds account.`
 
                     if (emailError) {
                       console.error("Support email failed:", emailError);
-                      alert("Ticket saved, but email failed.");
+                      alert(t("admin.shell.supportModal.emailFailed"));
                       return;
                     }
 
-                    alert("Submitted.");
+                    alert(t("admin.shell.supportModal.submitted"));
                   } catch (error) {
                     console.error("Unexpected support submit error:", error);
-                    alert("Something went wrong submitting your request.");
+                    alert(t("admin.shell.supportModal.unexpectedError"));
                   } finally {
                     setSendingSupport(false);
                   }
@@ -20698,7 +20709,7 @@ This removes its linked members and deletes the grounds account.`
                 disabled={sendingSupport}
                 className="rounded-full bg-[#1f2937] px-5 py-2 text-white disabled:opacity-60"
               >
-                {sendingSupport ? "Submitting..." : "Submit"}
+                {sendingSupport ? t("admin.shell.supportModal.submitting") : t("admin.shell.supportModal.submit")}
               </button>
             </div>
           </div>
