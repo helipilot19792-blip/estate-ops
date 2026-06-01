@@ -1228,6 +1228,12 @@ export default function OwnerPage() {
     }
 
     const propertyIds = (accessRows ?? []).map((row) => row.property_id);
+    const bookingWindowStart = new Date();
+    bookingWindowStart.setDate(bookingWindowStart.getDate() - 400);
+    const bookingWindowEnd = new Date();
+    bookingWindowEnd.setDate(bookingWindowEnd.getDate() + 540);
+    const bookingWindowStartYmd = bookingWindowStart.toISOString().slice(0, 10);
+    const bookingWindowEndYmd = bookingWindowEnd.toISOString().slice(0, 10);
 
     if (propertyIds.length === 0) {
       setProperties([]);
@@ -1267,6 +1273,8 @@ export default function OwnerPage() {
         .from("property_booking_events")
         .select("id,property_id,source,summary,guest_count,checkin_date,checkout_date,created_at")
         .in("property_id", propertyIds)
+        .gte("checkout_date", bookingWindowStartYmd)
+        .lte("checkin_date", bookingWindowEndYmd)
         .order("checkin_date", { ascending: false }),
       supabase
         .from("grounds_jobs")
