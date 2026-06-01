@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabase";
 import { trackFeatureUsage } from "@/lib/feature-usage";
 import OnboardingChecklist, { type OnboardingStep } from "@/components/onboarding-checklist";
 import PortalInstallControl from "@/components/pwa/portalinstallcontrol";
+import { useI18n } from "@/components/i18n-provider";
 
 function getCityFromAddress(address?: string | null) {
   if (!address) return "";
@@ -1148,6 +1149,7 @@ async function loadPlatformAdminOrganizations(accessToken: string): Promise<MyOr
 
 export default function AdminPage() {
   const router = useRouter();
+  const { t } = useI18n();
 
 
   const [checkingAuth, setCheckingAuth] = useState(true);
@@ -8445,111 +8447,111 @@ This removes its linked members and deletes the grounds account.`
     }>;
   }> = [
     {
-      label: "Operations",
+      label: t("admin.navigation.groups.operations"),
       items: [
         {
           key: "home",
-          label: "Home",
-          hint: "Daily snapshot",
+          label: t("admin.navigation.items.home.label"),
+          hint: t("admin.navigation.items.home.hint"),
           accent: "bg-[#3b82f6]",
           activeClass: "border-[#bfdbfe] bg-[#eff6ff] text-[#1d4ed8]",
         },
         {
           key: "notifications",
-          label: "Notifications",
-          hint: "Items needing action",
+          label: t("admin.navigation.items.notifications.label"),
+          hint: t("admin.navigation.items.notifications.hint"),
           accent: "bg-[#f97316]",
           activeClass: "border-[#fed7aa] bg-[#fff7ed] text-[#c2410c]",
         },
         {
           key: "calendar",
-          label: "Calendar",
-          hint: "Bookings and schedules",
+          label: t("admin.navigation.items.calendar.label"),
+          hint: t("admin.navigation.items.calendar.hint"),
           accent: "bg-[#14b8a6]",
           activeClass: "border-[#99f6e4] bg-[#ecfdf5] text-[#0f766e]",
         },
         {
           key: "chat",
-          label: "Chat",
-          hint: "In-app messages",
+          label: t("admin.navigation.items.chat.label"),
+          hint: t("admin.navigation.items.chat.hint"),
           accent: "bg-[#06b6d4]",
           activeClass: "border-[#a5f3fc] bg-[#ecfeff] text-[#0e7490]",
         },
         {
           key: "jobs",
-          label: "Jobs",
-          hint: "Cleaning and grounds work",
+          label: t("admin.navigation.items.jobs.label"),
+          hint: t("admin.navigation.items.jobs.hint"),
           accent: "bg-[#22c55e]",
           activeClass: "border-[#bbf7d0] bg-[#f0fdf4] text-[#15803d]",
         },
         {
           key: "maintenance",
-          label: "Maintenance Flags",
-          hint: "Open issues",
+          label: t("admin.navigation.items.maintenance.label"),
+          hint: t("admin.navigation.items.maintenance.hint"),
           accent: "bg-[#ef4444]",
           activeClass: "border-[#fecaca] bg-[#fff1f2] text-[#b91c1c]",
         },
         {
           key: "inspections",
-          label: "Inspections",
-          hint: "Safety checks",
+          label: t("admin.navigation.items.inspections.label"),
+          hint: t("admin.navigation.items.inspections.hint"),
           accent: "bg-[#f59e0b]",
           activeClass: "border-[#fde68a] bg-[#fffbeb] text-[#b45309]",
         },
       ],
     },
     {
-      label: "Billing",
+      label: t("admin.navigation.groups.billing"),
       items: [
         {
           key: "invoices",
-          label: "Invoices",
-          hint: "Owner billing",
+          label: t("admin.navigation.items.invoices.label"),
+          hint: t("admin.navigation.items.invoices.hint"),
           accent: "bg-[#f59e0b]",
           activeClass: "border-[#fde68a] bg-[#fffbeb] text-[#b45309]",
         },
       ],
     },
     {
-      label: "Properties",
+      label: t("admin.navigation.groups.properties"),
       items: [
         {
           key: "properties",
-          label: "Properties",
-          hint: "Listings and setup",
+          label: t("admin.navigation.items.properties.label"),
+          hint: t("admin.navigation.items.properties.hint"),
           accent: "bg-[#0ea5e9]",
           activeClass: "border-[#bae6fd] bg-[#f0f9ff] text-[#0369a1]",
         },
         {
           key: "assignments",
-          label: "Assignments",
-          hint: "Cleaner and grounds coverage",
+          label: t("admin.navigation.items.assignments.label"),
+          hint: t("admin.navigation.items.assignments.hint"),
           accent: "bg-[#84cc16]",
           activeClass: "border-[#d9f99d] bg-[#f7fee7] text-[#4d7c0f]",
         },
         {
           key: "documents",
-          label: "Documents",
-          hint: "Vault and property files",
+          label: t("admin.navigation.items.documents.label"),
+          hint: t("admin.navigation.items.documents.hint"),
           accent: "bg-[#7c3aed]",
           activeClass: "border-[#ddd6fe] bg-[#f5f3ff] text-[#6d28d9]",
         },
         {
           key: "backup",
-          label: "Backup",
-          hint: "Exports and snapshots",
+          label: t("admin.navigation.items.backup.label"),
+          hint: t("admin.navigation.items.backup.hint"),
           accent: "bg-[#475569]",
           activeClass: "border-[#cbd5e1] bg-[#f8fafc] text-[#334155]",
         },
       ],
     },
     {
-      label: "People",
+      label: t("admin.navigation.groups.people"),
       items: [
         {
           key: "team",
-          label: "Team",
-          hint: "Invites, users, accounts",
+          label: t("admin.navigation.items.team.label"),
+          hint: t("admin.navigation.items.team.hint"),
           accent: "bg-[#8b5cf6]",
           activeClass: "border-[#ddd6fe] bg-[#f5f3ff] text-[#6d28d9]",
         },
@@ -9054,7 +9056,7 @@ This removes its linked members and deletes the grounds account.`
 
     if (isTop) {
       return (
-        <nav className="flex flex-wrap gap-2" aria-label="Admin sections">
+        <nav className="flex flex-wrap gap-2" aria-label={t("admin.navigation.ariaLabel")}>
           {orderedAdminMenuItems.map((item) => {
             const active = activeSection === item.key;
             const badge = getAdminMenuBadge(item.key);
@@ -9073,7 +9075,7 @@ This removes its linked members and deletes the grounds account.`
                       ? "border-[#a5f3fc] bg-[#ecfeff] text-[#0e7490] hover:bg-white"
                       : "border-[#eadfce] bg-white text-[#5f5245] hover:border-[#d8c7ab] hover:bg-[#fcfaf7]"
                 } ${dragging ? "scale-95 opacity-60" : "cursor-grab active:cursor-grabbing"}`}
-                title="Drag to reorder"
+                title={t("admin.navigation.dragToReorder")}
               >
                 <span className={`h-5 w-1.5 rounded-full ${item.accent}`} aria-hidden="true" />
                 <span>{item.label}</span>
@@ -9099,7 +9101,7 @@ This removes its linked members and deletes the grounds account.`
               onClick={resetAdminMenuOrder}
               className="inline-flex min-h-10 items-center rounded-full border border-[#d8c7ab] bg-white px-3 py-2 text-sm font-semibold text-[#6f6255] transition hover:bg-[#fcfaf7]"
             >
-              Reset order
+              {t("admin.navigation.resetOrder")}
             </button>
           ) : null}
         </nav>
@@ -9107,11 +9109,11 @@ This removes its linked members and deletes the grounds account.`
     }
 
     return (
-      <nav className="space-y-5" aria-label="Admin sections">
+      <nav className="space-y-5" aria-label={t("admin.navigation.ariaLabel")}>
           <div>
             <div className="flex items-center justify-between gap-3 px-2">
               <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#9a8b78]">
-                Navigation
+                {t("admin.navigation.label")}
               </div>
               {adminMenuOrder.length > 0 ? (
                 <button
@@ -9119,7 +9121,7 @@ This removes its linked members and deletes the grounds account.`
                   onClick={resetAdminMenuOrder}
                   className="rounded-full border border-[#d8c7ab] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#6f6255] transition hover:bg-[#fcfaf7]"
                 >
-                  Reset
+                  {t("admin.navigation.reset")}
                 </button>
               ) : null}
             </div>
@@ -9142,7 +9144,7 @@ This removes its linked members and deletes the grounds account.`
                           ? "border-[#a5f3fc] bg-[#ecfeff] text-[#0e7490] hover:bg-white"
                           : "border-transparent bg-transparent text-[#5f5245] hover:border-[#eadfce] hover:bg-white"
                     } ${dragging ? "scale-[0.98] opacity-60" : "cursor-grab active:cursor-grabbing"}`}
-                    title="Drag to reorder"
+                    title={t("admin.navigation.dragToReorder")}
                   >
                     <span className={`${isTop ? "h-7" : "h-9"} w-1.5 rounded-full ${item.accent}`} aria-hidden="true" />
                     <span className="min-w-0 flex-1">
@@ -20512,13 +20514,13 @@ This removes its linked members and deletes the grounds account.`
             className="flex w-full items-center justify-between rounded-[18px] border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-3 text-left text-sm font-semibold text-[#241c15]"
           >
             <span>
-              Menu
+              {t("admin.navigation.menu")}
               <span className="ml-2 text-xs font-medium text-[#8a7b68]">
                 {orderedAdminMenuItems.find((item) => item.key === activeSection)?.label}
               </span>
             </span>
             <span className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs text-[#6f6255]">
-              Open
+              {t("admin.navigation.open")}
             </span>
           </button>
         </div>
@@ -20528,15 +20530,17 @@ This removes its linked members and deletes the grounds account.`
             <div className="ml-auto flex h-full max-w-sm flex-col rounded-[28px] border border-[#e7ddd0] bg-[#fbf8f4] p-4 shadow-[0_30px_70px_rgba(0,0,0,0.22)]">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8a7b68]">Admin</div>
-                  <div className="mt-1 text-xl font-semibold text-[#241c15]">Navigation</div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8a7b68]">
+                    {t("admin.navigation.admin")}
+                  </div>
+                  <div className="mt-1 text-xl font-semibold text-[#241c15]">{t("admin.navigation.label")}</div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowAdminNav(false)}
                   className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-semibold text-[#6f6255]"
                 >
-                  Close
+                  {t("admin.navigation.close")}
                 </button>
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto pr-1">
