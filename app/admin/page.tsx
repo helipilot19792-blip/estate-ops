@@ -2992,70 +2992,39 @@ export default function AdminPage() {
     setDeletingPropertyId(property.id);
 
     try {
-      const propertyJobIds = jobs.filter((job) => job.property_id === property.id).map((job) => job.id);
-      const propertySopIds = sops.filter((sop) => sop.property_id === property.id).map((sop) => sop.id);
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
 
-      if (propertyJobIds.length > 0) {
-        const { error: slotDeleteError } = await supabase
-          .from("turnover_job_slots")
-          .delete()
-          .in("job_id", propertyJobIds);
-
-        if (slotDeleteError) throw slotDeleteError;
-
-        const { error: jobDeleteError } = await supabase
-          .from("turnover_jobs")
-          .delete()
-          .in("id", propertyJobIds);
-
-        if (jobDeleteError) throw jobDeleteError;
+      if (sessionError || !session?.access_token) {
+        throw new Error("No active admin session was found.");
       }
 
-      if (propertySopIds.length > 0) {
-        const { error: sopImageDeleteError } = await supabase
-          .from("property_sop_images")
-          .delete()
-          .in("sop_id", propertySopIds);
+      const response = await fetch("/api/admin/property", {
+        method: "DELETE",
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          organizationId: currentOrganizationId,
+          propertyId: property.id,
+        }),
+      });
 
-        if (sopImageDeleteError) throw sopImageDeleteError;
+      const result = await response.json().catch(() => null);
 
-        const { error: sopDeleteError } = await supabase
-          .from("property_sops")
-          .delete()
-          .in("id", propertySopIds);
-
-        if (sopDeleteError) throw sopDeleteError;
+      if (!response.ok || !result?.ok) {
+        throw new Error(result?.error || "Could not delete property.");
       }
-
-      const cleanupTables = [
-        ["property_calendars", "property_id"],
-        ["property_inspection_rules", "property_id"],
-        ["property_inspection_logs", "property_id"],
-        ["property_access", "property_id"],
-        ["property_cleaner_account_assignments", "property_id"],
-      ] as const;
-
-      for (const [table, column] of cleanupTables) {
-        const { error: cleanupError } = await supabase
-          .from(table)
-          .delete()
-          .eq(column, property.id);
-
-        if (cleanupError) throw cleanupError;
-      }
-
-      const { error: propertyDeleteError } = await supabase
-        .from("properties")
-        .delete()
-        .eq("id", property.id);
-
-      if (propertyDeleteError) throw propertyDeleteError;
 
       if (selectedPropertyId === property.id) {
         setSelectedPropertyId("");
       }
 
-      setActionMessage(`Property deleted: ${propertyName}`);
+      setActionMessage(result.message || `Property deleted: ${propertyName}`);
       await loadData();
     } catch (err: any) {
       setError(err?.message || "Could not delete property.");

@@ -167,6 +167,64 @@ async function assertOrganizationCanAddProperty(serviceClient: any, organization
   }
 }
 
+async function loadIdsByColumn(serviceClient: any, table: string, column: string, value: string) {
+  const { data, error } = await serviceClient
+    .from(table)
+    .select("id")
+    .eq(column, value);
+
+  if (error) {
+    if (error.code === "42P01" || error.code === "42703") return [];
+    throw new Error(`${table}: ${error.message}`);
+  }
+
+  return (data ?? []).map((row: { id: string }) => row.id).filter(Boolean);
+}
+
+async function deleteRowsByColumn(serviceClient: any, table: string, column: string, value: string) {
+  const { count, error } = await serviceClient
+    .from(table)
+    .delete({ count: "exact" })
+    .eq(column, value);
+
+  if (error) {
+    if (error.code === "42P01" || error.code === "42703") return 0;
+    throw new Error(`${table}: ${error.message}`);
+  }
+
+  return count ?? 0;
+}
+
+async function deleteRowsByIds(serviceClient: any, table: string, column: string, ids: string[]) {
+  if (ids.length === 0) return 0;
+
+  const { count, error } = await serviceClient
+    .from(table)
+    .delete({ count: "exact" })
+    .in(column, ids);
+
+  if (error) {
+    if (error.code === "42P01" || error.code === "42703") return 0;
+    throw new Error(`${table}: ${error.message}`);
+  }
+
+  return count ?? 0;
+}
+
+async function clearDocumentPropertyLinks(serviceClient: any, propertyId: string) {
+  const { count, error } = await serviceClient
+    .from("document_vault_files")
+    .update({ property_id: null }, { count: "exact" })
+    .eq("property_id", propertyId);
+
+  if (error) {
+    if (error.code === "42P01" || error.code === "42703") return 0;
+    throw new Error(`document_vault_files: ${error.message}`);
+  }
+
+  return count ?? 0;
+}
+
 export async function POST(request: NextRequest) {
   if (!supabaseUrl || !publicSupabaseKey || !serviceRoleKey) {
     return NextResponse.json(
@@ -300,6 +358,129 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Could not create property." },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  if (!supabaseUrl || !publicSupabaseKey || !serviceRoleKey) {
+    return NextResponse.json(
+      { error: "Missing Supabase server environment variables." },
+      { status: 500 }
+    );
+  }
+
+  try {
+    const authHeader = request.headers.get("authorization");
+    const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : "";
+
+    if (!token) {
+      return NextResponse.json({ error: "Missing auth token." }, { status: 401 });
+    }
+
+    const authClient = createClient(supabaseUrl, publicSupabaseKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+      global: { headers: { Authorization: `Bearer ${token}` } },
+    });
+
+    const {
+      data: { user },
+      error: userError,
+    } = await authClient.auth.getUser();
+
+    if (userError || !user) {
+      return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+    }
+
+    const body = await request.json().catch(() => null);
+    const organizationId = String(body?.organizationId || "").trim();
+    const propertyId = String(body?.propertyId || "").trim();
+
+    if (!organizationId || !propertyId) {
+      return NextResponse.json({ error: "Missing organization or property." }, { status: 400 });
+    }
+
+    const serviceClient = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    const hasAdminAccess = await verifyAdmin(serviceClient, user.id, organizationId);
+    if (!hasAdminAccess) {
+      return NextResponse.json({ error: "Admin access required for this organization." }, { status: 403 });
+    }
+
+    const { data: property, error: propertyError } = await serviceClient
+      .from("properties")
+      .select("id, name, address")
+      .eq("id", propertyId)
+      .eq("organization_id", organizationId)
+      .maybeSingle();
+
+    if (propertyError) throw propertyError;
+    if (!property) {
+      return NextResponse.json({ error: "Property not found in this organization." }, { status: 404 });
+    }
+
+    const turnoverJobIds = await loadIdsByColumn(serviceClient, "turnover_jobs", "property_id", propertyId);
+    const groundsJobIds = await loadIdsByColumn(serviceClient, "grounds_jobs", "property_id", propertyId);
+    const sopIds = await loadIdsByColumn(serviceClient, "property_sops", "property_id", propertyId);
+    const maintenanceFlagIds = await loadIdsByColumn(serviceClient, "property_maintenance_flags", "property_id", propertyId);
+    const summary: Record<string, number> = {};
+    let deletedRows = 0;
+
+    const track = async (key: string, action: Promise<number>) => {
+      const count = await action;
+      summary[key] = count;
+      deletedRows += count;
+    };
+
+    await track("document_vault_files_unlinked", clearDocumentPropertyLinks(serviceClient, propertyId));
+    await track("property_maintenance_flag_images", deleteRowsByIds(serviceClient, "property_maintenance_flag_images", "flag_id", maintenanceFlagIds));
+    await track("property_maintenance_flags", deleteRowsByColumn(serviceClient, "property_maintenance_flags", "property_id", propertyId));
+    await track("property_inspection_photos", deleteRowsByColumn(serviceClient, "property_inspection_photos", "property_id", propertyId));
+    await track("property_inspection_logs", deleteRowsByColumn(serviceClient, "property_inspection_logs", "property_id", propertyId));
+    await track("property_inspection_rules", deleteRowsByColumn(serviceClient, "property_inspection_rules", "property_id", propertyId));
+    await track("property_calendars", deleteRowsByColumn(serviceClient, "property_calendars", "property_id", propertyId));
+    await track("property_booking_events", deleteRowsByColumn(serviceClient, "property_booking_events", "property_id", propertyId));
+    await track("turnover_job_slots", deleteRowsByIds(serviceClient, "turnover_job_slots", "job_id", turnoverJobIds));
+    await track("grounds_job_slots", deleteRowsByIds(serviceClient, "grounds_job_slots", "job_id", groundsJobIds));
+    await track("turnover_jobs", deleteRowsByColumn(serviceClient, "turnover_jobs", "property_id", propertyId));
+    await track("grounds_jobs", deleteRowsByColumn(serviceClient, "grounds_jobs", "property_id", propertyId));
+    await track("property_access", deleteRowsByColumn(serviceClient, "property_access", "property_id", propertyId));
+    await track("property_cleaner_account_assignments", deleteRowsByColumn(serviceClient, "property_cleaner_account_assignments", "property_id", propertyId));
+    await track("property_grounds_account_assignments", deleteRowsByColumn(serviceClient, "property_grounds_account_assignments", "property_id", propertyId));
+    await track("property_grounds_recurring_tasks", deleteRowsByColumn(serviceClient, "property_grounds_recurring_tasks", "property_id", propertyId));
+    await track("property_grounds_recurring_rules", deleteRowsByColumn(serviceClient, "property_grounds_recurring_rules", "property_id", propertyId));
+    await track("property_sop_images", deleteRowsByIds(serviceClient, "property_sop_images", "sop_id", sopIds));
+    await track("property_sops", deleteRowsByColumn(serviceClient, "property_sops", "property_id", propertyId));
+    await track("owner_property_access", deleteRowsByColumn(serviceClient, "owner_property_access", "property_id", propertyId));
+    await track("property_invoice_rates", deleteRowsByColumn(serviceClient, "property_invoice_rates", "property_id", propertyId));
+
+    const { count: propertyDeleteCount, error: propertyDeleteError } = await serviceClient
+      .from("properties")
+      .delete({ count: "exact" })
+      .eq("id", propertyId)
+      .eq("organization_id", organizationId);
+
+    if (propertyDeleteError) throw propertyDeleteError;
+
+    if ((propertyDeleteCount ?? 0) === 0) {
+      return NextResponse.json({ error: "Property delete was blocked or already completed." }, { status: 409 });
+    }
+
+    summary.properties = propertyDeleteCount ?? 0;
+    deletedRows += propertyDeleteCount ?? 0;
+
+    return NextResponse.json({
+      ok: true,
+      message: `Property deleted: ${property.name || property.address || "property"}`,
+      deletedRows,
+      summary,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Could not delete property." },
       { status: 500 }
     );
   }
