@@ -142,14 +142,14 @@ export async function createInvoicePdfBuffer(input: InvoicePdfInput) {
       const image = logo.contentType.includes("png")
         ? await pdfDoc.embedPng(logo.bytes)
         : await pdfDoc.embedJpg(logo.bytes);
-      const scaled = image.scale(Math.min(240 / image.width, 105 / image.height, 1.35));
+      const scaled = image.scale(Math.min(360 / image.width, 150 / image.height, 2));
       page.drawImage(image, {
-        x: pageLeft,
+        x: pageLeft + ((pageRight - pageLeft) - scaled.width) / 2,
         y: y - scaled.height,
         width: scaled.width,
         height: scaled.height,
       });
-      y -= scaled.height + 24;
+      y -= scaled.height + 28;
     } catch {
       // Keep the PDF usable even if an uploaded logo has an unsupported encoding.
     }
