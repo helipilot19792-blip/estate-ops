@@ -1491,6 +1491,7 @@ export default function AdminPage() {
   const [groundsLinkSelections, setGroundsLinkSelections] = useState<Record<string, string>>({});
   const [savingCleanerRotationPropertyId, setSavingCleanerRotationPropertyId] = useState<string | null>(null);
   const [selectedStaffContact, setSelectedStaffContact] = useState<StaffContact | null>(null);
+  const [copiedStaffContactEmail, setCopiedStaffContactEmail] = useState(false);
   const [editingBookingNote, setEditingBookingNote] = useState<{
     id: string;
     propertyName: string;
@@ -3030,6 +3031,16 @@ export default function AdminPage() {
       setError(err?.message || "Could not delete property.");
     } finally {
       setDeletingPropertyId(null);
+    }
+  }
+
+  async function copyStaffContactEmail(email: string) {
+    try {
+      await navigator.clipboard.writeText(email);
+      setCopiedStaffContactEmail(true);
+      window.setTimeout(() => setCopiedStaffContactEmail(false), 1800);
+    } catch {
+      setError("Could not copy email address.");
     }
   }
 
@@ -19785,7 +19796,10 @@ This removes its linked members and deletes the grounds account.`
               </div>
               <button
                 type="button"
-                onClick={() => setSelectedStaffContact(null)}
+                onClick={() => {
+                  setSelectedStaffContact(null);
+                  setCopiedStaffContactEmail(false);
+                }}
                 className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1.5 text-xs font-semibold text-[#5f5245] transition hover:bg-white"
               >
                 Close
@@ -19808,13 +19822,28 @@ This removes its linked members and deletes the grounds account.`
               )}
 
               {selectedStaffContact.email ? (
-                <a
-                  href={`mailto:${selectedStaffContact.email}`}
-                  className="flex items-center justify-between gap-3 rounded-[18px] border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-3 font-semibold text-[#241c15] transition hover:bg-white"
-                >
-                  <span className="min-w-0 truncate">{selectedStaffContact.email}</span>
-                  <span className="shrink-0 text-xs uppercase tracking-[0.14em] text-[#8a7b68]">Email</span>
-                </a>
+                <div className="flex items-center gap-2 rounded-[18px] border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-2.5">
+                  <a
+                    href={`mailto:${selectedStaffContact.email}`}
+                    className="min-w-0 flex-1 truncate px-1 font-semibold text-[#241c15] transition hover:text-[#0f766e]"
+                  >
+                    {selectedStaffContact.email}
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => void copyStaffContactEmail(selectedStaffContact.email!)}
+                    className="shrink-0 rounded-full border border-[#d8c7ab] bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-[#8a7b68] transition hover:border-[#0f766e] hover:text-[#0f766e]"
+                    title="Copy email address"
+                  >
+                    {copiedStaffContactEmail ? "Copied" : "Copy"}
+                  </button>
+                  <a
+                    href={`mailto:${selectedStaffContact.email}`}
+                    className="shrink-0 rounded-full border border-transparent px-2 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-[#8a7b68] transition hover:text-[#0f766e]"
+                  >
+                    Email
+                  </a>
+                </div>
               ) : (
                 <div className="rounded-[18px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-4 py-3 text-[#7f7263]">
                   No email saved.
