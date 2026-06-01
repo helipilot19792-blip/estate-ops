@@ -4513,7 +4513,7 @@ export default function AdminPage() {
     setJobUnitsStrict(false);
     setJobShowTeamStatus(true);
     setActionMessage(`Job created successfully.${notificationNote}`.trim());
-    alert("Cleaning job created.");
+    alert(`Cleaning job created.${notificationNote}`.trim());
     await loadData();
     setActiveSection("jobs");
     setHighlightedJobId(result.jobId);

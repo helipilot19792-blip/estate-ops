@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { writeAuditLog } from "@/lib/server/audit-log";
-import { applyCleanerTrainingRotationToJob } from "@/lib/server/cleaner-training-rotation";
+import { applyCleanerTrainingRotationToJob, getCleanerOfferResponseWindowHours } from "@/lib/server/cleaner-training-rotation";
 import { sendJobOfferEmailsForSlots } from "@/lib/server/job-notifications";
 
 export const dynamic = "force-dynamic";
@@ -44,6 +44,118 @@ function normalizeBoolean(value: unknown, fallback: boolean) {
 function normalizeDate(value: unknown) {
   const text = String(value || "").trim();
   return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : "";
+}
+
+function extractCheckoutDate(notes: string | null) {
+  if (!notes) return null;
+  const match = notes.match(/Checkout date:\s*(\d{4}-\d{2}-\d{2})/i);
+  return match?.[1] || null;
+}
+
+function getCleanerOfferExpiresAt(jobDate: string | null, now = new Date()) {
+  const responseHours = getCleanerOfferResponseWindowHours(jobDate, now);
+  return new Date(now.getTime() + responseHours * 60 * 60 * 1000).toISOString();
+}
+
+async function ensureManualCleaningJobHasOfferedSlots(params: {
+  jobId: string;
+  propertyId: string;
+  scheduledFor: string | null;
+  notes: string | null;
+}) {
+  const { data: existingOfferedSlots, error: existingOfferedError } = await service
+    .from("turnover_job_slots")
+    .select("id")
+    .eq("job_id", params.jobId)
+    .eq("status", "offered")
+    .not("cleaner_account_id", "is", null);
+
+  if (existingOfferedError) throw new Error(existingOfferedError.message);
+  if ((existingOfferedSlots ?? []).length > 0) {
+    return (existingOfferedSlots ?? []).map((slot) => slot.id).filter(Boolean);
+  }
+
+  const { data: slots, error: slotsError } = await service
+    .from("turnover_job_slots")
+    .select("id, slot_number")
+    .eq("job_id", params.jobId)
+    .order("slot_number", { ascending: true });
+
+  if (slotsError) throw new Error(slotsError.message);
+  if ((slots ?? []).length === 0) return [];
+
+  const { data: assignments, error: assignmentsError } = await service
+    .from("property_cleaner_account_assignments")
+    .select("id, cleaner_account_id, priority")
+    .eq("property_id", params.propertyId)
+    .order("priority", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (assignmentsError) throw new Error(assignmentsError.message);
+
+  const cleanerAccountIds = [...new Set((assignments ?? []).map((assignment) => assignment.cleaner_account_id).filter(Boolean))];
+  if (cleanerAccountIds.length === 0) return [];
+
+  const { data: accounts, error: accountsError } = await service
+    .from("cleaner_accounts")
+    .select("id, active")
+    .in("id", cleanerAccountIds);
+
+  if (accountsError) throw new Error(accountsError.message);
+
+  const activeAccountIds = new Set((accounts ?? []).filter((account) => account.active !== false).map((account) => account.id));
+  const activeAssignments = (assignments ?? []).filter((assignment) => activeAccountIds.has(assignment.cleaner_account_id));
+  if (activeAssignments.length === 0) return [];
+
+  const now = new Date();
+  const offeredAt = now.toISOString();
+  const expiresAt = getCleanerOfferExpiresAt(params.scheduledFor || extractCheckoutDate(params.notes), now);
+  const offeredSlotIds: string[] = [];
+  const assignableCount = Math.min((slots ?? []).length, activeAssignments.length);
+
+  for (let index = 0; index < assignableCount; index += 1) {
+    const slot = slots![index];
+    const assignment = activeAssignments[index];
+    const { data: updatedSlot, error: updateError } = await service
+      .from("turnover_job_slots")
+      .update({
+        cleaner_account_id: assignment.cleaner_account_id,
+        status: "offered",
+        offered_at: offeredAt,
+        expires_at: expiresAt,
+        accepted_at: null,
+        declined_at: null,
+        accepted_by_profile_id: null,
+        declined_by_profile_id: null,
+        offer_email_sent_at: null,
+        offer_reminder_sent_at: null,
+        day_of_reminder_sent_at: null,
+        offer_push_sent_at: null,
+        offer_reminder_push_sent_at: null,
+        day_of_reminder_push_sent_at: null,
+      })
+      .eq("id", slot.id)
+      .select("id")
+      .maybeSingle();
+
+    if (updateError) throw new Error(updateError.message);
+    if (updatedSlot?.id) offeredSlotIds.push(updatedSlot.id);
+  }
+
+  if (offeredSlotIds.length > 0) {
+    const { error: jobUpdateError } = await service
+      .from("turnover_jobs")
+      .update({
+        status: "offered",
+        staffing_status: "partially_filled",
+        offered_at: offeredAt,
+      })
+      .eq("id", params.jobId);
+
+    if (jobUpdateError) throw new Error(jobUpdateError.message);
+  }
+
+  return offeredSlotIds;
 }
 
 async function requireAdminAccess(token: string, organizationId: string) {
@@ -170,22 +282,23 @@ export async function POST(request: NextRequest) {
 
     await applyCleanerTrainingRotationToJob(service, insertedJob.id);
 
-    const { data: offerSlots, error: offerSlotsError } = await service
-      .from("turnover_job_slots")
-      .select("id")
-      .eq("job_id", insertedJob.id)
-      .eq("status", "offered")
-      .not("cleaner_account_id", "is", null);
-
-    if (offerSlotsError) throw new Error(offerSlotsError.message);
-
-    const offerSlotIds = (offerSlots ?? []).map((slot) => slot.id).filter(Boolean);
+    const offerSlotIds = await ensureManualCleaningJobHasOfferedSlots({
+      jobId: insertedJob.id,
+      propertyId,
+      scheduledFor,
+      notes,
+    });
     const notificationResult =
       offerSlotIds.length > 0
         ? await sendJobOfferEmailsForSlots("cleaner", offerSlotIds, request.nextUrl.origin, {
             allowedOrganizationIds: new Set([organizationId]),
           })
-        : { sent: 0, pushSent: 0, skipped: 0, errors: [] as string[] };
+        : {
+            sent: 0,
+            pushSent: 0,
+            skipped: 0,
+            errors: ["No active cleaner assignment was available to offer this job."],
+          };
 
     await writeAuditLog(service, {
       actorProfileId: profile.id,
