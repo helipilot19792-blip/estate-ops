@@ -3082,79 +3082,38 @@ export default function AdminPage() {
   async function linkOwnerAccountToProperty(propertyId: string, ownerEmailRaw: string, ownerNameRaw: string) {
     const ownerEmail = ownerEmailRaw.trim().toLowerCase();
     const ownerName = ownerNameRaw.trim();
-    const ownerOrganizationId =
-      currentOrganizationId ||
-      properties.find((property) => property.id === propertyId)?.organization_id ||
-      "";
 
     if (!ownerEmail) {
       return false;
     }
 
-    if (!ownerOrganizationId) {
-      throw new Error("Choose an organization before linking an owner.");
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (sessionError || !session?.access_token) {
+      throw new Error("No active admin session was found.");
     }
 
-    let ownerAccountId: string | null = null;
+    const response = await fetch("/api/admin/property-owner", {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        propertyId,
+        ownerEmail,
+        ownerName,
+      }),
+    });
 
-    const existingOwner = ownerAccounts.find(
-      (owner) =>
-        owner.email.trim().toLowerCase() === ownerEmail &&
-        (!owner.organization_id || owner.organization_id === ownerOrganizationId)
-    );
+    const result = await response.json().catch(() => null);
 
-    if (existingOwner) {
-      ownerAccountId = existingOwner.id;
-
-      const updates: Record<string, any> = {};
-      if (ownerName && !existingOwner.full_name) {
-        updates.full_name = ownerName;
-      }
-
-      if (Object.keys(updates).length > 0) {
-        const { error: ownerUpdateError } = await supabase
-          .from("owner_accounts")
-          .update(updates)
-          .eq("id", existingOwner.id);
-
-        if (ownerUpdateError) {
-          throw ownerUpdateError;
-        }
-      }
-    } else {
-      const { data: insertedOwner, error: ownerInsertError } = await supabase
-          .from("owner_accounts")
-          .insert({
-          organization_id: ownerOrganizationId,
-          email: ownerEmail,
-          full_name: ownerName || null,
-          is_active: true,
-        })
-        .select()
-        .single();
-
-      if (ownerInsertError || !insertedOwner) {
-        throw ownerInsertError || new Error("Could not create owner account.");
-      }
-
-      ownerAccountId = insertedOwner.id;
-    }
-
-    if (ownerAccountId) {
-      const existingAccess = ownerPropertyAccess.find(
-        (row) => row.owner_account_id === ownerAccountId && row.property_id === propertyId
-      );
-
-      if (!existingAccess) {
-        const { error: accessError } = await supabase.from("owner_property_access").insert({
-          owner_account_id: ownerAccountId,
-          property_id: propertyId,
-        });
-
-        if (accessError) {
-          throw accessError;
-        }
-      }
+    if (!response.ok || !result?.ok) {
+      throw new Error(result?.error || "Could not link owner to property.");
     }
 
     return true;
@@ -11101,12 +11060,34 @@ This removes its linked members and deletes the grounds account.`
     setLinkingOwnerProperty(true);
 
     try {
-      const { error } = await supabase.from("owner_property_access").insert({
-        owner_account_id: owner.id,
-        property_id: ownerLinkTargetPropertyId,
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        throw new Error("No active admin session was found.");
+      }
+
+      const response = await fetch("/api/admin/property-owner", {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          propertyId: ownerLinkTargetPropertyId,
+          ownerEmail: owner.email,
+          ownerName: owner.full_name || "",
+        }),
       });
 
-      if (error) throw error;
+      const result = await response.json().catch(() => null);
+
+      if (!response.ok || !result?.ok) {
+        throw new Error(result?.error || "Could not link owner to property.");
+      }
 
       setOwnerLinkTargetPropertyId("");
       setActionMessage("Owner linked to additional property.");
