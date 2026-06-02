@@ -15113,6 +15113,11 @@ This removes its linked members and deletes the grounds account.`
       description: string;
       meta: string;
       action: string;
+      accent: string;
+      railClass: string;
+      idleClass: string;
+      activeClass: string;
+      metaClass: string;
     }> = [
       {
         key: "add",
@@ -15120,6 +15125,11 @@ This removes its linked members and deletes the grounds account.`
         description: "Create a manual property or import an Airbnb calendar feed and sync it.",
         meta: "Manual or Airbnb",
         action: "Open setup form",
+        accent: "bg-[#2f6fed]",
+        railClass: "bg-[#2f6fed]",
+        idleClass: "border-[#b9d0ff] bg-[#f4f8ff] text-[#17345f] hover:bg-white hover:shadow-[0_14px_28px_rgba(47,111,237,0.12)]",
+        activeClass: "border-[#2f6fed] bg-[#eaf2ff] text-[#17345f] shadow-[0_18px_34px_rgba(47,111,237,0.16)]",
+        metaClass: "border-[#9fbdff] bg-white text-[#2454a6]",
       },
       {
         key: "setup",
@@ -15127,6 +15137,11 @@ This removes its linked members and deletes the grounds account.`
         description: "Manage owner link, access notes, calendars, SOP photos, staffing defaults, and cover photo.",
         meta: selectedPropertyId ? properties.find((property) => property.id === selectedPropertyId)?.name || "Selected" : "Choose property",
         action: "Manage details",
+        accent: "bg-[#14b8a6]",
+        railClass: "bg-[#14b8a6]",
+        idleClass: "border-[#9ce5dc] bg-[#f0fffc] text-[#0d3d3a] hover:bg-white hover:shadow-[0_14px_28px_rgba(20,184,166,0.12)]",
+        activeClass: "border-[#14b8a6] bg-[#dcfbf6] text-[#0d3d3a] shadow-[0_18px_34px_rgba(20,184,166,0.16)]",
+        metaClass: "border-[#7ddbd0] bg-white text-[#0f766e]",
       },
       {
         key: "directory",
@@ -15134,6 +15149,11 @@ This removes its linked members and deletes the grounds account.`
         description: "Review all properties, owner status, assignments, calendars, and admin reset tools.",
         meta: `${properties.length} total | ${propertyWithOwnerCount} owner-linked | ${propertyWithCalendarCount} with calendars`,
         action: "Review properties",
+        accent: "bg-[#8b5cf6]",
+        railClass: "bg-[#8b5cf6]",
+        idleClass: "border-[#d5c5ff] bg-[#f8f5ff] text-[#37215f] hover:bg-white hover:shadow-[0_14px_28px_rgba(139,92,246,0.12)]",
+        activeClass: "border-[#8b5cf6] bg-[#efe7ff] text-[#37215f] shadow-[0_18px_34px_rgba(139,92,246,0.16)]",
+        metaClass: "border-[#c4b0ff] bg-white text-[#6d3fd9]",
       },
       {
         key: "health",
@@ -15141,6 +15161,17 @@ This removes its linked members and deletes the grounds account.`
         description: "Score every property for owner link, calendars, staffing, maintenance, access, and billing setup.",
         meta: `${propertyHealthStats.average}% average | ${propertyHealthStats.atRisk} need attention`,
         action: "Open scorecard",
+        accent: propertyHealthStats.atRisk > 0 ? "bg-[#ef4444]" : "bg-[#f59e0b]",
+        railClass: propertyHealthStats.atRisk > 0 ? "bg-[#ef4444]" : "bg-[#f59e0b]",
+        idleClass: propertyHealthStats.atRisk > 0
+          ? "border-[#f5b5b5] bg-[#fff5f5] text-[#6f1d1d] hover:bg-white hover:shadow-[0_14px_28px_rgba(239,68,68,0.12)]"
+          : "border-[#f3d28a] bg-[#fff9eb] text-[#5b3b08] hover:bg-white hover:shadow-[0_14px_28px_rgba(245,158,11,0.12)]",
+        activeClass: propertyHealthStats.atRisk > 0
+          ? "border-[#ef4444] bg-[#ffe8e8] text-[#6f1d1d] shadow-[0_18px_34px_rgba(239,68,68,0.16)]"
+          : "border-[#f59e0b] bg-[#fff2cc] text-[#5b3b08] shadow-[0_18px_34px_rgba(245,158,11,0.16)]",
+        metaClass: propertyHealthStats.atRisk > 0
+          ? "border-[#f5b5b5] bg-white text-[#a43b30]"
+          : "border-[#e8bf61] bg-white text-[#9a6200]",
       },
     ];
 
@@ -15168,21 +15199,20 @@ This removes its linked members and deletes the grounds account.`
                 key={card.key}
                 type="button"
                 onClick={() => setPropertyWorkflowTab(card.key)}
-                className={`min-h-[154px] rounded-[18px] border p-4 text-left transition ${
-                  active
-                    ? "border-[#241c15] bg-[#241c15] text-[#f8f2e8] shadow-[0_18px_34px_rgba(36,28,21,0.16)]"
-                    : "border-[#eadfce] bg-[#fcfaf7] text-[#241c15] hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_14px_28px_rgba(36,28,21,0.08)]"
+                className={`group relative min-h-[154px] overflow-hidden rounded-[20px] border p-4 pl-5 text-left transition hover:-translate-y-0.5 ${
+                  active ? card.activeClass : card.idleClass
                 }`}
               >
+                <span className={`absolute inset-y-4 left-3 w-1 rounded-full ${active ? card.accent : card.railClass}`} />
                 <div className="text-base font-semibold">{card.title}</div>
-                <p className={`mt-3 text-sm leading-6 ${active ? "text-[#eadfce]" : "text-[#6f6255]"}`}>
+                <p className="mt-3 text-sm leading-6 text-[#5f5245]">
                   {card.description}
                 </p>
                 <div className="mt-4 flex flex-wrap items-center gap-2">
-                  <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${active ? "border-[#eadfce]/40 bg-white/10 text-[#f8f2e8]" : "border-[#d8c7ab] bg-white text-[#6f6255]"}`}>
+                  <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${card.metaClass}`}>
                     {card.meta}
                   </span>
-                  <span className={`text-xs font-semibold ${active ? "text-[#f8f2e8]" : "text-[#8a7b68]"}`}>
+                  <span className="text-xs font-semibold text-[#3f362c]">
                     {card.action}
                   </span>
                 </div>
@@ -17783,6 +17813,33 @@ This removes its linked members and deletes the grounds account.`
       { id: "vendors", label: "Vendors" },
       { id: "sops", label: "SOPs" },
     ];
+    const propertySetupTabStyles: Record<PropertySetupTab, { dot: string; idle: string; active: string }> = {
+      overview: {
+        dot: "bg-[#2f6fed]",
+        idle: "border-[#b9d0ff] bg-[#f4f8ff] text-[#2454a6] hover:bg-white",
+        active: "border-[#2f6fed] bg-[#2f6fed] text-white shadow-[0_10px_22px_rgba(47,111,237,0.22)]",
+      },
+      access: {
+        dot: "bg-[#f59e0b]",
+        idle: "border-[#f3d28a] bg-[#fff9eb] text-[#8a5700] hover:bg-white",
+        active: "border-[#f59e0b] bg-[#f59e0b] text-[#241c15] shadow-[0_10px_22px_rgba(245,158,11,0.22)]",
+      },
+      calendars: {
+        dot: "bg-[#14b8a6]",
+        idle: "border-[#9ce5dc] bg-[#f0fffc] text-[#0f766e] hover:bg-white",
+        active: "border-[#14b8a6] bg-[#14b8a6] text-white shadow-[0_10px_22px_rgba(20,184,166,0.22)]",
+      },
+      vendors: {
+        dot: "bg-[#8b5cf6]",
+        idle: "border-[#d5c5ff] bg-[#f8f5ff] text-[#6d3fd9] hover:bg-white",
+        active: "border-[#8b5cf6] bg-[#8b5cf6] text-white shadow-[0_10px_22px_rgba(139,92,246,0.22)]",
+      },
+      sops: {
+        dot: "bg-[#ef4444]",
+        idle: "border-[#f5b5b5] bg-[#fff5f5] text-[#a43b30] hover:bg-white",
+        active: "border-[#ef4444] bg-[#ef4444] text-white shadow-[0_10px_22px_rgba(239,68,68,0.22)]",
+      },
+    };
 
     return (
       <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
@@ -17833,20 +17890,24 @@ This removes its linked members and deletes the grounds account.`
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  {propertySetupTabs.map((tab) => (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      onClick={() => setPropertySetupTab(tab.id)}
-                      className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                        propertySetupTab === tab.id
-                          ? "bg-[#241c15] text-[#f8f2e8]"
-                          : "border border-[#d8c7ab] bg-white text-[#5f5245] hover:bg-[#fffaf4]"
-                      }`}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
+                  {propertySetupTabs.map((tab) => {
+                    const selected = propertySetupTab === tab.id;
+                    const style = propertySetupTabStyles[tab.id];
+
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setPropertySetupTab(tab.id)}
+                        className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition hover:-translate-y-0.5 ${
+                          selected ? style.active : style.idle
+                        }`}
+                      >
+                        <span className={`h-2 w-2 rounded-full ${selected ? "bg-white" : style.dot}`} />
+                        {tab.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
