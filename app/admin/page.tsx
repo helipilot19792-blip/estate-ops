@@ -765,6 +765,21 @@ type OwnerInvoiceEventRow = {
   metadata?: Record<string, unknown> | null;
   created_at?: string | null;
 };
+type StaffJobStatusEventRow = {
+  id: string;
+  organization_id: string;
+  job_kind: "cleaner" | "grounds";
+  job_id: string;
+  account_id?: string | null;
+  event_type: "accepted" | "started" | "completed";
+  title: string;
+  body: string;
+  url?: string | null;
+  push_sent_count?: number | null;
+  push_errors?: string[] | null;
+  metadata?: Record<string, unknown> | null;
+  created_at?: string | null;
+};
 function getMonthGrid(baseDate: Date) {
   const year = baseDate.getFullYear();
   const month = baseDate.getMonth();
@@ -1201,6 +1216,7 @@ export default function AdminPage() {
   const [propertyInvoiceRates, setPropertyInvoiceRates] = useState<PropertyInvoiceRateRow[]>([]);
   const [ownerInvoices, setOwnerInvoices] = useState<OwnerInvoiceRow[]>([]);
   const [ownerInvoiceEvents, setOwnerInvoiceEvents] = useState<OwnerInvoiceEventRow[]>([]);
+  const [staffJobStatusEvents, setStaffJobStatusEvents] = useState<StaffJobStatusEventRow[]>([]);
   const [chatConversations, setChatConversations] = useState<ChatConversationRow[]>([]);
   const [chatParticipants, setChatParticipants] = useState<ChatParticipantRow[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessageRow[]>([]);
@@ -2191,6 +2207,7 @@ export default function AdminPage() {
     setPropertyInvoiceRates((data.propertyInvoiceRates ?? []) as PropertyInvoiceRateRow[]);
     setOwnerInvoices((data.ownerInvoices ?? []) as OwnerInvoiceRow[]);
     setOwnerInvoiceEvents((data.ownerInvoiceEvents ?? []) as OwnerInvoiceEventRow[]);
+    setStaffJobStatusEvents((data.staffJobStatusEvents ?? []) as StaffJobStatusEventRow[]);
     setChatConversations((data.chatConversations ?? []) as ChatConversationRow[]);
     setChatParticipants((data.chatParticipants ?? []) as ChatParticipantRow[]);
     setChatMessages((data.chatMessages ?? []) as ChatMessageRow[]);
@@ -2339,6 +2356,7 @@ export default function AdminPage() {
       propertyInvoiceRatesRes,
       ownerInvoicesRes,
       ownerInvoiceEventsRes,
+      staffJobStatusEventsRes,
       chatConversationsRes,
       chatParticipantsRes,
       chatMessagesRes,
@@ -2477,6 +2495,12 @@ export default function AdminPage() {
         .eq("organization_id", currentOrganizationId)
         .order("created_at", { ascending: false }),
       supabase
+        .from("staff_job_status_events")
+        .select("*")
+        .eq("organization_id", currentOrganizationId)
+        .order("created_at", { ascending: false })
+        .limit(100),
+      supabase
         .from("chat_conversations")
         .select("id,organization_id,subject,context_type,context_id,created_by_profile_id,last_message_at,created_at,updated_at")
         .eq("organization_id", currentOrganizationId)
@@ -2533,6 +2557,7 @@ export default function AdminPage() {
       invoiceSettingsRes,
       propertyInvoiceRatesRes,
       ownerInvoicesRes,
+      staffJobStatusEventsRes,
       chatConversationsRes,
       chatParticipantsRes,
       chatMessagesRes,
@@ -2546,6 +2571,7 @@ export default function AdminPage() {
         response !== propertyInvoiceRatesRes &&
         response !== documentVaultRes &&
         response !== propertyBookingEventsRes &&
+        response !== staffJobStatusEventsRes &&
         response !== inspectionRulesRes &&
         response !== inspectionLogsRes &&
         response !== inspectionPhotosRes &&
@@ -2666,6 +2692,11 @@ export default function AdminPage() {
       ownerInvoiceEventsRes.error && isOptionalTableError(ownerInvoiceEventsRes.error)
         ? []
         : ((ownerInvoiceEventsRes.data ?? []) as OwnerInvoiceEventRow[])
+    );
+    setStaffJobStatusEvents(
+      staffJobStatusEventsRes.error && isOptionalTableError(staffJobStatusEventsRes.error)
+        ? []
+        : ((staffJobStatusEventsRes.data ?? []) as StaffJobStatusEventRow[])
     );
     setChatConversations(
       chatConversationsRes.error ? [] : ((chatConversationsRes.data ?? []) as ChatConversationRow[])
@@ -8600,6 +8631,12 @@ This removes its linked members and deletes the grounds account.`
     const sentUnpaidInvoices = ownerInvoices.filter((invoice) => invoice.status === "sent");
     const runningDraftInvoices = ownerInvoices.filter((invoice) => invoice.status === "draft");
     const lowHealthProperties = propertyHealthRows.filter((row) => row.score < 65);
+    const recentJobProgressEvents = staffJobStatusEvents.filter((event) => {
+      if (event.event_type !== "started" && event.event_type !== "completed") return false;
+      const createdAt = event.created_at ? new Date(event.created_at).getTime() : 0;
+      return Number.isFinite(createdAt) && now.getTime() - createdAt <= 24 * 60 * 60 * 1000;
+    });
+    const latestJobProgressEvent = recentJobProgressEvents[0] || null;
 
     const items: Array<{
       key: string;
@@ -8620,6 +8657,23 @@ This removes its linked members and deletes the grounds account.`
         tone: "blue",
         actionLabel: "Open chat",
         onClick: () => setActiveSection("chat"),
+      });
+    }
+
+    if (recentJobProgressEvents.length > 0) {
+      items.push({
+        key: "job-progress",
+        title: "Recent job progress",
+        detail:
+          latestJobProgressEvent?.body ||
+          "Cleaner or grounds teams started or completed assigned work.",
+        count: recentJobProgressEvents.length,
+        tone: "green",
+        actionLabel: "Open jobs",
+        onClick: () => {
+          setActiveSection("jobs");
+          setJobWorkflowTab(latestJobProgressEvent?.job_kind === "grounds" ? "grounds" : "cleaning");
+        },
       });
     }
 
@@ -8749,6 +8803,8 @@ This removes its linked members and deletes the grounds account.`
     recentlyAcceptedInvites.length,
     ownerInvoices,
     propertyHealthRows,
+    staffJobStatusEvents,
+    now,
   ]);
 
   const notificationCenterCount = useMemo(
@@ -11264,6 +11320,7 @@ This removes its linked members and deletes the grounds account.`
         grounds_jobs: groundsJobs.length,
         owner_invoices: ownerInvoices.length,
         owner_invoice_events: ownerInvoiceEvents.length,
+        staff_job_status_events: staffJobStatusEvents.length,
         document_vault_files: documentVaultRows.length,
         maintenance_flags: maintenanceFlags.length,
       },
@@ -11288,6 +11345,7 @@ This removes its linked members and deletes the grounds account.`
         owner_property_access: ownerPropertyAccess,
         owner_invoices: ownerInvoices,
         owner_invoice_events: ownerInvoiceEvents,
+        staff_job_status_events: staffJobStatusEvents,
         invoice_settings: invoiceSettings,
         property_invoice_rates: propertyInvoiceRates,
         document_vault_files: documentVaultRows,

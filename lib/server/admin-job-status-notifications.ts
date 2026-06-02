@@ -4,6 +4,17 @@ import { sendStaffPushNotifications } from "@/lib/server/staff-push-notification
 type ServiceClient = any;
 type AdminJobStatusEvent = "accepted" | "started" | "completed";
 
+function isOptionalEventTableError(error: { code?: string | null; message?: string | null } | null | undefined) {
+  const message = String(error?.message || "").toLowerCase();
+  return (
+    error?.code === "42P01" ||
+    error?.code === "PGRST205" ||
+    message.includes("staff_job_status_events") ||
+    message.includes("does not exist") ||
+    message.includes("could not find the table")
+  );
+}
+
 function getJobTable(kind: JobNotificationKind) {
   return kind === "cleaner" ? "turnover_jobs" : "grounds_jobs";
 }
@@ -73,13 +84,34 @@ export async function sendAdminJobStatusPush(
   const jobLabel = getJobLabel(kind);
   const title = `${jobLabel} ${event}`;
   const body = `${accountName} ${event} ${jobLabel.toLowerCase()} for ${propertyName}.`;
+  const url = `${origin}/admin?open=jobs&jobId=${encodeURIComponent(jobId)}`;
 
   const result = await sendStaffPushNotifications("admin", profileIds, {
     title,
     body,
-    url: `${origin}/admin?open=jobs&jobId=${encodeURIComponent(jobId)}`,
+    url,
     tag: `${kind}-job-${event}-${jobId}`,
   });
 
-  return { sent: result.sent, errors: result.errors, deliveries: result.deliveries };
+  const { error: eventError } = await service.from("staff_job_status_events").insert({
+    organization_id: job.organization_id,
+    job_kind: kind,
+    job_id: jobId,
+    account_id: accountId,
+    event_type: event,
+    title,
+    body,
+    url,
+    push_sent_count: result.sent,
+    push_errors: result.errors,
+    metadata: {
+      account_name: accountName,
+      property_id: job.property_id,
+      property_name: propertyName,
+    },
+  });
+
+  const eventErrors = eventError && !isOptionalEventTableError(eventError) ? [eventError.message] : [];
+
+  return { sent: result.sent, errors: [...result.errors, ...eventErrors], deliveries: result.deliveries };
 }
