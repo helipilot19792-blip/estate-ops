@@ -412,6 +412,20 @@ type PropertyKnowledgeRow = {
   updated_at?: string | null;
 };
 
+type PropertyKnowledgeImageRow = {
+  id: string;
+  organization_id: string;
+  property_id: string;
+  image_url: string;
+  storage_path?: string | null;
+  category: string;
+  caption?: string | null;
+  processing_status?: string | null;
+  keep_after_processing?: boolean | null;
+  created_by_profile_id?: string | null;
+  created_at?: string | null;
+};
+
 type DocumentVaultRow = {
   id: string;
   organization_id: string;
@@ -1197,6 +1211,23 @@ const EMPTY_PROPERTY_KNOWLEDGE = {
   emergency_notes: "",
 };
 
+const PROPERTY_KNOWLEDGE_IMAGE_CATEGORIES = [
+  { value: "appliance_label", label: "Appliance label", temporaryDefault: true },
+  { value: "appliance", label: "Appliance photo", temporaryDefault: false },
+  { value: "utility_location", label: "Utility location", temporaryDefault: false },
+  { value: "access", label: "Access / lockbox", temporaryDefault: false },
+  { value: "maintenance", label: "Maintenance issue", temporaryDefault: false },
+  { value: "manual", label: "Manual / document", temporaryDefault: true },
+  { value: "other", label: "Other brain note", temporaryDefault: false },
+] as const;
+
+function getKnowledgeImageCategoryLabel(value?: string | null) {
+  return (
+    PROPERTY_KNOWLEDGE_IMAGE_CATEGORIES.find((category) => category.value === value)?.label ||
+    "Other brain note"
+  );
+}
+
 async function loadPlatformAdminOrganizations(accessToken: string): Promise<MyOrganizationRow[]> {
   const response = await fetch("/api/platform/organizations", {
     headers: {
@@ -1267,6 +1298,7 @@ export default function AdminPage() {
   const [sops, setSops] = useState<SopRow[]>([]);
   const [sopImages, setSopImages] = useState<SopImageRow[]>([]);
   const [propertyKnowledgeRows, setPropertyKnowledgeRows] = useState<PropertyKnowledgeRow[]>([]);
+  const [propertyKnowledgeImages, setPropertyKnowledgeImages] = useState<PropertyKnowledgeImageRow[]>([]);
   const [propertyVendors, setPropertyVendors] = useState<PropertyVendorRow[]>([]);
   const [documentVaultRows, setDocumentVaultRows] = useState<DocumentVaultRow[]>([]);
   const [profiles, setProfiles] = useState<ProfileRow[]>([]);
@@ -1451,6 +1483,11 @@ export default function AdminPage() {
   const [knowledgeMaintenanceNotes, setKnowledgeMaintenanceNotes] = useState("");
   const [knowledgeApplianceNotes, setKnowledgeApplianceNotes] = useState("");
   const [knowledgeEmergencyNotes, setKnowledgeEmergencyNotes] = useState("");
+  const [knowledgeImageCategory, setKnowledgeImageCategory] = useState("appliance_label");
+  const [knowledgeImageCaption, setKnowledgeImageCaption] = useState("");
+  const [knowledgeImageKeepAfterProcessing, setKnowledgeImageKeepAfterProcessing] = useState(false);
+  const [uploadingKnowledgeImage, setUploadingKnowledgeImage] = useState(false);
+  const [deletingKnowledgeImageId, setDeletingKnowledgeImageId] = useState<string | null>(null);
   const [propertyUnitsNeeded, setPropertyUnitsNeeded] = useState("1");
   const [propertyUnitsStrict, setPropertyUnitsStrict] = useState(false);
   const [propertyShowTeamStatus, setPropertyShowTeamStatus] = useState(true);
@@ -1552,6 +1589,12 @@ export default function AdminPage() {
   function updatePropertyKnowledgeDraft(setter: (value: string) => void, value: string) {
     setter(value);
     setPropertyKnowledgeDirty(true);
+  }
+
+  function updateKnowledgeImageCategory(value: string) {
+    setKnowledgeImageCategory(value);
+    const category = PROPERTY_KNOWLEDGE_IMAGE_CATEGORIES.find((option) => option.value === value);
+    setKnowledgeImageKeepAfterProcessing(!category?.temporaryDefault);
   }
 
   const [jobNotes, setJobNotes] = useState("");
@@ -2302,6 +2345,7 @@ export default function AdminPage() {
     setSops((data.sops ?? []) as SopRow[]);
     setSopImages((data.sopImages ?? []) as SopImageRow[]);
     setPropertyKnowledgeRows((data.propertyKnowledge ?? []) as PropertyKnowledgeRow[]);
+    setPropertyKnowledgeImages((data.propertyKnowledgeImages ?? []) as PropertyKnowledgeImageRow[]);
     setPropertyVendors((data.propertyVendors ?? []) as PropertyVendorRow[]);
     setDocumentVaultRows((data.documentVaultRows ?? []) as DocumentVaultRow[]);
     setProfiles(
@@ -2482,6 +2526,7 @@ export default function AdminPage() {
       accessRowsRes,
       sopsRes,
       propertyKnowledgeRes,
+      propertyKnowledgeImagesRes,
       propertyVendorsRes,
       sopImagesRes,
       documentVaultRes,
@@ -2556,6 +2601,7 @@ export default function AdminPage() {
       supabase.from("property_access").select("*"),
       supabase.from("property_sops").select("*").order("created_at", { ascending: false }),
       supabase.from("property_knowledge").select("*").order("updated_at", { ascending: false }),
+      supabase.from("property_knowledge_images").select("*").order("created_at", { ascending: false }),
       supabase.from("property_vendors").select("*").order("vendor_name", { ascending: true }),
       supabase.from("property_sop_images").select("*").order("sort_order", { ascending: true }),
       supabase
@@ -2726,6 +2772,7 @@ export default function AdminPage() {
         response !== propertyInvoiceRatesRes &&
         response !== documentVaultRes &&
         response !== propertyKnowledgeRes &&
+        response !== propertyKnowledgeImagesRes &&
         response !== propertyVendorsRes &&
         response !== propertyBookingEventsRes &&
         response !== staffJobStatusEventsRes &&
@@ -2788,6 +2835,11 @@ export default function AdminPage() {
     const loadedPropertyKnowledge = propertyKnowledgeRes.error
       ? []
       : ((propertyKnowledgeRes.data ?? []) as PropertyKnowledgeRow[]).filter((row) => loadedPropertyIds.has(row.property_id));
+    const loadedPropertyKnowledgeImages = propertyKnowledgeImagesRes.error
+      ? []
+      : ((propertyKnowledgeImagesRes.data ?? []) as PropertyKnowledgeImageRow[]).filter((row) =>
+          loadedPropertyIds.has(row.property_id)
+        );
     const loadedPropertyVendors = propertyVendorsRes.error
       ? []
       : ((propertyVendorsRes.data ?? []) as PropertyVendorRow[]).filter((vendor) => loadedPropertyIds.has(vendor.property_id));
@@ -2815,6 +2867,7 @@ export default function AdminPage() {
     setAccessRows(loadedAccessRows);
     setSops(loadedSops);
     setPropertyKnowledgeRows(loadedPropertyKnowledge);
+    setPropertyKnowledgeImages(loadedPropertyKnowledgeImages);
     setPropertyVendors(loadedPropertyVendors);
     setSopImages(loadedSopImages);
     setDocumentVaultRows(
@@ -6550,6 +6603,113 @@ This removes its linked members and deletes the grounds account.`
     }
   }
 
+  async function uploadPropertyKnowledgeImages(files: FileList | null) {
+    if (!selectedPropertyId || !currentOrganizationId) {
+      setError("Please select a property first.");
+      return;
+    }
+
+    const images = Array.from(files ?? []).filter((file) => file.type.startsWith("image/"));
+    if (images.length === 0) return;
+
+    setError("");
+    setActionMessage("");
+    setUploadingKnowledgeImage(true);
+
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      const insertedImages: PropertyKnowledgeImageRow[] = [];
+
+      for (let index = 0; index < images.length; index++) {
+        const file = images[index];
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const filePath = `${selectedPropertyId}/knowledge/${Date.now()}-${index}-${safeName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from("property-sop-images")
+          .upload(filePath, file, { cacheControl: "3600", upsert: false });
+
+        if (uploadError) throw uploadError;
+
+        const {
+          data: { publicUrl },
+        } = supabase.storage.from("property-sop-images").getPublicUrl(filePath);
+
+        const { data: imageRow, error: imageInsertError } = await supabase
+          .from("property_knowledge_images")
+          .insert({
+            organization_id: currentOrganizationId,
+            property_id: selectedPropertyId,
+            image_url: publicUrl,
+            storage_path: filePath,
+            category: knowledgeImageCategory,
+            caption: knowledgeImageCaption.trim() || null,
+            processing_status: "unprocessed",
+            keep_after_processing: knowledgeImageKeepAfterProcessing,
+            created_by_profile_id: user?.id ?? null,
+          })
+          .select("*")
+          .single();
+
+        if (imageInsertError || !imageRow) {
+          throw imageInsertError || new Error("Could not save knowledge photo record.");
+        }
+
+        insertedImages.push(imageRow as PropertyKnowledgeImageRow);
+      }
+
+      setPropertyKnowledgeImages((current) => [...insertedImages, ...current]);
+      setKnowledgeImageCaption("");
+      setActionMessage(
+        `Knowledge photo${insertedImages.length === 1 ? "" : "s"} uploaded.`
+      );
+    } catch (err: any) {
+      const message = err?.message || "Could not upload knowledge photo.";
+      setError(
+        message.includes("property_knowledge_images")
+          ? `${message} Run supabase/add_property_knowledge_images.sql in Supabase, then try again.`
+          : message
+      );
+    } finally {
+      setUploadingKnowledgeImage(false);
+    }
+  }
+
+  async function deletePropertyKnowledgeImage(image: PropertyKnowledgeImageRow) {
+    const confirmed = window.confirm("Delete this knowledge photo? This cannot be undone.");
+    if (!confirmed) return;
+
+    setError("");
+    setActionMessage("");
+    setDeletingKnowledgeImageId(image.id);
+
+    try {
+      if (image.storage_path) {
+        const { error: storageError } = await supabase.storage
+          .from("property-sop-images")
+          .remove([image.storage_path]);
+        if (storageError) throw storageError;
+      }
+
+      const { error: deleteError } = await supabase
+        .from("property_knowledge_images")
+        .delete()
+        .eq("id", image.id);
+
+      if (deleteError) throw deleteError;
+
+      setPropertyKnowledgeImages((current) => current.filter((row) => row.id !== image.id));
+      setActionMessage("Knowledge photo deleted.");
+    } catch (err: any) {
+      setError(err?.message || "Could not delete knowledge photo.");
+    } finally {
+      setDeletingKnowledgeImageId(null);
+    }
+  }
+
   async function savePropertyVendor() {
     if (!selectedPropertyId || !currentOrganizationId) {
       setError("Please select a property first.");
@@ -7450,6 +7610,10 @@ This removes its linked members and deletes the grounds account.`
   const selectedPropertyKnowledge = useMemo(
     () => propertyKnowledgeRows.find((row) => row.property_id === selectedPropertyId) || null,
     [propertyKnowledgeRows, selectedPropertyId]
+  );
+  const selectedPropertyKnowledgeImages = useMemo(
+    () => propertyKnowledgeImages.filter((image) => image.property_id === selectedPropertyId),
+    [propertyKnowledgeImages, selectedPropertyId]
   );
 
   const maintenanceImagesByFlagId = useMemo(() => {
@@ -11909,6 +12073,7 @@ This removes its linked members and deletes the grounds account.`
         staff_job_status_events: staffJobStatusEvents.length,
         account_deletion_requests: accountDeletionRequests.length,
         property_knowledge: propertyKnowledgeRows.length,
+        property_knowledge_images: propertyKnowledgeImages.length,
         property_vendors: propertyVendors.length,
         document_vault_files: documentVaultRows.length,
         maintenance_flags: maintenanceFlags.length,
@@ -11917,6 +12082,7 @@ This removes its linked members and deletes the grounds account.`
         properties,
         property_access: accessRows,
         property_knowledge: propertyKnowledgeRows,
+        property_knowledge_images: propertyKnowledgeImages,
         property_vendors: propertyVendors,
         property_calendars: propertyCalendars,
         property_sops: sops,
@@ -18886,6 +19052,131 @@ This removes its linked members and deletes the grounds account.`
                   >
                     {savingPropertyKnowledge ? "Saving..." : "Save knowledge"}
                   </button>
+                </div>
+
+                <div className="mt-5 rounded-[22px] border border-[#bfdded] bg-white p-4">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <h4 className="text-sm font-semibold text-[#17345f]">Capture knowledge with photos</h4>
+                      <p className="mt-1 max-w-2xl text-sm leading-6 text-[#526777]">
+                        Take appliance labels, shutoff locations, breaker panels, lockboxes, or anything the property brain should learn later.
+                      </p>
+                    </div>
+                    <span className="rounded-full border border-[#a7ddf8] bg-[#f0f9ff] px-3 py-1 text-xs font-semibold text-[#03608f]">
+                      {selectedPropertyKnowledgeImages.length} photo{selectedPropertyKnowledgeImages.length === 1 ? "" : "s"}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 lg:grid-cols-[0.75fr_1fr]">
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-[#526777]">Photo category</span>
+                      <select
+                        value={knowledgeImageCategory}
+                        onChange={(e) => updateKnowledgeImageCategory(e.target.value)}
+                        className="w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition focus:border-[#0ea5e9]"
+                      >
+                        {PROPERTY_KNOWLEDGE_IMAGE_CATEGORIES.map((category) => (
+                          <option key={category.value} value={category.value}>
+                            {category.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-[#526777]">Optional caption</span>
+                      <input
+                        value={knowledgeImageCaption}
+                        onChange={(e) => setKnowledgeImageCaption(e.target.value)}
+                        placeholder="Example: Dryer model label, water shutoff under sink..."
+                        className="w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
+                      />
+                    </label>
+                  </div>
+
+                  <label className="mt-3 flex items-start gap-3 rounded-[16px] border border-[#bfdded] bg-[#f8fcff] px-4 py-3 text-sm font-medium text-[#17345f]">
+                    <input
+                      type="checkbox"
+                      checked={knowledgeImageKeepAfterProcessing}
+                      onChange={(e) => setKnowledgeImageKeepAfterProcessing(e.target.checked)}
+                      className="mt-1"
+                    />
+                    Keep this photo after the information is captured
+                  </label>
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <label className="inline-flex min-h-[48px] cursor-pointer items-center justify-center rounded-full bg-[#0b5f86] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#084c6d]">
+                      {uploadingKnowledgeImage ? "Uploading..." : "Take photo"}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        multiple
+                        className="sr-only"
+                        disabled={uploadingKnowledgeImage}
+                        onChange={(e) => {
+                          void uploadPropertyKnowledgeImages(e.target.files);
+                          e.currentTarget.value = "";
+                        }}
+                      />
+                    </label>
+
+                    <label className="inline-flex min-h-[48px] cursor-pointer items-center justify-center rounded-full border border-[#0b5f86] bg-white px-5 py-3 text-sm font-semibold text-[#0b5f86] transition hover:bg-[#f0f9ff]">
+                      {uploadingKnowledgeImage ? "Uploading..." : "Choose photo"}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="sr-only"
+                        disabled={uploadingKnowledgeImage}
+                        onChange={(e) => {
+                          void uploadPropertyKnowledgeImages(e.target.files);
+                          e.currentTarget.value = "";
+                        }}
+                      />
+                    </label>
+                  </div>
+
+                  {selectedPropertyKnowledgeImages.length > 0 ? (
+                    <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                      {selectedPropertyKnowledgeImages.map((image) => (
+                        <div key={image.id} className="overflow-hidden rounded-[20px] border border-[#bfdded] bg-[#f8fcff]">
+                          <a href={image.image_url} target="_blank" rel="noreferrer" className="block">
+                            <img
+                              src={image.image_url}
+                              alt={image.caption || getKnowledgeImageCategoryLabel(image.category)}
+                              className="h-44 w-full object-cover"
+                            />
+                          </a>
+                          <div className="space-y-2 p-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="rounded-full border border-[#a7ddf8] bg-white px-2.5 py-1 text-xs font-semibold text-[#03608f]">
+                                {getKnowledgeImageCategoryLabel(image.category)}
+                              </span>
+                              <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                                image.keep_after_processing === false
+                                  ? "border-[#f3d28a] bg-[#fff9eb] text-[#8a5700]"
+                                  : "border-[#bbdfc0] bg-[#f0fbf2] text-[#236b30]"
+                              }`}>
+                                {image.keep_after_processing === false ? "Temporary" : "Keep"}
+                              </span>
+                            </div>
+                            {image.caption ? (
+                              <div className="text-sm leading-5 text-[#526777]">{image.caption}</div>
+                            ) : null}
+                            <button
+                              type="button"
+                              onClick={() => void deletePropertyKnowledgeImage(image)}
+                              disabled={deletingKnowledgeImageId === image.id}
+                              className="w-full rounded-full border border-[#e7c6c1] bg-white px-4 py-2 text-sm font-semibold text-[#8a2e22] transition hover:bg-[#fff4f2] disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {deletingKnowledgeImageId === image.id ? "Deleting..." : "Delete photo"}
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="mt-5 grid gap-4 xl:grid-cols-2">
