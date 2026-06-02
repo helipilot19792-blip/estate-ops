@@ -392,6 +392,26 @@ type PropertyVendorRow = {
   updated_at?: string | null;
 };
 
+type PropertyKnowledgeRow = {
+  id: string;
+  organization_id: string;
+  property_id: string;
+  wifi_network?: string | null;
+  wifi_password?: string | null;
+  access_summary?: string | null;
+  lockbox_location?: string | null;
+  water_shutoff_location?: string | null;
+  electrical_panel_location?: string | null;
+  trash_instructions?: string | null;
+  owner_preferences?: string | null;
+  cleaner_notes?: string | null;
+  maintenance_notes?: string | null;
+  appliance_notes?: string | null;
+  emergency_notes?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
 type DocumentVaultRow = {
   id: string;
   organization_id: string;
@@ -548,7 +568,7 @@ type AdminSection =
   | "invoices";
 type PropertyEntryMode = "manual" | "airbnb";
 type PropertyWorkflowTab = "add" | "setup" | "directory" | "health";
-type PropertySetupTab = "overview" | "access" | "calendars" | "vendors" | "sops";
+type PropertySetupTab = "overview" | "access" | "calendars" | "knowledge" | "vendors" | "sops";
 type JobWorkflowTab = "cleaning" | "grounds" | "active" | "reliability" | "notifications" | "exceptions";
 type InvoiceWorkflowTab = "create" | "running" | "existing" | "defaults" | "history";
 type InvoiceDocumentKind = "invoice" | "statement";
@@ -1162,6 +1182,21 @@ function openAiHelper() {
   window.dispatchEvent(new Event("gulera:open-help-assistant"));
 }
 
+const EMPTY_PROPERTY_KNOWLEDGE = {
+  wifi_network: "",
+  wifi_password: "",
+  access_summary: "",
+  lockbox_location: "",
+  water_shutoff_location: "",
+  electrical_panel_location: "",
+  trash_instructions: "",
+  owner_preferences: "",
+  cleaner_notes: "",
+  maintenance_notes: "",
+  appliance_notes: "",
+  emergency_notes: "",
+};
+
 async function loadPlatformAdminOrganizations(accessToken: string): Promise<MyOrganizationRow[]> {
   const response = await fetch("/api/platform/organizations", {
     headers: {
@@ -1231,6 +1266,7 @@ export default function AdminPage() {
   const [accessRows, setAccessRows] = useState<AccessRow[]>([]);
   const [sops, setSops] = useState<SopRow[]>([]);
   const [sopImages, setSopImages] = useState<SopImageRow[]>([]);
+  const [propertyKnowledgeRows, setPropertyKnowledgeRows] = useState<PropertyKnowledgeRow[]>([]);
   const [propertyVendors, setPropertyVendors] = useState<PropertyVendorRow[]>([]);
   const [documentVaultRows, setDocumentVaultRows] = useState<DocumentVaultRow[]>([]);
   const [profiles, setProfiles] = useState<ProfileRow[]>([]);
@@ -1401,6 +1437,20 @@ export default function AdminPage() {
   const [vendorEmergencyAvailable, setVendorEmergencyAvailable] = useState(false);
   const [vendorPreferred, setVendorPreferred] = useState(true);
   const [vendorNotes, setVendorNotes] = useState("");
+  const [savingPropertyKnowledge, setSavingPropertyKnowledge] = useState(false);
+  const [propertyKnowledgeDirty, setPropertyKnowledgeDirty] = useState(false);
+  const [knowledgeWifiNetwork, setKnowledgeWifiNetwork] = useState("");
+  const [knowledgeWifiPassword, setKnowledgeWifiPassword] = useState("");
+  const [knowledgeAccessSummary, setKnowledgeAccessSummary] = useState("");
+  const [knowledgeLockboxLocation, setKnowledgeLockboxLocation] = useState("");
+  const [knowledgeWaterShutoffLocation, setKnowledgeWaterShutoffLocation] = useState("");
+  const [knowledgeElectricalPanelLocation, setKnowledgeElectricalPanelLocation] = useState("");
+  const [knowledgeTrashInstructions, setKnowledgeTrashInstructions] = useState("");
+  const [knowledgeOwnerPreferences, setKnowledgeOwnerPreferences] = useState("");
+  const [knowledgeCleanerNotes, setKnowledgeCleanerNotes] = useState("");
+  const [knowledgeMaintenanceNotes, setKnowledgeMaintenanceNotes] = useState("");
+  const [knowledgeApplianceNotes, setKnowledgeApplianceNotes] = useState("");
+  const [knowledgeEmergencyNotes, setKnowledgeEmergencyNotes] = useState("");
   const [propertyUnitsNeeded, setPropertyUnitsNeeded] = useState("1");
   const [propertyUnitsStrict, setPropertyUnitsStrict] = useState(false);
   const [propertyShowTeamStatus, setPropertyShowTeamStatus] = useState(true);
@@ -1484,6 +1534,25 @@ export default function AdminPage() {
   const [supportMessage, setSupportMessage] = useState("");
   const [sendingSupport, setSendingSupport] = useState(false);
 
+  function applyPropertyKnowledgeDraft(row?: Partial<PropertyKnowledgeRow> | null) {
+    setKnowledgeWifiNetwork(row?.wifi_network || "");
+    setKnowledgeWifiPassword(row?.wifi_password || "");
+    setKnowledgeAccessSummary(row?.access_summary || "");
+    setKnowledgeLockboxLocation(row?.lockbox_location || "");
+    setKnowledgeWaterShutoffLocation(row?.water_shutoff_location || "");
+    setKnowledgeElectricalPanelLocation(row?.electrical_panel_location || "");
+    setKnowledgeTrashInstructions(row?.trash_instructions || "");
+    setKnowledgeOwnerPreferences(row?.owner_preferences || "");
+    setKnowledgeCleanerNotes(row?.cleaner_notes || "");
+    setKnowledgeMaintenanceNotes(row?.maintenance_notes || "");
+    setKnowledgeApplianceNotes(row?.appliance_notes || "");
+    setKnowledgeEmergencyNotes(row?.emergency_notes || "");
+  }
+
+  function updatePropertyKnowledgeDraft(setter: (value: string) => void, value: string) {
+    setter(value);
+    setPropertyKnowledgeDirty(true);
+  }
 
   const [jobNotes, setJobNotes] = useState("");
   const [jobOverrideUnitsEnabled, setJobOverrideUnitsEnabled] = useState(false);
@@ -2088,9 +2157,11 @@ export default function AdminPage() {
       setSelectedPropertyGarbageRotationAnchorDate("");
       setSelectedPropertyGarbageWeekALabel("Garbage + recycling");
       setSelectedPropertyGarbageWeekBLabel("Recycling only");
+      applyPropertyKnowledgeDraft(EMPTY_PROPERTY_KNOWLEDGE);
       setAccessDirty(false);
       setPropertyDefaultsDirty(false);
       setPropertyManualDetailsDirty(false);
+      setPropertyKnowledgeDirty(false);
       return;
     }
 
@@ -2145,15 +2216,22 @@ export default function AdminPage() {
       setSelectedPropertyDefaultCheckinTime(selectedProperty?.default_checkin_time || "");
       setSelectedPropertyDefaultCheckoutTime(selectedProperty?.default_checkout_time || "");
     }
+
+    if (!propertyKnowledgeDirty) {
+      const selectedKnowledge = propertyKnowledgeRows.find((row) => row.property_id === selectedPropertyId);
+      applyPropertyKnowledgeDraft(selectedKnowledge || EMPTY_PROPERTY_KNOWLEDGE);
+    }
   }, [
     selectedPropertyId,
     accessRows,
     propertyCalendars,
     properties,
+    propertyKnowledgeRows,
     calendarDraftDirty,
     accessDirty,
     propertyDefaultsDirty,
     propertyManualDetailsDirty,
+    propertyKnowledgeDirty,
     selectedPropertyOwnerDirty,
   ]);
   async function handleSubmitSupportTicket() {
@@ -2223,6 +2301,7 @@ export default function AdminPage() {
     setAccessRows((data.accessRows ?? []) as AccessRow[]);
     setSops((data.sops ?? []) as SopRow[]);
     setSopImages((data.sopImages ?? []) as SopImageRow[]);
+    setPropertyKnowledgeRows((data.propertyKnowledge ?? []) as PropertyKnowledgeRow[]);
     setPropertyVendors((data.propertyVendors ?? []) as PropertyVendorRow[]);
     setDocumentVaultRows((data.documentVaultRows ?? []) as DocumentVaultRow[]);
     setProfiles(
@@ -2402,6 +2481,7 @@ export default function AdminPage() {
       strandedJobsRes,
       accessRowsRes,
       sopsRes,
+      propertyKnowledgeRes,
       propertyVendorsRes,
       sopImagesRes,
       documentVaultRes,
@@ -2475,6 +2555,7 @@ export default function AdminPage() {
       supabase.from("admin_stranded_jobs").select("*").order("created_at", { ascending: true }),
       supabase.from("property_access").select("*"),
       supabase.from("property_sops").select("*").order("created_at", { ascending: false }),
+      supabase.from("property_knowledge").select("*").order("updated_at", { ascending: false }),
       supabase.from("property_vendors").select("*").order("vendor_name", { ascending: true }),
       supabase.from("property_sop_images").select("*").order("sort_order", { ascending: true }),
       supabase
@@ -2644,6 +2725,7 @@ export default function AdminPage() {
         response !== invoiceSettingsRes &&
         response !== propertyInvoiceRatesRes &&
         response !== documentVaultRes &&
+        response !== propertyKnowledgeRes &&
         response !== propertyVendorsRes &&
         response !== propertyBookingEventsRes &&
         response !== staffJobStatusEventsRes &&
@@ -2703,6 +2785,9 @@ export default function AdminPage() {
       loadedPropertyIds.has(rule.property_id)
     );
     const loadedSops = ((sopsRes.data ?? []) as SopRow[]).filter((sop) => loadedPropertyIds.has(sop.property_id));
+    const loadedPropertyKnowledge = propertyKnowledgeRes.error
+      ? []
+      : ((propertyKnowledgeRes.data ?? []) as PropertyKnowledgeRow[]).filter((row) => loadedPropertyIds.has(row.property_id));
     const loadedPropertyVendors = propertyVendorsRes.error
       ? []
       : ((propertyVendorsRes.data ?? []) as PropertyVendorRow[]).filter((vendor) => loadedPropertyIds.has(vendor.property_id));
@@ -2729,6 +2814,7 @@ export default function AdminPage() {
     setStrandedJobs(loadedStrandedJobs);
     setAccessRows(loadedAccessRows);
     setSops(loadedSops);
+    setPropertyKnowledgeRows(loadedPropertyKnowledge);
     setPropertyVendors(loadedPropertyVendors);
     setSopImages(loadedSopImages);
     setDocumentVaultRows(
@@ -6398,6 +6484,72 @@ This removes its linked members and deletes the grounds account.`
     setPropertySetupTab("vendors");
   }
 
+  async function savePropertyKnowledge() {
+    if (!selectedPropertyId || !currentOrganizationId) {
+      setError("Please select a property first.");
+      return;
+    }
+
+    setError("");
+    setActionMessage("");
+    setSavingPropertyKnowledge(true);
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        throw new Error("Could not verify your admin session.");
+      }
+
+      const response = await fetch("/api/admin/property-knowledge", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          organizationId: currentOrganizationId,
+          propertyId: selectedPropertyId,
+          wifiNetwork: knowledgeWifiNetwork,
+          wifiPassword: knowledgeWifiPassword,
+          accessSummary: knowledgeAccessSummary,
+          lockboxLocation: knowledgeLockboxLocation,
+          waterShutoffLocation: knowledgeWaterShutoffLocation,
+          electricalPanelLocation: knowledgeElectricalPanelLocation,
+          trashInstructions: knowledgeTrashInstructions,
+          ownerPreferences: knowledgeOwnerPreferences,
+          cleanerNotes: knowledgeCleanerNotes,
+          maintenanceNotes: knowledgeMaintenanceNotes,
+          applianceNotes: knowledgeApplianceNotes,
+          emergencyNotes: knowledgeEmergencyNotes,
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || !payload?.ok || !payload?.knowledge) {
+        throw new Error(payload?.error || "Could not save property knowledge.");
+      }
+
+      const savedKnowledge = payload.knowledge as PropertyKnowledgeRow;
+      setPropertyKnowledgeRows((current) =>
+        current.some((row) => row.id === savedKnowledge.id || row.property_id === savedKnowledge.property_id)
+          ? current.map((row) =>
+              row.id === savedKnowledge.id || row.property_id === savedKnowledge.property_id ? savedKnowledge : row
+            )
+          : [...current, savedKnowledge]
+      );
+      setPropertyKnowledgeDirty(false);
+      setActionMessage("Property knowledge saved.");
+    } catch (err: any) {
+      setError(err?.message || "Could not save property knowledge.");
+    } finally {
+      setSavingPropertyKnowledge(false);
+    }
+  }
+
   async function savePropertyVendor() {
     if (!selectedPropertyId || !currentOrganizationId) {
       setError("Please select a property first.");
@@ -7294,6 +7446,10 @@ This removes its linked members and deletes the grounds account.`
   const selectedPropertyVendors = useMemo(
     () => propertyVendors.filter((vendor) => vendor.property_id === selectedPropertyId),
     [propertyVendors, selectedPropertyId]
+  );
+  const selectedPropertyKnowledge = useMemo(
+    () => propertyKnowledgeRows.find((row) => row.property_id === selectedPropertyId) || null,
+    [propertyKnowledgeRows, selectedPropertyId]
   );
 
   const maintenanceImagesByFlagId = useMemo(() => {
@@ -11752,6 +11908,7 @@ This removes its linked members and deletes the grounds account.`
         owner_invoice_events: ownerInvoiceEvents.length,
         staff_job_status_events: staffJobStatusEvents.length,
         account_deletion_requests: accountDeletionRequests.length,
+        property_knowledge: propertyKnowledgeRows.length,
         property_vendors: propertyVendors.length,
         document_vault_files: documentVaultRows.length,
         maintenance_flags: maintenanceFlags.length,
@@ -11759,6 +11916,7 @@ This removes its linked members and deletes the grounds account.`
       data: {
         properties,
         property_access: accessRows,
+        property_knowledge: propertyKnowledgeRows,
         property_vendors: propertyVendors,
         property_calendars: propertyCalendars,
         property_sops: sops,
@@ -17810,6 +17968,7 @@ This removes its linked members and deletes the grounds account.`
       { id: "overview", label: "Overview" },
       { id: "access", label: "Access" },
       { id: "calendars", label: "Calendars" },
+      { id: "knowledge", label: "Knowledge" },
       { id: "vendors", label: "Vendors" },
       { id: "sops", label: "SOPs" },
     ];
@@ -17828,6 +17987,11 @@ This removes its linked members and deletes the grounds account.`
         dot: "bg-[#14b8a6]",
         idle: "border-[#9ce5dc] bg-[#f0fffc] text-[#0f766e] hover:bg-white",
         active: "border-[#14b8a6] bg-[#14b8a6] text-white shadow-[0_10px_22px_rgba(20,184,166,0.22)]",
+      },
+      knowledge: {
+        dot: "bg-[#0ea5e9]",
+        idle: "border-[#a7ddf8] bg-[#f0f9ff] text-[#03608f] hover:bg-white",
+        active: "border-[#0ea5e9] bg-[#0ea5e9] text-white shadow-[0_10px_22px_rgba(14,165,233,0.22)]",
       },
       vendors: {
         dot: "bg-[#8b5cf6]",
@@ -17882,6 +18046,9 @@ This removes its linked members and deletes the grounds account.`
                     </span>
                     <span className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-medium text-[#6f6255]">
                       {selectedPropertyVendors.length} vendor{selectedPropertyVendors.length === 1 ? "" : "s"}
+                    </span>
+                    <span className="rounded-full border border-[#a7ddf8] bg-[#f0f9ff] px-3 py-1 text-xs font-medium text-[#03608f]">
+                      {selectedPropertyKnowledge ? "Knowledge saved" : "No knowledge"}
                     </span>
                     <span className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-medium text-[#6f6255]">
                       {selectedPropertyOwnerEmail ? "Owner linked" : "No owner linked"}
@@ -18697,6 +18864,132 @@ This removes its linked members and deletes the grounds account.`
                   {importingBookingHistory ? (
                     <div className="mt-3 text-sm text-[#7f7263]">Importing booking history...</div>
                   ) : null}
+                </div>
+              </div>
+            ) : null}
+
+            {propertySetupTab === "knowledge" ? (
+              <div className="mt-6 rounded-[26px] border border-[#a7ddf8] bg-[#f0f9ff] p-5">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#03608f]">Property brain</p>
+                    <h3 className="mt-2 text-lg font-semibold text-[#17345f]">Property Knowledge</h3>
+                    <p className="mt-1 max-w-2xl text-sm leading-6 text-[#526777]">
+                      Save the facts staff need to answer common questions fast. This becomes the source material for future property AI.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void savePropertyKnowledge()}
+                    disabled={savingPropertyKnowledge}
+                    className="inline-flex items-center justify-center rounded-full bg-[#0b5f86] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#084c6d] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {savingPropertyKnowledge ? "Saving..." : "Save knowledge"}
+                  </button>
+                </div>
+
+                <div className="mt-5 grid gap-4 xl:grid-cols-2">
+                  <div className="rounded-[22px] border border-[#bfdded] bg-white p-4">
+                    <h4 className="text-sm font-semibold text-[#17345f]">WiFi</h4>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <input
+                        value={knowledgeWifiNetwork}
+                        onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeWifiNetwork, e.target.value)}
+                        placeholder="Network name"
+                        className="w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
+                      />
+                      <input
+                        value={knowledgeWifiPassword}
+                        onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeWifiPassword, e.target.value)}
+                        placeholder="Password"
+                        className="w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="rounded-[22px] border border-[#bfdded] bg-white p-4">
+                    <h4 className="text-sm font-semibold text-[#17345f]">Access</h4>
+                    <div className="mt-3 space-y-3">
+                      <input
+                        value={knowledgeLockboxLocation}
+                        onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeLockboxLocation, e.target.value)}
+                        placeholder="Lockbox, key, or entry location"
+                        className="w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
+                      />
+                      <textarea
+                        value={knowledgeAccessSummary}
+                        onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeAccessSummary, e.target.value)}
+                        placeholder="Access summary, parking, gates, elevator, staff entry notes..."
+                        className="min-h-[120px] w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="rounded-[22px] border border-[#bfdded] bg-white p-4">
+                    <h4 className="text-sm font-semibold text-[#17345f]">Utilities</h4>
+                    <div className="mt-3 space-y-3">
+                      <input
+                        value={knowledgeWaterShutoffLocation}
+                        onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeWaterShutoffLocation, e.target.value)}
+                        placeholder="Water shutoff location"
+                        className="w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
+                      />
+                      <input
+                        value={knowledgeElectricalPanelLocation}
+                        onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeElectricalPanelLocation, e.target.value)}
+                        placeholder="Electrical panel / breaker location"
+                        className="w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
+                      />
+                      <textarea
+                        value={knowledgeEmergencyNotes}
+                        onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeEmergencyNotes, e.target.value)}
+                        placeholder="Emergency notes, shutoff warnings, known urgent procedures..."
+                        className="min-h-[110px] w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="rounded-[22px] border border-[#bfdded] bg-white p-4">
+                    <h4 className="text-sm font-semibold text-[#17345f]">Operations Notes</h4>
+                    <div className="mt-3 space-y-3">
+                      <textarea
+                        value={knowledgeTrashInstructions}
+                        onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeTrashInstructions, e.target.value)}
+                        placeholder="Trash, recycling, bin location, pickup quirks..."
+                        className="min-h-[95px] w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
+                      />
+                      <textarea
+                        value={knowledgeOwnerPreferences}
+                        onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeOwnerPreferences, e.target.value)}
+                        placeholder="Owner preferences, approvals, things they care about..."
+                        className="min-h-[95px] w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
+                      />
+                      <textarea
+                        value={knowledgeCleanerNotes}
+                        onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeCleanerNotes, e.target.value)}
+                        placeholder="Cleaner notes, recurring issues, reset checklist details..."
+                        className="min-h-[95px] w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="rounded-[22px] border border-[#bfdded] bg-white p-4 xl:col-span-2">
+                    <h4 className="text-sm font-semibold text-[#17345f]">Maintenance and Appliances</h4>
+                    <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                      <textarea
+                        value={knowledgeMaintenanceNotes}
+                        onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeMaintenanceNotes, e.target.value)}
+                        placeholder="Maintenance history, recurring problems, property quirks..."
+                        className="min-h-[120px] w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
+                      />
+                      <textarea
+                        value={knowledgeApplianceNotes}
+                        onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeApplianceNotes, e.target.value)}
+                        placeholder="Appliance models, reset steps, filter sizes, manual notes..."
+                        className="min-h-[120px] w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             ) : null}

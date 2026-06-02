@@ -212,6 +212,7 @@ export async function GET(request: Request) {
       strandedJobsRes,
       accessRowsRes,
       sopsRes,
+      propertyKnowledgeRes,
       propertyVendorsRes,
       ownerPropertyAccessRes,
       propertyCalendarsRes,
@@ -250,6 +251,9 @@ export async function GET(request: Request) {
         : emptyResult(),
       propertyIds.length > 0
         ? serviceClient.from("property_sops").select("*").in("property_id", propertyIds).order("created_at", { ascending: false })
+        : emptyResult(),
+      propertyIds.length > 0
+        ? serviceClient.from("property_knowledge").select("*").in("property_id", propertyIds).order("updated_at", { ascending: false })
         : emptyResult(),
       propertyIds.length > 0
         ? serviceClient.from("property_vendors").select("*").in("property_id", propertyIds).order("vendor_name", { ascending: true })
@@ -319,6 +323,7 @@ export async function GET(request: Request) {
         strandedJobs: strandedJobsRes.data ?? [],
         accessRows: accessRowsRes.data ?? [],
         sops: sopsRes.data ?? [],
+        propertyKnowledge: propertyKnowledgeRes.error && isOptionalTableError(propertyKnowledgeRes.error) ? [] : propertyKnowledgeRes.data ?? [],
         propertyVendors: propertyVendorsRes.error && isOptionalTableError(propertyVendorsRes.error) ? [] : propertyVendorsRes.data ?? [],
         sopImages: sopImagesRes.data ?? [],
         documentVaultRows: documentVaultRes.error && isOptionalTableError(documentVaultRes.error) ? [] : documentVaultRes.data ?? [],
