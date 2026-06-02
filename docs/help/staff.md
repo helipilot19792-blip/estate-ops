@@ -24,6 +24,10 @@ Cleaner and grounds portals are focused on daily work, job response, property de
 
 Each staff member must enable alerts on the device and browser they use. If alerts were enabled before a VAPID key rotation, the user may need to turn alerts off and back on.
 
+## My Account
+
+Cleaners and grounds users can open My Account from the top portal bar beside the language selector. They can review their signed-in email, role, and account ID, then update their full name, phone number, or password.
+
 ## Common Staff Questions
 
 ### I do not see a job I expected.
@@ -33,4 +37,3 @@ Check that you are signed into the correct portal and account. Admins should con
 ### Should I use chat or report issue?
 
 Use Report Issue when something needs to be tracked as a property problem. Use Chat for a quick question, clarification, or conversation.
-

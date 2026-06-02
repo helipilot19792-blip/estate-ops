@@ -26,6 +26,10 @@ Use the language selector to switch the portal between English, French, and Span
 
 The AI Helper opens from the admin header and answers questions about how to use GuleraOS / EstateOS. It uses the help files as its source of truth and does not inspect live customer records. For current data, open the relevant admin area such as Properties, Jobs, Invoices, Chat, Maintenance, or Notifications.
 
+## My Account
+
+Signed-in users can open My Account from the top portal bar beside the language selector. My Account shows the signed-in email, role, and account ID. Users can update their own full name, phone number, and password. It is available globally, including admin, owner, cleaner, grounds, and platform pages.
+
 ## Setup Order
 
 1. Create the property.

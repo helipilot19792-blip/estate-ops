@@ -17,6 +17,10 @@ Owners can view invoices that have been sent to them. Invoices may be generated 
 
 Admins control what maintenance flags are visible to owners. Owners may see issue history when it has been shared with them.
 
+## My Account
+
+Owners can open My Account from the top portal bar beside the language selector. My Account shows the signed-in email, role, and account ID. Owners can update their full name, phone number, or password from there.
+
 ## Common Owner Questions
 
 ### Where do I ask about an invoice?
@@ -26,4 +30,3 @@ Use Owner Chat and mention the invoice number or property name.
 ### Why do I not see a property?
 
 An admin must link the owner account to the property. Admins can manage this from the owner/property access setup.
-

@@ -2,13 +2,15 @@
 
 import { LOCALE_LABELS, SUPPORTED_LOCALES, type Locale } from "@/lib/i18n";
 import { useI18n } from "@/components/i18n-provider";
+import MyAccountControl from "@/components/my-account-control";
 
 export default function LanguageSwitcher() {
   const { locale, setLocale, t } = useI18n();
 
   return (
     <div className="border-b border-[#e7ddd0] bg-[#fffdf9] px-4 py-2 text-[#241c15]">
-      <div className="mx-auto flex w-full max-w-[1600px] justify-end">
+      <div className="mx-auto flex w-full max-w-[1600px] flex-wrap items-center justify-end gap-2">
+        <MyAccountControl />
         <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-[#6f6255]">
           <span>{t("common.language")}</span>
           <select
