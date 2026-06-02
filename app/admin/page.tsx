@@ -780,6 +780,20 @@ type StaffJobStatusEventRow = {
   metadata?: Record<string, unknown> | null;
   created_at?: string | null;
 };
+type AccountDeletionRequestRow = {
+  id: string;
+  requester_profile_id: string;
+  requester_email?: string | null;
+  requester_role?: string | null;
+  organization_id?: string | null;
+  status: "pending" | "reviewing" | "completed" | "denied" | "cancelled";
+  reason?: string | null;
+  requested_at?: string | null;
+  reviewed_at?: string | null;
+  reviewed_by_profile_id?: string | null;
+  completed_at?: string | null;
+  admin_notes?: string | null;
+};
 function getMonthGrid(baseDate: Date) {
   const year = baseDate.getFullYear();
   const month = baseDate.getMonth();
@@ -1217,6 +1231,7 @@ export default function AdminPage() {
   const [ownerInvoices, setOwnerInvoices] = useState<OwnerInvoiceRow[]>([]);
   const [ownerInvoiceEvents, setOwnerInvoiceEvents] = useState<OwnerInvoiceEventRow[]>([]);
   const [staffJobStatusEvents, setStaffJobStatusEvents] = useState<StaffJobStatusEventRow[]>([]);
+  const [accountDeletionRequests, setAccountDeletionRequests] = useState<AccountDeletionRequestRow[]>([]);
   const [chatConversations, setChatConversations] = useState<ChatConversationRow[]>([]);
   const [chatParticipants, setChatParticipants] = useState<ChatParticipantRow[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessageRow[]>([]);
@@ -1275,6 +1290,8 @@ export default function AdminPage() {
   const [viewingInvoicePdfId, setViewingInvoicePdfId] = useState<string | null>(null);
   const [updatingInvoiceStatusId, setUpdatingInvoiceStatusId] = useState<string | null>(null);
   const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
+  const [savingDeletionRequestId, setSavingDeletionRequestId] = useState<string | null>(null);
+  const [deletionRequestDrafts, setDeletionRequestDrafts] = useState<Record<string, { status: AccountDeletionRequestRow["status"]; adminNotes: string }>>({});
   const [creatingChatConversation, setCreatingChatConversation] = useState(false);
   const [sendingChatMessage, setSendingChatMessage] = useState(false);
   const [selectedChatConversationId, setSelectedChatConversationId] = useState("");
@@ -2208,6 +2225,20 @@ export default function AdminPage() {
     setOwnerInvoices((data.ownerInvoices ?? []) as OwnerInvoiceRow[]);
     setOwnerInvoiceEvents((data.ownerInvoiceEvents ?? []) as OwnerInvoiceEventRow[]);
     setStaffJobStatusEvents((data.staffJobStatusEvents ?? []) as StaffJobStatusEventRow[]);
+    const loadedDeletionRequests = (data.accountDeletionRequests ?? []) as AccountDeletionRequestRow[];
+    setAccountDeletionRequests(loadedDeletionRequests);
+    setDeletionRequestDrafts((prev) => {
+      const next = { ...prev };
+      for (const request of loadedDeletionRequests) {
+        if (!next[request.id]) {
+          next[request.id] = {
+            status: request.status,
+            adminNotes: request.admin_notes || "",
+          };
+        }
+      }
+      return next;
+    });
     setChatConversations((data.chatConversations ?? []) as ChatConversationRow[]);
     setChatParticipants((data.chatParticipants ?? []) as ChatParticipantRow[]);
     setChatMessages((data.chatMessages ?? []) as ChatMessageRow[]);
@@ -2357,6 +2388,7 @@ export default function AdminPage() {
       ownerInvoicesRes,
       ownerInvoiceEventsRes,
       staffJobStatusEventsRes,
+      accountDeletionRequestsRes,
       chatConversationsRes,
       chatParticipantsRes,
       chatMessagesRes,
@@ -2501,6 +2533,12 @@ export default function AdminPage() {
         .order("created_at", { ascending: false })
         .limit(100),
       supabase
+        .from("account_deletion_requests")
+        .select("*")
+        .eq("organization_id", currentOrganizationId)
+        .order("requested_at", { ascending: false })
+        .limit(100),
+      supabase
         .from("chat_conversations")
         .select("id,organization_id,subject,context_type,context_id,created_by_profile_id,last_message_at,created_at,updated_at")
         .eq("organization_id", currentOrganizationId)
@@ -2558,6 +2596,7 @@ export default function AdminPage() {
       propertyInvoiceRatesRes,
       ownerInvoicesRes,
       staffJobStatusEventsRes,
+      accountDeletionRequestsRes,
       chatConversationsRes,
       chatParticipantsRes,
       chatMessagesRes,
@@ -2572,6 +2611,7 @@ export default function AdminPage() {
         response !== documentVaultRes &&
         response !== propertyBookingEventsRes &&
         response !== staffJobStatusEventsRes &&
+        response !== accountDeletionRequestsRes &&
         response !== inspectionRulesRes &&
         response !== inspectionLogsRes &&
         response !== inspectionPhotosRes &&
@@ -2698,6 +2738,23 @@ export default function AdminPage() {
         ? []
         : ((staffJobStatusEventsRes.data ?? []) as StaffJobStatusEventRow[])
     );
+    const loadedDeletionRequests =
+      accountDeletionRequestsRes.error && isOptionalTableError(accountDeletionRequestsRes.error)
+        ? []
+        : ((accountDeletionRequestsRes.data ?? []) as AccountDeletionRequestRow[]);
+    setAccountDeletionRequests(loadedDeletionRequests);
+    setDeletionRequestDrafts((prev) => {
+      const next = { ...prev };
+      for (const request of loadedDeletionRequests) {
+        if (!next[request.id]) {
+          next[request.id] = {
+            status: request.status,
+            adminNotes: request.admin_notes || "",
+          };
+        }
+      }
+      return next;
+    });
     setChatConversations(
       chatConversationsRes.error ? [] : ((chatConversationsRes.data ?? []) as ChatConversationRow[])
     );
@@ -2717,6 +2774,79 @@ export default function AdminPage() {
       return next;
     });
     setAdminDataLoaded(true);
+  }
+
+  function updateDeletionRequestDraft(
+    requestId: string,
+    field: "status" | "adminNotes",
+    value: string
+  ) {
+    setDeletionRequestDrafts((prev) => ({
+      ...prev,
+      [requestId]: {
+        status: prev[requestId]?.status || "pending",
+        adminNotes: prev[requestId]?.adminNotes || "",
+        [field]: value,
+      },
+    }));
+  }
+
+  async function saveDeletionRequest(request: AccountDeletionRequestRow) {
+    if (!currentOrganizationId) return;
+
+    setSavingDeletionRequestId(request.id);
+    setError("");
+    setActionMessage("");
+
+    try {
+      const draft = deletionRequestDrafts[request.id] || {
+        status: request.status,
+        adminNotes: request.admin_notes || "",
+      };
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("No active admin session was found.");
+      }
+
+      const response = await fetch("/api/admin/account-deletion-request", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          requestId: request.id,
+          organizationId: currentOrganizationId,
+          status: draft.status,
+          adminNotes: draft.adminNotes,
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || payload?.ok === false || !payload?.request) {
+        throw new Error(payload?.error || "Could not update account deletion request.");
+      }
+
+      const updatedRequest = payload.request as AccountDeletionRequestRow;
+      setAccountDeletionRequests((requests) =>
+        requests.map((item) => (item.id === updatedRequest.id ? updatedRequest : item))
+      );
+      setDeletionRequestDrafts((prev) => ({
+        ...prev,
+        [updatedRequest.id]: {
+          status: updatedRequest.status,
+          adminNotes: updatedRequest.admin_notes || "",
+        },
+      }));
+      setActionMessage("Account deletion request updated.");
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Could not update account deletion request.");
+    } finally {
+      setSavingDeletionRequestId(null);
+    }
   }
 
   async function markChatConversationRead(conversationId: string) {
@@ -8631,6 +8761,9 @@ This removes its linked members and deletes the grounds account.`
     const sentUnpaidInvoices = ownerInvoices.filter((invoice) => invoice.status === "sent");
     const runningDraftInvoices = ownerInvoices.filter((invoice) => invoice.status === "draft");
     const lowHealthProperties = propertyHealthRows.filter((row) => row.score < 65);
+    const openDeletionRequests = accountDeletionRequests.filter((request) =>
+      request.status === "pending" || request.status === "reviewing"
+    );
     const recentJobProgressEvents = staffJobStatusEvents.filter((event) => {
       if (event.event_type !== "started" && event.event_type !== "completed") return false;
       const createdAt = event.created_at ? new Date(event.created_at).getTime() : 0;
@@ -8657,6 +8790,18 @@ This removes its linked members and deletes the grounds account.`
         tone: "blue",
         actionLabel: "Open chat",
         onClick: () => setActiveSection("chat"),
+      });
+    }
+
+    if (openDeletionRequests.length > 0) {
+      items.push({
+        key: "account-deletion-requests",
+        title: "Account deletion requests",
+        detail: "Users requested account and personal information deletion review.",
+        count: openDeletionRequests.length,
+        tone: "red",
+        actionLabel: "Review requests",
+        onClick: () => setActiveSection("notifications"),
       });
     }
 
@@ -8804,6 +8949,7 @@ This removes its linked members and deletes the grounds account.`
     ownerInvoices,
     propertyHealthRows,
     staffJobStatusEvents,
+    accountDeletionRequests,
     now,
   ]);
 
@@ -9246,6 +9392,16 @@ This removes its linked members and deletes the grounds account.`
       owner: "Owner",
     };
     const pushPortals = pushDiagnostics?.portals || [];
+    const openDeletionRequests = accountDeletionRequests.filter((request) =>
+      request.status === "pending" || request.status === "reviewing"
+    );
+    const deletionStatusClasses: Record<AccountDeletionRequestRow["status"], string> = {
+      pending: "border-[#f1cf8f] bg-[#fff8e8] text-[#8a6112]",
+      reviewing: "border-[#a5f3fc] bg-[#ecfeff] text-[#0e7490]",
+      completed: "border-[#bbdfc0] bg-[#f0fbf2] text-[#236b30]",
+      denied: "border-[#f0b4b4] bg-[#fff5f5] text-[#8a2e22]",
+      cancelled: "border-[#e5e7eb] bg-[#f8fafc] text-[#64748b]",
+    };
 
     return (
       <div className="space-y-6">
@@ -9269,6 +9425,7 @@ This removes its linked members and deletes the grounds account.`
               { label: "Job issues", value: strandedJobs.length + failedNotificationStats.total, tone: strandedJobs.length + failedNotificationStats.total > 0 ? toneClasses.red : toneClasses.green },
               { label: "Maintenance", value: maintenanceFlagCounts.open, tone: maintenanceFlagCounts.urgent > 0 ? toneClasses.red : toneClasses.amber },
               { label: "Property health", value: propertyHealthStats.atRisk, tone: propertyHealthStats.atRisk > 0 ? toneClasses.amber : toneClasses.green },
+              { label: "Privacy requests", value: openDeletionRequests.length, tone: openDeletionRequests.length > 0 ? toneClasses.red : toneClasses.green },
             ].map((stat) => (
               <div key={stat.label} className={`rounded-[20px] border px-4 py-3 shadow-sm ${stat.tone}`}>
                 <div className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-75">{stat.label}</div>
@@ -9321,6 +9478,98 @@ This removes its linked members and deletes the grounds account.`
                   </div>
                 </div>
               ))
+            )}
+          </div>
+        </section>
+
+        <section className="rounded-[30px] border border-[#fecaca] bg-[linear-gradient(180deg,#fffafa_0%,#fff5f5_100%)] p-5 shadow-[0_18px_45px_rgba(220,38,38,0.06)]">
+          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#b91c1c]">Privacy Queue</p>
+              <h3 className="mt-2 text-xl font-semibold tracking-tight text-[#7f1d1d]">Account deletion requests</h3>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-[#7f4a4a]">
+                Track user requests for account and personal information deletion before any destructive action is taken.
+              </p>
+            </div>
+            <span className="rounded-full border border-[#fecaca] bg-white px-3 py-1 text-xs font-semibold text-[#b91c1c]">
+              {openDeletionRequests.length} open
+            </span>
+          </div>
+
+          <div className="mt-5 space-y-3">
+            {accountDeletionRequests.length === 0 ? (
+              <div className="rounded-[22px] border border-dashed border-[#fecaca] bg-white/70 px-4 py-8 text-center text-sm text-[#7f7263]">
+                No account deletion requests have been submitted.
+              </div>
+            ) : (
+              accountDeletionRequests.map((request) => {
+                const draft = deletionRequestDrafts[request.id] || {
+                  status: request.status,
+                  adminNotes: request.admin_notes || "",
+                };
+                const saving = savingDeletionRequestId === request.id;
+                const changed = draft.status !== request.status || draft.adminNotes !== (request.admin_notes || "");
+
+                return (
+                  <div key={request.id} className="rounded-[22px] border border-[#fecaca] bg-white p-4 shadow-sm">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h4 className="text-base font-semibold text-[#7f1d1d]">
+                            {request.requester_email || "Unknown requester"}
+                          </h4>
+                          <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${deletionStatusClasses[request.status]}`}>
+                            {request.status}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-sm leading-6 text-[#7f4a4a]">
+                          Requested {formatDateTime(request.requested_at)} by {request.requester_role || "user"}.
+                        </p>
+                        {request.reason ? (
+                          <p className="mt-2 rounded-[16px] border border-[#fee2e2] bg-[#fffafa] px-3 py-2 text-sm leading-6 text-[#7f4a4a]">
+                            {request.reason}
+                          </p>
+                        ) : null}
+                      </div>
+
+                      <div className="w-full space-y-2 lg:w-80">
+                        <label className="block text-xs font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
+                          Status
+                          <select
+                            value={draft.status}
+                            onChange={(event) => updateDeletionRequestDraft(request.id, "status", event.target.value)}
+                            className="mt-1 w-full rounded-[14px] border border-[#d8c7ab] bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal text-[#241c15] outline-none focus:border-[#b48d4e]"
+                          >
+                            <option value="pending">Pending</option>
+                            <option value="reviewing">Reviewing</option>
+                            <option value="completed">Completed</option>
+                            <option value="denied">Denied</option>
+                            <option value="cancelled">Cancelled</option>
+                          </select>
+                        </label>
+                        <label className="block text-xs font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
+                          Admin notes
+                          <textarea
+                            value={draft.adminNotes}
+                            onChange={(event) => updateDeletionRequestDraft(request.id, "adminNotes", event.target.value)}
+                            rows={3}
+                            className="mt-1 w-full rounded-[14px] border border-[#d8c7ab] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#241c15] outline-none focus:border-[#b48d4e]"
+                            placeholder="Internal review notes"
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => void saveDeletionRequest(request)}
+                          disabled={saving || !changed}
+                          className="w-full rounded-full bg-[#241c15] px-4 py-2 text-sm font-semibold text-[#f8f2e8] transition hover:bg-[#352a21] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {saving ? "Saving..." : "Save request"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
             )}
           </div>
         </section>
@@ -11321,6 +11570,7 @@ This removes its linked members and deletes the grounds account.`
         owner_invoices: ownerInvoices.length,
         owner_invoice_events: ownerInvoiceEvents.length,
         staff_job_status_events: staffJobStatusEvents.length,
+        account_deletion_requests: accountDeletionRequests.length,
         document_vault_files: documentVaultRows.length,
         maintenance_flags: maintenanceFlags.length,
       },
@@ -11346,6 +11596,7 @@ This removes its linked members and deletes the grounds account.`
         owner_invoices: ownerInvoices,
         owner_invoice_events: ownerInvoiceEvents,
         staff_job_status_events: staffJobStatusEvents,
+        account_deletion_requests: accountDeletionRequests,
         invoice_settings: invoiceSettings,
         property_invoice_rates: propertyInvoiceRates,
         document_vault_files: documentVaultRows,
