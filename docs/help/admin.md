@@ -28,7 +28,9 @@ The AI Helper opens from the admin header and answers questions about how to use
 
 ## My Account
 
-Signed-in users can open My Account from the top portal bar beside the language selector. My Account shows the signed-in email, role, and account ID. Users can update their own full name, phone number, and password. It is available globally, including admin, owner, cleaner, grounds, and platform pages.
+Signed-in users can open My Account from the top portal bar. My Account shows the signed-in email, role, and account ID. Users can update their own full name, phone number, password, and preferred language. It is available globally, including admin, owner, cleaner, grounds, and platform pages.
+
+My Account also includes Privacy and account deletion. Users can request deletion of their account and personal information. This creates a deletion request for review; it does not instantly delete operational records. Some records may be retained where needed for legal obligations, security, billing, dispute resolution, or business records.
 
 ## Setup Order
 

@@ -59,6 +59,8 @@ export const dictionaries = {
       email: "Email",
       role: "Role",
       accountId: "Account ID",
+      languageTitle: "Language",
+      preferredLanguage: "Preferred language",
       profileTitle: "Profile",
       fullName: "Full name",
       phone: "Phone",
@@ -70,6 +72,23 @@ export const dictionaries = {
       confirmPassword: "Confirm password",
       updatePassword: "Update password",
       passwordSaved: "Password updated.",
+      privacy: {
+        title: "Privacy and account deletion",
+        body:
+          "You can request deletion of your account and personal information. This does not instantly delete operational records, but it creates a request for review.",
+        retention:
+          "Some records may be retained where needed for legal obligations, security, billing, dispute resolution, or business records.",
+        reason: "Optional reason",
+        reasonPlaceholder: "Add anything the team should know about this request.",
+        confirm:
+          "I understand this request may remove my portal access and that some operational records may be retained where required.",
+        confirmRequired: "Please confirm before submitting an account deletion request.",
+        requestButton: "Request account deletion",
+        requesting: "Submitting request...",
+        requestSubmitted: "Account deletion request submitted.",
+        alreadyOpen: "You already have an open account deletion request.",
+        requestFailed: "Could not submit account deletion request.",
+      },
       errors: {
         notSignedIn: "You must be signed in to manage your account.",
         loadFailed: "Could not load your account.",
@@ -583,6 +602,8 @@ export const dictionaries = {
       email: "Courriel",
       role: "Role",
       accountId: "ID du compte",
+      languageTitle: "Langue",
+      preferredLanguage: "Langue preferee",
       profileTitle: "Profil",
       fullName: "Nom complet",
       phone: "Telephone",
@@ -594,6 +615,23 @@ export const dictionaries = {
       confirmPassword: "Confirmer le mot de passe",
       updatePassword: "Mettre a jour le mot de passe",
       passwordSaved: "Mot de passe mis a jour.",
+      privacy: {
+        title: "Confidentialite et suppression du compte",
+        body:
+          "Vous pouvez demander la suppression de votre compte et de vos renseignements personnels. Cela ne supprime pas instantanement les dossiers operationnels, mais cree une demande a examiner.",
+        retention:
+          "Certains dossiers peuvent etre conserves si necessaire pour des obligations legales, la securite, la facturation, les litiges ou les dossiers commerciaux.",
+        reason: "Raison facultative",
+        reasonPlaceholder: "Ajoutez tout ce que l'equipe devrait savoir sur cette demande.",
+        confirm:
+          "Je comprends que cette demande peut retirer mon acces au portail et que certains dossiers operationnels peuvent etre conserves lorsque requis.",
+        confirmRequired: "Veuillez confirmer avant d'envoyer une demande de suppression de compte.",
+        requestButton: "Demander la suppression du compte",
+        requesting: "Envoi de la demande...",
+        requestSubmitted: "Demande de suppression du compte envoyee.",
+        alreadyOpen: "Vous avez deja une demande de suppression de compte ouverte.",
+        requestFailed: "Impossible d'envoyer la demande de suppression du compte.",
+      },
       errors: {
         notSignedIn: "Vous devez etre connecte pour gerer votre compte.",
         loadFailed: "Impossible de charger votre compte.",
@@ -1019,6 +1057,8 @@ export const dictionaries = {
       email: "Email",
       role: "Rol",
       accountId: "ID de cuenta",
+      languageTitle: "Idioma",
+      preferredLanguage: "Idioma preferido",
       profileTitle: "Perfil",
       fullName: "Nombre completo",
       phone: "Telefono",
@@ -1030,6 +1070,23 @@ export const dictionaries = {
       confirmPassword: "Confirmar contrasena",
       updatePassword: "Actualizar contrasena",
       passwordSaved: "Contrasena actualizada.",
+      privacy: {
+        title: "Privacidad y eliminacion de cuenta",
+        body:
+          "Puedes solicitar la eliminacion de tu cuenta e informacion personal. Esto no elimina al instante los registros operativos, pero crea una solicitud para revision.",
+        retention:
+          "Algunos registros pueden conservarse cuando sea necesario por obligaciones legales, seguridad, facturacion, disputas o registros comerciales.",
+        reason: "Motivo opcional",
+        reasonPlaceholder: "Agrega cualquier detalle que el equipo deba saber sobre esta solicitud.",
+        confirm:
+          "Entiendo que esta solicitud puede eliminar mi acceso al portal y que algunos registros operativos pueden conservarse cuando sea requerido.",
+        confirmRequired: "Confirma antes de enviar una solicitud de eliminacion de cuenta.",
+        requestButton: "Solicitar eliminacion de cuenta",
+        requesting: "Enviando solicitud...",
+        requestSubmitted: "Solicitud de eliminacion de cuenta enviada.",
+        alreadyOpen: "Ya tienes una solicitud de eliminacion de cuenta abierta.",
+        requestFailed: "No se pudo enviar la solicitud de eliminacion de cuenta.",
+      },
       errors: {
         notSignedIn: "Debes iniciar sesion para administrar tu cuenta.",
         loadFailed: "No se pudo cargar tu cuenta.",

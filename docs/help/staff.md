@@ -26,7 +26,9 @@ Each staff member must enable alerts on the device and browser they use. If aler
 
 ## My Account
 
-Cleaners and grounds users can open My Account from the top portal bar beside the language selector. They can review their signed-in email, role, and account ID, then update their full name, phone number, or password.
+Cleaners and grounds users can open My Account from the top portal bar. They can review their signed-in email, role, and account ID, then update their full name, phone number, password, or preferred language.
+
+My Account also lets staff request deletion of their account and personal information. This creates a request for review rather than instantly deleting operational records. Some job, safety, billing, or business records may need to be retained.
 
 ## Common Staff Questions
 

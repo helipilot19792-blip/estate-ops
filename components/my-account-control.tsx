@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useI18n } from "@/components/i18n-provider";
+import { LOCALE_LABELS, SUPPORTED_LOCALES, type Locale } from "@/lib/i18n";
 import { PASSWORD_REQUIREMENTS, validatePassword } from "@/lib/password-policy";
 
 type AccountProfile = {
@@ -25,7 +26,7 @@ type AccountPayload = {
 };
 
 export default function MyAccountControl() {
-  const { t } = useI18n();
+  const { locale, setLocale, t } = useI18n();
   const [signedIn, setSignedIn] = useState(false);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -37,6 +38,9 @@ export default function MyAccountControl() {
   const [phone, setPhone] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [deletionReason, setDeletionReason] = useState("");
+  const [deletionConfirmed, setDeletionConfirmed] = useState(false);
+  const [requestingDeletion, setRequestingDeletion] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -177,6 +181,52 @@ export default function MyAccountControl() {
     }
   }
 
+  async function handleDeletionRequestSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setRequestingDeletion(true);
+    setError("");
+    setMessage("");
+
+    try {
+      if (!deletionConfirmed) {
+        throw new Error(t("myAccount.privacy.confirmRequired"));
+      }
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error(t("myAccount.errors.notSignedIn"));
+      }
+
+      const response = await fetch("/api/my-account/deletion-request", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          reason: deletionReason,
+          confirmed: deletionConfirmed,
+        }),
+      });
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok || data?.ok === false) {
+        throw new Error(data?.error || t("myAccount.privacy.requestFailed"));
+      }
+
+      setDeletionReason("");
+      setDeletionConfirmed(false);
+      setMessage(data?.alreadyOpen ? t("myAccount.privacy.alreadyOpen") : t("myAccount.privacy.requestSubmitted"));
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : t("myAccount.privacy.requestFailed"));
+    } finally {
+      setRequestingDeletion(false);
+    }
+  }
+
   if (!signedIn) return null;
 
   return (
@@ -247,6 +297,24 @@ export default function MyAccountControl() {
                 </div>
               </div>
 
+              <section className="rounded-[22px] border border-[#eadfce] p-4">
+                <h3 className="text-base font-semibold text-[#241c15]">{t("myAccount.languageTitle")}</h3>
+                <label className="mt-4 block text-sm font-semibold text-[#5f5245]">
+                  <span>{t("myAccount.preferredLanguage")}</span>
+                  <select
+                    value={locale}
+                    onChange={(event) => setLocale(event.target.value as Locale)}
+                    className="mt-1 w-full rounded-[16px] border border-[#d8c7ab] bg-white px-4 py-3 text-sm font-semibold text-[#241c15] outline-none transition focus:border-[#b48d4e]"
+                  >
+                    {SUPPORTED_LOCALES.map((option) => (
+                      <option key={option} value={option}>
+                        {LOCALE_LABELS[option]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </section>
+
               <form onSubmit={handleProfileSubmit} className="rounded-[22px] border border-[#eadfce] p-4">
                 <h3 className="text-base font-semibold text-[#241c15]">{t("myAccount.profileTitle")}</h3>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -305,6 +373,37 @@ export default function MyAccountControl() {
                   className="mt-4 rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-5 py-2.5 text-sm font-semibold text-[#241c15] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {savingPassword ? t("myAccount.saving") : t("myAccount.updatePassword")}
+                </button>
+              </form>
+
+              <form onSubmit={handleDeletionRequestSubmit} className="rounded-[22px] border border-[#fecaca] bg-[#fff8f8] p-4">
+                <h3 className="text-base font-semibold text-[#991b1b]">{t("myAccount.privacy.title")}</h3>
+                <p className="mt-1 text-sm leading-6 text-[#7f1d1d]">{t("myAccount.privacy.body")}</p>
+                <p className="mt-2 text-sm leading-6 text-[#7f1d1d]">{t("myAccount.privacy.retention")}</p>
+                <label className="mt-4 block text-sm font-semibold text-[#7f1d1d]">
+                  <span>{t("myAccount.privacy.reason")}</span>
+                  <textarea
+                    value={deletionReason}
+                    onChange={(event) => setDeletionReason(event.target.value)}
+                    placeholder={t("myAccount.privacy.reasonPlaceholder")}
+                    className="mt-1 min-h-24 w-full rounded-[16px] border border-[#fecaca] bg-white px-4 py-3 text-sm text-[#241c15] outline-none transition focus:border-[#ef4444]"
+                  />
+                </label>
+                <label className="mt-3 flex items-start gap-3 rounded-[16px] border border-[#fecaca] bg-white px-4 py-3 text-sm font-medium text-[#7f1d1d]">
+                  <input
+                    type="checkbox"
+                    checked={deletionConfirmed}
+                    onChange={(event) => setDeletionConfirmed(event.target.checked)}
+                    className="mt-1"
+                  />
+                  <span>{t("myAccount.privacy.confirm")}</span>
+                </label>
+                <button
+                  type="submit"
+                  disabled={requestingDeletion || !deletionConfirmed}
+                  className="mt-4 rounded-full bg-[#991b1b] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#7f1d1d] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {requestingDeletion ? t("myAccount.privacy.requesting") : t("myAccount.privacy.requestButton")}
                 </button>
               </form>
             </div>

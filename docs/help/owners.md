@@ -19,7 +19,9 @@ Admins control what maintenance flags are visible to owners. Owners may see issu
 
 ## My Account
 
-Owners can open My Account from the top portal bar beside the language selector. My Account shows the signed-in email, role, and account ID. Owners can update their full name, phone number, or password from there.
+Owners can open My Account from the top portal bar. My Account shows the signed-in email, role, and account ID. Owners can update their full name, phone number, password, or preferred language from there.
+
+My Account also lets owners request deletion of their account and personal information. This creates a request for review rather than instantly deleting operational records. Some invoice, property, legal, security, or business records may need to be retained.
 
 ## Common Owner Questions
 
