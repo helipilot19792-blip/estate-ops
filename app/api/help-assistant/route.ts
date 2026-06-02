@@ -42,7 +42,7 @@ async function loadHelpContext() {
   return documents.join("\n\n");
 }
 
-function pickLocalFallbackAnswer(question: string, helpContext: string) {
+function pickLocalFallbackAnswer(question: string, helpContext: string, locale = "en") {
   const terms = question
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, " ")
@@ -64,11 +64,23 @@ function pickLocalFallbackAnswer(question: string, helpContext: string) {
     .trim()
     .slice(0, 850);
 
-  return [
-    "The AI service is not configured yet, but I found this in the help files:",
-    excerpt,
-    "Add OPENAI_API_KEY in Vercel production to turn on full AI answers.",
-  ].join("\n\n");
+  const fallbackCopy =
+    locale.startsWith("fr")
+      ? {
+          intro: "Le service IA n'est pas encore configure, mais j'ai trouve ceci dans les fichiers d'aide:",
+          outro: "Ajoutez OPENAI_API_KEY dans Vercel Production pour activer les reponses IA completes.",
+        }
+      : locale.startsWith("es")
+        ? {
+            intro: "El servicio de IA aun no esta configurado, pero encontre esto en los archivos de ayuda:",
+            outro: "Agrega OPENAI_API_KEY en Vercel Production para activar respuestas completas de IA.",
+          }
+        : {
+            intro: "The AI service is not configured yet, but I found this in the help files:",
+            outro: "Add OPENAI_API_KEY in Vercel production to turn on full AI answers.",
+          };
+
+  return [fallbackCopy.intro, excerpt, fallbackCopy.outro].join("\n\n");
 }
 
 function extractOutputText(data: any) {
@@ -92,6 +104,7 @@ export async function POST(request: NextRequest) {
     const question = normalizeQuestion(body?.question);
     const history = normalizeHistory(body?.history);
     const page = String(body?.page || "unknown").trim().slice(0, 80);
+    const locale = String(body?.locale || "en").trim().slice(0, 8);
 
     if (!question) {
       return NextResponse.json({ ok: false, error: "Ask a question first." }, { status: 400 });
@@ -104,7 +117,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         ok: true,
         configured: false,
-        answer: pickLocalFallbackAnswer(question, helpContext),
+        answer: pickLocalFallbackAnswer(question, helpContext, locale),
       });
     }
 
@@ -115,13 +128,13 @@ export async function POST(request: NextRequest) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: process.env.OPENAI_HELP_MODEL || "gpt-4.1-mini",
+        model: process.env.OPENAI_HELP_MODEL || "gpt-5-mini",
         instructions:
-          "You are the GuleraOS / EstateOS in-app help assistant. Answer using only the provided help files and conversation context. Be concise, practical, and honest. If the help files do not cover the answer, say that and suggest the closest place to check in the app. Do not invent app features.",
+          "You are the GuleraOS / EstateOS in-app help assistant. Answer using only the provided help files and conversation context. Be concise, practical, and honest. If the help files do not cover the answer, say that and suggest the closest place to check in the app. Do not invent app features. Answer in the requested locale when possible.",
         input: [
           {
             role: "developer",
-            content: `Current page: ${page}\n\nHelp files:\n${helpContext}`,
+            content: `Current page: ${page}\nRequested locale: ${locale}\n\nHelp files:\n${helpContext}`,
           },
           ...history.map((message) => ({
             role: message.role,
@@ -162,4 +175,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

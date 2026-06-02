@@ -18,6 +18,14 @@ The admin portal is the operations control center for GuleraOS / EstateOS.
 - Backup: Export center.
 - Team: Users, invites, cleaner accounts, grounds accounts, and admin access.
 
+## Language Switching
+
+Use the language selector to switch the portal between English, French, and Spanish. The admin navigation, workspace shell, support modal, and AI Helper are multilingual. Deeper admin sections are being translated in careful phases, so some feature-specific labels may still appear in English until their section is completed.
+
+## AI Helper
+
+The AI Helper opens from the admin header and answers questions about how to use GuleraOS / EstateOS. It uses the help files as its source of truth and does not inspect live customer records. For current data, open the relevant admin area such as Properties, Jobs, Invoices, Chat, Maintenance, or Notifications.
+
 ## Setup Order
 
 1. Create the property.
@@ -44,4 +52,3 @@ Users enable alerts from their own portal. Admins should check the notification 
 ### How do chat notifications work?
 
 Chat messages are saved in the portal first. If the recipient has alerts enabled and a valid push subscription, the app attempts to send a push notification. If push fails, the chat message still exists in the portal.
-

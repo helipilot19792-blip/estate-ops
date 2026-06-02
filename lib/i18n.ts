@@ -32,6 +32,23 @@ export const dictionaries = {
       body:
         "Gulera OS uses essential cookies and local browser storage for login, security, and core portal features. If analytics or optional tools are added during testing, they should only run after consent.",
     },
+    helpAssistant: {
+      title: "AI Helper",
+      heading: "Ask about this app",
+      intro: "Ask me how to use GuleraOS. I can help with setup, jobs, chat, invoices, alerts, and portals.",
+      close: "Close AI helper",
+      thinking: "Thinking...",
+      inputPlaceholder: "Ask a question...",
+      send: "Send AI helper question",
+      unavailable: "The helper could not answer right now.",
+      tryAgain: "The helper could not answer right now. Try again in a moment.",
+      starters: {
+        property: "How do I set up a new property?",
+        stranded: "Why would a job be stranded?",
+        alerts: "How do push alerts work?",
+        invoices: "Where do owners see invoices?",
+      },
+    },
     admin: {
       navigation: {
         ariaLabel: "Admin sections",
@@ -510,6 +527,23 @@ export const dictionaries = {
     },
   },
   fr: {
+    helpAssistant: {
+      title: "Assistant IA",
+      heading: "Questions sur cette app",
+      intro: "Demandez-moi comment utiliser GuleraOS. Je peux aider avec la configuration, les travaux, le chat, les factures, les alertes et les portails.",
+      close: "Fermer l'assistant IA",
+      thinking: "Reflexion...",
+      inputPlaceholder: "Posez une question...",
+      send: "Envoyer la question a l'assistant IA",
+      unavailable: "L'assistant ne peut pas repondre pour le moment.",
+      tryAgain: "L'assistant ne peut pas repondre pour le moment. Reessayez dans un instant.",
+      starters: {
+        property: "Comment configurer une nouvelle propriete?",
+        stranded: "Pourquoi un travail serait-il bloque?",
+        alerts: "Comment fonctionnent les alertes push?",
+        invoices: "Ou les proprietaires voient-ils les factures?",
+      },
+    },
     admin: {
       navigation: {
         ariaLabel: "Sections admin",
@@ -900,6 +934,23 @@ export const dictionaries = {
     },
   },
   es: {
+    helpAssistant: {
+      title: "Asistente IA",
+      heading: "Pregunta sobre esta app",
+      intro: "Preguntame como usar GuleraOS. Puedo ayudar con configuracion, trabajos, chat, facturas, alertas y portales.",
+      close: "Cerrar asistente IA",
+      thinking: "Pensando...",
+      inputPlaceholder: "Haz una pregunta...",
+      send: "Enviar pregunta al asistente IA",
+      unavailable: "El asistente no puede responder ahora.",
+      tryAgain: "El asistente no puede responder ahora. Intenta de nuevo en un momento.",
+      starters: {
+        property: "Como configuro una nueva propiedad?",
+        stranded: "Por que un trabajo quedaria varado?",
+        alerts: "Como funcionan las alertas push?",
+        invoices: "Donde ven las facturas los propietarios?",
+      },
+    },
     admin: {
       navigation: {
         ariaLabel: "Secciones de admin",
