@@ -432,6 +432,7 @@ export async function sendJobOfferDigestEmailForSlots(
   const recipientBundles = new Map<string, { recipient: Recipient; bundles: SlotBundle[] }>();
   const bundleBySlotId = new Map<string, SlotBundle>();
   let skipped = 0;
+  let pushSent = 0;
   const errors: string[] = [];
 
   for (const slotId of uniqueSlotIds) {
@@ -456,19 +457,24 @@ export async function sendJobOfferDigestEmailForSlots(
         continue;
       }
 
-      if (bundle.offerEmailSentAt) {
+      const needsEmail = !bundle.offerEmailSentAt;
+      const needsPush = !bundle.offerPushSentAt;
+
+      if (!needsEmail && !needsPush) {
         skipped += 1;
         continue;
       }
 
       bundleBySlotId.set(slotId, bundle);
 
-      for (const recipient of bundle.recipients) {
-        const key = recipient.email.trim().toLowerCase();
-        if (!key) continue;
-        const row = recipientBundles.get(key) || { recipient, bundles: [] };
-        row.bundles.push(bundle);
-        recipientBundles.set(key, row);
+      if (needsEmail) {
+        for (const recipient of bundle.recipients) {
+          const key = recipient.email.trim().toLowerCase();
+          if (!key) continue;
+          const row = recipientBundles.get(key) || { recipient, bundles: [] };
+          row.bundles.push(bundle);
+          recipientBundles.set(key, row);
+        }
       }
     } catch (error) {
       errors.push(error instanceof Error ? error.message : "Unknown digest notification error.");
@@ -516,8 +522,26 @@ export async function sendJobOfferDigestEmailForSlots(
     await markNotificationSent(service, kind, slotId, "offer", "email");
   }
 
+  for (const bundle of bundleBySlotId.values()) {
+    if (bundle.offerPushSentAt) continue;
+
+    try {
+      const result = await sendNotificationPush(bundle, "offer", origin);
+      if (result.failures.length > 0) {
+        errors.push(...result.failures);
+      }
+      if (result.successCount > 0) {
+        await markNotificationSent(service, kind, bundle.slotId, "offer", "push");
+        pushSent += result.successCount;
+      }
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : "Unknown digest push notification error.");
+    }
+  }
+
   return {
     sent,
+    pushSent,
     skipped,
     digestsSent: sent,
     slotsMarkedSent: slotsWithSuccessfulEmail.size,
@@ -1155,7 +1179,7 @@ async function runOfferDigestEmailSweep(kind: JobNotificationKind, origin: strin
 
   const slotIds = (rows ?? []).map((row: any) => row.id).filter(Boolean);
   if (slotIds.length === 0) {
-    return { sent: 0, skipped: 0, digestsSent: 0, slotsMarkedSent: 0, errors: [] as string[], considered: 0 };
+    return { sent: 0, pushSent: 0, skipped: 0, digestsSent: 0, slotsMarkedSent: 0, errors: [] as string[], considered: 0 };
   }
 
   return sendJobOfferDigestEmailForSlots(kind, slotIds, origin);
