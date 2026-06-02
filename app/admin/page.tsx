@@ -18892,102 +18892,138 @@ This removes its linked members and deletes the grounds account.`
                   <div className="rounded-[22px] border border-[#bfdded] bg-white p-4">
                     <h4 className="text-sm font-semibold text-[#17345f]">WiFi</h4>
                     <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                      <input
-                        value={knowledgeWifiNetwork}
-                        onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeWifiNetwork, e.target.value)}
-                        placeholder="Network name"
-                        className="w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
-                      />
-                      <input
-                        value={knowledgeWifiPassword}
-                        onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeWifiPassword, e.target.value)}
-                        placeholder="Password"
-                        className="w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
-                      />
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-[#526777]">Network name</span>
+                        <input
+                          value={knowledgeWifiNetwork}
+                          onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeWifiNetwork, e.target.value)}
+                          placeholder="Network name"
+                          className="w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-[#526777]">Password</span>
+                        <input
+                          value={knowledgeWifiPassword}
+                          onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeWifiPassword, e.target.value)}
+                          placeholder="Password"
+                          className="w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
+                        />
+                      </label>
                     </div>
                   </div>
 
                   <div className="rounded-[22px] border border-[#bfdded] bg-white p-4">
                     <h4 className="text-sm font-semibold text-[#17345f]">Access</h4>
                     <div className="mt-3 space-y-3">
-                      <input
-                        value={knowledgeLockboxLocation}
-                        onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeLockboxLocation, e.target.value)}
-                        placeholder="Lockbox, key, or entry location"
-                        className="w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
-                      />
-                      <textarea
-                        value={knowledgeAccessSummary}
-                        onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeAccessSummary, e.target.value)}
-                        placeholder="Access summary, parking, gates, elevator, staff entry notes..."
-                        className="min-h-[120px] w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
-                      />
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-[#526777]">Lockbox or entry location</span>
+                        <input
+                          value={knowledgeLockboxLocation}
+                          onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeLockboxLocation, e.target.value)}
+                          placeholder="Lockbox, key, or entry location"
+                          className="w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-[#526777]">Access summary</span>
+                        <textarea
+                          value={knowledgeAccessSummary}
+                          onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeAccessSummary, e.target.value)}
+                          placeholder="Parking, gates, elevator, staff entry notes..."
+                          className="min-h-[120px] w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
+                        />
+                      </label>
                     </div>
                   </div>
 
                   <div className="rounded-[22px] border border-[#bfdded] bg-white p-4">
                     <h4 className="text-sm font-semibold text-[#17345f]">Utilities</h4>
                     <div className="mt-3 space-y-3">
-                      <input
-                        value={knowledgeWaterShutoffLocation}
-                        onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeWaterShutoffLocation, e.target.value)}
-                        placeholder="Water shutoff location"
-                        className="w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
-                      />
-                      <input
-                        value={knowledgeElectricalPanelLocation}
-                        onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeElectricalPanelLocation, e.target.value)}
-                        placeholder="Electrical panel / breaker location"
-                        className="w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
-                      />
-                      <textarea
-                        value={knowledgeEmergencyNotes}
-                        onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeEmergencyNotes, e.target.value)}
-                        placeholder="Emergency notes, shutoff warnings, known urgent procedures..."
-                        className="min-h-[110px] w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
-                      />
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-[#526777]">Water shutoff location</span>
+                        <input
+                          value={knowledgeWaterShutoffLocation}
+                          onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeWaterShutoffLocation, e.target.value)}
+                          placeholder="Water shutoff location"
+                          className="w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-[#526777]">Electrical panel / breaker location</span>
+                        <input
+                          value={knowledgeElectricalPanelLocation}
+                          onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeElectricalPanelLocation, e.target.value)}
+                          placeholder="Electrical panel / breaker location"
+                          className="w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-[#526777]">Emergency notes</span>
+                        <textarea
+                          value={knowledgeEmergencyNotes}
+                          onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeEmergencyNotes, e.target.value)}
+                          placeholder="Shutoff warnings, known urgent procedures..."
+                          className="min-h-[110px] w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
+                        />
+                      </label>
                     </div>
                   </div>
 
                   <div className="rounded-[22px] border border-[#bfdded] bg-white p-4">
                     <h4 className="text-sm font-semibold text-[#17345f]">Operations Notes</h4>
                     <div className="mt-3 space-y-3">
-                      <textarea
-                        value={knowledgeTrashInstructions}
-                        onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeTrashInstructions, e.target.value)}
-                        placeholder="Trash, recycling, bin location, pickup quirks..."
-                        className="min-h-[95px] w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
-                      />
-                      <textarea
-                        value={knowledgeOwnerPreferences}
-                        onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeOwnerPreferences, e.target.value)}
-                        placeholder="Owner preferences, approvals, things they care about..."
-                        className="min-h-[95px] w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
-                      />
-                      <textarea
-                        value={knowledgeCleanerNotes}
-                        onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeCleanerNotes, e.target.value)}
-                        placeholder="Cleaner notes, recurring issues, reset checklist details..."
-                        className="min-h-[95px] w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
-                      />
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-[#526777]">Trash instructions</span>
+                        <textarea
+                          value={knowledgeTrashInstructions}
+                          onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeTrashInstructions, e.target.value)}
+                          placeholder="Trash, recycling, bin location, pickup quirks..."
+                          className="min-h-[95px] w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-[#526777]">Owner preferences</span>
+                        <textarea
+                          value={knowledgeOwnerPreferences}
+                          onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeOwnerPreferences, e.target.value)}
+                          placeholder="Approvals, things they care about..."
+                          className="min-h-[95px] w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-[#526777]">Cleaner notes</span>
+                        <textarea
+                          value={knowledgeCleanerNotes}
+                          onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeCleanerNotes, e.target.value)}
+                          placeholder="Recurring issues, reset checklist details..."
+                          className="min-h-[95px] w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
+                        />
+                      </label>
                     </div>
                   </div>
 
                   <div className="rounded-[22px] border border-[#bfdded] bg-white p-4 xl:col-span-2">
                     <h4 className="text-sm font-semibold text-[#17345f]">Maintenance and Appliances</h4>
                     <div className="mt-3 grid gap-3 lg:grid-cols-2">
-                      <textarea
-                        value={knowledgeMaintenanceNotes}
-                        onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeMaintenanceNotes, e.target.value)}
-                        placeholder="Maintenance history, recurring problems, property quirks..."
-                        className="min-h-[120px] w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
-                      />
-                      <textarea
-                        value={knowledgeApplianceNotes}
-                        onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeApplianceNotes, e.target.value)}
-                        placeholder="Appliance models, reset steps, filter sizes, manual notes..."
-                        className="min-h-[120px] w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
-                      />
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-[#526777]">Maintenance notes</span>
+                        <textarea
+                          value={knowledgeMaintenanceNotes}
+                          onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeMaintenanceNotes, e.target.value)}
+                          placeholder="Maintenance history, recurring problems, property quirks..."
+                          className="min-h-[120px] w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-[#526777]">Appliance notes</span>
+                        <textarea
+                          value={knowledgeApplianceNotes}
+                          onChange={(e) => updatePropertyKnowledgeDraft(setKnowledgeApplianceNotes, e.target.value)}
+                          placeholder="Appliance models, reset steps, filter sizes, manual notes..."
+                          className="min-h-[120px] w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
+                        />
+                      </label>
                     </div>
                   </div>
                 </div>
