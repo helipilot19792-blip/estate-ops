@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { usePathname } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useI18n } from "@/components/i18n-provider";
 import { LOCALE_LABELS, SUPPORTED_LOCALES, type Locale } from "@/lib/i18n";
@@ -23,9 +24,31 @@ type AccountPayload = {
     email: string | null;
   };
   profile?: AccountProfile | null;
+  identity?: AccountIdentity | null;
 };
 
+type AccountIdentity = {
+  source: "profile" | "owner_account" | "cleaner_account" | "grounds_account";
+  portal: string;
+  id: string;
+  role: string | null;
+  email: string | null;
+  full_name: string | null;
+  phone: string | null;
+  organization_id?: string | null;
+};
+
+function getPortalFromPath(pathname: string): string {
+  if (pathname.startsWith("/owner")) return "owner";
+  if (pathname.startsWith("/cleaner")) return "cleaner";
+  if (pathname.startsWith("/grounds")) return "grounds";
+  if (pathname.startsWith("/admin")) return "admin";
+  if (pathname.startsWith("/platform")) return "platform";
+  return "account";
+}
+
 export default function MyAccountControl() {
+  const pathname = usePathname();
   const { locale, setLocale, t } = useI18n();
   const [signedIn, setSignedIn] = useState(false);
   const [open, setOpen] = useState(false);
@@ -33,6 +56,7 @@ export default function MyAccountControl() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
   const [profile, setProfile] = useState<AccountProfile | null>(null);
+  const [identity, setIdentity] = useState<AccountIdentity | null>(null);
   const [authEmail, setAuthEmail] = useState("");
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
@@ -45,9 +69,10 @@ export default function MyAccountControl() {
   const [error, setError] = useState("");
 
   const canSaveProfile = useMemo(
-    () => !savingProfile && !loading && (fullName.trim() !== (profile?.full_name || "") || phone.trim() !== (profile?.phone || "")),
-    [fullName, loading, phone, profile?.full_name, profile?.phone, savingProfile]
+    () => !savingProfile && !loading && (fullName.trim() !== (identity?.full_name || "") || phone.trim() !== (identity?.phone || "")),
+    [fullName, identity?.full_name, identity?.phone, loading, phone, savingProfile]
   );
+  const portal = getPortalFromPath(pathname || "");
 
   useEffect(() => {
     let active = true;
@@ -63,6 +88,7 @@ export default function MyAccountControl() {
       if (!session) {
         setOpen(false);
         setProfile(null);
+        setIdentity(null);
         setAuthEmail("");
       }
     });
@@ -87,7 +113,7 @@ export default function MyAccountControl() {
         throw new Error(t("myAccount.errors.notSignedIn"));
       }
 
-      const response = await fetch("/api/my-account", {
+      const response = await fetch(`/api/my-account?portal=${encodeURIComponent(portal)}`, {
         headers: {
           Authorization: `Bearer ${session.access_token}`,
         },
@@ -99,9 +125,10 @@ export default function MyAccountControl() {
       }
 
       setProfile(data?.profile || null);
-      setAuthEmail(data?.user?.email || data?.profile?.email || "");
-      setFullName(data?.profile?.full_name || "");
-      setPhone(data?.profile?.phone || "");
+      setIdentity(data?.identity || null);
+      setAuthEmail(data?.identity?.email || data?.user?.email || data?.profile?.email || "");
+      setFullName(data?.identity?.full_name || data?.profile?.full_name || "");
+      setPhone(data?.identity?.phone || data?.profile?.phone || "");
     } catch (accountError) {
       setError(accountError instanceof Error ? accountError.message : t("myAccount.errors.loadFailed"));
     } finally {
@@ -138,6 +165,7 @@ export default function MyAccountControl() {
         body: JSON.stringify({
           fullName,
           phone,
+          portal,
         }),
       });
       const data = (await response.json().catch(() => null)) as AccountPayload | null;
@@ -147,8 +175,9 @@ export default function MyAccountControl() {
       }
 
       setProfile(data.profile);
-      setFullName(data.profile.full_name || "");
-      setPhone(data.profile.phone || "");
+      setIdentity(data.identity || null);
+      setFullName(data.identity?.full_name || data.profile.full_name || "");
+      setPhone(data.identity?.phone || data.profile.phone || "");
       setMessage(t("myAccount.saved"));
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : t("myAccount.errors.saveFailed"));
@@ -287,13 +316,13 @@ export default function MyAccountControl() {
                   <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
                     {t("myAccount.role")}
                   </div>
-                  <div className="mt-1 text-sm font-semibold capitalize text-[#241c15]">{profile?.role || "-"}</div>
+                  <div className="mt-1 text-sm font-semibold capitalize text-[#241c15]">{identity?.role || profile?.role || "-"}</div>
                 </div>
                 <div className="rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3">
                   <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
                     {t("myAccount.accountId")}
                   </div>
-                  <div className="mt-1 truncate text-sm font-semibold text-[#241c15]">{profile?.id || "-"}</div>
+                  <div className="mt-1 truncate text-sm font-semibold text-[#241c15]">{identity?.id || profile?.id || "-"}</div>
                 </div>
               </div>
 
