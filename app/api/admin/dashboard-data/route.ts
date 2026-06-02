@@ -212,6 +212,7 @@ export async function GET(request: Request) {
       strandedJobsRes,
       accessRowsRes,
       sopsRes,
+      propertyVendorsRes,
       ownerPropertyAccessRes,
       propertyCalendarsRes,
       maintenanceFlagImagesRes,
@@ -249,6 +250,9 @@ export async function GET(request: Request) {
         : emptyResult(),
       propertyIds.length > 0
         ? serviceClient.from("property_sops").select("*").in("property_id", propertyIds).order("created_at", { ascending: false })
+        : emptyResult(),
+      propertyIds.length > 0
+        ? serviceClient.from("property_vendors").select("*").in("property_id", propertyIds).order("vendor_name", { ascending: true })
         : emptyResult(),
       ownerAccountIds.length > 0
         ? serviceClient.from("owner_property_access").select("*").in("owner_account_id", ownerAccountIds).order("created_at", { ascending: false })
@@ -315,6 +319,7 @@ export async function GET(request: Request) {
         strandedJobs: strandedJobsRes.data ?? [],
         accessRows: accessRowsRes.data ?? [],
         sops: sopsRes.data ?? [],
+        propertyVendors: propertyVendorsRes.error && isOptionalTableError(propertyVendorsRes.error) ? [] : propertyVendorsRes.data ?? [],
         sopImages: sopImagesRes.data ?? [],
         documentVaultRows: documentVaultRes.error && isOptionalTableError(documentVaultRes.error) ? [] : documentVaultRes.data ?? [],
         profiles: profilesRes.data ?? [],

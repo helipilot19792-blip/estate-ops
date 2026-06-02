@@ -375,6 +375,23 @@ type SopImageRow = {
   created_at?: string | null;
 };
 
+type PropertyVendorRow = {
+  id: string;
+  organization_id: string;
+  property_id: string;
+  vendor_name: string;
+  category?: string | null;
+  contact_name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  website?: string | null;
+  emergency_available?: boolean | null;
+  preferred?: boolean | null;
+  notes?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
 type DocumentVaultRow = {
   id: string;
   organization_id: string;
@@ -531,7 +548,7 @@ type AdminSection =
   | "invoices";
 type PropertyEntryMode = "manual" | "airbnb";
 type PropertyWorkflowTab = "add" | "setup" | "directory" | "health";
-type PropertySetupTab = "overview" | "access" | "calendars" | "sops";
+type PropertySetupTab = "overview" | "access" | "calendars" | "vendors" | "sops";
 type JobWorkflowTab = "cleaning" | "grounds" | "active" | "reliability" | "notifications" | "exceptions";
 type InvoiceWorkflowTab = "create" | "running" | "existing" | "defaults" | "history";
 type InvoiceDocumentKind = "invoice" | "statement";
@@ -1214,6 +1231,7 @@ export default function AdminPage() {
   const [accessRows, setAccessRows] = useState<AccessRow[]>([]);
   const [sops, setSops] = useState<SopRow[]>([]);
   const [sopImages, setSopImages] = useState<SopImageRow[]>([]);
+  const [propertyVendors, setPropertyVendors] = useState<PropertyVendorRow[]>([]);
   const [documentVaultRows, setDocumentVaultRows] = useState<DocumentVaultRow[]>([]);
   const [profiles, setProfiles] = useState<ProfileRow[]>([]);
   const [ownerAccounts, setOwnerAccounts] = useState<OwnerAccountRow[]>([]);
@@ -1371,6 +1389,18 @@ export default function AdminPage() {
   const [uploadingPropertyCover, setUploadingPropertyCover] = useState(false);
   const [propertyCoverMessage, setPropertyCoverMessage] = useState("");
   const [propertyCoverError, setPropertyCoverError] = useState("");
+  const [editingPropertyVendorId, setEditingPropertyVendorId] = useState<string | null>(null);
+  const [savingPropertyVendor, setSavingPropertyVendor] = useState(false);
+  const [deletingPropertyVendorId, setDeletingPropertyVendorId] = useState<string | null>(null);
+  const [vendorName, setVendorName] = useState("");
+  const [vendorCategory, setVendorCategory] = useState("");
+  const [vendorContactName, setVendorContactName] = useState("");
+  const [vendorPhone, setVendorPhone] = useState("");
+  const [vendorEmail, setVendorEmail] = useState("");
+  const [vendorWebsite, setVendorWebsite] = useState("");
+  const [vendorEmergencyAvailable, setVendorEmergencyAvailable] = useState(false);
+  const [vendorPreferred, setVendorPreferred] = useState(true);
+  const [vendorNotes, setVendorNotes] = useState("");
   const [propertyUnitsNeeded, setPropertyUnitsNeeded] = useState("1");
   const [propertyUnitsStrict, setPropertyUnitsStrict] = useState(false);
   const [propertyShowTeamStatus, setPropertyShowTeamStatus] = useState(true);
@@ -1995,6 +2025,7 @@ export default function AdminPage() {
     setOwnerLinkTargetPropertyId("");
     setPropertyCoverMessage("");
     setPropertyCoverError("");
+    resetVendorForm();
   }, [selectedPropertyId]);
 
   useEffect(() => {
@@ -2192,6 +2223,7 @@ export default function AdminPage() {
     setAccessRows((data.accessRows ?? []) as AccessRow[]);
     setSops((data.sops ?? []) as SopRow[]);
     setSopImages((data.sopImages ?? []) as SopImageRow[]);
+    setPropertyVendors((data.propertyVendors ?? []) as PropertyVendorRow[]);
     setDocumentVaultRows((data.documentVaultRows ?? []) as DocumentVaultRow[]);
     setProfiles(
       ((data.profiles ?? []) as any[])
@@ -2370,6 +2402,7 @@ export default function AdminPage() {
       strandedJobsRes,
       accessRowsRes,
       sopsRes,
+      propertyVendorsRes,
       sopImagesRes,
       documentVaultRes,
       profilesRes,
@@ -2442,6 +2475,7 @@ export default function AdminPage() {
       supabase.from("admin_stranded_jobs").select("*").order("created_at", { ascending: true }),
       supabase.from("property_access").select("*"),
       supabase.from("property_sops").select("*").order("created_at", { ascending: false }),
+      supabase.from("property_vendors").select("*").order("vendor_name", { ascending: true }),
       supabase.from("property_sop_images").select("*").order("sort_order", { ascending: true }),
       supabase
         .from("document_vault_files")
@@ -2579,6 +2613,7 @@ export default function AdminPage() {
       strandedJobsRes,
       accessRowsRes,
       sopsRes,
+      propertyVendorsRes,
       sopImagesRes,
       documentVaultRes,
       profilesRes,
@@ -2609,6 +2644,7 @@ export default function AdminPage() {
         response !== invoiceSettingsRes &&
         response !== propertyInvoiceRatesRes &&
         response !== documentVaultRes &&
+        response !== propertyVendorsRes &&
         response !== propertyBookingEventsRes &&
         response !== staffJobStatusEventsRes &&
         response !== accountDeletionRequestsRes &&
@@ -2667,6 +2703,9 @@ export default function AdminPage() {
       loadedPropertyIds.has(rule.property_id)
     );
     const loadedSops = ((sopsRes.data ?? []) as SopRow[]).filter((sop) => loadedPropertyIds.has(sop.property_id));
+    const loadedPropertyVendors = propertyVendorsRes.error
+      ? []
+      : ((propertyVendorsRes.data ?? []) as PropertyVendorRow[]).filter((vendor) => loadedPropertyIds.has(vendor.property_id));
     const loadedSopIds = new Set(loadedSops.map((sop) => sop.id));
     const loadedSopImages = ((sopImagesRes.data ?? []) as SopImageRow[]).filter((image) => loadedSopIds.has(image.sop_id));
     const loadedMaintenanceFlagIds = new Set(((maintenanceFlagsRes.data ?? []) as MaintenanceFlagRow[]).map((flag) => flag.id));
@@ -2690,6 +2729,7 @@ export default function AdminPage() {
     setStrandedJobs(loadedStrandedJobs);
     setAccessRows(loadedAccessRows);
     setSops(loadedSops);
+    setPropertyVendors(loadedPropertyVendors);
     setSopImages(loadedSopImages);
     setDocumentVaultRows(
       documentVaultRes.error ? [] : ((documentVaultRes.data ?? []) as DocumentVaultRow[])
@@ -6331,6 +6371,143 @@ This removes its linked members and deletes the grounds account.`
     }
   }
 
+  function resetVendorForm() {
+    setEditingPropertyVendorId(null);
+    setVendorName("");
+    setVendorCategory("");
+    setVendorContactName("");
+    setVendorPhone("");
+    setVendorEmail("");
+    setVendorWebsite("");
+    setVendorEmergencyAvailable(false);
+    setVendorPreferred(true);
+    setVendorNotes("");
+  }
+
+  function editPropertyVendor(vendor: PropertyVendorRow) {
+    setEditingPropertyVendorId(vendor.id);
+    setVendorName(vendor.vendor_name || "");
+    setVendorCategory(vendor.category || "");
+    setVendorContactName(vendor.contact_name || "");
+    setVendorPhone(vendor.phone || "");
+    setVendorEmail(vendor.email || "");
+    setVendorWebsite(vendor.website || "");
+    setVendorEmergencyAvailable(Boolean(vendor.emergency_available));
+    setVendorPreferred(vendor.preferred !== false);
+    setVendorNotes(vendor.notes || "");
+    setPropertySetupTab("vendors");
+  }
+
+  async function savePropertyVendor() {
+    if (!selectedPropertyId || !currentOrganizationId) {
+      setError("Please select a property first.");
+      return;
+    }
+
+    if (!vendorName.trim()) {
+      setError("Vendor name is required.");
+      return;
+    }
+
+    setError("");
+    setActionMessage("");
+    setSavingPropertyVendor(true);
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        throw new Error("Could not verify your admin session.");
+      }
+
+      const response = await fetch("/api/admin/property-vendor", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          organizationId: currentOrganizationId,
+          propertyId: selectedPropertyId,
+          vendorId: editingPropertyVendorId,
+          vendorName,
+          category: vendorCategory,
+          contactName: vendorContactName,
+          phone: vendorPhone,
+          email: vendorEmail,
+          website: vendorWebsite,
+          emergencyAvailable: vendorEmergencyAvailable,
+          preferred: vendorPreferred,
+          notes: vendorNotes,
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || !payload?.ok || !payload?.vendor) {
+        throw new Error(payload?.error || "Could not save vendor.");
+      }
+
+      const savedVendor = payload.vendor as PropertyVendorRow;
+      setPropertyVendors((current) =>
+        current.some((vendor) => vendor.id === savedVendor.id)
+          ? current.map((vendor) => (vendor.id === savedVendor.id ? savedVendor : vendor))
+          : [...current, savedVendor].sort((a, b) => (a.vendor_name || "").localeCompare(b.vendor_name || ""))
+      );
+      resetVendorForm();
+      setActionMessage("Property vendor saved.");
+    } catch (err: any) {
+      setError(err?.message || "Could not save vendor.");
+    } finally {
+      setSavingPropertyVendor(false);
+    }
+  }
+
+  async function deletePropertyVendor(vendorId: string) {
+    if (!currentOrganizationId || !vendorId) return;
+
+    setError("");
+    setActionMessage("");
+    setDeletingPropertyVendorId(vendorId);
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        throw new Error("Could not verify your admin session.");
+      }
+
+      const params = new URLSearchParams({
+        organizationId: currentOrganizationId,
+        vendorId,
+      });
+      const response = await fetch(`/api/admin/property-vendor?${params.toString()}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || "Could not delete vendor.");
+      }
+
+      setPropertyVendors((current) => current.filter((vendor) => vendor.id !== vendorId));
+      if (editingPropertyVendorId === vendorId) resetVendorForm();
+      setActionMessage("Property vendor deleted.");
+    } catch (err: any) {
+      setError(err?.message || "Could not delete vendor.");
+    } finally {
+      setDeletingPropertyVendorId(null);
+    }
+  }
+
   async function addSop() {
     if (!selectedPropertyId) {
       setError("Please select a property first.");
@@ -7113,6 +7290,10 @@ This removes its linked members and deletes the grounds account.`
   const selectedSops = useMemo(
     () => sops.filter((x) => x.property_id === selectedPropertyId),
     [sops, selectedPropertyId]
+  );
+  const selectedPropertyVendors = useMemo(
+    () => propertyVendors.filter((vendor) => vendor.property_id === selectedPropertyId),
+    [propertyVendors, selectedPropertyId]
   );
 
   const maintenanceImagesByFlagId = useMemo(() => {
@@ -11571,12 +11752,14 @@ This removes its linked members and deletes the grounds account.`
         owner_invoice_events: ownerInvoiceEvents.length,
         staff_job_status_events: staffJobStatusEvents.length,
         account_deletion_requests: accountDeletionRequests.length,
+        property_vendors: propertyVendors.length,
         document_vault_files: documentVaultRows.length,
         maintenance_flags: maintenanceFlags.length,
       },
       data: {
         properties,
         property_access: accessRows,
+        property_vendors: propertyVendors,
         property_calendars: propertyCalendars,
         property_sops: sops,
         property_sop_images: sopImages,
@@ -17597,6 +17780,7 @@ This removes its linked members and deletes the grounds account.`
       { id: "overview", label: "Overview" },
       { id: "access", label: "Access" },
       { id: "calendars", label: "Calendars" },
+      { id: "vendors", label: "Vendors" },
       { id: "sops", label: "SOPs" },
     ];
 
@@ -17638,6 +17822,9 @@ This removes its linked members and deletes the grounds account.`
                     </span>
                     <span className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-medium text-[#6f6255]">
                       {selectedSops.length} SOP{selectedSops.length === 1 ? "" : "s"}
+                    </span>
+                    <span className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-medium text-[#6f6255]">
+                      {selectedPropertyVendors.length} vendor{selectedPropertyVendors.length === 1 ? "" : "s"}
                     </span>
                     <span className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-medium text-[#6f6255]">
                       {selectedPropertyOwnerEmail ? "Owner linked" : "No owner linked"}
@@ -18449,6 +18636,174 @@ This removes its linked members and deletes the grounds account.`
                   {importingBookingHistory ? (
                     <div className="mt-3 text-sm text-[#7f7263]">Importing booking history...</div>
                   ) : null}
+                </div>
+              </div>
+            ) : null}
+
+            {propertySetupTab === "vendors" ? (
+              <div className="mt-6 grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
+                <div className="rounded-[24px] border border-[#d7e6df] bg-[#f6fbf8] p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-lg font-semibold text-[#17382d]">
+                        {editingPropertyVendorId ? "Edit Vendor" : "Add Vendor"}
+                      </h3>
+                      <p className="mt-1 text-sm text-[#5e7469]">
+                        Trusted contractors and service contacts for this property.
+                      </p>
+                    </div>
+                    {editingPropertyVendorId ? (
+                      <button
+                        type="button"
+                        onClick={resetVendorForm}
+                        className="rounded-full border border-[#cfe4d9] bg-white px-3 py-1.5 text-xs font-semibold text-[#4f7c6b] transition hover:bg-[#fafffc]"
+                      >
+                        New vendor
+                      </button>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-4 space-y-3">
+                    <input
+                      value={vendorName}
+                      onChange={(e) => setVendorName(e.target.value)}
+                      placeholder="Vendor or company name"
+                      className="w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
+                    />
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <input
+                        value={vendorCategory}
+                        onChange={(e) => setVendorCategory(e.target.value)}
+                        placeholder="Trade/category"
+                        className="w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
+                      />
+                      <input
+                        value={vendorContactName}
+                        onChange={(e) => setVendorContactName(e.target.value)}
+                        placeholder="Contact person"
+                        className="w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
+                      />
+                      <input
+                        value={vendorPhone}
+                        onChange={(e) => setVendorPhone(e.target.value)}
+                        placeholder="Phone"
+                        className="w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
+                      />
+                      <input
+                        value={vendorEmail}
+                        onChange={(e) => setVendorEmail(e.target.value)}
+                        placeholder="Email"
+                        className="w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
+                      />
+                    </div>
+                    <input
+                      value={vendorWebsite}
+                      onChange={(e) => setVendorWebsite(e.target.value)}
+                      placeholder="Website"
+                      className="w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
+                    />
+                    <textarea
+                      value={vendorNotes}
+                      onChange={(e) => setVendorNotes(e.target.value)}
+                      placeholder="Property-specific notes, access context, owner approvals, after-hours rules..."
+                      className="min-h-[120px] w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
+                    />
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <label className="flex items-start gap-3 rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm font-medium text-[#17382d]">
+                        <input
+                          type="checkbox"
+                          checked={vendorPreferred}
+                          onChange={(e) => setVendorPreferred(e.target.checked)}
+                          className="mt-1"
+                        />
+                        Preferred or approved vendor
+                      </label>
+                      <label className="flex items-start gap-3 rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm font-medium text-[#17382d]">
+                        <input
+                          type="checkbox"
+                          checked={vendorEmergencyAvailable}
+                          onChange={(e) => setVendorEmergencyAvailable(e.target.checked)}
+                          className="mt-1"
+                        />
+                        Emergency availability
+                      </label>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void savePropertyVendor()}
+                      disabled={savingPropertyVendor}
+                      className="inline-flex items-center justify-center rounded-full bg-[#17382d] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#254d40] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {savingPropertyVendor ? "Saving..." : editingPropertyVendorId ? "Save vendor" : "Add vendor"}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="mb-3 text-lg font-semibold text-[#241c15]">Trusted Vendors</h3>
+                  <div className="space-y-4">
+                    {selectedPropertyVendors.length === 0 ? (
+                      <div className="rounded-[24px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-5 py-6 text-sm text-[#8a7b68]">
+                        No vendors saved for this property yet.
+                      </div>
+                    ) : null}
+
+                    {selectedPropertyVendors.map((vendor) => (
+                      <div key={vendor.id} className="rounded-[26px] border border-[#eadfce] bg-white p-4 shadow-sm">
+                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h4 className="text-base font-semibold text-[#241c15]">{vendor.vendor_name}</h4>
+                              {vendor.category ? (
+                                <span className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-2.5 py-0.5 text-xs font-semibold text-[#6f6255]">
+                                  {vendor.category}
+                                </span>
+                              ) : null}
+                              {vendor.preferred !== false ? (
+                                <span className="rounded-full border border-[#bbdfc0] bg-[#f0fbf2] px-2.5 py-0.5 text-xs font-semibold text-[#236b30]">
+                                  Preferred
+                                </span>
+                              ) : null}
+                              {vendor.emergency_available ? (
+                                <span className="rounded-full border border-[#f1cf8f] bg-[#fff8e8] px-2.5 py-0.5 text-xs font-semibold text-[#8a6112]">
+                                  Emergency
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="mt-2 grid gap-1 text-sm text-[#6f6255]">
+                              {vendor.contact_name ? <div>Contact: {vendor.contact_name}</div> : null}
+                              {vendor.phone ? <div>Phone: {vendor.phone}</div> : null}
+                              {vendor.email ? <div className="break-all">Email: {vendor.email}</div> : null}
+                              {vendor.website ? <div className="break-all">Website: {vendor.website}</div> : null}
+                            </div>
+                            {vendor.notes ? (
+                              <div className="mt-3 whitespace-pre-wrap rounded-[16px] border border-[#eadfce] bg-[#fcfaf7] px-3 py-2 text-sm leading-6 text-[#6f6255]">
+                                {vendor.notes}
+                              </div>
+                            ) : null}
+                          </div>
+
+                          <div className="flex shrink-0 flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => editPropertyVendor(vendor)}
+                              className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-medium text-[#5f5245] transition hover:bg-white"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void deletePropertyVendor(vendor.id)}
+                              disabled={deletingPropertyVendorId === vendor.id}
+                              className="rounded-full border border-[#e7c6c1] bg-white px-4 py-2 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff4f2] disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {deletingPropertyVendorId === vendor.id ? "Deleting..." : "Delete"}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             ) : null}
