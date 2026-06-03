@@ -1665,6 +1665,8 @@ export default function AdminPage() {
   const [nearbyGpsStatus, setNearbyGpsStatus] = useState<"idle" | "locating" | "ready" | "blocked">("idle");
   const [nearbyGpsError, setNearbyGpsError] = useState("");
   const [nearbySearch, setNearbySearch] = useState("");
+  const [showAllAccessProperties, setShowAllAccessProperties] = useState(false);
+  const [nearbyAccessCardCollapsed, setNearbyAccessCardCollapsed] = useState(false);
   const [revealedNearbyAccessId, setRevealedNearbyAccessId] = useState<string | null>(null);
 
   const [calendarRowsDraft, setCalendarRowsDraft] = useState<
@@ -7775,9 +7777,7 @@ This removes its linked members and deletes the grounds account.`
     () => propertyKnowledgeImages.filter((image) => image.property_id === selectedPropertyId),
     [propertyKnowledgeImages, selectedPropertyId]
   );
-  const nearbyPropertyRows = useMemo(() => {
-    const search = nearbySearch.trim().toLowerCase();
-
+  const accessPropertyRows = useMemo(() => {
     return properties
       .map((property) => {
         const latitude = parseCoordinate(property.latitude);
@@ -7799,21 +7799,6 @@ This removes its linked members and deletes the grounds account.`
           ).length,
         };
       })
-      .filter((row) => {
-        if (!search) return true;
-        return [
-          row.property.name,
-          row.property.address,
-          row.access?.door_code,
-          row.access?.notes,
-          row.knowledge?.access_summary,
-          row.knowledge?.lockbox_location,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase()
-          .includes(search);
-      })
       .sort((a, b) => {
         if (a.distanceMeters !== null && b.distanceMeters !== null) {
           return a.distanceMeters - b.distanceMeters;
@@ -7824,17 +7809,37 @@ This removes its linked members and deletes the grounds account.`
           b.property.name || b.property.address || ""
         );
       });
-  }, [properties, accessRows, propertyKnowledgeRows, maintenanceFlags, nearbyPosition, nearbySearch]);
+  }, [properties, accessRows, propertyKnowledgeRows, maintenanceFlags, nearbyPosition]);
+
+  const nearbyPropertyRows = useMemo(() => {
+    const search = nearbySearch.trim().toLowerCase();
+    if (!search) return accessPropertyRows;
+
+    return accessPropertyRows.filter((row) =>
+      [
+        row.property.name,
+        row.property.address,
+        row.access?.door_code,
+        row.access?.notes,
+        row.knowledge?.access_summary,
+        row.knowledge?.lockbox_location,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(search)
+    );
+  }, [accessPropertyRows, nearbySearch]);
 
   const nearbyDetectedRows = useMemo(
     () =>
-      nearbyPropertyRows.filter(
+      accessPropertyRows.filter(
         (row) => row.distanceMeters !== null && row.distanceMeters <= 250
       ),
-    [nearbyPropertyRows]
+    [accessPropertyRows]
   );
 
-  const nearbyReferenceRows = nearbyDetectedRows.length > 0 ? nearbyDetectedRows : nearbyPropertyRows.slice(0, 6);
+  const closestNearbyPropertyRow = nearbyDetectedRows[0] || null;
 
   const maintenanceImagesByFlagId = useMemo(() => {
     const map: Record<string, MaintenanceFlagImageRow[]> = {};
@@ -15161,10 +15166,13 @@ This removes its linked members and deletes the grounds account.`
       (property) => parseCoordinate(property.latitude) !== null && parseCoordinate(property.longitude) !== null
     );
     const showingNearby = nearbyDetectedRows.length > 0;
+    const visibleAccessRows = showAllAccessProperties
+      ? nearbyPropertyRows
+      : closestNearbyPropertyRow && !nearbyAccessCardCollapsed
+        ? [closestNearbyPropertyRow]
+        : [];
     const title = showingNearby
-      ? nearbyDetectedRows.length === 1
-        ? "Nearby property"
-        : "Nearby properties"
+      ? "Nearby property"
       : "Property quick reference";
 
     return (
@@ -15177,8 +15185,10 @@ This removes its linked members and deletes the grounds account.`
             </div>
             <h2 className="mt-1 text-lg font-semibold text-[#17202a]">{title}</h2>
             <p className="mt-1 text-xs leading-5 text-[#64748b]">
-              {showingNearby
-                ? `${nearbyDetectedRows.length} match${nearbyDetectedRows.length === 1 ? "" : "es"} within 250 m.`
+              {showAllAccessProperties
+                ? "Search across all property access details."
+                : showingNearby
+                ? `${closestNearbyPropertyRow?.property.name || "Closest property"} is within 250 m.`
                 : nearbyGpsStatus === "ready"
                   ? "No saved property is within 250 m."
                   : hasCoordinates
@@ -15203,19 +15213,56 @@ This removes its linked members and deletes the grounds account.`
           </div>
         ) : null}
 
-        <label className="mt-3 flex items-center gap-2 rounded-[16px] border border-[#dbeafe] bg-white px-3 py-2">
-          <Search className="h-4 w-4 shrink-0 text-[#64748b]" aria-hidden="true" />
-          <input
-            value={nearbySearch}
-            onChange={(e) => setNearbySearch(e.target.value)}
-            placeholder="Search property, code, or access note"
-            className="min-w-0 flex-1 bg-transparent text-sm text-[#17202a] outline-none placeholder:text-[#94a3b8]"
-          />
-        </label>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {showingNearby && !showAllAccessProperties ? (
+            <button
+              type="button"
+              onClick={() => setNearbyAccessCardCollapsed((current) => !current)}
+              className="rounded-full border border-[#bfdbfe] bg-white px-3 py-1.5 text-xs font-semibold text-[#1d4ed8]"
+            >
+              {nearbyAccessCardCollapsed ? "Show nearby" : "Hide nearby"}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => {
+              setShowAllAccessProperties(true);
+              setNearbyAccessCardCollapsed(false);
+            }}
+            className="rounded-full border border-[#bfdbfe] bg-[#eff6ff] px-3 py-1.5 text-xs font-semibold text-[#1d4ed8]"
+          >
+            {showingNearby ? "Search others" : "Search property access"}
+          </button>
+          {showAllAccessProperties ? (
+            <button
+              type="button"
+              onClick={() => {
+                setShowAllAccessProperties(false);
+                setNearbySearch("");
+              }}
+              className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1.5 text-xs font-semibold text-[#5f5245]"
+            >
+              Close search
+            </button>
+          ) : null}
+        </div>
 
-        <div className="mt-3 space-y-3">
-          {nearbyReferenceRows.length > 0 ? (
-            nearbyReferenceRows.map((row) => {
+        {showAllAccessProperties ? (
+          <label className="mt-3 flex items-center gap-2 rounded-[16px] border border-[#dbeafe] bg-white px-3 py-2">
+            <Search className="h-4 w-4 shrink-0 text-[#64748b]" aria-hidden="true" />
+            <input
+              value={nearbySearch}
+              onChange={(e) => setNearbySearch(e.target.value)}
+              placeholder="Search property, code, or access note"
+              className="min-w-0 flex-1 bg-transparent text-sm text-[#17202a] outline-none placeholder:text-[#94a3b8]"
+            />
+          </label>
+        ) : null}
+
+        {visibleAccessRows.length > 0 || showAllAccessProperties ? (
+          <div className="mt-3 space-y-3">
+            {visibleAccessRows.length > 0 ? (
+              visibleAccessRows.map((row) => {
               const propertyLabel = row.property.name || row.property.address || "Unnamed property";
               const isRevealed = revealedNearbyAccessId === row.property.id;
               const doorCode = row.access?.door_code || "";
@@ -15326,12 +15373,13 @@ This removes its linked members and deletes the grounds account.`
                 </div>
               );
             })
-          ) : (
-            <div className="rounded-[18px] border border-dashed border-[#cbd5e1] bg-white px-4 py-4 text-sm text-[#64748b]">
-              No property matches found.
-            </div>
-          )}
-        </div>
+            ) : (
+              <div className="rounded-[18px] border border-dashed border-[#cbd5e1] bg-white px-4 py-4 text-sm text-[#64748b]">
+                No property matches found.
+              </div>
+            )}
+          </div>
+        ) : null}
       </section>
     );
   }
