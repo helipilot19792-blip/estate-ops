@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Copy, Mail, Phone } from "lucide-react";
+import { Check, Copy, Eye, EyeOff, Mail, MapPin, Navigation, Phone, Search } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { trackFeatureUsage } from "@/lib/feature-usage";
 import OnboardingChecklist, { type OnboardingStep } from "@/components/onboarding-checklist";
@@ -134,6 +134,8 @@ type Property = {
   garbage_rotation_anchor_date?: string | null;
   garbage_week_a_label?: string | null;
   garbage_week_b_label?: string | null;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
   default_checkin_time?: string | null;
   default_checkout_time?: string | null;
   default_cleaner_units_needed: number;
@@ -1144,6 +1146,33 @@ function buildPropertyAddress(parts: Array<string | null | undefined>) {
     .join(", ");
 }
 
+function parseCoordinate(value: string | number | null | undefined) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = typeof value === "number" ? value : Number(String(value).trim());
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatDistance(meters: number) {
+  if (meters < 1000) return `${Math.round(meters)} m away`;
+  return `${(meters / 1000).toFixed(1)} km away`;
+}
+
+function getDistanceMeters(
+  from: { latitude: number; longitude: number },
+  to: { latitude: number; longitude: number }
+) {
+  const earthRadiusMeters = 6371000;
+  const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
+  const lat1 = toRadians(from.latitude);
+  const lat2 = toRadians(to.latitude);
+  const deltaLat = toRadians(to.latitude - from.latitude);
+  const deltaLon = toRadians(to.longitude - from.longitude);
+  const a =
+    Math.sin(deltaLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLon / 2) ** 2;
+  return earthRadiusMeters * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 function parseAddressLine(addressLine: string) {
   const parts = addressLine
     .split(",")
@@ -1618,9 +1647,12 @@ export default function AdminPage() {
   const [selectedPropertyGarbageRotationAnchorDate, setSelectedPropertyGarbageRotationAnchorDate] = useState("");
   const [selectedPropertyGarbageWeekALabel, setSelectedPropertyGarbageWeekALabel] = useState("Garbage + recycling");
   const [selectedPropertyGarbageWeekBLabel, setSelectedPropertyGarbageWeekBLabel] = useState("Recycling only");
+  const [selectedPropertyLatitude, setSelectedPropertyLatitude] = useState("");
+  const [selectedPropertyLongitude, setSelectedPropertyLongitude] = useState("");
   const [selectedPropertyDefaultCheckinTime, setSelectedPropertyDefaultCheckinTime] = useState("");
   const [selectedPropertyDefaultCheckoutTime, setSelectedPropertyDefaultCheckoutTime] = useState("");
   const [savingSelectedPropertyManualDetails, setSavingSelectedPropertyManualDetails] = useState(false);
+  const [settingSelectedPropertyGps, setSettingSelectedPropertyGps] = useState(false);
   const [propertyManualDetailsDirty, setPropertyManualDetailsDirty] = useState(false);
   const [savingSelectedPropertyDefaults, setSavingSelectedPropertyDefaults] = useState(false);
   const [doorCode, setDoorCode] = useState("");
@@ -1628,6 +1660,12 @@ export default function AdminPage() {
   const [accessNotes, setAccessNotes] = useState("");
   const [accessDirty, setAccessDirty] = useState(false);
   const [propertyDefaultsDirty, setPropertyDefaultsDirty] = useState(false);
+  const [nearbyGpsEnabled, setNearbyGpsEnabled] = useState(false);
+  const [nearbyPosition, setNearbyPosition] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [nearbyGpsStatus, setNearbyGpsStatus] = useState<"idle" | "locating" | "ready" | "blocked">("idle");
+  const [nearbyGpsError, setNearbyGpsError] = useState("");
+  const [nearbySearch, setNearbySearch] = useState("");
+  const [revealedNearbyAccessId, setRevealedNearbyAccessId] = useState<string | null>(null);
 
   const [calendarRowsDraft, setCalendarRowsDraft] = useState<
     Array<{ id?: string; source: string; ical_url: string; is_active: boolean }>
@@ -2200,6 +2238,8 @@ export default function AdminPage() {
       setSelectedPropertyGarbageRotationAnchorDate("");
       setSelectedPropertyGarbageWeekALabel("Garbage + recycling");
       setSelectedPropertyGarbageWeekBLabel("Recycling only");
+      setSelectedPropertyLatitude("");
+      setSelectedPropertyLongitude("");
       applyPropertyKnowledgeDraft(EMPTY_PROPERTY_KNOWLEDGE);
       setAccessDirty(false);
       setPropertyDefaultsDirty(false);
@@ -2256,6 +2296,16 @@ export default function AdminPage() {
       setSelectedPropertyGarbageRotationAnchorDate(selectedProperty?.garbage_rotation_anchor_date || "");
       setSelectedPropertyGarbageWeekALabel(selectedProperty?.garbage_week_a_label || "Garbage + recycling");
       setSelectedPropertyGarbageWeekBLabel(selectedProperty?.garbage_week_b_label || "Recycling only");
+      setSelectedPropertyLatitude(
+        selectedProperty?.latitude !== null && selectedProperty?.latitude !== undefined
+          ? String(selectedProperty.latitude)
+          : ""
+      );
+      setSelectedPropertyLongitude(
+        selectedProperty?.longitude !== null && selectedProperty?.longitude !== undefined
+          ? String(selectedProperty.longitude)
+          : ""
+      );
       setSelectedPropertyDefaultCheckinTime(selectedProperty?.default_checkin_time || "");
       setSelectedPropertyDefaultCheckoutTime(selectedProperty?.default_checkout_time || "");
     }
@@ -2277,6 +2327,41 @@ export default function AdminPage() {
     propertyKnowledgeDirty,
     selectedPropertyOwnerDirty,
   ]);
+
+  useEffect(() => {
+    if (!nearbyGpsEnabled) return;
+
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setNearbyGpsStatus("blocked");
+      setNearbyGpsError("Location is not available on this device.");
+      return;
+    }
+
+    setNearbyGpsStatus("locating");
+    setNearbyGpsError("");
+
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        setNearbyPosition({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
+        setNearbyGpsStatus("ready");
+        setNearbyGpsError("");
+      },
+      (geoError) => {
+        setNearbyGpsStatus("blocked");
+        setNearbyGpsError(geoError.message || "Location permission was blocked.");
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 30000,
+        timeout: 12000,
+      }
+    );
+
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, [nearbyGpsEnabled]);
   async function handleSubmitSupportTicket() {
     if (!supportMessage.trim()) return;
 
@@ -5749,6 +5834,77 @@ This removes its linked members and deletes the grounds account.`
     }
   }
 
+  function enableNearbyGps() {
+    setNearbyGpsEnabled(true);
+    setNearbyGpsStatus("locating");
+    setNearbyGpsError("");
+  }
+
+  async function useCurrentLocationForSelectedProperty() {
+    if (!selectedPropertyId) {
+      setError("Select a property before setting GPS.");
+      return;
+    }
+
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setError("Location is not available on this device.");
+      return;
+    }
+
+    setSettingSelectedPropertyGps(true);
+    setError("");
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setSelectedPropertyLatitude(position.coords.latitude.toFixed(6));
+        setSelectedPropertyLongitude(position.coords.longitude.toFixed(6));
+        setPropertyManualDetailsDirty(true);
+        setNearbyPosition({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
+        setNearbyGpsEnabled(true);
+        setNearbyGpsStatus("ready");
+        setSettingSelectedPropertyGps(false);
+      },
+      (geoError) => {
+        setError(geoError.message || "Could not read current location.");
+        setSettingSelectedPropertyGps(false);
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 10000,
+        timeout: 12000,
+      }
+    );
+  }
+
+  async function copyNearbyText(value: string | null | undefined, label: string) {
+    const text = String(value || "").trim();
+    if (!text) return;
+
+    try {
+      await navigator.clipboard.writeText(text);
+      setActionMessage(`${label} copied.`);
+    } catch {
+      setActionMessage(`${label}: ${text}`);
+    }
+  }
+
+  function openPropertyAccessSetup(propertyId: string) {
+    setSelectedPropertyId(propertyId);
+    setPropertyWorkflowTab("setup");
+    setPropertySetupTab("access");
+    setActiveSection("properties");
+    setShowAdminNav(false);
+    window.setTimeout(() => {
+      document.getElementById("property-setup-section")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 80);
+  }
+
   async function releaseCleanerFutureJobs(account: CleanerAccount) {
     const displayName = account.display_name || account.email || "this cleaner account";
     const confirmed = window.confirm(
@@ -6032,6 +6188,8 @@ This removes its linked members and deletes the grounds account.`
           garbageRotationAnchorDate: savedAnchorDate,
           garbageWeekALabel: savedWeekALabel,
           garbageWeekBLabel: savedWeekBLabel,
+          latitude: selectedPropertyLatitude,
+          longitude: selectedPropertyLongitude,
           defaultCheckinTime: selectedPropertyDefaultCheckinTime,
           defaultCheckoutTime: selectedPropertyDefaultCheckoutTime,
         }),
@@ -6060,6 +6218,8 @@ This removes its linked members and deletes the grounds account.`
           ? `${message} Run supabase/add_property_inspections.sql first.`
           : message.includes("default_check")
             ? `${message} Run supabase/add_property_default_times.sql first.`
+          : message.includes("latitude") || message.includes("longitude")
+            ? `${message} Run supabase/add_property_location_coordinates.sql first.`
           : message
       );
     } finally {
@@ -7615,6 +7775,66 @@ This removes its linked members and deletes the grounds account.`
     () => propertyKnowledgeImages.filter((image) => image.property_id === selectedPropertyId),
     [propertyKnowledgeImages, selectedPropertyId]
   );
+  const nearbyPropertyRows = useMemo(() => {
+    const search = nearbySearch.trim().toLowerCase();
+
+    return properties
+      .map((property) => {
+        const latitude = parseCoordinate(property.latitude);
+        const longitude = parseCoordinate(property.longitude);
+        const distanceMeters =
+          nearbyPosition && latitude !== null && longitude !== null
+            ? getDistanceMeters(nearbyPosition, { latitude, longitude })
+            : null;
+
+        return {
+          property,
+          latitude,
+          longitude,
+          distanceMeters,
+          access: accessRows.find((row) => row.property_id === property.id) || null,
+          knowledge: propertyKnowledgeRows.find((row) => row.property_id === property.id) || null,
+          openFlagCount: maintenanceFlags.filter(
+            (flag) => flag.property_id === property.id && !isMaintenanceFlagResolved(flag)
+          ).length,
+        };
+      })
+      .filter((row) => {
+        if (!search) return true;
+        return [
+          row.property.name,
+          row.property.address,
+          row.access?.door_code,
+          row.access?.notes,
+          row.knowledge?.access_summary,
+          row.knowledge?.lockbox_location,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+          .includes(search);
+      })
+      .sort((a, b) => {
+        if (a.distanceMeters !== null && b.distanceMeters !== null) {
+          return a.distanceMeters - b.distanceMeters;
+        }
+        if (a.distanceMeters !== null) return -1;
+        if (b.distanceMeters !== null) return 1;
+        return (a.property.name || a.property.address || "").localeCompare(
+          b.property.name || b.property.address || ""
+        );
+      });
+  }, [properties, accessRows, propertyKnowledgeRows, maintenanceFlags, nearbyPosition, nearbySearch]);
+
+  const nearbyDetectedRows = useMemo(
+    () =>
+      nearbyPropertyRows.filter(
+        (row) => row.distanceMeters !== null && row.distanceMeters <= 250
+      ),
+    [nearbyPropertyRows]
+  );
+
+  const nearbyReferenceRows = nearbyDetectedRows.length > 0 ? nearbyDetectedRows : nearbyPropertyRows.slice(0, 6);
 
   const maintenanceImagesByFlagId = useMemo(() => {
     const map: Record<string, MaintenanceFlagImageRow[]> = {};
@@ -14936,6 +15156,186 @@ This removes its linked members and deletes the grounds account.`
     );
   }
 
+  function renderMobileNearbyPropertyQuickReference() {
+    const hasCoordinates = properties.some(
+      (property) => parseCoordinate(property.latitude) !== null && parseCoordinate(property.longitude) !== null
+    );
+    const showingNearby = nearbyDetectedRows.length > 0;
+    const title = showingNearby
+      ? nearbyDetectedRows.length === 1
+        ? "Nearby property"
+        : "Nearby properties"
+      : "Property quick reference";
+
+    return (
+      <section className="mb-4 rounded-[24px] border border-[#bfdbfe] bg-[#f8fbff] p-4 shadow-[0_18px_45px_rgba(15,23,42,0.06)] lg:hidden">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#2563eb]">
+              <MapPin className="h-4 w-4" aria-hidden="true" />
+              Field access
+            </div>
+            <h2 className="mt-1 text-lg font-semibold text-[#17202a]">{title}</h2>
+            <p className="mt-1 text-xs leading-5 text-[#64748b]">
+              {showingNearby
+                ? `${nearbyDetectedRows.length} match${nearbyDetectedRows.length === 1 ? "" : "es"} within 250 m.`
+                : nearbyGpsStatus === "ready"
+                  ? "No saved property is within 250 m."
+                  : hasCoordinates
+                    ? "Enable GPS to detect the closest saved property."
+                    : "Save GPS coordinates on a property to unlock nearby detection."}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={enableNearbyGps}
+            disabled={nearbyGpsStatus === "locating"}
+            className="inline-flex shrink-0 items-center justify-center gap-1 rounded-full border border-[#bfdbfe] bg-white px-3 py-2 text-xs font-semibold text-[#1d4ed8] shadow-sm transition hover:bg-[#eff6ff] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Navigation className="h-3.5 w-3.5" aria-hidden="true" />
+            {nearbyGpsStatus === "locating" ? "Locating" : nearbyGpsStatus === "ready" ? "Refresh" : "Enable"}
+          </button>
+        </div>
+
+        {nearbyGpsError ? (
+          <div className="mt-3 rounded-[16px] border border-[#fecaca] bg-[#fff1f2] px-3 py-2 text-xs leading-5 text-[#991b1b]">
+            {nearbyGpsError}
+          </div>
+        ) : null}
+
+        <label className="mt-3 flex items-center gap-2 rounded-[16px] border border-[#dbeafe] bg-white px-3 py-2">
+          <Search className="h-4 w-4 shrink-0 text-[#64748b]" aria-hidden="true" />
+          <input
+            value={nearbySearch}
+            onChange={(e) => setNearbySearch(e.target.value)}
+            placeholder="Search property, code, or access note"
+            className="min-w-0 flex-1 bg-transparent text-sm text-[#17202a] outline-none placeholder:text-[#94a3b8]"
+          />
+        </label>
+
+        <div className="mt-3 space-y-3">
+          {nearbyReferenceRows.length > 0 ? (
+            nearbyReferenceRows.map((row) => {
+              const propertyLabel = row.property.name || row.property.address || "Unnamed property";
+              const isRevealed = revealedNearbyAccessId === row.property.id;
+              const doorCode = row.access?.door_code || "";
+              const alarmCode = row.access?.alarm_code || "";
+              const mapHref =
+                row.latitude !== null && row.longitude !== null
+                  ? `https://www.google.com/maps/search/?api=1&query=${row.latitude},${row.longitude}`
+                  : row.property.address
+                    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(row.property.address)}`
+                    : "";
+              const detailRows = [
+                row.knowledge?.lockbox_location ? `Lockbox: ${row.knowledge.lockbox_location}` : "",
+                row.access?.notes ? `Access: ${row.access.notes}` : "",
+                row.knowledge?.access_summary ? `Entry: ${row.knowledge.access_summary}` : "",
+                row.property.wifi_network ? `WiFi: ${row.property.wifi_network}` : "",
+                row.property.garbage_notes ? `Waste: ${row.property.garbage_notes}` : "",
+                row.knowledge?.water_shutoff_location ? `Water shutoff: ${row.knowledge.water_shutoff_location}` : "",
+                row.knowledge?.electrical_panel_location ? `Panel: ${row.knowledge.electrical_panel_location}` : "",
+                row.knowledge?.emergency_notes ? `Emergency: ${row.knowledge.emergency_notes}` : "",
+              ].filter(Boolean);
+
+              return (
+                <div key={row.property.id} className="rounded-[20px] border border-[#dbeafe] bg-white p-3 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-base font-semibold text-[#17202a]">{propertyLabel}</div>
+                      <div className="mt-1 truncate text-xs text-[#64748b]">
+                        {row.distanceMeters !== null ? formatDistance(row.distanceMeters) : row.property.address || "No address saved"}
+                      </div>
+                    </div>
+                    {row.openFlagCount > 0 ? (
+                      <span className="shrink-0 rounded-full border border-[#fecaca] bg-[#fff1f2] px-2.5 py-1 text-[11px] font-semibold text-[#991b1b]">
+                        {row.openFlagCount} flag{row.openFlagCount === 1 ? "" : "s"}
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setRevealedNearbyAccessId(isRevealed ? null : row.property.id)}
+                      className="inline-flex items-center justify-center gap-2 rounded-[14px] border border-[#bfdbfe] bg-[#eff6ff] px-3 py-2 text-sm font-semibold text-[#1d4ed8]"
+                    >
+                      {isRevealed ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
+                      {isRevealed ? "Hide" : "Reveal"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openPropertyAccessSetup(row.property.id)}
+                      className="rounded-[14px] border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-2 text-sm font-semibold text-[#5f5245]"
+                    >
+                      Edit
+                    </button>
+                  </div>
+
+                  {isRevealed ? (
+                    <div className="mt-3 grid gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void copyNearbyText(doorCode, "Door code")}
+                        className="flex items-center justify-between gap-3 rounded-[14px] border border-[#dbeafe] bg-[#f8fbff] px-3 py-2 text-left"
+                      >
+                        <span>
+                          <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-[#64748b]">Door</span>
+                          <span className="block text-sm font-semibold text-[#17202a]">{doorCode || "Not saved"}</span>
+                        </span>
+                        {doorCode ? <Copy className="h-4 w-4 text-[#2563eb]" aria-hidden="true" /> : null}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void copyNearbyText(alarmCode, "Alarm code")}
+                        className="flex items-center justify-between gap-3 rounded-[14px] border border-[#dbeafe] bg-[#f8fbff] px-3 py-2 text-left"
+                      >
+                        <span>
+                          <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-[#64748b]">Alarm</span>
+                          <span className="block text-sm font-semibold text-[#17202a]">{alarmCode || "Not saved"}</span>
+                        </span>
+                        {alarmCode ? <Copy className="h-4 w-4 text-[#2563eb]" aria-hidden="true" /> : null}
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {detailRows.length > 0 ? (
+                    <div className="mt-3 space-y-1.5">
+                      {detailRows.slice(0, isRevealed ? 8 : 3).map((detail) => (
+                        <div key={detail} className="rounded-[12px] bg-[#f8fafc] px-3 py-2 text-xs leading-5 text-[#475569]">
+                          {detail}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mt-3 rounded-[12px] border border-dashed border-[#cbd5e1] bg-[#f8fafc] px-3 py-2 text-xs text-[#64748b]">
+                      No access notes saved yet.
+                    </div>
+                  )}
+
+                  {mapHref ? (
+                    <a
+                      href={mapHref}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-3 inline-flex items-center gap-2 rounded-full border border-[#bfdbfe] bg-white px-3 py-1.5 text-xs font-semibold text-[#1d4ed8]"
+                    >
+                      <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
+                      Map
+                    </a>
+                  ) : null}
+                </div>
+              );
+            })
+          ) : (
+            <div className="rounded-[18px] border border-dashed border-[#cbd5e1] bg-white px-4 py-4 text-sm text-[#64748b]">
+              No property matches found.
+            </div>
+          )}
+        </div>
+      </section>
+    );
+  }
+
   function renderAddPropertySection() {
     return (
       <section id="maintenance-flags-section" className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
@@ -15500,7 +15900,7 @@ This removes its linked members and deletes the grounds account.`
     ];
 
     return (
-      <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+      <section id="property-setup-section" className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
         <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8a7b68]">Property tools</p>
@@ -18474,6 +18874,47 @@ This removes its linked members and deletes the grounds account.`
                         placeholder="WiFi password"
                         className="w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
                       />
+                      <div className="rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 md:col-span-2">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <div className="text-sm font-semibold text-[#17382d]">GPS quick reference</div>
+                            <div className="mt-1 text-xs leading-5 text-[#5e7469]">
+                              Saved coordinates let mobile admin detect this property nearby.
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void useCurrentLocationForSelectedProperty()}
+                            disabled={settingSelectedPropertyGps}
+                            className="inline-flex items-center justify-center gap-2 rounded-full border border-[#b7d8c9] bg-[#f6fbf8] px-4 py-2 text-sm font-semibold text-[#245444] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <Navigation className="h-4 w-4" aria-hidden="true" />
+                            {settingSelectedPropertyGps ? "Locating..." : "Use current GPS"}
+                          </button>
+                        </div>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                          <input
+                            value={selectedPropertyLatitude}
+                            onChange={(e) => {
+                              setSelectedPropertyLatitude(e.target.value);
+                              setPropertyManualDetailsDirty(true);
+                            }}
+                            placeholder="Latitude"
+                            inputMode="decimal"
+                            className="w-full rounded-[14px] border border-[#cfe4d9] bg-[#f9fdfb] px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
+                          />
+                          <input
+                            value={selectedPropertyLongitude}
+                            onChange={(e) => {
+                              setSelectedPropertyLongitude(e.target.value);
+                              setPropertyManualDetailsDirty(true);
+                            }}
+                            placeholder="Longitude"
+                            inputMode="decimal"
+                            className="w-full rounded-[14px] border border-[#cfe4d9] bg-[#f9fdfb] px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
+                          />
+                        </div>
+                      </div>
                       <label className="text-xs font-medium text-[#5e7469]">
                         Default check-in time
                         <select
@@ -21652,6 +22093,8 @@ This removes its linked members and deletes the grounds account.`
           ) : null}
         </div>
         ) : null}
+
+        {renderMobileNearbyPropertyQuickReference()}
 
         {error ? (
           <div className="mb-6 rounded-[24px] border border-[#e7c6c1] bg-[#fff4f2] px-4 py-3 text-sm text-[#8a2e22] shadow-sm">

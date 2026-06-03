@@ -15,6 +15,14 @@ function normalizeOptionalTime(value: unknown) {
   return /^([01]\d|2[0-3]):[0-5]\d$/.test(text) ? text : "";
 }
 
+function normalizeOptionalCoordinate(value: unknown, min: number, max: number) {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  const parsed = Number(text);
+  if (!Number.isFinite(parsed) || parsed < min || parsed > max) return "";
+  return parsed;
+}
+
 export async function POST(request: NextRequest) {
   if (!supabaseUrl || !publicSupabaseKey || !serviceRoleKey) {
     return NextResponse.json(
@@ -101,12 +109,18 @@ export async function POST(request: NextRequest) {
       garbage_rotation_anchor_date: String(body?.garbageRotationAnchorDate || "").trim() || null,
       garbage_week_a_label: String(body?.garbageWeekALabel || "").trim() || "Garbage + recycling",
       garbage_week_b_label: String(body?.garbageWeekBLabel || "").trim() || "Recycling only",
+      latitude: normalizeOptionalCoordinate(body?.latitude, -90, 90),
+      longitude: normalizeOptionalCoordinate(body?.longitude, -180, 180),
       default_checkin_time: normalizeOptionalTime(body?.defaultCheckinTime),
       default_checkout_time: normalizeOptionalTime(body?.defaultCheckoutTime),
     };
 
     if (updatePayload.default_checkin_time === "" || updatePayload.default_checkout_time === "") {
       return NextResponse.json({ error: "Property check-in/check-out times must use HH:mm format." }, { status: 400 });
+    }
+
+    if (updatePayload.latitude === "" || updatePayload.longitude === "") {
+      return NextResponse.json({ error: "Property GPS coordinates must be valid latitude and longitude values." }, { status: 400 });
     }
 
     const { data: property, error: updateError } = await serviceClient

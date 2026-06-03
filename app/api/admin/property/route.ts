@@ -167,6 +167,14 @@ async function assertOrganizationCanAddProperty(serviceClient: any, organization
   }
 }
 
+function normalizeOptionalCoordinate(value: unknown, min: number, max: number) {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  const parsed = Number(text);
+  if (!Number.isFinite(parsed) || parsed < min || parsed > max) return "";
+  return parsed;
+}
+
 async function loadIdsByColumn(serviceClient: any, table: string, column: string, value: string) {
   const { data, error } = await serviceClient
     .from(table)
@@ -275,8 +283,17 @@ export async function POST(request: NextRequest) {
     await assertOrganizationCanAddProperty(serviceClient, organizationId);
 
     const defaultCleanerUnits = Number(body?.defaultCleanerUnitsNeeded || 1);
+    const latitude = normalizeOptionalCoordinate(body?.latitude, -90, 90);
+    const longitude = normalizeOptionalCoordinate(body?.longitude, -180, 180);
 
-    const propertyPayload = {
+    if (latitude === "" || longitude === "") {
+      return NextResponse.json(
+        { error: "Property GPS coordinates must be valid latitude and longitude values." },
+        { status: 400 }
+      );
+    }
+
+    const propertyPayload: Record<string, unknown> = {
       organization_id: organizationId,
       name,
       address: String(body?.address || "").trim() || null,
@@ -302,6 +319,9 @@ export async function POST(request: NextRequest) {
       cleaner_units_required_strict: !!body?.cleanerUnitsRequiredStrict,
       show_team_status_to_cleaners: body?.showTeamStatusToCleaners !== false,
     };
+
+    if (latitude !== null) propertyPayload.latitude = latitude;
+    if (longitude !== null) propertyPayload.longitude = longitude;
 
     const { data: property, error: propertyError } = await serviceClient
       .from("properties")
