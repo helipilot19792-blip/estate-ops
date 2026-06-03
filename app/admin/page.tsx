@@ -107,6 +107,7 @@ const QUIRKY_SYNCING_COPY = [
 const SHOW_ADMIN_TOP_BANNER = false;
 const MAINTENANCE_FLAG_SNOOZE_DAYS = 3;
 const SHOW_ADMIN_TOP_OVERVIEW = false;
+const ADMIN_NEARBY_GPS_AUTO_ENABLE_KEY = "estate_ops_admin_nearby_gps_auto_enabled";
 const PROPERTY_TIME_OPTIONS = Array.from({ length: 29 }, (_, index) => {
   const totalMinutes = 6 * 60 + index * 30;
   const hours = Math.floor(totalMinutes / 60);
@@ -2329,6 +2330,15 @@ export default function AdminPage() {
     propertyKnowledgeDirty,
     selectedPropertyOwnerDirty,
   ]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (nearbyGpsEnabled || nearbyGpsStatus !== "idle") return;
+    if (window.localStorage.getItem(ADMIN_NEARBY_GPS_AUTO_ENABLE_KEY) === "1") return;
+
+    window.localStorage.setItem(ADMIN_NEARBY_GPS_AUTO_ENABLE_KEY, "1");
+    setNearbyGpsEnabled(true);
+  }, [nearbyGpsEnabled, nearbyGpsStatus]);
 
   useEffect(() => {
     if (!nearbyGpsEnabled) return;
@@ -15191,20 +15201,23 @@ This removes its linked members and deletes the grounds account.`
                 ? `${closestNearbyPropertyRow?.property.name || "Closest property"} is within 250 m.`
                 : nearbyGpsStatus === "ready"
                   ? "No saved property is within 250 m."
+                  : nearbyGpsStatus === "locating"
+                    ? "Checking your location for nearby property access."
                   : hasCoordinates
-                    ? "Enable GPS to detect the closest saved property."
+                    ? "GPS is not enabled. Use search or enable location to detect the closest saved property."
                     : "Save GPS coordinates on a property to unlock nearby detection."}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={enableNearbyGps}
-            disabled={nearbyGpsStatus === "locating"}
-            className="inline-flex shrink-0 items-center justify-center gap-1 rounded-full border border-[#bfdbfe] bg-white px-3 py-2 text-xs font-semibold text-[#1d4ed8] shadow-sm transition hover:bg-[#eff6ff] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <Navigation className="h-3.5 w-3.5" aria-hidden="true" />
-            {nearbyGpsStatus === "locating" ? "Locating" : nearbyGpsStatus === "ready" ? "Refresh" : "Enable"}
-          </button>
+          {nearbyGpsStatus === "idle" || nearbyGpsStatus === "blocked" ? (
+            <button
+              type="button"
+              onClick={enableNearbyGps}
+              className="inline-flex shrink-0 items-center justify-center gap-1 rounded-full border border-[#bfdbfe] bg-white px-3 py-2 text-xs font-semibold text-[#1d4ed8] shadow-sm transition hover:bg-[#eff6ff]"
+            >
+              <Navigation className="h-3.5 w-3.5" aria-hidden="true" />
+              Enable GPS
+            </button>
+          ) : null}
         </div>
 
         {nearbyGpsError ? (
