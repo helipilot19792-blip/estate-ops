@@ -795,7 +795,7 @@ export default function LoginPage() {
                         </button>
                       </div>
 
-                      <div>
+                      <div className="md:col-span-2">
                         <div className="relative">
                           <input
                             className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 pr-12 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e] focus:bg-white"
@@ -819,7 +819,7 @@ export default function LoginPage() {
                         <p className="mt-1 px-1 text-xs text-[#7f7263]">{PASSWORD_REQUIREMENTS}</p>
                       </div>
 
-                      <div className="relative">
+                      <div className="relative md:col-span-2">
                         <input
                           className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 pr-12 text-sm outline-none transition placeholder:text-[#a39584] focus:border-[#b48d4e] focus:bg-white"
                           type={showSignupConfirmPassword ? "text" : "password"}
