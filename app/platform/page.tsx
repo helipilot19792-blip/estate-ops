@@ -77,6 +77,63 @@ type FeatureUsageTopFeature = {
   last_used_at: string | null;
 };
 
+const PORTAL_PREVIEW_LINKS = [
+  {
+    label: "Admin portal",
+    description: "Company admin workspace with properties, jobs, owners, billing, and operations.",
+    href: "/admin",
+    tone: "border-[#d8c7ab] bg-[#fffdf9] text-[#5f5245]",
+  },
+  {
+    label: "Cleaner portal",
+    description: "Cleaner desktop job view for assigned work, SOPs, access, and job status.",
+    href: "/cleaner",
+    tone: "border-[#cfe4cf] bg-[#f4fbf4] text-[#2f6b2f]",
+  },
+  {
+    label: "Cleaner mobile",
+    description: "Phone-first cleaner flow with GPS access, arrival, SOPs, issues, and finish actions.",
+    href: "/cleaner/mobile",
+    tone: "border-[#cfe4cf] bg-[#f4fbf4] text-[#2f6b2f]",
+  },
+  {
+    label: "Grounds portal",
+    description: "Grounds crew jobs, route-style assignments, and progress actions.",
+    href: "/grounds",
+    tone: "border-[#c9dff0] bg-[#f3f9fd] text-[#24506f]",
+  },
+  {
+    label: "Owner portal",
+    description: "Owner-facing statements, invoices, property visibility, and document access.",
+    href: "/owner",
+    tone: "border-[#ead7f0] bg-[#fcf7ff] text-[#6f3f7c]",
+  },
+  {
+    label: "Owner welcome",
+    description: "Owner onboarding and welcome experience.",
+    href: "/owner/welcome",
+    tone: "border-[#ead7f0] bg-[#fcf7ff] text-[#6f3f7c]",
+  },
+  {
+    label: "Login",
+    description: "Shared sign-in entry point.",
+    href: "/login",
+    tone: "border-[#e7ddd0] bg-white text-[#5f5245]",
+  },
+  {
+    label: "Invite flow",
+    description: "Invite acceptance and account creation route.",
+    href: "/invite",
+    tone: "border-[#e7ddd0] bg-white text-[#5f5245]",
+  },
+  {
+    label: "Help",
+    description: "Support/help page as customers see it.",
+    href: "/help",
+    tone: "border-[#e7ddd0] bg-white text-[#5f5245]",
+  },
+] as const;
+
 function getTrialDaysRemaining(trialEndsAt?: string | null) {
   if (!trialEndsAt) return null;
   const end = new Date(trialEndsAt);
@@ -343,6 +400,48 @@ export default function PlatformPage() {
             {statusMessage}
           </div>
         ) : null}
+
+        <section className="mt-6 rounded-[28px] border border-[#d8deea] bg-[linear-gradient(135deg,#f8fbff_0%,#fffdf8_100%)] p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#506586]">Portal Preview</div>
+              <h2 className="mt-2 text-xl font-semibold tracking-tight text-[#1f314d]">Live role portals</h2>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-[#617087]">
+                Open the actual current portal routes for each role. These are live pages, so code changes show here immediately after the app updates.
+              </p>
+            </div>
+            <span className="w-fit rounded-full border border-[#c9d5ea] bg-white/80 px-3 py-1 text-xs font-semibold text-[#3c5274]">
+              Current session
+            </span>
+          </div>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {PORTAL_PREVIEW_LINKS.map((link) => (
+              <a
+                key={link.href}
+                href={link.href}
+                target="_blank"
+                rel="noreferrer"
+                className={`group rounded-[22px] border px-4 py-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${link.tone}`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold">{link.label}</div>
+                    <div className="mt-2 text-xs leading-5 opacity-80">{link.description}</div>
+                  </div>
+                  <span className="shrink-0 rounded-full border border-current/20 px-2.5 py-1 text-[11px] font-semibold opacity-80 transition group-hover:opacity-100">
+                    Open
+                  </span>
+                </div>
+                <div className="mt-3 font-mono text-[11px] opacity-65">{link.href}</div>
+              </a>
+            ))}
+          </div>
+
+          <div className="mt-4 rounded-[18px] border border-[#c9d5ea] bg-white/70 px-4 py-3 text-xs leading-5 text-[#617087]">
+            These previews do not impersonate users. If a route requires a cleaner, grounds, owner, or admin account, it will show what your current session is allowed to see.
+          </div>
+        </section>
 
         <section className="mt-6 rounded-[28px] border border-[#d7e6df] bg-[linear-gradient(135deg,#f5fbf8_0%,#fffaf1_100%)] p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
