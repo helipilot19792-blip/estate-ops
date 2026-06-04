@@ -1362,6 +1362,7 @@ export default function AdminPage() {
   const [savingCalendars, setSavingCalendars] = useState(false);
   const [uploadingSop, setUploadingSop] = useState(false);
   const [jobsExpanded, setJobsExpanded] = useState(false);
+  const [expandedNotificationSlotIds, setExpandedNotificationSlotIds] = useState<Set<string>>(() => new Set());
   const [reassignSelections, setReassignSelections] = useState<Record<string, string>>({});
   const [reassigningJobId, setReassigningJobId] = useState<string | null>(null);
   const [highlightedJobId, setHighlightedJobId] = useState<string | null>(null);
@@ -9335,6 +9336,57 @@ This removes its linked members and deletes the grounds account.`
       return `Reminder: ${emailLabel} | ${pushLabel}`;
     }
     return "No active notice";
+  }
+
+  function toggleSlotNotificationDetails(slotId: string) {
+    setExpandedNotificationSlotIds((current) => {
+      const next = new Set(current);
+      if (next.has(slotId)) {
+        next.delete(slotId);
+      } else {
+        next.add(slotId);
+      }
+      return next;
+    });
+  }
+
+  function getSlotNotificationSummary(slot: JobSlot | GroundsJobSlot) {
+    const emailSent = Boolean(
+      slot.offer_email_sent_at ||
+      slot.offer_reminder_sent_at ||
+      slot.day_of_reminder_sent_at
+    );
+    const pushSent = Boolean(
+      slot.offer_push_sent_at ||
+      slot.offer_reminder_push_sent_at ||
+      slot.day_of_reminder_push_sent_at
+    );
+    return `Email ${emailSent ? "sent" : "pending"} | Push ${pushSent ? "sent" : "pending"} | SMS future`;
+  }
+
+  function renderSlotNotificationDetails(slot: JobSlot | GroundsJobSlot) {
+    const rows = [
+      { label: "Offer email", value: slot.offer_email_sent_at },
+      { label: "Offer push", value: slot.offer_push_sent_at },
+      { label: "Reminder email", value: slot.offer_reminder_sent_at },
+      { label: "Reminder push", value: slot.offer_reminder_push_sent_at },
+      { label: "Day-of email", value: slot.day_of_reminder_sent_at },
+      { label: "Day-of push", value: slot.day_of_reminder_push_sent_at },
+      { label: "SMS", value: null, placeholder: "Coming soon" },
+    ];
+
+    return (
+      <div className="mt-2 grid gap-1 rounded-[14px] border border-[#eadfce] bg-[#fcfaf7] px-3 py-2 text-[11px] text-[#6f6255] sm:grid-cols-2">
+        {rows.map((row) => (
+          <div key={row.label} className="flex items-center justify-between gap-2 rounded-full bg-white px-2 py-1">
+            <span className="font-medium">{row.label}</span>
+            <span className={row.value ? "text-[#236b30]" : "text-[#8a7b68]"}>
+              {row.value ? formatDateTime(row.value) : row.placeholder || "Not sent"}
+            </span>
+          </div>
+        ))}
+      </div>
+    );
   }
 
   function getJobNotificationTone(slot: JobSlot | GroundsJobSlot) {
@@ -17751,9 +17803,17 @@ This removes its linked members and deletes the grounds account.`
                             <div>Account: {getGroundsAccountName(slot.grounds_account_id)}</div>
                             <div>Status: {slot.status}</div>
                             <div>Offered: {formatDateTime(slot.offered_at)}</div>
-                            <div className={`mt-2 inline-flex rounded-full border px-2 py-1 font-semibold ${getJobNotificationTone(slot)}`}>
-                              {getJobNotificationLabel(slot)}
-                            </div>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleSlotNotificationDetails(slot.id);
+                              }}
+                              className={`mt-2 inline-flex rounded-full border px-2 py-1 text-left font-semibold transition hover:brightness-[0.98] ${getJobNotificationTone(slot)}`}
+                            >
+                              Notifications: {getSlotNotificationSummary(slot)}
+                            </button>
+                            {expandedNotificationSlotIds.has(slot.id) ? renderSlotNotificationDetails(slot) : null}
                             <div>Accepted: {formatDateTime(slot.accepted_at)}</div>
                             <div>Declined: {formatDateTime(slot.declined_at)}</div>
                           </div>
@@ -18130,9 +18190,17 @@ This removes its linked members and deletes the grounds account.`
                         <div>Status: {slot.status}</div>
                         <div>Offered: {formatDateTime(slot.offered_at)}</div>
                         <div>Expires: {formatDateTime(slot.expires_at)}</div>
-                        <div className={`mt-2 inline-flex rounded-full border px-2 py-1 font-semibold ${getJobNotificationTone(slot)}`}>
-                          {getJobNotificationLabel(slot)}
-                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleSlotNotificationDetails(slot.id);
+                          }}
+                          className={`mt-2 inline-flex rounded-full border px-2 py-1 text-left font-semibold transition hover:brightness-[0.98] ${getJobNotificationTone(slot)}`}
+                        >
+                          Notifications: {getSlotNotificationSummary(slot)}
+                        </button>
+                        {expandedNotificationSlotIds.has(slot.id) ? renderSlotNotificationDetails(slot) : null}
                         <div>Accepted: {formatDateTime(slot.accepted_at)}</div>
                         <div>Declined: {formatDateTime(slot.declined_at)}</div>
                       </div>
