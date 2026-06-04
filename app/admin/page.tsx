@@ -107,7 +107,6 @@ const QUIRKY_SYNCING_COPY = [
 const SHOW_ADMIN_TOP_BANNER = false;
 const MAINTENANCE_FLAG_SNOOZE_DAYS = 3;
 const SHOW_ADMIN_TOP_OVERVIEW = false;
-const ADMIN_NEARBY_GPS_AUTO_ENABLE_KEY = "estate_ops_admin_nearby_gps_auto_enabled";
 const PROPERTY_TIME_OPTIONS = Array.from({ length: 29 }, (_, index) => {
   const totalMinutes = 6 * 60 + index * 30;
   const hours = Math.floor(totalMinutes / 60);
@@ -2332,11 +2331,8 @@ export default function AdminPage() {
   ]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
     if (nearbyGpsEnabled || nearbyGpsStatus !== "idle") return;
-    if (window.localStorage.getItem(ADMIN_NEARBY_GPS_AUTO_ENABLE_KEY) === "1") return;
 
-    window.localStorage.setItem(ADMIN_NEARBY_GPS_AUTO_ENABLE_KEY, "1");
     setNearbyGpsEnabled(true);
   }, [nearbyGpsEnabled, nearbyGpsStatus]);
 
@@ -8113,7 +8109,9 @@ This removes its linked members and deletes the grounds account.`
 
   function getJobDisplayStatus(job: Job, slots: JobSlot[]) {
     const needed = job.cleaner_units_needed || Math.max(slots.length, 1);
-    const accepted = slots.filter((slot) => slot.status === "accepted").length;
+    const accepted = slots.filter((slot) =>
+      ["accepted", "in_progress", "completed"].includes(String(slot.status || "").toLowerCase())
+    ).length;
     const offered = slots.filter((slot) => slot.status === "offered").length;
     const declined = slots.filter((slot) => slot.status === "declined").length;
     const stranded = slots.filter((slot) => slot.status === "stranded").length;
@@ -8126,11 +8124,22 @@ This removes its linked members and deletes the grounds account.`
     if (declined > 0) return "Reoffer needed";
     return job.staffing_status || job.status || "Unknown";
   }
+
+  function isJobWaitingForAcceptance(job: Job, slots: JobSlot[]) {
+    const offered = slots.filter((slot) => slot.status === "offered").length;
+    if (offered === 0) return false;
+
+    const acceptedLike = slots.filter((slot) =>
+      ["accepted", "in_progress", "completed"].includes(String(slot.status || "").toLowerCase())
+    ).length;
+    const needed = job.cleaner_units_needed || Math.max(slots.length, 1);
+
+    return job.cleaner_units_required_strict ? acceptedLike < needed : acceptedLike === 0;
+  }
+
   const waitingJobs = useMemo(
     () =>
-      jobs.filter((job) =>
-        (jobSlotsByJobId[job.id] ?? []).some((slot) => slot.status === "offered")
-      ),
+      jobs.filter((job) => isJobWaitingForAcceptance(job, jobSlotsByJobId[job.id] ?? [])),
     [jobs, jobSlotsByJobId]
   );
 
