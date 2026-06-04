@@ -199,6 +199,31 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === "arrive") {
+      const { data: existingArrivalRows } = await service
+        .from("staff_job_status_events")
+        .select("id")
+        .eq("job_kind", "cleaner")
+        .eq("job_id", slot.job_id)
+        .eq("account_id", slot.cleaner_account_id)
+        .eq("event_type", "arrived")
+        .limit(1);
+
+      if (existingArrivalRows?.length) {
+        return NextResponse.json({
+          ok: true,
+          action,
+          slot: {
+            id: slot.id,
+            job_id: slot.job_id,
+            status: slot.status,
+            cleaner_account_id: slot.cleaner_account_id,
+          },
+          trainingReoffer: { offeredSlotIds: [] },
+          trainingReofferNotification: null,
+          adminPush: { sent: 0, errors: [] as string[], skippedDuplicate: true },
+        });
+      }
+
       const adminPush = await sendAdminJobStatusPush(
         service,
         "cleaner",
