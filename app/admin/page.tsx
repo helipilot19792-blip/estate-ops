@@ -8353,6 +8353,20 @@ This removes its linked members and deletes the grounds account.`
     [jobSlots, jobs, selectedJobsPropertyFilter]
   );
 
+  const recentCleanerArrivalEvents = useMemo(
+    () =>
+      staffJobStatusEvents
+        .filter((event) => event.job_kind === "cleaner" && event.event_type === "arrived")
+        .filter((event) => {
+          if (selectedJobsPropertyFilter === "all") return true;
+          const propertyId = String(event.metadata?.property_id || "");
+          return propertyId === selectedJobsPropertyFilter;
+        })
+        .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
+        .slice(0, 8),
+    [staffJobStatusEvents, selectedJobsPropertyFilter]
+  );
+
   const filteredStrandedJobs = useMemo(
     () =>
       selectedJobsPropertyFilter === "all"
@@ -9510,7 +9524,7 @@ This removes its linked members and deletes the grounds account.`
       request.status === "pending" || request.status === "reviewing"
     );
     const recentJobProgressEvents = staffJobStatusEvents.filter((event) => {
-      if (event.event_type !== "arrived" && event.event_type !== "started" && event.event_type !== "completed") return false;
+      if (event.event_type !== "started" && event.event_type !== "completed") return false;
       const createdAt = event.created_at ? new Date(event.created_at).getTime() : 0;
       return Number.isFinite(createdAt) && now.getTime() - createdAt <= 24 * 60 * 60 * 1000;
     });
@@ -17991,6 +18005,53 @@ This removes its linked members and deletes the grounds account.`
         ) : null}
 
         {jobWorkflowTab === "active" ? (
+        <>
+        {recentCleanerArrivalEvents.length > 0 ? (
+          <section className="rounded-[24px] border border-[#d9eadb] bg-[#f7fcf8] p-4 shadow-[0_12px_28px_rgba(35,107,48,0.06)]">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.2em] text-[#3e7a4a]">Arrivals</div>
+                <h3 className="mt-1 text-base font-semibold text-[#234f2d]">Recent cleaner arrivals</h3>
+              </div>
+              <span className="w-fit rounded-full border border-[#bbdfc0] bg-white px-3 py-1 text-xs font-medium text-[#236b30]">
+                {recentCleanerArrivalEvents.length}
+              </span>
+            </div>
+
+            <div className="mt-3 divide-y divide-[#d9eadb] rounded-[18px] border border-[#d9eadb] bg-white">
+              {recentCleanerArrivalEvents.map((event) => {
+                const propertyName = String(event.metadata?.property_name || "Property");
+                const accountName = String(event.metadata?.account_name || "Cleaner");
+                return (
+                  <div key={event.id} className="flex flex-col gap-2 px-3 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <div className="font-medium text-[#234f2d]">{accountName}</div>
+                      <div className="mt-0.5 text-[#5f7563]">
+                        {propertyName} - {formatDateTime(event.created_at)}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setJobsExpanded(true);
+                        setHighlightedJobId(event.job_id);
+                        setTimeout(() => {
+                          document
+                            .getElementById(`job-${event.job_id}`)
+                            ?.scrollIntoView({ behavior: "smooth", block: "center" });
+                        }, 50);
+                      }}
+                      className="w-fit rounded-full border border-[#bbdfc0] bg-[#f0fbf2] px-3 py-1.5 text-xs font-semibold text-[#236b30] transition hover:bg-[#e4f7e8]"
+                    >
+                      View job
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
+
         <section
           id="waiting-jobs-section"
           className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]"
@@ -18137,6 +18198,7 @@ This removes its linked members and deletes the grounds account.`
             })}
           </div>
         </section>
+        </>
         ) : null}
 
         {jobWorkflowTab === "exceptions" && filteredStrandedJobs.length > 0 ? (
