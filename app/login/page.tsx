@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { Eye, EyeOff } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { PASSWORD_REQUIREMENTS, validatePassword } from "@/lib/password-policy";
 import { supabase } from "@/lib/supabase";
@@ -668,10 +669,12 @@ export default function LoginPage() {
                         />
                         <button
                           type="button"
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8a7b68] hover:text-[#241c15]"
+                          className="absolute right-2 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-[#e4d7c7] bg-white text-[#7a5a23] transition hover:border-[#c6a767] hover:text-[#241c15]"
                           onClick={() => setShowLoginPassword(!showLoginPassword)}
+                          aria-label={showLoginPassword ? t("login.hide") : t("login.show")}
+                          title={showLoginPassword ? t("login.hide") : t("login.show")}
                         >
-                          👁
+                          {showLoginPassword ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
                         </button>
                       </div>
 
@@ -805,10 +808,12 @@ export default function LoginPage() {
                           />
                           <button
                             type="button"
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8a7b68] hover:text-[#241c15]"
+                            className="absolute right-2 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-[#e4d7c7] bg-white text-[#7a5a23] transition hover:border-[#c6a767] hover:text-[#241c15]"
                             onClick={() => setShowSignupPassword(!showSignupPassword)}
+                            aria-label={showSignupPassword ? t("login.hide") : t("login.show")}
+                            title={showSignupPassword ? t("login.hide") : t("login.show")}
                           >
-                            {showSignupPassword ? t("login.hide") : t("login.show")}
+                            {showSignupPassword ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
                           </button>
                         </div>
                         <p className="mt-1 px-1 text-xs text-[#7f7263]">{PASSWORD_REQUIREMENTS}</p>
@@ -826,10 +831,12 @@ export default function LoginPage() {
                         />
                         <button
                           type="button"
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8a7b68] hover:text-[#241c15]"
+                          className="absolute right-2 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-[#e4d7c7] bg-white text-[#7a5a23] transition hover:border-[#c6a767] hover:text-[#241c15]"
                           onClick={() => setShowSignupConfirmPassword(!showSignupConfirmPassword)}
+                          aria-label={showSignupConfirmPassword ? t("login.hide") : t("login.show")}
+                          title={showSignupConfirmPassword ? t("login.hide") : t("login.show")}
                         >
-                          {showSignupConfirmPassword ? t("login.hide") : t("login.show")}
+                          {showSignupConfirmPassword ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
                         </button>
                       </div>
 
