@@ -33,6 +33,8 @@ type SlotBundle = {
   detailLabel: string;
   accountLabel: string;
   recipients: Recipient[];
+  sameDayTurnover: boolean;
+  sameDayCheckInLabel: string | null;
 };
 
 type JobCancellationBundle = {
@@ -90,6 +92,52 @@ function extractCheckoutDate(notes: string | null) {
 
 function getCleanerJobDate(job: { scheduled_for?: string | null; notes?: string | null }) {
   return job.scheduled_for || extractCheckoutDate(job.notes || null);
+}
+
+function isOptionalBookingEventsError(error: { code?: string | null; message?: string | null } | null | undefined) {
+  const message = String(error?.message || "").toLowerCase();
+  return (
+    error?.code === "42P01" ||
+    error?.code === "PGRST205" ||
+    message.includes("property_booking_events") ||
+    message.includes("does not exist") ||
+    message.includes("could not find the table")
+  );
+}
+
+async function loadSameDayTurnoverInfo(
+  service: ReturnType<typeof getServiceClient>,
+  propertyId: string,
+  jobDate: string | null
+) {
+  if (!jobDate) return { sameDayTurnover: false, sameDayCheckInLabel: null };
+
+  const { data, error } = await service
+    .from("property_booking_events")
+    .select("source, summary, guest_count, checkin_date")
+    .eq("property_id", propertyId)
+    .eq("checkin_date", jobDate)
+    .limit(1);
+
+  if (error) {
+    if (isOptionalBookingEventsError(error)) {
+      return { sameDayTurnover: false, sameDayCheckInLabel: null };
+    }
+    throw new Error(error.message);
+  }
+
+  const booking = data?.[0] || null;
+  if (!booking) return { sameDayTurnover: false, sameDayCheckInLabel: null };
+
+  const source = String(booking.source || "").trim();
+  const summary = String(booking.summary || "").trim();
+  const guestCount = typeof booking.guest_count === "number" ? booking.guest_count : null;
+  const parts = [source, summary, guestCount ? `${guestCount} guest${guestCount === 1 ? "" : "s"}` : ""].filter(Boolean);
+
+  return {
+    sameDayTurnover: true,
+    sameDayCheckInLabel: parts.length > 0 ? parts.join(" - ") : "Incoming guest checks in the same day",
+  };
 }
 
 function getResponseWindowHours(jobDate: string | null, now = new Date()) {
@@ -330,6 +378,8 @@ async function loadSlotBundle(
 
     if (propertyError) throw new Error(propertyError.message);
     if (!property) return null;
+    const jobDate = getCleanerJobDate(job);
+    const sameDayTurnoverInfo = await loadSameDayTurnoverInfo(service, job.property_id, jobDate);
 
     return {
       slotId: slot.id,
@@ -347,10 +397,11 @@ async function loadSlotBundle(
       dayOfReminderPushSentAt: slot.day_of_reminder_push_sent_at || null,
       propertyName: property.name || property.address || "Property",
       propertyAddress: property.address || null,
-      jobDate: getCleanerJobDate(job),
+      jobDate,
       detailLabel: "Cleaning job",
       accountLabel,
       recipients,
+      ...sameDayTurnoverInfo,
     };
   }
 
@@ -392,6 +443,8 @@ async function loadSlotBundle(
     detailLabel: getGroundsJobTypeLabel(job.job_type),
     accountLabel,
     recipients,
+    sameDayTurnover: false,
+    sameDayCheckInLabel: null,
   };
 }
 
@@ -401,12 +454,20 @@ function buildDigestJobRow(bundle: SlotBundle, recipient: Recipient, origin: str
   const propertyLine = bundle.propertyAddress
     ? `${bundle.propertyName} - ${bundle.propertyAddress}`
     : bundle.propertyName;
+  const sameDayWarning = bundle.sameDayTurnover
+    ? `
+      <div style="border:1px solid #f1b36d;background:#fff4e4;color:#7a3f05;border-radius:12px;padding:10px 12px;margin:10px 0 12px;font-weight:700;">
+        Same-day turnover: an incoming guest checks in on this checkout date${bundle.sameDayCheckInLabel ? ` (${bundle.sameDayCheckInLabel})` : ""}. Please prioritize timing.
+      </div>
+    `
+    : "";
 
   return `
     <div style="border:1px solid #eadfce;border-radius:14px;padding:14px;margin:0 0 12px;background:#fffaf4;">
       <p style="margin:0 0 6px;font-weight:700;color:#241c15;">${propertyLine}</p>
       <p style="margin:0 0 6px;color:#5f5245;"><strong>Scheduled:</strong> ${formatDateLabel(bundle.jobDate)}</p>
       <p style="margin:0 0 12px;color:#5f5245;"><strong>Team / account:</strong> ${bundle.accountLabel}</p>
+      ${sameDayWarning}
       <a href="${acceptUrl}" style="display:inline-block;padding:10px 14px;background:#1f6f3d;color:#ffffff;border-radius:999px;text-decoration:none;margin:0 8px 8px 0;font-weight:700;">
         Accept
       </a>
@@ -715,6 +776,13 @@ async function sendNotificationEmail(
     const acceptUrl = createJobEmailActionUrl(origin, bundle.kind, "accept", bundle.slotId, recipient.email);
     const declineUrl = createJobEmailActionUrl(origin, bundle.kind, "decline", bundle.slotId, recipient.email);
     const showResponseButtons = mode === "offer" || mode === "offer_reminder";
+    const sameDayWarning = bundle.sameDayTurnover
+      ? `
+        <div style="border:1px solid #f1b36d;background:#fff4e4;color:#7a3f05;border-radius:12px;padding:12px 14px;margin:14px 0;font-weight:700;">
+          Same-day turnover: an incoming guest checks in on this checkout date${bundle.sameDayCheckInLabel ? ` (${bundle.sameDayCheckInLabel})` : ""}. Please prioritize timing.
+        </div>
+      `
+      : "";
 
     const html = `
       <div style="font-family: Arial, sans-serif; padding: 20px; color: #241c15;">
@@ -723,6 +791,7 @@ async function sendNotificationEmail(
         <p style="margin: 0 0 8px;"><strong>Property:</strong> ${emailCopy.propertyLine}</p>
         <p style="margin: 0 0 8px;"><strong>Scheduled:</strong> ${emailCopy.dateLabel}</p>
         <p style="margin: 0 0 16px;"><strong>Team / account:</strong> ${bundle.accountLabel}</p>
+        ${sameDayWarning}
         ${
           showResponseButtons
             ? `
@@ -785,7 +854,9 @@ async function sendNotificationPush(
 
   const result = await sendStaffPushNotifications(bundle.kind, profileIds, {
     title: emailCopy.subject,
-    body: `${emailCopy.propertyLine} - ${emailCopy.dateLabel}`,
+    body: bundle.sameDayTurnover
+      ? `Same-day turnover - ${emailCopy.propertyLine} - ${emailCopy.dateLabel}`
+      : `${emailCopy.propertyLine} - ${emailCopy.dateLabel}`,
     url: emailCopy.portalUrl,
     tag: `${bundle.kind}-${mode}-${bundle.slotId}`,
   });
