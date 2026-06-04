@@ -25,6 +25,14 @@ const MAINTENANCE_URGENCY_OPTIONS = [
   { value: "urgent", label: "Urgent" },
 ] as const;
 
+const NEARBY_ACCESS_RADIUS_METERS = 250;
+
+type CleanerLocation = {
+  latitude: number;
+  longitude: number;
+  accuracy: number | null;
+};
+
 type ReportIssueModalProps = {
   open: boolean;
   onClose: () => void;
@@ -33,6 +41,33 @@ type ReportIssueModalProps = {
   currentProfileId: string | null;
   onSubmitted?: () => void;
 };
+
+function parseCoordinate(value: number | string | null | undefined) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "string") {
+    const parsed = Number(value.trim());
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function getDistanceMeters(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }) {
+  const earthRadius = 6371000;
+  const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
+  const dLat = toRadians(b.latitude - a.latitude);
+  const dLon = toRadians(b.longitude - a.longitude);
+  const lat1 = toRadians(a.latitude);
+  const lat2 = toRadians(b.latitude);
+  const h =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return 2 * earthRadius * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
+function formatDistance(meters: number) {
+  if (meters < 1000) return `${Math.round(meters)} m away`;
+  return `${(meters / 1000).toFixed(1)} km away`;
+}
 
 function ReportIssueModal({
   open,
@@ -314,8 +349,11 @@ export default function CleanerMobileView({
   selectedCleanerJob,
   selectedSlotId,
   setSelectedSlotId,
+  accessRows,
+  sops,
   handleAcceptJob,
   handleDeclineJob,
+  handleArriveJob,
   handleStartJob,
   handleFinishJob,
   handleCloseDetails,
@@ -346,6 +384,12 @@ export default function CleanerMobileView({
   const [reportOpen, setReportOpen] = useState(false);
   const [reportSubmittedMessage, setReportSubmittedMessage] = useState("");
   const [jobView, setJobView] = useState<"active" | "history">("active");
+  const [nearbyGpsStatus, setNearbyGpsStatus] = useState<"idle" | "locating" | "ready" | "blocked">("idle");
+  const [nearbyGpsError, setNearbyGpsError] = useState("");
+  const [cleanerLocation, setCleanerLocation] = useState<CleanerLocation | null>(null);
+  const [nearbyAccessOpen, setNearbyAccessOpen] = useState(false);
+  const [arrivingSlotIds, setArrivingSlotIds] = useState<Set<string>>(() => new Set());
+  const [arrivedSlotIds, setArrivedSlotIds] = useState<Set<string>>(() => new Set());
   const reportableProperties = useMemo(() => properties, [properties]);
 
   function normalizeJobDate(value: string | null | undefined) {
@@ -378,6 +422,90 @@ export default function CleanerMobileView({
       : selectedDate
         ? activeJobs.filter((item) => normalizeJobDate(item.jobDate) === selectedDate)
         : activeJobs;
+
+  const propertyById = useMemo(() => {
+    return new Map(properties.map((property) => [property.id, property]));
+  }, [properties]);
+
+  const accessByPropertyId = useMemo(() => {
+    return new Map(accessRows.map((row) => [row.property_id, row]));
+  }, [accessRows]);
+
+  const sopsByPropertyId = useMemo(() => {
+    const map = new Map<string, typeof sops>();
+    sops.forEach((sop) => {
+      const rows = map.get(sop.property_id) || [];
+      rows.push(sop);
+      map.set(sop.property_id, rows);
+    });
+    return map;
+  }, [sops]);
+
+  const nearbyAssignedJob = useMemo(() => {
+    if (!cleanerLocation) return null;
+
+    type NearbyAssignedJob = {
+      item: CleanerJob;
+      property: (typeof properties)[number];
+      access: (typeof accessRows)[number] | null;
+      propertySops: typeof sops;
+      distanceMeters: number;
+    };
+
+    const candidates = activeJobs
+      .filter((item) => ["accepted", "in_progress", "completed"].includes(String(item.slot.status || "").toLowerCase()))
+      .flatMap<NearbyAssignedJob>((item) => {
+        const property = propertyById.get(item.job.property_id);
+        const latitude = parseCoordinate(property?.latitude);
+        const longitude = parseCoordinate(property?.longitude);
+        if (!property || latitude === null || longitude === null) return [];
+
+        const distanceMeters = getDistanceMeters(cleanerLocation, { latitude, longitude });
+        return [{
+          item,
+          property,
+          access: accessByPropertyId.get(property.id) || null,
+          propertySops: sopsByPropertyId.get(property.id) || [],
+          distanceMeters,
+        }];
+      });
+
+    return candidates
+      .filter((row) => row.distanceMeters <= NEARBY_ACCESS_RADIUS_METERS)
+      .sort((a, b) => a.distanceMeters - b.distanceMeters)[0] || null;
+  }, [accessByPropertyId, activeJobs, cleanerLocation, propertyById, sopsByPropertyId]);
+
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("geolocation" in navigator)) {
+      setNearbyGpsStatus("blocked");
+      setNearbyGpsError("Location is not available on this device.");
+      return;
+    }
+
+    setNearbyGpsStatus("locating");
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        setCleanerLocation({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: Number.isFinite(position.coords.accuracy) ? position.coords.accuracy : null,
+        });
+        setNearbyGpsStatus("ready");
+        setNearbyGpsError("");
+      },
+      (error) => {
+        setNearbyGpsStatus("blocked");
+        setNearbyGpsError(error.message || "Location permission is needed for nearby access.");
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 15000,
+        timeout: 12000,
+      }
+    );
+
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, []);
 
   const onboardingSteps: OnboardingStep[] = [
     {
@@ -463,6 +591,29 @@ export default function CleanerMobileView({
 
   function getCalendarUrl(jobId: string) {
     return `/api/cleaner-calendar-event?jobId=${encodeURIComponent(jobId)}`;
+  }
+
+  async function openNearbyAccess() {
+    if (!nearbyAssignedJob) return;
+
+    setSelectedSlotId(nearbyAssignedJob.item.slot.id);
+    setNearbyAccessOpen(true);
+
+    if (arrivedSlotIds.has(nearbyAssignedJob.item.slot.id) || arrivingSlotIds.has(nearbyAssignedJob.item.slot.id)) {
+      return;
+    }
+
+    setArrivingSlotIds((current) => new Set(current).add(nearbyAssignedJob.item.slot.id));
+    try {
+      await handleArriveJob(nearbyAssignedJob.item.slot.id);
+      setArrivedSlotIds((current) => new Set(current).add(nearbyAssignedJob.item.slot.id));
+    } finally {
+      setArrivingSlotIds((current) => {
+        const next = new Set(current);
+        next.delete(nearbyAssignedJob.item.slot.id);
+        return next;
+      });
+    }
   }
 
   function getParsedNotes(notes: string | null) {
@@ -845,6 +996,102 @@ export default function CleanerMobileView({
           steps={onboardingSteps}
           tone="staff"
         />
+
+        <div className="rounded-2xl border border-[#356046]/35 bg-[#111b15] p-4 text-[#e8f6eb]">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[11px] uppercase tracking-[0.16em] text-[#7fb685]">
+                GPS access
+              </div>
+              <div className="mt-1 text-base font-semibold">
+                {nearbyAssignedJob ? nearbyAssignedJob.property.name || "Nearby property" : "Nearby access"}
+              </div>
+              <div className="mt-1 text-sm text-[#b8d5bf]">
+                {nearbyAssignedJob
+                  ? formatDistance(nearbyAssignedJob.distanceMeters)
+                  : nearbyGpsStatus === "locating"
+                    ? "Checking assigned jobs near you..."
+                    : nearbyGpsStatus === "blocked"
+                      ? nearbyGpsError || "Location permission is needed for nearby access."
+                      : "No accepted assigned job is within 250 m."}
+              </div>
+            </div>
+
+            <span className="shrink-0 rounded-full border border-[#7fb685]/40 px-3 py-1 text-[11px] font-semibold text-[#d8f0dc]">
+              {nearbyGpsStatus === "ready" ? "GPS on" : nearbyGpsStatus === "locating" ? "Checking" : "GPS off"}
+            </span>
+          </div>
+
+          {nearbyAssignedJob ? (
+            <div className="mt-3 space-y-3">
+              <button
+                type="button"
+                onClick={() => {
+                  if (nearbyAccessOpen) {
+                    setNearbyAccessOpen(false);
+                    return;
+                  }
+                  void openNearbyAccess();
+                }}
+                disabled={arrivingSlotIds.has(nearbyAssignedJob.item.slot.id)}
+                className="w-full rounded-full border border-[#7fb685]/60 bg-[#173022] px-4 py-3 text-sm font-semibold text-[#eef7ef] transition hover:bg-[#20432d] disabled:opacity-60"
+              >
+                {nearbyAccessOpen
+                  ? "Collapse access"
+                  : arrivingSlotIds.has(nearbyAssignedJob.item.slot.id)
+                    ? "Recording arrival..."
+                    : arrivedSlotIds.has(nearbyAssignedJob.item.slot.id)
+                      ? "Open access"
+                      : "Open access and mark arrived"}
+              </button>
+
+              {nearbyAccessOpen ? (
+                <div className="space-y-3 rounded-xl border border-[#7fb685]/25 bg-[#0f1712] p-3 text-sm text-[#d7eadb]">
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.16em] text-[#7fb685]">Access</div>
+                    <div className="mt-1 whitespace-pre-wrap">
+                      {nearbyAssignedJob.access?.door_code
+                        ? `Door code: ${nearbyAssignedJob.access.door_code}`
+                        : "No door code"}
+                      <br />
+                      {nearbyAssignedJob.access?.alarm_code
+                        ? `Alarm code: ${nearbyAssignedJob.access.alarm_code}`
+                        : "No alarm code"}
+                      <br />
+                      {nearbyAssignedJob.access?.notes || "No access notes."}
+                    </div>
+                  </div>
+
+                  {nearbyAssignedJob.propertySops.length > 0 ? (
+                    <div>
+                      <div className="text-xs uppercase tracking-[0.16em] text-[#7fb685]">SOPs</div>
+                      <div className="mt-1 space-y-1">
+                        {nearbyAssignedJob.propertySops.slice(0, 3).map((sop) => (
+                          <div key={sop.id}>{sop.title || "Untitled SOP"}</div>
+                        ))}
+                        {nearbyAssignedJob.propertySops.length > 3 ? (
+                          <div>{nearbyAssignedJob.propertySops.length - 3} more in job details</div>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setJobView("active");
+                      setSelectedSlotId(nearbyAssignedJob.item.slot.id);
+                      scrollToJobsSection();
+                    }}
+                    className="rounded-full border border-[#7fb685]/50 px-3 py-2 text-xs font-semibold text-[#eef7ef] transition hover:bg-[#173022]"
+                  >
+                    Open full job
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
 
         {canSwitchToGrounds ? (
           <div className="rounded-2xl border border-[#356046]/35 bg-[#112018] p-3 text-[#e8f6eb]">

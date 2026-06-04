@@ -40,6 +40,8 @@ type Property = {
   name: string | null;
   address: string | null;
   notes: string | null;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
 };
 
 type TurnoverJob = {
@@ -121,7 +123,7 @@ export type CleanerViewProps = {
   loading: boolean;
   parseJobNotes: (notes: string | null) => ParsedJobNotes;
   signingOut: boolean;
-  actionLoading: "accept" | "decline" | "start" | "finish" | null;
+  actionLoading: "accept" | "decline" | "arrive" | "start" | "finish" | null;
   profile: Profile | null;
   cleanerAccount: CleanerAccount | null;
   properties: Property[];
@@ -167,6 +169,7 @@ export type CleanerViewProps = {
   scrollToJobsSection: () => void;
   handleAcceptJob: () => Promise<void>;
   handleDeclineJob: () => Promise<void>;
+  handleArriveJob: (slotId?: string) => Promise<void>;
   handleStartJob: () => Promise<void>;
   handleFinishJob: () => Promise<void>;
   handleCloseDetails: () => void;
@@ -1110,8 +1113,9 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     }
   }
 
-  async function handleProgressAction(action: "start" | "finish") {
-    if (!selectedCleanerJob || !profile?.id) return;
+  async function handleProgressAction(action: "arrive" | "start" | "finish", slotIdOverride?: string) {
+    const targetSlotId = slotIdOverride || selectedCleanerJob?.slot.id;
+    if (!targetSlotId || !profile?.id) return;
 
     setJobsWarning(null);
     setActionLoading(action);
@@ -1134,7 +1138,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
         body: JSON.stringify({
           portal: "cleaner",
           action,
-          slotId: selectedCleanerJob.slot.id,
+          slotId: targetSlotId,
         }),
       });
 
@@ -1144,13 +1148,13 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
         throw new Error(payload?.error || `Could not ${action} job.`);
       }
 
-      const slotId = selectedCleanerJob.slot.id;
       await refreshCleanerJobs();
-      setSelectedSlotId(slotId);
+      setSelectedSlotId(targetSlotId);
 
-      const pushErrors = Array.isArray(payload.progressPush?.errors) ? payload.progressPush.errors : [];
+      const pushErrors = Array.isArray(payload.adminPush?.errors) ? payload.adminPush.errors : [];
       if (pushErrors.length > 0) {
-        setJobsWarning(`Job ${action === "start" ? "started" : "finished"}, but admin push notification failed: ${pushErrors[0]}`);
+        const label = action === "arrive" ? "arrival recorded" : action === "start" ? "started" : "finished";
+        setJobsWarning(`Job ${label}, but admin push notification failed: ${pushErrors[0]}`);
       }
     } catch (error: any) {
       setJobsWarning(error?.message || `Could not ${action} job.`);
@@ -1161,6 +1165,10 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
 
   async function handleStartJob() {
     await handleProgressAction("start");
+  }
+
+  async function handleArriveJob(slotId?: string) {
+    await handleProgressAction("arrive", slotId);
   }
 
   async function handleFinishJob() {
@@ -1545,6 +1553,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     scrollToJobsSection,
     handleAcceptJob,
     handleDeclineJob,
+    handleArriveJob,
     handleStartJob,
     handleFinishJob,
     handleCloseDetails,

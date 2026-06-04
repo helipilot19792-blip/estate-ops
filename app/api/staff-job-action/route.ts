@@ -110,8 +110,10 @@ export async function POST(request: NextRequest) {
         ? "accept"
         : body?.action === "decline"
           ? "decline"
-          : body?.action === "start"
-            ? "start"
+        : body?.action === "start"
+          ? "start"
+          : body?.action === "arrive"
+            ? "arrive"
             : body?.action === "finish"
               ? "finish"
               : null;
@@ -190,6 +192,35 @@ export async function POST(request: NextRequest) {
 
     if ((action === "start" || action === "finish") && !["accepted", "in_progress", "completed"].includes(currentSlotStatus)) {
       return NextResponse.json({ error: "Accept the job before using progress buttons." }, { status: 409 });
+    }
+
+    if (action === "arrive" && !["accepted", "in_progress", "completed"].includes(currentSlotStatus)) {
+      return NextResponse.json({ error: "Accept the job before marking arrival." }, { status: 409 });
+    }
+
+    if (action === "arrive") {
+      const adminPush = await sendAdminJobStatusPush(
+        service,
+        "cleaner",
+        slot.job_id,
+        slot.cleaner_account_id,
+        "arrived",
+        request.nextUrl.origin
+      );
+
+      return NextResponse.json({
+        ok: true,
+        action,
+        slot: {
+          id: slot.id,
+          job_id: slot.job_id,
+          status: slot.status,
+          cleaner_account_id: slot.cleaner_account_id,
+        },
+        trainingReoffer: { offeredSlotIds: [] },
+        trainingReofferNotification: null,
+        adminPush,
+      });
     }
 
     const slotUpdate: Record<string, unknown> =

@@ -824,7 +824,7 @@ type StaffJobStatusEventRow = {
   job_kind: "cleaner" | "grounds";
   job_id: string;
   account_id?: string | null;
-  event_type: "accepted" | "started" | "completed";
+  event_type: "accepted" | "arrived" | "started" | "completed";
   title: string;
   body: string;
   url?: string | null;
@@ -9510,7 +9510,7 @@ This removes its linked members and deletes the grounds account.`
       request.status === "pending" || request.status === "reviewing"
     );
     const recentJobProgressEvents = staffJobStatusEvents.filter((event) => {
-      if (event.event_type !== "started" && event.event_type !== "completed") return false;
+      if (event.event_type !== "arrived" && event.event_type !== "started" && event.event_type !== "completed") return false;
       const createdAt = event.created_at ? new Date(event.created_at).getTime() : 0;
       return Number.isFinite(createdAt) && now.getTime() - createdAt <= 24 * 60 * 60 * 1000;
     });

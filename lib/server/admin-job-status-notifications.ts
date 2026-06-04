@@ -2,7 +2,7 @@ import type { JobNotificationKind } from "@/lib/server/job-notifications";
 import { sendStaffPushNotifications } from "@/lib/server/staff-push-notifications";
 
 type ServiceClient = any;
-type AdminJobStatusEvent = "accepted" | "started" | "completed";
+type AdminJobStatusEvent = "accepted" | "arrived" | "started" | "completed";
 
 function isOptionalEventTableError(error: { code?: string | null; message?: string | null } | null | undefined) {
   const message = String(error?.message || "").toLowerCase();
@@ -29,6 +29,27 @@ function getJobLabel(kind: JobNotificationKind) {
 
 function getTeamLabel(kind: JobNotificationKind) {
   return kind === "cleaner" ? "Cleaner" : "Grounds";
+}
+
+function getEventCopy(
+  kind: JobNotificationKind,
+  event: AdminJobStatusEvent,
+  accountName: string,
+  propertyName: string
+) {
+  const jobLabel = getJobLabel(kind);
+  if (event === "arrived") {
+    return {
+      title: `${getTeamLabel(kind)} arrived`,
+      body: `${accountName} arrived at ${propertyName} for ${jobLabel.toLowerCase()}.`,
+    };
+  }
+
+  const verb = event === "accepted" ? "accepted" : event === "started" ? "started" : "completed";
+  return {
+    title: `${jobLabel} ${verb}`,
+    body: `${accountName} ${verb} ${jobLabel.toLowerCase()} for ${propertyName}.`,
+  };
 }
 
 export async function sendAdminJobStatusPush(
@@ -81,9 +102,7 @@ export async function sendAdminJobStatusPush(
     String(account?.email || "").trim() ||
     getTeamLabel(kind);
   const propertyName = property?.name || "a property";
-  const jobLabel = getJobLabel(kind);
-  const title = `${jobLabel} ${event}`;
-  const body = `${accountName} ${event} ${jobLabel.toLowerCase()} for ${propertyName}.`;
+  const { title, body } = getEventCopy(kind, event, accountName, propertyName);
   const url = `${origin}/admin?open=jobs&jobId=${encodeURIComponent(jobId)}`;
 
   const result = await sendStaffPushNotifications("admin", profileIds, {

@@ -91,7 +91,7 @@ async function loadPropertySupport(propertyIds: string[]) {
   const [propertiesRes, accessRes, sopsRes] = await Promise.all([
     serviceClient
       .from("properties")
-      .select("id, organization_id, name, address, notes")
+      .select("id, organization_id, name, address, notes, latitude, longitude")
       .in("id", propertyIds),
     serviceClient
       .from("property_access")
