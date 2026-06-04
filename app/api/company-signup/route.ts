@@ -11,6 +11,10 @@ function slugifyCompanyName(value: string) {
     .replace(/^-+|-+$/g, "");
 }
 
+function normalizeOrganizationType(value: unknown) {
+  return value === "cleaning_company" ? "cleaning_company" : "property_management";
+}
+
 export async function POST(req: NextRequest) {
   try {
     const authHeader = req.headers.get("authorization");
@@ -63,6 +67,9 @@ export async function POST(req: NextRequest) {
     const companyName =
       (typeof body?.companyName === "string" ? body.companyName.trim() : "") ||
       (typeof metadata.company_name === "string" ? metadata.company_name.trim() : "");
+    const organizationType = normalizeOrganizationType(
+      typeof body?.organizationType === "string" ? body.organizationType : metadata.organization_type
+    );
 
     if (!fullName || !phone || !companyName) {
       return NextResponse.json({ error: "Missing company signup details." }, { status: 400 });
@@ -108,19 +115,33 @@ export async function POST(req: NextRequest) {
     const trialEndsAt = new Date(trialStartedAt);
     trialEndsAt.setDate(trialEndsAt.getDate() + ORGANIZATION_TRIAL_DAYS);
 
-    const { data: organization, error: organizationError } = await service
+    const organizationInsert = {
+      name: companyName,
+      slug: uniqueSlug,
+      created_by: user.id,
+      organization_type: organizationType,
+      subscription_status: "trialing",
+      trial_started_at: trialStartedAt.toISOString(),
+      trial_ends_at: trialEndsAt.toISOString(),
+      billing_enabled: false,
+    };
+
+    let organizationResult = await service
       .from("organizations")
-      .insert({
-        name: companyName,
-        slug: uniqueSlug,
-        created_by: user.id,
-        subscription_status: "trialing",
-        trial_started_at: trialStartedAt.toISOString(),
-        trial_ends_at: trialEndsAt.toISOString(),
-        billing_enabled: false,
-      })
+      .insert(organizationInsert)
       .select("id")
       .single();
+
+    if (organizationResult.error?.code === "42703") {
+      const { organization_type: _organizationType, ...fallbackInsert } = organizationInsert;
+      organizationResult = await service
+        .from("organizations")
+        .insert(fallbackInsert)
+        .select("id")
+        .single();
+    }
+
+    const { data: organization, error: organizationError } = organizationResult;
 
     if (organizationError || !organization) {
       return NextResponse.json(

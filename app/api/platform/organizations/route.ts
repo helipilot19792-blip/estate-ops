@@ -31,6 +31,7 @@ type OrganizationRow = {
   billing_enabled?: boolean | null;
   stripe_customer_id?: string | null;
   stripe_subscription_id?: string | null;
+  organization_type?: "property_management" | "cleaning_company" | null;
   account_type?: string | null;
   plan_name?: string | null;
   property_limit?: number | null;
@@ -174,7 +175,7 @@ async function requirePlatformAdmin(token?: string | null) {
 
 async function loadOrganizationOverview(serviceClient: ReturnType<typeof getClients>["serviceClient"]) {
   const organizationSelect =
-    "id,name,slug,created_at,created_by,subscription_status,trial_started_at,trial_ends_at,billing_enabled,stripe_customer_id,stripe_subscription_id,account_type,plan_name,property_limit,member_limit,billing_override_reason";
+    "id,name,slug,created_at,created_by,subscription_status,trial_started_at,trial_ends_at,billing_enabled,stripe_customer_id,stripe_subscription_id,organization_type,account_type,plan_name,property_limit,member_limit,billing_override_reason";
   const [
     membersRes,
     profilesRes,
@@ -232,6 +233,7 @@ async function loadOrganizationOverview(serviceClient: ReturnType<typeof getClie
   }
 
   const organizations = ((organizationsRes.data ?? []) as OrganizationRow[]).map((organization) => ({
+    organization_type: "property_management",
     account_type: "beta",
     plan_name: "Beta trial",
     property_limit: 10,

@@ -15,6 +15,7 @@ type PlatformOrganization = {
   billing_enabled?: boolean | null;
   stripe_customer_id?: string | null;
   stripe_subscription_id?: string | null;
+  organization_type?: "property_management" | "cleaning_company" | null;
   account_type?: string | null;
   plan_name?: string | null;
   property_limit?: number | null;
@@ -158,6 +159,10 @@ function getStatusTone(status?: string | null) {
 
 function getPlanLabel(organization: PlatformOrganization) {
   return organization.plan_name || (organization.account_type === "internal" ? "Internal workspace" : "Beta trial");
+}
+
+function getOrganizationTypeLabel(organization: PlatformOrganization) {
+  return organization.organization_type === "cleaning_company" ? "Cleaning company" : "Property management";
 }
 
 export default function PlatformPage() {
@@ -611,6 +616,9 @@ export default function PlatformPage() {
                       <span className="rounded-full border border-[#d7e6df] bg-[#f6fbf8] px-3 py-1">
                         {getPlanLabel(organization)}
                       </span>
+                      <span className="rounded-full border border-[#c9dff0] bg-[#f3f9fd] px-3 py-1">
+                        {getOrganizationTypeLabel(organization)}
+                      </span>
                       {typeof organization.property_limit === "number" ? (
                         <span className="rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-1">
                           {organization.property_count}/{organization.property_limit} property limit
@@ -661,7 +669,7 @@ export default function PlatformPage() {
                           {getPlanLabel(organization)}
                         </div>
                         <div className="mt-1 text-xs text-[#7f7263]">
-                          {organization.account_type || "beta"}
+                          {organization.account_type || "beta"} | {getOrganizationTypeLabel(organization)}
                         </div>
                       </div>
 

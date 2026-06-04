@@ -592,6 +592,7 @@ type TeamWorkflowTab = "invites" | "users" | "cleaners" | "grounds";
 type TeamInviteRole = "admin" | "cleaner" | "grounds";
 type InvoiceHistoryFilter = "all" | "unpaid" | "paid" | "draft" | "void";
 type AdminMenuOrientation = "side" | "top";
+type OrganizationType = "property_management" | "cleaning_company";
 type PushDiagnosticsDevice = {
   id: string;
   profileId: string;
@@ -653,6 +654,7 @@ type MyOrganizationRow = {
   organization_slug: string;
   role: string;
   record_count?: number;
+  organization_type?: OrganizationType | null;
 };
 
 const ADMIN_SELECTED_ORGANIZATION_KEY = "admin-current-organization-id-v2";
@@ -660,6 +662,7 @@ const ADMIN_SELECTED_ORGANIZATION_KEY = "admin-current-organization-id-v2";
 type OrganizationBillingRow = {
   id: string;
   name: string | null;
+  organization_type?: OrganizationType | null;
   created_by?: string | null;
   subscription_status?: string | null;
   trial_started_at?: string | null;
@@ -9203,6 +9206,22 @@ This removes its linked members and deletes the grounds account.`
     return inspectionRules.filter((rule) => rule.active !== false && (!rule.next_due_date || rule.next_due_date <= todayYmd));
   }, [inspectionRules, todayYmd]);
 
+  const currentOrganizationType: OrganizationType =
+    currentOrganizationBilling?.organization_type === "cleaning_company" ? "cleaning_company" : "property_management";
+  const isCleaningCompanyMode = currentOrganizationType === "cleaning_company";
+  const cleaningCompanyAdminSections = new Set<AdminSection>([
+    "home",
+    "notifications",
+    "calendar",
+    "chat",
+    "jobs",
+    "maintenance",
+    "invoices",
+    "properties",
+    "assignments",
+    "team",
+  ]);
+
   const operationsAlerts = useMemo(() => {
     const alerts: Array<{
       key: string;
@@ -9266,7 +9285,7 @@ This removes its linked members and deletes the grounds account.`
       });
     }
 
-    if (dueInspectionRules.length > 0) {
+    if (!isCleaningCompanyMode && dueInspectionRules.length > 0) {
       alerts.push({
         key: "inspections-due",
         label: `${dueInspectionRules.length} inspection${dueInspectionRules.length === 1 ? "" : "s"} due`,
@@ -9276,7 +9295,15 @@ This removes its linked members and deletes the grounds account.`
     }
 
     return alerts;
-  }, [waitingJobs.length, overdueWaitingJobs.length, strandedJobs.length, maintenanceFlagCounts.open, maintenanceFlagCounts.urgent, dueInspectionRules.length]);
+  }, [
+    waitingJobs.length,
+    overdueWaitingJobs.length,
+    strandedJobs.length,
+    maintenanceFlagCounts.open,
+    maintenanceFlagCounts.urgent,
+    dueInspectionRules.length,
+    isCleaningCompanyMode,
+  ]);
 
   function selectAdminCalendarDate(dateYmd: string) {
     setAdminSelectedDate(dateYmd);
@@ -9408,7 +9435,7 @@ This removes its linked members and deletes the grounds account.`
     return "border-[#d8c7ab] bg-white text-[#6f6255]";
   }
 
-  const menuGroups: Array<{
+  const rawMenuGroups: Array<{
     label: string;
     items: Array<{
       key: AdminSection;
@@ -9530,6 +9557,14 @@ This removes its linked members and deletes the grounds account.`
       ],
     },
   ];
+  const menuGroups = rawMenuGroups
+    .map((group) => ({
+      ...group,
+      items: isCleaningCompanyMode
+        ? group.items.filter((item) => cleaningCompanyAdminSections.has(item.key))
+        : group.items,
+    }))
+    .filter((group) => group.items.length > 0);
 
   const defaultAdminMenuOrder = menuGroups.flatMap((group) => group.items.map((item) => item.key));
   const adminMenuItemsByKey = new Map(menuGroups.flatMap((group) => group.items.map((item) => [item.key, item] as const)));
@@ -9540,6 +9575,14 @@ This removes its linked members and deletes the grounds account.`
     .filter((key, index, keys) => keys.indexOf(key) === index)
     .map((key) => adminMenuItemsByKey.get(key))
     .filter(Boolean) as Array<(typeof menuGroups)[number]["items"][number]>;
+  const allowedAdminSectionKeys = orderedAdminMenuItems.map((item) => item.key);
+  const allowedAdminSectionKey = allowedAdminSectionKeys.join("|");
+
+  useEffect(() => {
+    if (!isCleaningCompanyMode) return;
+    if (allowedAdminSectionKeys.includes(activeSection)) return;
+    setActiveSection("jobs");
+  }, [activeSection, isCleaningCompanyMode, allowedAdminSectionKey]);
 
   const unreadChatCount = useMemo(() => {
     if (!currentAdminUserId) return 0;
@@ -9761,6 +9804,7 @@ This removes its linked members and deletes the grounds account.`
     propertyHealthRows,
     staffJobStatusEvents,
     accountDeletionRequests,
+    isCleaningCompanyMode,
     now,
   ]);
 
@@ -9889,6 +9933,12 @@ This removes its linked members and deletes the grounds account.`
   }
 
   function selectAdminSection(section: AdminSection) {
+    if (isCleaningCompanyMode && !allowedAdminSectionKeys.includes(section)) {
+      setActiveSection("jobs");
+      setShowAdminNav(false);
+      return;
+    }
+
     if (section === "properties") {
       setPropertyWorkflowTab("directory");
     }
@@ -10509,7 +10559,7 @@ This removes its linked members and deletes the grounds account.`
       onboardingOwnerAccountIds.has(owner.id)
     );
 
-    const adminOnboardingSteps: OnboardingStep[] = [
+    const rawAdminOnboardingSteps: OnboardingStep[] = [
       {
         id: "property",
         title: "Add your first property",
@@ -10568,11 +10618,21 @@ This removes its linked members and deletes the grounds account.`
       },
       {
         id: "documents",
-        title: "Add documents or SOP details",
-        description: "Store instructions, photos, and files that help staff do the work consistently.",
+        title: isCleaningCompanyMode ? "Add SOP details" : "Add documents or SOP details",
+        description: isCleaningCompanyMode
+          ? "Store access instructions, photos, and SOP notes that help cleaners do the work consistently."
+          : "Store instructions, photos, and files that help staff do the work consistently.",
         complete: documentVaultRows.length > 0 || sops.length > 0 || sopImages.length > 0,
-        actionLabel: "Open documents",
-        onAction: () => setActiveSection("documents"),
+        actionLabel: isCleaningCompanyMode ? "Open property SOPs" : "Open documents",
+        onAction: () => {
+          if (isCleaningCompanyMode) {
+            setPropertyWorkflowTab("setup");
+            setPropertySetupTab("sops");
+            setActiveSection("properties");
+            return;
+          }
+          setActiveSection("documents");
+        },
       },
       {
         id: "chat",
@@ -10583,6 +10643,7 @@ This removes its linked members and deletes the grounds account.`
         onAction: () => setActiveSection("chat"),
       },
     ];
+    const adminOnboardingSteps = rawAdminOnboardingSteps;
 
     return (
       <div className="space-y-6">

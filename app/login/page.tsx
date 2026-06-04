@@ -116,6 +116,7 @@ async function finishCompanySignup(accessToken: string, details?: {
   fullName?: string;
   phone?: string;
   companyName?: string;
+  organizationType?: "property_management" | "cleaning_company";
 }) {
   const response = await fetch("/api/company-signup", {
     method: "POST",
@@ -127,6 +128,7 @@ async function finishCompanySignup(accessToken: string, details?: {
       fullName: details?.fullName || "",
       phone: details?.phone || "",
       companyName: details?.companyName || "",
+      organizationType: details?.organizationType || "",
     }),
   });
 
@@ -154,6 +156,7 @@ export default function LoginPage() {
   const [signupPassword, setSignupPassword] = useState("");
   const [signupConfirmPassword, setSignupConfirmPassword] = useState("");
   const [companyName, setCompanyName] = useState("");
+  const [organizationType, setOrganizationType] = useState<"property_management" | "cleaning_company">("property_management");
   const [signupAcceptedTerms, setSignupAcceptedTerms] = useState(false);
   const [pendingSignupUserId, setPendingSignupUserId] = useState("");
 
@@ -375,6 +378,7 @@ export default function LoginPage() {
             full_name: signupName.trim(),
             phone: signupPhone.trim(),
             company_name: companyName.trim(),
+            organization_type: organizationType,
             signup_kind: "company_admin",
           },
         },
@@ -408,6 +412,7 @@ export default function LoginPage() {
           fullName: signupName.trim(),
           phone: signupPhone.trim(),
           companyName: companyName.trim(),
+          organizationType,
         });
       } catch (signupError) {
         const message = signupError instanceof Error ? signupError.message : "Failed to create company workspace.";
@@ -425,6 +430,7 @@ export default function LoginPage() {
       setSignupPassword("");
       setSignupConfirmPassword("");
       setCompanyName("");
+      setOrganizationType("property_management");
       setPendingSignupUserId("");
     } finally {
       setLoadingSignup(false);
@@ -754,6 +760,37 @@ export default function LoginPage() {
                         onChange={(e) => setCompanyName(e.target.value)}
                         onFocus={(e) => scrollInputIntoView(e.currentTarget)}
                       />
+
+                      <div className="md:col-span-2 grid gap-2 rounded-[20px] border border-[#e7ddd0] bg-[#fcfaf7] p-2 sm:grid-cols-2">
+                        <button
+                          type="button"
+                          onClick={() => setOrganizationType("property_management")}
+                          className={`rounded-[16px] border px-4 py-3 text-left text-sm transition ${
+                            organizationType === "property_management"
+                              ? "border-[#b48d4e] bg-white text-[#241c15] shadow-sm"
+                              : "border-transparent text-[#6f6255] hover:bg-white"
+                          }`}
+                        >
+                          <div className="font-semibold">Property management</div>
+                          <div className="mt-1 text-xs leading-5 text-[#7f7263]">
+                            Full PM/co-host dashboard with owners, invoices, properties, jobs, and documents.
+                          </div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setOrganizationType("cleaning_company")}
+                          className={`rounded-[16px] border px-4 py-3 text-left text-sm transition ${
+                            organizationType === "cleaning_company"
+                              ? "border-[#2f855a] bg-white text-[#17382d] shadow-sm"
+                              : "border-transparent text-[#6f6255] hover:bg-white"
+                          }`}
+                        >
+                          <div className="font-semibold">Cleaning company</div>
+                          <div className="mt-1 text-xs leading-5 text-[#5e7469]">
+                            Focused admin for cleaners, jobs, schedules, access, SOPs, issues, and completion.
+                          </div>
+                        </button>
+                      </div>
 
                       <div>
                         <div className="relative">
