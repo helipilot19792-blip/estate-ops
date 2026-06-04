@@ -81,37 +81,37 @@ const PORTAL_PREVIEW_LINKS = [
   {
     label: "Admin portal",
     description: "Company admin workspace with properties, jobs, owners, billing, and operations.",
-    href: "/admin",
+    href: "/admin?portalPreview=1",
     tone: "border-[#d8c7ab] bg-[#fffdf9] text-[#5f5245]",
   },
   {
     label: "Cleaner portal",
     description: "Cleaner desktop job view for assigned work, SOPs, access, and job status.",
-    href: "/cleaner",
+    href: "/cleaner?portalPreview=1",
     tone: "border-[#cfe4cf] bg-[#f4fbf4] text-[#2f6b2f]",
   },
   {
     label: "Cleaner mobile",
     description: "Phone-first cleaner flow with GPS access, arrival, SOPs, issues, and finish actions.",
-    href: "/cleaner/mobile",
+    href: "/cleaner/mobile?portalPreview=1",
     tone: "border-[#cfe4cf] bg-[#f4fbf4] text-[#2f6b2f]",
   },
   {
     label: "Grounds portal",
     description: "Grounds crew jobs, route-style assignments, and progress actions.",
-    href: "/grounds",
+    href: "/grounds?portalPreview=1",
     tone: "border-[#c9dff0] bg-[#f3f9fd] text-[#24506f]",
   },
   {
     label: "Owner portal",
     description: "Owner-facing statements, invoices, property visibility, and document access.",
-    href: "/owner",
+    href: "/owner?portalPreview=1",
     tone: "border-[#ead7f0] bg-[#fcf7ff] text-[#6f3f7c]",
   },
   {
     label: "Owner welcome",
     description: "Owner onboarding and welcome experience.",
-    href: "/owner/welcome",
+    href: "/owner/welcome?portalPreview=1",
     tone: "border-[#ead7f0] bg-[#fcf7ff] text-[#6f3f7c]",
   },
   {
@@ -439,7 +439,7 @@ export default function PlatformPage() {
           </div>
 
           <div className="mt-4 rounded-[18px] border border-[#c9d5ea] bg-white/70 px-4 py-3 text-xs leading-5 text-[#617087]">
-            These previews do not impersonate users. If a route requires a cleaner, grounds, owner, or admin account, it will show what your current session is allowed to see.
+            These previews do not impersonate users. Preview mode keeps live role pages from bouncing platform admins away, but each portal still shows what your current session can access.
           </div>
         </section>
 

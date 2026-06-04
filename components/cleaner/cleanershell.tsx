@@ -641,7 +641,11 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
 
         setProfile(dashboard.profile);
 
-        if (dashboard.profile.role === "platform_admin" || dashboard.profile.role === "admin") {
+        const portalPreview =
+          typeof window !== "undefined" &&
+          new URLSearchParams(window.location.search).get("portalPreview") === "1";
+
+        if (!portalPreview && (dashboard.profile.role === "platform_admin" || dashboard.profile.role === "admin")) {
           router.replace(dashboard.profile.role === "platform_admin" ? "/platform" : "/admin");
           return;
         }
