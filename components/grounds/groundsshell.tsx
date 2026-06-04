@@ -209,6 +209,123 @@ type GroundsDashboardPayload = {
   sopImages: SopImage[];
 };
 
+function buildGroundsPreviewDashboard(profile: Profile): GroundsDashboardPayload {
+  const today = new Date();
+  const nextWeek = new Date(today);
+  nextWeek.setDate(today.getDate() + 7);
+  const property: Property = {
+    id: "preview-grounds-property",
+    organization_id: "preview-organization",
+    name: "Preview Garden House",
+    address: "45 Cedar Path, Preview Bay",
+    notes: "Preview property used by the SaaS Control Tower.",
+  };
+  const acceptedJob: GroundsJob = {
+    slot: {
+      id: "preview-grounds-slot-accepted",
+      job_id: "preview-grounds-job-accepted",
+      slot_number: 1,
+      grounds_account_id: "preview-grounds-account",
+      status: "accepted",
+      offered_at: today.toISOString(),
+      accepted_at: today.toISOString(),
+      declined_at: null,
+      expires_at: nextWeek.toISOString(),
+      accepted_by_profile_id: profile.id,
+      declined_by_profile_id: null,
+      created_at: today.toISOString(),
+      updated_at: today.toISOString(),
+    },
+    job: {
+      id: "preview-grounds-job-accepted",
+      property_id: property.id,
+      status: "accepted",
+      notes: "Service date: " + toYmd(today) + "\nMow lawn, edge walkway, check exterior bins, and report storm damage.",
+      created_at: today.toISOString(),
+      scheduled_for: toYmd(today),
+      staffing_status: "fully_staffed",
+      grounds_units_needed: 1,
+      grounds_units_required_strict: true,
+      show_team_status_to_grounds: true,
+      needs_secure_access: true,
+      needs_garage_access: false,
+      job_type: "weekly_service",
+    },
+    jobDate: toYmd(today),
+    acceptedSlots: 1,
+    totalSlots: 1,
+  };
+  const offeredJob: GroundsJob = {
+    slot: {
+      id: "preview-grounds-slot-offered",
+      job_id: "preview-grounds-job-offered",
+      slot_number: 1,
+      grounds_account_id: "preview-grounds-account",
+      status: "offered",
+      offered_at: today.toISOString(),
+      accepted_at: null,
+      declined_at: null,
+      expires_at: nextWeek.toISOString(),
+      accepted_by_profile_id: null,
+      declined_by_profile_id: null,
+      created_at: today.toISOString(),
+      updated_at: today.toISOString(),
+    },
+    job: {
+      id: "preview-grounds-job-offered",
+      property_id: property.id,
+      status: "offered",
+      notes: "Service date: " + toYmd(nextWeek) + "\nThis card shows what a pending grounds offer looks like.",
+      created_at: today.toISOString(),
+      scheduled_for: toYmd(nextWeek),
+      staffing_status: "partially_filled",
+      grounds_units_needed: 1,
+      grounds_units_required_strict: true,
+      show_team_status_to_grounds: true,
+      needs_secure_access: false,
+      needs_garage_access: true,
+      job_type: "yard_cleanup",
+    },
+    jobDate: toYmd(nextWeek),
+    acceptedSlots: 0,
+    totalSlots: 1,
+  };
+
+  return {
+    profile,
+    account: {
+      id: "preview-grounds-account",
+      display_name: "Preview Grounds Crew",
+      email: profile.email || "preview-grounds@example.com",
+      phone: "555-0110",
+      active: true,
+      created_at: today.toISOString(),
+    },
+    warning: "Preview mode: showing sample grounds data. Actions are for visual review only.",
+    jobs: [acceptedJob, offeredJob],
+    properties: [property],
+    accessRows: [
+      {
+        id: "preview-grounds-access",
+        property_id: property.id,
+        door_code: "8642",
+        alarm_code: null,
+        notes: "Garage keypad is beside the side door. Yard tools are in the labeled bin.",
+      },
+    ],
+    sops: [
+      {
+        id: "preview-grounds-sop",
+        property_id: property.id,
+        title: "Grounds SOP",
+        content: "Photograph completed lawn, check exterior bins, clear walkway debris, and report irrigation or storm damage.",
+        created_at: today.toISOString(),
+      },
+    ],
+    sopImages: [],
+  };
+}
+
 function formatMonthLabel(date: Date) {
   return date.toLocaleDateString(undefined, {
     month: "long",
@@ -592,17 +709,24 @@ export default function GroundsShell({ mode }: GroundsShellProps) {
           return;
         }
 
-        setGroundsAccount(dashboard.account);
-        setAccountWarning(dashboard.warning);
-        setGroundsJobs(dashboard.jobs);
-        setProperties(dashboard.properties);
-        setAccessRows(dashboard.accessRows);
-        setSops(dashboard.sops);
-        setSopImages(dashboard.sopImages);
+        const activeDashboard =
+          portalPreview &&
+          !dashboard.account &&
+          (dashboard.profile.role === "platform_admin" || dashboard.profile.role === "admin")
+            ? buildGroundsPreviewDashboard(dashboard.profile)
+            : dashboard;
 
-        if (!dashboard.account) {
+        setGroundsAccount(activeDashboard.account);
+        setAccountWarning(activeDashboard.warning);
+        setGroundsJobs(activeDashboard.jobs);
+        setProperties(activeDashboard.properties);
+        setAccessRows(activeDashboard.accessRows);
+        setSops(activeDashboard.sops);
+        setSopImages(activeDashboard.sopImages);
+
+        if (!activeDashboard.account) {
           setPageError(
-            dashboard.warning || "This sign-in is not linked to a grounds account yet. Ask an admin to connect your profile."
+            activeDashboard.warning || "This sign-in is not linked to a grounds account yet. Ask an admin to connect your profile."
           );
           setLoading(false);
           return;

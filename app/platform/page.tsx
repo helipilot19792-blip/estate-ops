@@ -439,7 +439,7 @@ export default function PlatformPage() {
           </div>
 
           <div className="mt-4 rounded-[18px] border border-[#c9d5ea] bg-white/70 px-4 py-3 text-xs leading-5 text-[#617087]">
-            These previews do not impersonate users. Preview mode keeps live role pages from bouncing platform admins away, but each portal still shows what your current session can access.
+            These previews do not impersonate users. Cleaner and grounds previews can show sample live UI data when your platform login is not linked to that staff role.
           </div>
         </section>
 

@@ -216,6 +216,127 @@ type CleanerDashboardPayload = {
   sopImages: SopImage[];
 };
 
+function buildCleanerPreviewDashboard(profile: Profile): CleanerDashboardPayload {
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+  const property: Property = {
+    id: "preview-cleaner-property",
+    organization_id: "preview-organization",
+    name: "Preview Beach Cottage",
+    address: "123 Shoreline Lane, Preview Bay",
+    notes: "Preview property used by the SaaS Control Tower.",
+    latitude: 43.6426,
+    longitude: -79.3871,
+  };
+  const acceptedJob: CleanerJob = {
+    slot: {
+      id: "preview-cleaner-slot-accepted",
+      job_id: "preview-cleaner-job-accepted",
+      slot_number: 1,
+      cleaner_account_id: "preview-cleaner-account",
+      status: "accepted",
+      offered_at: today.toISOString(),
+      accepted_at: today.toISOString(),
+      declined_at: null,
+      started_at: null,
+      finished_at: null,
+      expires_at: tomorrow.toISOString(),
+      accepted_by_profile_id: profile.id,
+      declined_by_profile_id: null,
+      started_by_profile_id: null,
+      finished_by_profile_id: null,
+      created_at: today.toISOString(),
+      updated_at: today.toISOString(),
+    },
+    job: {
+      id: "preview-cleaner-job-accepted",
+      property_id: property.id,
+      status: "accepted",
+      notes: "Guest / reservation: Preview guest\nGuest count: 4\nCheckout date: " + toYmd(today) + "\nFocus on bathrooms, kitchen reset, linens, and final photo check.",
+      created_at: today.toISOString(),
+      scheduled_for: toYmd(today),
+      staffing_status: "fully_staffed",
+      cleaner_units_needed: 1,
+      cleaner_units_required_strict: true,
+      show_team_status_to_cleaners: true,
+    },
+    jobDate: toYmd(today),
+    acceptedSlots: 1,
+    totalSlots: 1,
+  };
+  const offeredJob: CleanerJob = {
+    slot: {
+      id: "preview-cleaner-slot-offered",
+      job_id: "preview-cleaner-job-offered",
+      slot_number: 1,
+      cleaner_account_id: "preview-cleaner-account",
+      status: "offered",
+      offered_at: today.toISOString(),
+      accepted_at: null,
+      declined_at: null,
+      started_at: null,
+      finished_at: null,
+      expires_at: tomorrow.toISOString(),
+      accepted_by_profile_id: null,
+      declined_by_profile_id: null,
+      started_by_profile_id: null,
+      finished_by_profile_id: null,
+      created_at: today.toISOString(),
+      updated_at: today.toISOString(),
+    },
+    job: {
+      id: "preview-cleaner-job-offered",
+      property_id: property.id,
+      status: "offered",
+      notes: "Guest / reservation: Same-day turn preview\nCheckout date: " + toYmd(tomorrow) + "\nThis card shows what a pending cleaner offer looks like.",
+      created_at: today.toISOString(),
+      scheduled_for: toYmd(tomorrow),
+      staffing_status: "partially_filled",
+      cleaner_units_needed: 1,
+      cleaner_units_required_strict: true,
+      show_team_status_to_cleaners: true,
+    },
+    jobDate: toYmd(tomorrow),
+    acceptedSlots: 0,
+    totalSlots: 1,
+  };
+
+  return {
+    profile,
+    account: {
+      id: "preview-cleaner-account",
+      display_name: "Preview Cleaner Team",
+      email: profile.email || "preview-cleaner@example.com",
+      phone: "555-0100",
+      active: true,
+      created_at: today.toISOString(),
+    },
+    warning: "Preview mode: showing sample cleaner data. Actions and GPS events are for visual review only.",
+    jobs: [acceptedJob, offeredJob],
+    properties: [property],
+    accessRows: [
+      {
+        id: "preview-cleaner-access",
+        property_id: property.id,
+        door_code: "2468",
+        alarm_code: "1357",
+        notes: "Lockbox is on the left side gate. Return keys before leaving.",
+      },
+    ],
+    sops: [
+      {
+        id: "preview-cleaner-sop",
+        property_id: property.id,
+        title: "Turnover SOP",
+        content: "Reset linens, clean bathrooms, wipe kitchen surfaces, check supplies, report damage, and upload issue photos when needed.",
+        created_at: today.toISOString(),
+      },
+    ],
+    sopImages: [],
+  };
+}
+
 function formatMonthLabel(date: Date) {
   return date.toLocaleDateString(undefined, {
     month: "long",
@@ -650,17 +771,24 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
           return;
         }
 
-        setCleanerAccount(dashboard.account);
-        setAccountWarning(dashboard.warning);
-        setCleanerJobs(dashboard.jobs);
-        setProperties(dashboard.properties);
-        setAccessRows(dashboard.accessRows);
-        setSops(dashboard.sops);
-        setSopImages(dashboard.sopImages);
+        const activeDashboard =
+          portalPreview &&
+          !dashboard.account &&
+          (dashboard.profile.role === "platform_admin" || dashboard.profile.role === "admin")
+            ? buildCleanerPreviewDashboard(dashboard.profile)
+            : dashboard;
 
-        if (!dashboard.account) {
+        setCleanerAccount(activeDashboard.account);
+        setAccountWarning(activeDashboard.warning);
+        setCleanerJobs(activeDashboard.jobs);
+        setProperties(activeDashboard.properties);
+        setAccessRows(activeDashboard.accessRows);
+        setSops(activeDashboard.sops);
+        setSopImages(activeDashboard.sopImages);
+
+        if (!activeDashboard.account) {
           setPageError(
-            dashboard.warning || "This sign-in is not linked to a cleaner account yet. Ask an admin to connect your profile."
+            activeDashboard.warning || "This sign-in is not linked to a cleaner account yet. Ask an admin to connect your profile."
           );
           setLoading(false);
           return;
