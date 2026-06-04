@@ -1041,6 +1041,148 @@ export default function OwnerPage() {
     URL.revokeObjectURL(url);
   }
 
+  function loadOwnerPreviewData(email: string) {
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    const nextWeek = new Date(today);
+    nextWeek.setDate(today.getDate() + 7);
+    const property: Property = {
+      id: "preview-owner-property",
+      organization_id: "preview-organization",
+      name: "Preview Lake House",
+      address: "18 Maple Dock Road, Preview Bay",
+      notes: "Preview property used by the SaaS Control Tower.",
+      cover_photo_url: null,
+    };
+    const owner: OwnerAccountRow = {
+      id: "preview-owner-account",
+      email,
+      full_name: "Preview Owner",
+      profile_id: null,
+      invite_sent_at: today.toISOString(),
+      invite_accepted_at: today.toISOString(),
+      is_active: true,
+    };
+
+    setOwnerAccount(owner);
+    setProperties([property]);
+    setTurnoverJobs([
+      {
+        id: "preview-owner-turnover",
+        property_id: property.id,
+        status: "completed",
+        notes: "Guest / reservation: Preview guest\nCheckout date: " + toYmd(today) + "\nCleaner completed turnover and reported no damage.",
+        created_at: today.toISOString(),
+        scheduled_for: toYmd(today),
+      },
+    ]);
+    setBookingEvents([
+      {
+        id: "preview-owner-booking",
+        property_id: property.id,
+        source: "Airbnb",
+        summary: "Preview guest stay",
+        guest_count: 4,
+        checkin_date: toYmd(tomorrow),
+        checkout_date: toYmd(nextWeek),
+        created_at: today.toISOString(),
+      },
+    ]);
+    setGroundsJobs([
+      {
+        id: "preview-owner-grounds",
+        property_id: property.id,
+        status: "scheduled",
+        notes: "Weekly lawn service and exterior check.",
+        created_at: today.toISOString(),
+        scheduled_for: toYmd(nextWeek),
+        job_type: "weekly_service",
+      },
+    ]);
+    setGroundsRecurringRules([
+      {
+        id: "preview-owner-grounds-rule",
+        property_id: property.id,
+        task_type: "weekly_service",
+        label: "Weekly grounds check",
+        notes: "Mow lawn, edge walkway, check bins.",
+        frequency_type: "weekly",
+        interval_days: null,
+        day_of_week: 2,
+        day_of_month: null,
+        semi_monthly_day_1: null,
+        semi_monthly_day_2: null,
+        anchor_date: null,
+        start_date: toYmd(today),
+        end_date: null,
+        next_run_date: toYmd(nextWeek),
+        active: true,
+      },
+    ]);
+    setOwnerInvoices([
+      {
+        id: "preview-owner-invoice",
+        owner_account_id: owner.id,
+        property_id: property.id,
+        invoice_number: "PREVIEW-1001",
+        status: "sent",
+        issue_date: toYmd(today),
+        due_date: toYmd(nextWeek),
+        company_name: "Estate of Mind Property Management",
+        logo_url: null,
+        header_text: "Owner statement preview",
+        notes: "This is sample preview data for the live owner portal UI.",
+        payment_instructions: "Preview only - no payment is due.",
+        tax_lines: [],
+        line_items: [
+          {
+            id: "preview-owner-line-cleaning",
+            description: "Turnover cleaning",
+            category: "Cleaning",
+            quantity: 1,
+            rate: 185,
+          },
+          {
+            id: "preview-owner-line-supplies",
+            description: "Restock supplies",
+            category: "Supplies",
+            quantity: 1,
+            rate: 42,
+          },
+        ],
+        subtotal: 227,
+        tax_total: 0,
+        total: 227,
+        sent_at: today.toISOString(),
+        owner_viewed_at: null,
+      },
+    ]);
+    setOwnerInvoiceHiddenItems([]);
+    setFlags([
+      {
+        id: "preview-owner-flag",
+        property_id: property.id,
+        source: "owner",
+        category: "Maintenance",
+        urgency: "normal",
+        status: "open",
+        notes: "Preview issue: owner noticed a loose patio chair.",
+        owner_visible_at: today.toISOString(),
+        owner_notified_at: today.toISOString(),
+        created_at: today.toISOString(),
+        flagged_at: today.toISOString(),
+        resolved_at: null,
+      },
+    ]);
+    setFlagImages([]);
+    setSelectedPropertyId(property.id);
+    setOwnerChatParticipants([]);
+    setOwnerChatMessages([]);
+    setOwnerChatUnreadCount(0);
+    setLoading(false);
+  }
+
   async function downloadOwnerInvoicePdf(invoice: OwnerInvoice) {
     setDownloadingInvoiceId(invoice.id);
     setError("");
@@ -1190,6 +1332,9 @@ export default function OwnerPage() {
       return;
     }
 
+    const portalPreview =
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("portalPreview") === "1";
     const email = user.email.trim().toLowerCase();
 
     const { data: ownerRes, error: ownerError } = await supabase
@@ -1205,6 +1350,10 @@ export default function OwnerPage() {
     }
 
     if (!ownerRes) {
+      if (portalPreview) {
+        loadOwnerPreviewData(email);
+        return;
+      }
       setError(t("ownerPortal.empty.noAccount"));
       setLoading(false);
       return;
