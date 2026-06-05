@@ -5,6 +5,7 @@ import { isMissingAuditLogTableError, writeAuditLog } from "@/lib/server/audit-l
 export const dynamic = "force-dynamic";
 
 type PlatformAction =
+  | { type: "ensure_cleaning_demo" }
   | { type: "extend_trial"; organizationId: string; days?: number }
   | { type: "set_status"; organizationId: string; status: "trialing" | "active" | "past_due" | "canceled" | "suspended" }
   | {
@@ -18,6 +19,9 @@ type PlatformAction =
       status?: "trialing" | "active" | "past_due" | "canceled" | "suspended";
     }
   | { type: "delete_organization"; organizationId: string; confirmName: string };
+
+const CLEANING_DEMO_SLUG = "cleaning-company-demo";
+const CLEANING_DEMO_NAME = "Cleaning Company Demo";
 
 type OrganizationRow = {
   id: string;
@@ -570,6 +574,348 @@ async function deleteOrganizationWorkspace(
   return { deletedRows: deleted + (organizationCount ?? 0), summary };
 }
 
+async function ensureCleaningCompanyDemo(
+  serviceClient: ReturnType<typeof getClients>["serviceClient"],
+  platformProfileId: string
+) {
+  const now = new Date();
+  const trialEndsAt = new Date(now);
+  trialEndsAt.setDate(trialEndsAt.getDate() + 30);
+
+  const { data: existingOrganization, error: existingOrganizationError } = await serviceClient
+    .from("organizations")
+    .select("id,name,slug")
+    .eq("slug", CLEANING_DEMO_SLUG)
+    .maybeSingle();
+
+  if (existingOrganizationError) {
+    throw new Error(existingOrganizationError.message);
+  }
+
+  let organization = existingOrganization as { id: string; name: string | null; slug: string | null } | null;
+
+  if (!organization) {
+    const { data: insertedOrganization, error: insertOrganizationError } = await serviceClient
+      .from("organizations")
+      .insert({
+        name: CLEANING_DEMO_NAME,
+        slug: CLEANING_DEMO_SLUG,
+        created_by: platformProfileId,
+        subscription_status: "active",
+        trial_started_at: now.toISOString(),
+        trial_ends_at: trialEndsAt.toISOString(),
+        billing_enabled: false,
+        organization_type: "cleaning_company",
+        account_type: "internal",
+        plan_name: "Cleaning company demo",
+        property_limit: 25,
+        member_limit: 50,
+        billing_override_reason: "SaaS tower cleaning-company viewer",
+      })
+      .select("id,name,slug")
+      .single();
+
+    if (insertOrganizationError || !insertedOrganization) {
+      throw new Error(insertOrganizationError?.message || "Could not create cleaning company demo organization.");
+    }
+
+    organization = insertedOrganization as { id: string; name: string | null; slug: string | null };
+  } else {
+    const { error: updateOrganizationError } = await serviceClient
+      .from("organizations")
+      .update({
+        name: CLEANING_DEMO_NAME,
+        organization_type: "cleaning_company",
+        account_type: "internal",
+        plan_name: "Cleaning company demo",
+        billing_enabled: false,
+        subscription_status: "active",
+        billing_override_reason: "SaaS tower cleaning-company viewer",
+      })
+      .eq("id", organization.id);
+
+    if (updateOrganizationError) {
+      throw new Error(updateOrganizationError.message);
+    }
+  }
+
+  const { data: existingMembership, error: membershipLookupError } = await serviceClient
+    .from("organization_members")
+    .select("organization_id")
+    .eq("organization_id", organization.id)
+    .eq("profile_id", platformProfileId)
+    .maybeSingle();
+
+  if (membershipLookupError) {
+    throw new Error(membershipLookupError.message);
+  }
+
+  if (!existingMembership) {
+    const { error: membershipInsertError } = await serviceClient.from("organization_members").insert({
+      organization_id: organization.id,
+      profile_id: platformProfileId,
+      role: "admin",
+    });
+
+    if (membershipInsertError) {
+      throw new Error(membershipInsertError.message);
+    }
+  }
+
+  const { data: existingProperty, error: propertyLookupError } = await serviceClient
+    .from("properties")
+    .select("id")
+    .eq("organization_id", organization.id)
+    .eq("name", "Demo Lakehouse Turnover")
+    .maybeSingle();
+
+  if (propertyLookupError) {
+    throw new Error(propertyLookupError.message);
+  }
+
+  let propertyId = existingProperty?.id as string | undefined;
+
+  if (!propertyId) {
+    const { data: insertedProperty, error: propertyInsertError } = await serviceClient
+      .from("properties")
+      .insert({
+        organization_id: organization.id,
+        name: "Demo Lakehouse Turnover",
+        address: "100 Demo Lane, Collingwood, ON",
+        notes: "Cleaning-company demo property for SaaS Tower previews.",
+        latitude: 44.5008,
+        longitude: -80.2169,
+      })
+      .select("id")
+      .single();
+
+    if (propertyInsertError || !insertedProperty) {
+      throw new Error(propertyInsertError?.message || "Could not create demo property.");
+    }
+
+    propertyId = insertedProperty.id as string;
+  }
+
+  const { data: existingAccess, error: accessLookupError } = await serviceClient
+    .from("property_access")
+    .select("id")
+    .eq("property_id", propertyId)
+    .maybeSingle();
+
+  if (accessLookupError) {
+    throw new Error(accessLookupError.message);
+  }
+
+  if (!existingAccess) {
+    const { error: accessInsertError } = await serviceClient.from("property_access").insert({
+      property_id: propertyId,
+      door_code: "2468",
+      alarm_code: "1357",
+      notes: "Demo lockbox on front rail. Return key and scramble code after entry.",
+    });
+
+    if (accessInsertError) {
+      throw new Error(accessInsertError.message);
+    }
+  }
+
+  const { data: existingCleaner, error: cleanerLookupError } = await serviceClient
+    .from("cleaner_accounts")
+    .select("id")
+    .eq("organization_id", organization.id)
+    .eq("email", "cleaner-demo@guleraos.local")
+    .maybeSingle();
+
+  if (cleanerLookupError) {
+    throw new Error(cleanerLookupError.message);
+  }
+
+  let cleanerAccountId = existingCleaner?.id as string | undefined;
+
+  if (!cleanerAccountId) {
+    const { data: insertedCleaner, error: cleanerInsertError } = await serviceClient
+      .from("cleaner_accounts")
+      .insert({
+        organization_id: organization.id,
+        display_name: "Demo Cleaning Team",
+        email: "cleaner-demo@guleraos.local",
+        phone: "555-0101",
+        active: true,
+      })
+      .select("id")
+      .single();
+
+    if (cleanerInsertError || !insertedCleaner) {
+      throw new Error(cleanerInsertError?.message || "Could not create demo cleaner account.");
+    }
+
+    cleanerAccountId = insertedCleaner.id as string;
+  }
+
+  const { data: existingAssignment, error: assignmentLookupError } = await serviceClient
+    .from("property_cleaner_account_assignments")
+    .select("id")
+    .eq("property_id", propertyId)
+    .eq("cleaner_account_id", cleanerAccountId)
+    .maybeSingle();
+
+  if (assignmentLookupError) {
+    throw new Error(assignmentLookupError.message);
+  }
+
+  if (!existingAssignment) {
+    const { error: assignmentInsertError } = await serviceClient.from("property_cleaner_account_assignments").insert({
+      property_id: propertyId,
+      cleaner_account_id: cleanerAccountId,
+      priority: 1,
+    });
+
+    if (assignmentInsertError) {
+      throw new Error(assignmentInsertError.message);
+    }
+  }
+
+  const { data: existingSop, error: sopLookupError } = await serviceClient
+    .from("property_sops")
+    .select("id")
+    .eq("property_id", propertyId)
+    .eq("title", "Demo turnover SOP")
+    .maybeSingle();
+
+  if (sopLookupError) {
+    throw new Error(sopLookupError.message);
+  }
+
+  if (!existingSop) {
+    const { error: sopInsertError } = await serviceClient.from("property_sops").insert({
+      property_id: propertyId,
+      title: "Demo turnover SOP",
+      content: "Check entry photos, restock guest supplies, complete checklist, report damage with photos, and confirm lockbox is secure.",
+    });
+
+    if (sopInsertError) {
+      throw new Error(sopInsertError.message);
+    }
+  }
+
+  const { data: checklistItems, error: checklistLookupError } = await serviceClient
+    .from("property_cleaning_checklist_items")
+    .select("id")
+    .eq("organization_id", organization.id)
+    .eq("property_id", propertyId)
+    .limit(1);
+
+  if (checklistLookupError) {
+    throw new Error(checklistLookupError.message);
+  }
+
+  if ((checklistItems ?? []).length === 0) {
+    const { error: checklistInsertError } = await serviceClient.from("property_cleaning_checklist_items").insert([
+      {
+        organization_id: organization.id,
+        property_id: propertyId,
+        title: "Clean bathrooms",
+        description: "Toilets, sinks, mirrors, tubs, floors, and guest supplies.",
+        sort_order: 10,
+        active: true,
+      },
+      {
+        organization_id: organization.id,
+        property_id: propertyId,
+        title: "Reset kitchen",
+        description: "Sink, counters, fridge check, dishes, garbage, and starter supplies.",
+        sort_order: 20,
+        active: true,
+      },
+      {
+        organization_id: organization.id,
+        property_id: propertyId,
+        title: "Final walkthrough",
+        description: "Thermostat, lights, lockbox, damages, and guest-ready photos.",
+        sort_order: 30,
+        active: true,
+      },
+    ]);
+
+    if (checklistInsertError) {
+      throw new Error(checklistInsertError.message);
+    }
+  }
+
+  const { data: existingJob, error: jobLookupError } = await serviceClient
+    .from("turnover_jobs")
+    .select("id")
+    .eq("organization_id", organization.id)
+    .eq("property_id", propertyId)
+    .ilike("notes", "%[DEMO:CLEANING-COMPANY]%")
+    .maybeSingle();
+
+  if (jobLookupError) {
+    throw new Error(jobLookupError.message);
+  }
+
+  let jobId = existingJob?.id as string | undefined;
+
+  if (!jobId) {
+    const scheduledFor = new Date();
+    scheduledFor.setDate(scheduledFor.getDate() + 1);
+
+    const { data: insertedJob, error: jobInsertError } = await serviceClient
+      .from("turnover_jobs")
+      .insert({
+        organization_id: organization.id,
+        property_id: propertyId,
+        status: "accepted",
+        notes:
+          "Guest / reservation: Demo guest\nCheckout date: " +
+          scheduledFor.toISOString().slice(0, 10) +
+          "\n[DEMO:CLEANING-COMPANY]",
+        scheduled_for: scheduledFor.toISOString().slice(0, 10),
+        cleaners_needed: 1,
+        cleaners_required_strict: false,
+        cleaner_units_needed: 1,
+        cleaner_units_required_strict: false,
+        show_team_status_to_cleaners: true,
+      })
+      .select("id")
+      .single();
+
+    if (jobInsertError || !insertedJob) {
+      throw new Error(jobInsertError?.message || "Could not create demo turnover job.");
+    }
+
+    jobId = insertedJob.id as string;
+  }
+
+  const { data: existingSlot, error: slotLookupError } = await serviceClient
+    .from("turnover_job_slots")
+    .select("id")
+    .eq("job_id", jobId)
+    .eq("slot_number", 1)
+    .maybeSingle();
+
+  if (slotLookupError) {
+    throw new Error(slotLookupError.message);
+  }
+
+  if (!existingSlot) {
+    const { error: slotInsertError } = await serviceClient.from("turnover_job_slots").insert({
+      job_id: jobId,
+      slot_number: 1,
+      cleaner_account_id: cleanerAccountId,
+      status: "accepted",
+      offered_at: now.toISOString(),
+      accepted_at: now.toISOString(),
+    });
+
+    if (slotInsertError) {
+      throw new Error(slotInsertError.message);
+    }
+  }
+
+  return organization;
+}
+
 export async function GET(req: NextRequest) {
   try {
     const authHeader = req.headers.get("authorization");
@@ -610,12 +956,32 @@ export async function POST(req: NextRequest) {
     const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
     const { profile, serviceClient } = await requirePlatformAdmin(token);
     const body = (await req.json().catch(() => null)) as PlatformAction | null;
+    let previewOrganizationId: string | null = null;
 
-    if (!body?.organizationId) {
-      return NextResponse.json({ ok: false, error: "Missing organizationId." }, { status: 400 });
+    if (!body?.type) {
+      return NextResponse.json({ ok: false, error: "Missing platform action." }, { status: 400 });
     }
 
-    if (body.type === "extend_trial") {
+    if (body.type === "ensure_cleaning_demo") {
+      const demoOrganization = await ensureCleaningCompanyDemo(serviceClient, profile.id);
+      previewOrganizationId = demoOrganization.id;
+
+      await writeAuditLog(serviceClient, {
+        actorProfileId: profile.id,
+        actorEmail: profile.email,
+        actorRole: profile.role,
+        organizationId: demoOrganization.id,
+        actionType: "platform.ensure_cleaning_demo",
+        targetType: "organization",
+        targetId: demoOrganization.id,
+        metadata: {
+          slug: CLEANING_DEMO_SLUG,
+          organization_type: "cleaning_company",
+        },
+      });
+    } else if (!body.organizationId) {
+      return NextResponse.json({ ok: false, error: "Missing organizationId." }, { status: 400 });
+    } else if (body.type === "extend_trial") {
       const extraDays = Number(body.days || 30);
       const { data: organization, error: orgError } = await serviceClient
         .from("organizations")
@@ -795,6 +1161,7 @@ export async function POST(req: NextRequest) {
     const featureUsage = await loadFeatureUsageSummary(serviceClient);
     return NextResponse.json({
       ok: true,
+      previewOrganizationId,
       organizations,
       auditLogs: auditLogState.entries,
       auditLogAvailable: auditLogState.available,

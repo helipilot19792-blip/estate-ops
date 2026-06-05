@@ -179,7 +179,9 @@ export default function PlatformPage() {
   const [organizationSearch, setOrganizationSearch] = useState("");
   const [organizationStatusFilter, setOrganizationStatusFilter] = useState("all");
   const [organizationTypeFilter, setOrganizationTypeFilter] = useState("all");
-  const [adminPreviewOrganizationId, setAdminPreviewOrganizationId] = useState("");
+  const [cleaningAdminPreviewOrganization, setCleaningAdminPreviewOrganization] =
+    useState<PlatformOrganization | null>(null);
+  const [openingCleaningAdminPreview, setOpeningCleaningAdminPreview] = useState(false);
   const [expandedOrganizationIds, setExpandedOrganizationIds] = useState<Set<string>>(() => new Set());
   const [deleteConfirmByOrg, setDeleteConfirmByOrg] = useState<Record<string, string>>({});
   const [auditLogExpanded, setAuditLogExpanded] = useState(false);
@@ -312,6 +314,52 @@ export default function PlatformPage() {
     }
   }
 
+  async function handleOpenCleaningAdminPreview() {
+    try {
+      setError("");
+      setStatusMessage("");
+      setOpeningCleaningAdminPreview(true);
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("No active platform session.");
+      }
+
+      const response = await fetch("/api/platform/organizations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ type: "ensure_cleaning_demo" }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(payload?.error || "Could not open cleaning company demo.");
+      }
+
+      const nextOrganizations = (payload.organizations || []) as PlatformOrganization[];
+      const demoOrganization =
+        nextOrganizations.find((organization) => organization.id === payload.previewOrganizationId) || null;
+
+      setOrganizations(nextOrganizations);
+      setAuditLogs((payload.auditLogs || []) as PlatformAuditLog[]);
+      setAuditLogAvailable(payload.auditLogAvailable !== false);
+      setFeatureUsage((payload.featureUsage || null) as FeatureUsageSummary | null);
+      setCleaningAdminPreviewOrganization(demoOrganization);
+      setStatusMessage("Cleaning company demo opened as its own isolated organization.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not open cleaning company demo.");
+    } finally {
+      setOpeningCleaningAdminPreview(false);
+    }
+  }
+
   async function handleDeleteOrganization(organization: PlatformOrganization) {
     const expectedText = getDeleteConfirmationText(organization);
     const confirmedText = String(deleteConfirmByOrg[organization.id] || "").trim();
@@ -344,8 +392,6 @@ export default function PlatformPage() {
     });
   }
 
-  const adminPreviewOrganization =
-    organizations.find((organization) => organization.id === adminPreviewOrganizationId) || null;
 
   if (loading) {
     return (
@@ -428,6 +474,26 @@ export default function PlatformPage() {
           </div>
 
           <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <button
+              type="button"
+              onClick={() => void handleOpenCleaningAdminPreview()}
+              disabled={openingCleaningAdminPreview}
+              className="group rounded-[22px] border border-[#b9d9ca] bg-[#f4fbf4] px-4 py-4 text-left text-[#2f6b55] shadow-sm transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-wait disabled:opacity-70"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold">Cleaning admin dashboard</div>
+                  <div className="mt-2 text-xs leading-5 opacity-80">
+                    Open a separate demo cleaning-company organization with its own admin dashboard.
+                  </div>
+                </div>
+                <span className="shrink-0 rounded-full border border-current/20 px-2.5 py-1 text-[11px] font-semibold opacity-80 transition group-hover:opacity-100">
+                  {openingCleaningAdminPreview ? "Opening" : "View"}
+                </span>
+              </div>
+              <div className="mt-3 font-mono text-[11px] opacity-65">/admin?demo=cleaning-company</div>
+            </button>
+
             {PORTAL_PREVIEW_LINKS.map((link) => (
               <a
                 key={link.href}
@@ -712,43 +778,6 @@ export default function PlatformPage() {
                               .map((admin) => admin.full_name || admin.email || admin.id)
                               .join(", ")
                           : "No tenant admins found"}
-                      </div>
-                    </div>
-
-                    <div className="mt-4 rounded-[22px] border border-[#cfe4cf] bg-[#f4fbf4] px-4 py-4">
-                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                        <div>
-                          <div className="text-[11px] uppercase tracking-[0.18em] text-[#2f6b2f]">Cleaning admin preview</div>
-                          <div className="mt-1 text-sm font-semibold text-[#17382d]">
-                            {organization.cleaning_job_count} cleaning job{organization.cleaning_job_count === 1 ? "" : "s"} across {organization.property_count} propert{organization.property_count === 1 ? "y" : "ies"}
-                          </div>
-                          <p className="mt-1 text-xs leading-5 text-[#5e7469]">
-                            {organization.organization_type === "cleaning_company"
-                              ? "This tenant is using the cleaning-company admin shape: jobs, cleaners, schedules, property access, SOPs, checklists, issues, and invoices."
-                              : "Developer preview only. This opens the cleaning-company admin shape for inspection without changing this tenant's real organization type."}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setAdminPreviewOrganizationId(organization.id)}
-                          className="rounded-full border border-[#b9d9ca] bg-white px-4 py-2 text-sm font-semibold text-[#2f6b55] transition hover:bg-[#f6fbf8]"
-                        >
-                          {organization.organization_type === "cleaning_company" ? "View cleaning admin" : "Preview cleaning admin mode"}
-                        </button>
-                      </div>
-                      <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                        <div className="rounded-[16px] border border-[#cfe4cf] bg-white px-3 py-3">
-                          <div className="text-[11px] uppercase tracking-[0.16em] text-[#6a8a7d]">Properties</div>
-                          <div className="mt-1 text-lg font-semibold text-[#17382d]">{organization.property_count}</div>
-                        </div>
-                        <div className="rounded-[16px] border border-[#cfe4cf] bg-white px-3 py-3">
-                          <div className="text-[11px] uppercase tracking-[0.16em] text-[#6a8a7d]">Cleaning jobs</div>
-                          <div className="mt-1 text-lg font-semibold text-[#17382d]">{organization.cleaning_job_count}</div>
-                        </div>
-                        <div className="rounded-[16px] border border-[#cfe4cf] bg-white px-3 py-3">
-                          <div className="text-[11px] uppercase tracking-[0.16em] text-[#6a8a7d]">Members</div>
-                          <div className="mt-1 text-lg font-semibold text-[#17382d]">{organization.member_count}</div>
-                        </div>
                       </div>
                     </div>
 
@@ -1047,7 +1076,7 @@ export default function PlatformPage() {
         </section>
       </div>
 
-      {adminPreviewOrganization ? (
+      {cleaningAdminPreviewOrganization ? (
         <div className="fixed inset-0 z-50 bg-[#241c15]/70 p-3 backdrop-blur-sm sm:p-6">
           <div className="mx-auto flex h-full max-w-7xl flex-col overflow-hidden rounded-[28px] border border-[#d8c7ab] bg-[#fffdf9] shadow-[0_30px_90px_rgba(0,0,0,0.35)]">
             <div className="flex flex-col gap-3 border-b border-[#eadfce] px-4 py-4 md:flex-row md:items-center md:justify-between">
@@ -1056,15 +1085,15 @@ export default function PlatformPage() {
                   Cleaning admin viewer
                 </div>
                 <h2 className="mt-1 truncate text-xl font-semibold tracking-tight text-[#241c15]">
-                  {adminPreviewOrganization.name || adminPreviewOrganization.slug || "Cleaning company"}
+                  {cleaningAdminPreviewOrganization.name || cleaningAdminPreviewOrganization.slug || "Cleaning company"}
                 </h2>
                 <p className="mt-1 text-sm text-[#7f7263]">
-                  Live admin dashboard preview for this cleaning-company organization.
+                  Live admin dashboard for the isolated cleaning-company demo organization.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <a
-                  href={`/admin?portalPreview=1&organizationId=${encodeURIComponent(adminPreviewOrganization.id)}&open=jobs`}
+                  href={`/admin?portalPreview=1&organizationId=${encodeURIComponent(cleaningAdminPreviewOrganization.id)}&open=jobs`}
                   target="_blank"
                   rel="noreferrer"
                   className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-semibold text-[#5f5245] transition hover:bg-[#fcfaf7]"
@@ -1073,7 +1102,7 @@ export default function PlatformPage() {
                 </a>
                 <button
                   type="button"
-                  onClick={() => setAdminPreviewOrganizationId("")}
+                  onClick={() => setCleaningAdminPreviewOrganization(null)}
                   className="rounded-full border border-[#241c15] bg-[#241c15] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#3a2d23]"
                 >
                   Close viewer
@@ -1082,8 +1111,10 @@ export default function PlatformPage() {
             </div>
 
             <iframe
-              title={`Cleaning admin dashboard for ${adminPreviewOrganization.name || adminPreviewOrganization.id}`}
-              src={`/admin?portalPreview=1&organizationId=${encodeURIComponent(adminPreviewOrganization.id)}&open=jobs`}
+              title={`Cleaning admin dashboard for ${
+                cleaningAdminPreviewOrganization.name || cleaningAdminPreviewOrganization.id
+              }`}
+              src={`/admin?portalPreview=1&organizationId=${encodeURIComponent(cleaningAdminPreviewOrganization.id)}&open=jobs`}
               className="min-h-0 flex-1 border-0 bg-white"
             />
           </div>
