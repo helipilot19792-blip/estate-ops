@@ -1381,6 +1381,7 @@ export default function AdminPage() {
   const [expandedNotificationSlotIds, setExpandedNotificationSlotIds] = useState<Set<string>>(() => new Set());
   const [reassignSelections, setReassignSelections] = useState<Record<string, string>>({});
   const [reassigningJobId, setReassigningJobId] = useState<string | null>(null);
+  const [assigningSelfJobId, setAssigningSelfJobId] = useState<string | null>(null);
   const [highlightedJobId, setHighlightedJobId] = useState<string | null>(null);
   const [syncingCalendarsNow, setSyncingCalendarsNow] = useState(false);
   const [deletingPropertyId, setDeletingPropertyId] = useState<string | null>(null);
@@ -5438,6 +5439,60 @@ export default function AdminPage() {
     }, 50);
   }
 
+  async function assignMyselfToCleaningJob(jobId: string) {
+    if (!currentOrganizationId) {
+      setError("No organization is selected.");
+      return;
+    }
+
+    setError("");
+    setActionMessage("");
+    setAssigningSelfJobId(jobId);
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("Could not verify your admin session.");
+      }
+
+      const response = await fetch("/api/admin/assign-self-cleaner", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          organizationId: currentOrganizationId,
+          jobId,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(payload?.error || "Could not assign you to this job.");
+      }
+
+      setActionMessage(
+        payload?.alreadyAssigned
+          ? "You are already assigned to this job."
+          : "You were assigned and accepted on this job."
+      );
+      await loadData();
+      setHighlightedJobId(jobId);
+      setTimeout(() => {
+        document.getElementById(`job-${jobId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 50);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not assign you to this job.");
+    } finally {
+      setAssigningSelfJobId(null);
+    }
+  }
+
   async function deleteCleanerAccount(account: CleanerAccount) {
     const displayName = account.display_name || account.email || "this cleaner account";
     const confirmed = window.confirm(
@@ -8071,6 +8126,20 @@ This removes its linked members and deletes the grounds account.`
           (a.display_name || a.email || "").localeCompare(b.display_name || b.email || "")
         ),
     [cleanerAccounts]
+  );
+
+  const currentAdminCleanerAccountIds = useMemo(() => {
+    if (!currentAdminProfile?.id) return new Set<string>();
+    const accountIds = cleanerAccountMembers
+      .filter((member) => member.profile_id === currentAdminProfile.id)
+      .map((member) => member.cleaner_account_id)
+      .filter(Boolean);
+    return new Set(accountIds);
+  }, [cleanerAccountMembers, currentAdminProfile]);
+
+  const currentAdminCleanerAccounts = useMemo(
+    () => cleanerAccounts.filter((account) => currentAdminCleanerAccountIds.has(account.id)),
+    [cleanerAccounts, currentAdminCleanerAccountIds]
   );
 
   const eligibleGroundsProfiles = useMemo(
@@ -18329,6 +18398,16 @@ This removes its linked members and deletes the grounds account.`
               const slots = jobSlotsByJobId[job.id] ?? [];
               const acceptedCount = slots.filter((slot) => slot.status === "accepted").length;
               const propertyCleanerAccounts = getCleanerAccountsForProperty(job.property_id);
+              const currentAdminAssignedSlot = slots.find(
+                (slot) =>
+                  !!slot.cleaner_account_id &&
+                  currentAdminCleanerAccountIds.has(slot.cleaner_account_id) &&
+                  slot.status !== "declined"
+              );
+              const canAssignSelfToJob =
+                isCleaningCompanyMode &&
+                acceptedCount < job.cleaner_units_needed &&
+                !currentAdminAssignedSlot;
 
               return (
                 <div
@@ -18350,6 +18429,46 @@ This removes its linked members and deletes the grounds account.`
                   <div className="mt-1 text-sm text-[#8a7b68]">
                     Cleaning date: {formatScheduledFor(job.scheduled_for || extractCheckoutDate(job.notes))}
                   </div>
+
+                  {isCleaningCompanyMode ? (
+                    <div className="mt-3 rounded-[18px] border border-[#cfe4cf] bg-[#f4fbf4] p-3">
+                      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#2f6b55]">
+                            Owner-operator
+                          </div>
+                          <div className="mt-1 text-sm text-[#476957]">
+                            {currentAdminAssignedSlot
+                              ? `You are assigned to slot ${currentAdminAssignedSlot.slot_number}.`
+                              : "Create or link your cleaner profile and accept this job yourself."}
+                          </div>
+                        </div>
+                        {currentAdminAssignedSlot ? (
+                          <a
+                            href="/cleaner/mobile"
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={(event) => event.stopPropagation()}
+                            className="inline-flex items-center justify-center rounded-full border border-[#b9d9ca] bg-white px-4 py-2 text-sm font-semibold text-[#2f6b55] transition hover:bg-[#f6fbf8]"
+                          >
+                            Open my cleaner view
+                          </a>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void assignMyselfToCleaningJob(job.id);
+                            }}
+                            disabled={!canAssignSelfToJob || assigningSelfJobId === job.id}
+                            className="inline-flex items-center justify-center rounded-full border border-[#2f6b55] bg-[#2f6b55] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#245844] disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {assigningSelfJobId === job.id ? "Assigning..." : "Assign myself"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
 
                   {getActiveCountdownMs(job.id) !== null && acceptedCount < job.cleaner_units_needed && (
                     <div className={`mt-1 text-sm font-semibold ${getCountdownTone(getActiveCountdownMs(job.id))}`}>
@@ -22294,6 +22413,20 @@ This removes its linked members and deletes the grounds account.`
                     className="inline-flex items-center justify-center rounded-full border border-[#cbd5e1] bg-white/80 px-5 py-2.5 text-sm font-medium text-[#334155] shadow-sm transition hover:bg-white"
                   >
                     {t("admin.shell.saasTower")}
+                  </button>
+                ) : null}
+                {isCleaningCompanyMode ? (
+                  <button
+                    type="button"
+                    onClick={() => router.push("/cleaner/mobile")}
+                    className="inline-flex items-center justify-center rounded-full border border-[#bbf7d0] bg-[#f0fdf4] px-5 py-2.5 text-sm font-medium text-[#166534] shadow-sm transition hover:bg-white"
+                    title={
+                      currentAdminCleanerAccounts.length > 0
+                        ? "Open your linked cleaner mobile view"
+                        : "Open cleaner mobile view; assigning yourself to a job will create your cleaner profile"
+                    }
+                  >
+                    My cleaner view
                   </button>
                 ) : null}
                 {myOrganizations.length > 1 ? (
