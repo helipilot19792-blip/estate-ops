@@ -2018,12 +2018,20 @@ export default function AdminPage() {
       }
 
       const organizationRows = orgRows as MyOrganizationRow[];
+      const requestedOrganizationId =
+        typeof window !== "undefined"
+          ? new URLSearchParams(window.location.search).get("organizationId")?.trim() || ""
+          : "";
       const savedOrganizationId =
         typeof window !== "undefined" ? window.localStorage.getItem(ADMIN_SELECTED_ORGANIZATION_KEY) : null;
       const savedOrganization = organizationRows.find((row) => row.organization_id === savedOrganizationId);
-      let nextOrganizationId = savedOrganization?.organization_id || organizationRows[0].organization_id;
+      const requestedOrganization = organizationRows.find((row) => row.organization_id === requestedOrganizationId);
+      let nextOrganizationId =
+        profile.role === "platform_admin" && requestedOrganization
+          ? requestedOrganization.organization_id
+          : savedOrganization?.organization_id || organizationRows[0].organization_id;
 
-      if (organizationRows.length > 1 && organizationRows.some((row) => row.record_count !== undefined)) {
+      if (!requestedOrganization && organizationRows.length > 1 && organizationRows.some((row) => row.record_count !== undefined)) {
         const bestOrganization = [...organizationRows].sort(
           (a, b) => (b.record_count || 0) - (a.record_count || 0)
         )[0];

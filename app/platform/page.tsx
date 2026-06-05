@@ -179,6 +179,7 @@ export default function PlatformPage() {
   const [organizationSearch, setOrganizationSearch] = useState("");
   const [organizationStatusFilter, setOrganizationStatusFilter] = useState("all");
   const [organizationTypeFilter, setOrganizationTypeFilter] = useState("all");
+  const [adminPreviewOrganizationId, setAdminPreviewOrganizationId] = useState("");
   const [expandedOrganizationIds, setExpandedOrganizationIds] = useState<Set<string>>(() => new Set());
   const [deleteConfirmByOrg, setDeleteConfirmByOrg] = useState<Record<string, string>>({});
   const [auditLogExpanded, setAuditLogExpanded] = useState(false);
@@ -342,6 +343,9 @@ export default function PlatformPage() {
       return next;
     });
   }
+
+  const adminPreviewOrganization =
+    organizations.find((organization) => organization.id === adminPreviewOrganizationId) || null;
 
   if (loading) {
     return (
@@ -725,10 +729,10 @@ export default function PlatformPage() {
                           </div>
                           <button
                             type="button"
-                            onClick={() => window.open("/admin?portalPreview=1", "_blank", "noopener,noreferrer")}
+                            onClick={() => setAdminPreviewOrganizationId(organization.id)}
                             className="rounded-full border border-[#b9d9ca] bg-white px-4 py-2 text-sm font-semibold text-[#2f6b55] transition hover:bg-[#f6fbf8]"
                           >
-                            Open admin preview
+                            View cleaning admin
                           </button>
                         </div>
                         <div className="mt-3 grid gap-2 sm:grid-cols-3">
@@ -1042,6 +1046,49 @@ export default function PlatformPage() {
           ) : null}
         </section>
       </div>
+
+      {adminPreviewOrganization ? (
+        <div className="fixed inset-0 z-50 bg-[#241c15]/70 p-3 backdrop-blur-sm sm:p-6">
+          <div className="mx-auto flex h-full max-w-7xl flex-col overflow-hidden rounded-[28px] border border-[#d8c7ab] bg-[#fffdf9] shadow-[0_30px_90px_rgba(0,0,0,0.35)]">
+            <div className="flex flex-col gap-3 border-b border-[#eadfce] px-4 py-4 md:flex-row md:items-center md:justify-between">
+              <div className="min-w-0">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#2f6b55]">
+                  Cleaning admin viewer
+                </div>
+                <h2 className="mt-1 truncate text-xl font-semibold tracking-tight text-[#241c15]">
+                  {adminPreviewOrganization.name || adminPreviewOrganization.slug || "Cleaning company"}
+                </h2>
+                <p className="mt-1 text-sm text-[#7f7263]">
+                  Live admin dashboard preview for this cleaning-company organization.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <a
+                  href={`/admin?portalPreview=1&organizationId=${encodeURIComponent(adminPreviewOrganization.id)}&open=jobs`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-semibold text-[#5f5245] transition hover:bg-[#fcfaf7]"
+                >
+                  Open full tab
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setAdminPreviewOrganizationId("")}
+                  className="rounded-full border border-[#241c15] bg-[#241c15] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#3a2d23]"
+                >
+                  Close viewer
+                </button>
+              </div>
+            </div>
+
+            <iframe
+              title={`Cleaning admin dashboard for ${adminPreviewOrganization.name || adminPreviewOrganization.id}`}
+              src={`/admin?portalPreview=1&organizationId=${encodeURIComponent(adminPreviewOrganization.id)}&open=jobs`}
+              className="min-h-0 flex-1 border-0 bg-white"
+            />
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }
