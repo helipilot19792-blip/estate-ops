@@ -104,6 +104,19 @@ type Sop = {
   created_at?: string | null;
 };
 
+export type CleanerChecklistItem = {
+  id: string;
+  organization_id: string;
+  job_id: string;
+  slot_id: string;
+  property_id: string | null;
+  title: string;
+  description: string | null;
+  sort_order: number;
+  completed_at: string | null;
+  completed_by_profile_id?: string | null;
+};
+
 export type CleanerJob = {
   slot: TurnoverJobSlot;
   job: TurnoverJob;
@@ -131,6 +144,7 @@ export type CleanerViewProps = {
   accessRows: AccessRow[];
   sops: Sop[];
   sopImages: SopImage[];
+  checklistItems: CleanerChecklistItem[];
   pageError: string | null;
   accountWarning: string | null;
   jobsWarning: string | null;
@@ -163,6 +177,7 @@ export type CleanerViewProps = {
   selectedJobProperty: Property | null;
   selectedJobAccess: AccessRow | null;
   selectedJobSops: Sop[];
+  selectedJobChecklistItems: CleanerChecklistItem[];
   jobsSectionRef: React.RefObject<HTMLDivElement | null>;
   handleDateClick: (dateYmd: string) => void;
   handleJobClick: (slotId: string) => void;
@@ -172,6 +187,7 @@ export type CleanerViewProps = {
   handleArriveJob: (slotId?: string) => Promise<void>;
   handleStartJob: () => Promise<void>;
   handleFinishJob: () => Promise<void>;
+  handleToggleChecklistItem: (itemId: string, completed: boolean) => Promise<void>;
   handleCloseDetails: () => void;
   handleSignOut: () => Promise<void>;
   refreshCleanerJobs: () => Promise<void>;
@@ -214,6 +230,7 @@ type CleanerDashboardPayload = {
   accessRows: AccessRow[];
   sops: Sop[];
   sopImages: SopImage[];
+  checklistItems: CleanerChecklistItem[];
 };
 
 function buildCleanerPreviewDashboard(profile: Profile): CleanerDashboardPayload {
@@ -334,6 +351,24 @@ function buildCleanerPreviewDashboard(profile: Profile): CleanerDashboardPayload
       },
     ],
     sopImages: [],
+    checklistItems: [
+      "Clean kitchen sink and counters",
+      "Clean bathroom sink and toilet",
+      "Replace linens and make beds",
+      "Vacuum and mop floors",
+      "Empty garbage",
+    ].map((title, index) => ({
+      id: `preview-checklist-${index + 1}`,
+      organization_id: "preview-organization",
+      job_id: acceptedJob.job.id,
+      slot_id: acceptedJob.slot.id,
+      property_id: property.id,
+      title,
+      description: null,
+      sort_order: index + 1,
+      completed_at: index < 2 ? today.toISOString() : null,
+      completed_by_profile_id: index < 2 ? profile.id : null,
+    })),
   };
 }
 
@@ -687,6 +722,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
   const [accessRows, setAccessRows] = useState<AccessRow[]>([]);
   const [sops, setSops] = useState<Sop[]>([]);
   const [sopImages, setSopImages] = useState<SopImage[]>([]);
+  const [checklistItems, setChecklistItems] = useState<CleanerChecklistItem[]>([]);
 
   const [pageError, setPageError] = useState<string | null>(null);
   const [accountWarning, setAccountWarning] = useState<string | null>(null);
@@ -785,6 +821,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
         setAccessRows(activeDashboard.accessRows);
         setSops(activeDashboard.sops);
         setSopImages(activeDashboard.sopImages);
+        setChecklistItems(activeDashboard.checklistItems);
 
         if (!activeDashboard.account) {
           setPageError(
@@ -831,6 +868,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
       accessRows: (result.accessRows ?? []) as AccessRow[],
       sops: (result.sops ?? []) as Sop[],
       sopImages: (result.sopImages ?? []) as SopImage[],
+      checklistItems: (result.checklistItems ?? []) as CleanerChecklistItem[],
     };
   }
 
@@ -1141,6 +1179,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     setAccessRows(dashboard.accessRows);
     setSops(dashboard.sops);
     setSopImages(dashboard.sopImages);
+    setChecklistItems(dashboard.checklistItems);
   }
 
   function handleCloseDetails() {
@@ -1305,6 +1344,48 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
 
   async function handleFinishJob() {
     await handleProgressAction("finish");
+  }
+
+  async function handleToggleChecklistItem(itemId: string, completed: boolean) {
+    const previousItems = checklistItems;
+    const completedAt = completed ? new Date().toISOString() : null;
+
+    setChecklistItems((items) =>
+      items.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              completed_at: completedAt,
+              completed_by_profile_id: completed ? profile?.id || null : null,
+            }
+          : item
+      )
+    );
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      setChecklistItems(previousItems);
+      setJobsWarning("Your login session expired. Please log in again.");
+      return;
+    }
+
+    const response = await fetch("/api/staff-job-checklist", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ itemId, completed }),
+    });
+    const result = await response.json().catch(() => null);
+
+    if (!response.ok || !result?.ok) {
+      setChecklistItems(previousItems);
+      setJobsWarning(result?.error || "Checklist item could not be updated.");
+    }
   }
 
   useEffect(() => {
@@ -1542,6 +1623,13 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     return sopsByPropertyId.get(selectedCleanerJob.job.property_id) || [];
   }, [selectedCleanerJob, sopsByPropertyId]);
 
+  const selectedJobChecklistItems = useMemo(() => {
+    if (!selectedCleanerJob) return [];
+    return checklistItems
+      .filter((item) => item.slot_id === selectedCleanerJob.slot.id)
+      .sort((a, b) => a.sort_order - b.sort_order || a.title.localeCompare(b.title));
+  }, [checklistItems, selectedCleanerJob]);
+
   useEffect(() => {
     if (unacceptedCount > 0) {
       setJobsCollapsed(false);
@@ -1647,6 +1735,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     accessRows,
     sops,
     sopImages,
+    checklistItems,
     pageError,
     accountWarning,
     jobsWarning,
@@ -1679,6 +1768,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     selectedJobProperty,
     selectedJobAccess,
     selectedJobSops,
+    selectedJobChecklistItems,
     jobsSectionRef,
     handleDateClick,
     handleJobClick,
@@ -1688,6 +1778,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     handleArriveJob,
     handleStartJob,
     handleFinishJob,
+    handleToggleChecklistItem,
     handleCloseDetails,
     handleSignOut,
     refreshCleanerJobs,

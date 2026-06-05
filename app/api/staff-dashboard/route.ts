@@ -16,6 +16,27 @@ const serviceClient = createClient(supabaseUrl, serviceRoleKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
+const DEFAULT_CLEANING_CHECKLIST = [
+  "Clean kitchen sink and counters",
+  "Clean toilets, tubs, and bathroom sinks",
+  "Replace linens and make beds",
+  "Vacuum and mop floors",
+  "Empty garbage and recycling",
+  "Restock guest supplies",
+  "Check for damage or left items",
+  "Take final walkthrough photos",
+];
+
+function isOptionalTableError(error: { code?: string | null; message?: string | null } | null | undefined) {
+  const message = error?.message || "";
+  return (
+    error?.code === "PGRST205" ||
+    error?.code === "42P01" ||
+    message.includes("Could not find the table") ||
+    message.includes("does not exist")
+  );
+}
+
 function createAuthClient(token: string) {
   return createClient(supabaseUrl!, anonKey!, {
     auth: { autoRefreshToken: false, persistSession: false },
@@ -131,6 +152,102 @@ async function loadPropertySupport(propertyIds: string[]) {
   };
 }
 
+async function loadCleanerChecklistItems(slots: any[], jobsById: Map<string, any>, profileId: string) {
+  if (slots.length === 0) return [];
+
+  const slotIds = slots.map((slot) => slot.id).filter(Boolean);
+  const propertyIds = [
+    ...new Set(
+      slots
+        .map((slot) => jobsById.get(slot.job_id)?.property_id)
+        .filter(Boolean)
+    ),
+  ];
+
+  let existingRes: any = await serviceClient
+    .from("turnover_job_checklist_items")
+    .select("*")
+    .in("slot_id", slotIds)
+    .order("sort_order", { ascending: true });
+
+  if (isOptionalTableError(existingRes.error)) return [];
+  if (existingRes.error) throw new Error(existingRes.error.message);
+
+  const existingItems = existingRes.data ?? [];
+  const existingSlotIds = new Set(existingItems.map((item: any) => item.slot_id));
+  const missingSlots = slots.filter((slot) => !existingSlotIds.has(slot.id));
+
+  if (missingSlots.length > 0) {
+    let propertyChecklistRes: any =
+      propertyIds.length > 0
+        ? await serviceClient
+            .from("property_cleaning_checklist_items")
+            .select("*")
+            .in("property_id", propertyIds)
+            .eq("active", true)
+            .order("sort_order", { ascending: true })
+        : { data: [], error: null };
+
+    if (isOptionalTableError(propertyChecklistRes.error)) return existingItems;
+    if (propertyChecklistRes.error) throw new Error(propertyChecklistRes.error.message);
+
+    const propertyItems = propertyChecklistRes.data ?? [];
+    const propertyItemsByPropertyId = new Map<string, any[]>();
+    for (const item of propertyItems) {
+      const list = propertyItemsByPropertyId.get(item.property_id) || [];
+      list.push(item);
+      propertyItemsByPropertyId.set(item.property_id, list);
+    }
+
+    const rowsToInsert = missingSlots.flatMap((slot) => {
+      const job = jobsById.get(slot.job_id);
+      if (!job) return [];
+      const sourceItems = propertyItemsByPropertyId.get(job.property_id) || [];
+      const checklistSource =
+        sourceItems.length > 0
+          ? sourceItems
+          : DEFAULT_CLEANING_CHECKLIST.map((title, index) => ({
+              id: null,
+              title,
+              description: null,
+              sort_order: index + 1,
+            }));
+
+      return checklistSource.map((item: any, index: number) => ({
+        organization_id: job.organization_id,
+        job_id: slot.job_id,
+        slot_id: slot.id,
+        property_id: job.property_id,
+        source_item_id: item.id || null,
+        title: item.title,
+        description: item.description || null,
+        sort_order: Number(item.sort_order ?? index + 1),
+      }));
+    });
+
+    if (rowsToInsert.length > 0) {
+      const { error: insertError } = await serviceClient
+        .from("turnover_job_checklist_items")
+        .insert(rowsToInsert);
+      if (insertError && !isOptionalTableError(insertError)) {
+        throw new Error(insertError.message);
+      }
+
+      existingRes = await serviceClient
+        .from("turnover_job_checklist_items")
+        .select("*")
+        .in("slot_id", slotIds)
+        .order("sort_order", { ascending: true });
+      if (existingRes.error && !isOptionalTableError(existingRes.error)) {
+        throw new Error(existingRes.error.message);
+      }
+      return existingRes.data ?? existingItems;
+    }
+  }
+
+  return existingItems;
+}
+
 async function loadCleanerDashboard(profileId: string) {
   const { data: memberships, error: membershipError } = await serviceClient
     .from("cleaner_account_members")
@@ -150,6 +267,7 @@ async function loadCleanerDashboard(profileId: string) {
       accessRows: [],
       sops: [],
       sopImages: [],
+      checklistItems: [],
     };
   }
 
@@ -175,6 +293,7 @@ async function loadCleanerDashboard(profileId: string) {
       accessRows: [],
       sops: [],
       sopImages: [],
+      checklistItems: [],
     };
   }
 
@@ -203,6 +322,7 @@ async function loadCleanerDashboard(profileId: string) {
       account,
       warning: memberRows.length > 1 ? "Your profile is linked to more than one cleaner account. This page is using the first linked account right now." : null,
       jobs: [],
+      checklistItems: [],
       ...(await loadPropertySupport([])),
     };
   }
@@ -211,7 +331,7 @@ async function loadCleanerDashboard(profileId: string) {
   const [jobsRes, allSlotsRes] = await Promise.all([
     serviceClient
       .from("turnover_jobs")
-      .select("id, property_id, status, notes, created_at, offered_at, accepted_at, declined_at, scheduled_for, staffing_status, cleaner_units_needed, cleaner_units_required_strict, show_team_status_to_cleaners")
+      .select("id, organization_id, property_id, status, notes, created_at, offered_at, accepted_at, declined_at, scheduled_for, staffing_status, cleaner_units_needed, cleaner_units_required_strict, show_team_status_to_cleaners")
       .in("id", jobIds),
     serviceClient
       .from("turnover_job_slots")
@@ -223,6 +343,7 @@ async function loadCleanerDashboard(profileId: string) {
   if (allSlotsRes.error) throw new Error(allSlotsRes.error.message);
 
   const jobsById = new Map((jobsRes.data ?? []).map((job: { id: string }) => [job.id, job]));
+  const checklistItems = await loadCleanerChecklistItems(slots, jobsById, profileId);
   const slotCounts = new Map<string, { total: number; accepted: number }>();
 
   for (const slot of allSlotsRes.data ?? []) {
@@ -263,6 +384,7 @@ async function loadCleanerDashboard(profileId: string) {
     account,
     warning: memberRows.length > 1 ? "Your profile is linked to more than one cleaner account. This page is using the first linked account right now." : null,
     jobs: merged,
+    checklistItems,
     ...(await loadPropertySupport(propertyIds)),
   };
 }

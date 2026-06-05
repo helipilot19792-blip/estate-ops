@@ -178,6 +178,7 @@ export default function PlatformPage() {
   const [actingOrganizationId, setActingOrganizationId] = useState<string | null>(null);
   const [organizationSearch, setOrganizationSearch] = useState("");
   const [organizationStatusFilter, setOrganizationStatusFilter] = useState("all");
+  const [organizationTypeFilter, setOrganizationTypeFilter] = useState("all");
   const [expandedOrganizationIds, setExpandedOrganizationIds] = useState<Set<string>>(() => new Set());
   const [deleteConfirmByOrg, setDeleteConfirmByOrg] = useState<Record<string, string>>({});
   const [auditLogExpanded, setAuditLogExpanded] = useState(false);
@@ -245,9 +246,11 @@ export default function PlatformPage() {
       const haystack = `${organization.name || ""} ${organization.slug || ""} ${admins}`.toLowerCase();
       const matchesQuery = !query || haystack.includes(query);
       const matchesStatus = organizationStatusFilter === "all" || status === organizationStatusFilter;
-      return matchesQuery && matchesStatus;
+      const type = organization.organization_type === "cleaning_company" ? "cleaning_company" : "property_management";
+      const matchesType = organizationTypeFilter === "all" || type === organizationTypeFilter;
+      return matchesQuery && matchesStatus && matchesType;
     });
-  }, [organizations, organizationSearch, organizationStatusFilter]);
+  }, [organizations, organizationSearch, organizationStatusFilter, organizationTypeFilter]);
 
   function getDeleteConfirmationText(organization: PlatformOrganization) {
     return String(organization.name || organization.slug || organization.id).trim();
@@ -546,7 +549,7 @@ export default function PlatformPage() {
             </div>
           </div>
 
-          <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_240px_120px]">
+          <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px_220px_120px]">
             <input
               type="search"
               value={organizationSearch}
@@ -565,6 +568,15 @@ export default function PlatformPage() {
               <option value="past_due">Past due</option>
               <option value="suspended">Suspended</option>
               <option value="canceled">Canceled</option>
+            </select>
+            <select
+              value={organizationTypeFilter}
+              onChange={(event) => setOrganizationTypeFilter(event.target.value)}
+              className="w-full rounded-full border border-[#d8c7ab] bg-[#fffdf9] px-4 py-3 text-sm outline-none transition focus:border-[#b99349] focus:ring-4 focus:ring-[#f0dfbc]"
+            >
+              <option value="all">All org types</option>
+              <option value="property_management">Property management</option>
+              <option value="cleaning_company">Cleaning companies</option>
             </select>
             <div className="flex items-center justify-center rounded-full border border-[#eadfce] bg-[#fcfaf7] px-4 py-3 text-sm font-semibold text-[#5f5245]">
               {filteredOrganizations.length} shown
@@ -698,6 +710,43 @@ export default function PlatformPage() {
                           : "No tenant admins found"}
                       </div>
                     </div>
+
+                    {organization.organization_type === "cleaning_company" ? (
+                      <div className="mt-4 rounded-[22px] border border-[#cfe4cf] bg-[#f4fbf4] px-4 py-4">
+                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                          <div>
+                            <div className="text-[11px] uppercase tracking-[0.18em] text-[#2f6b2f]">Cleaning ops view</div>
+                            <div className="mt-1 text-sm font-semibold text-[#17382d]">
+                              {organization.cleaning_job_count} cleaning job{organization.cleaning_job_count === 1 ? "" : "s"} across {organization.property_count} propert{organization.property_count === 1 ? "y" : "ies"}
+                            </div>
+                            <p className="mt-1 text-xs leading-5 text-[#5e7469]">
+                              This tenant is using the cleaning-company admin shape: jobs, cleaners, schedules, property access, SOPs, checklists, issues, and invoices.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => window.open("/admin?portalPreview=1", "_blank", "noopener,noreferrer")}
+                            className="rounded-full border border-[#b9d9ca] bg-white px-4 py-2 text-sm font-semibold text-[#2f6b55] transition hover:bg-[#f6fbf8]"
+                          >
+                            Open admin preview
+                          </button>
+                        </div>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                          <div className="rounded-[16px] border border-[#cfe4cf] bg-white px-3 py-3">
+                            <div className="text-[11px] uppercase tracking-[0.16em] text-[#6a8a7d]">Properties</div>
+                            <div className="mt-1 text-lg font-semibold text-[#17382d]">{organization.property_count}</div>
+                          </div>
+                          <div className="rounded-[16px] border border-[#cfe4cf] bg-white px-3 py-3">
+                            <div className="text-[11px] uppercase tracking-[0.16em] text-[#6a8a7d]">Cleaning jobs</div>
+                            <div className="mt-1 text-lg font-semibold text-[#17382d]">{organization.cleaning_job_count}</div>
+                          </div>
+                          <div className="rounded-[16px] border border-[#cfe4cf] bg-white px-3 py-3">
+                            <div className="text-[11px] uppercase tracking-[0.16em] text-[#6a8a7d]">Members</div>
+                            <div className="mt-1 text-lg font-semibold text-[#17382d]">{organization.member_count}</div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
 
                     <div className="mt-4 rounded-[22px] border border-[#d7e6df] bg-[#f6fbf8] px-4 py-4">
                       <div className="flex flex-wrap items-center justify-between gap-2">

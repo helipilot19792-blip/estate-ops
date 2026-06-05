@@ -377,6 +377,18 @@ type SopImageRow = {
   created_at?: string | null;
 };
 
+type PropertyCleaningChecklistItemRow = {
+  id: string;
+  organization_id: string;
+  property_id: string | null;
+  title: string;
+  description: string | null;
+  sort_order: number;
+  active: boolean | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
 type PropertyVendorRow = {
   id: string;
   organization_id: string;
@@ -584,7 +596,7 @@ type AdminSection =
   | "invoices";
 type PropertyEntryMode = "manual" | "airbnb";
 type PropertyWorkflowTab = "add" | "setup" | "directory" | "health";
-type PropertySetupTab = "overview" | "access" | "calendars" | "knowledge" | "vendors" | "sops";
+type PropertySetupTab = "overview" | "access" | "calendars" | "knowledge" | "vendors" | "sops" | "checklists";
 type JobWorkflowTab = "cleaning" | "grounds" | "active" | "reliability" | "notifications" | "exceptions";
 type InvoiceWorkflowTab = "create" | "running" | "existing" | "defaults" | "history";
 type InvoiceDocumentKind = "invoice" | "statement";
@@ -1329,6 +1341,7 @@ export default function AdminPage() {
   const [accessRows, setAccessRows] = useState<AccessRow[]>([]);
   const [sops, setSops] = useState<SopRow[]>([]);
   const [sopImages, setSopImages] = useState<SopImageRow[]>([]);
+  const [propertyCleaningChecklistItems, setPropertyCleaningChecklistItems] = useState<PropertyCleaningChecklistItemRow[]>([]);
   const [propertyKnowledgeRows, setPropertyKnowledgeRows] = useState<PropertyKnowledgeRow[]>([]);
   const [propertyKnowledgeImages, setPropertyKnowledgeImages] = useState<PropertyKnowledgeImageRow[]>([]);
   const [propertyVendors, setPropertyVendors] = useState<PropertyVendorRow[]>([]);
@@ -1681,6 +1694,10 @@ export default function AdminPage() {
   const [sopTitle, setSopTitle] = useState("");
   const [sopContent, setSopContent] = useState("");
   const [sopFiles, setSopFiles] = useState<File[]>([]);
+  const [checklistItemTitle, setChecklistItemTitle] = useState("");
+  const [checklistItemDescription, setChecklistItemDescription] = useState("");
+  const [savingChecklistItem, setSavingChecklistItem] = useState(false);
+  const [deletingChecklistItemId, setDeletingChecklistItemId] = useState<string | null>(null);
   const [documentVaultPropertyId, setDocumentVaultPropertyId] = useState("all");
   const [documentVaultCategory, setDocumentVaultCategory] = useState("General");
   const [documentVaultTitle, setDocumentVaultTitle] = useState("");
@@ -2441,6 +2458,7 @@ export default function AdminPage() {
     setAccessRows((data.accessRows ?? []) as AccessRow[]);
     setSops((data.sops ?? []) as SopRow[]);
     setSopImages((data.sopImages ?? []) as SopImageRow[]);
+    setPropertyCleaningChecklistItems((data.propertyCleaningChecklistItems ?? []) as PropertyCleaningChecklistItemRow[]);
     setPropertyKnowledgeRows((data.propertyKnowledge ?? []) as PropertyKnowledgeRow[]);
     setPropertyKnowledgeImages((data.propertyKnowledgeImages ?? []) as PropertyKnowledgeImageRow[]);
     setPropertyVendors((data.propertyVendors ?? []) as PropertyVendorRow[]);
@@ -7071,6 +7089,89 @@ This removes its linked members and deletes the grounds account.`
     }
   }
 
+  async function addPropertyChecklistItem() {
+    if (!currentOrganizationId || !selectedPropertyId) {
+      setError("Please select a property first.");
+      return;
+    }
+
+    const title = checklistItemTitle.trim();
+    if (!title) {
+      setError("Checklist item title is required.");
+      return;
+    }
+
+    setSavingChecklistItem(true);
+    setError("");
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error("Please sign in again before saving checklist items.");
+
+      const response = await fetch("/api/admin/property-checklist", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          organizationId: currentOrganizationId,
+          propertyId: selectedPropertyId,
+          title,
+          description: checklistItemDescription.trim(),
+          sortOrder: selectedPropertyChecklistItems.length + 1,
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.ok) throw new Error(payload?.error || "Could not save checklist item.");
+
+      setChecklistItemTitle("");
+      setChecklistItemDescription("");
+      setActionMessage("Checklist item added.");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Could not save checklist item.");
+    } finally {
+      setSavingChecklistItem(false);
+    }
+  }
+
+  async function deletePropertyChecklistItem(itemId: string) {
+    if (!currentOrganizationId) return;
+
+    setDeletingChecklistItemId(itemId);
+    setError("");
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error("Please sign in again before deleting checklist items.");
+
+      const params = new URLSearchParams({
+        organizationId: currentOrganizationId,
+        itemId,
+      });
+      const response = await fetch(`/api/admin/property-checklist?${params.toString()}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.ok) throw new Error(payload?.error || "Could not remove checklist item.");
+
+      setPropertyCleaningChecklistItems((items) => items.filter((item) => item.id !== itemId));
+      setActionMessage("Checklist item removed.");
+    } catch (err: any) {
+      setError(err?.message || "Could not remove checklist item.");
+    } finally {
+      setDeletingChecklistItemId(null);
+    }
+  }
+
   async function uploadDocumentVaultFiles() {
     if (!currentOrganizationId) {
       setError("No organization selected.");
@@ -7774,6 +7875,13 @@ This removes its linked members and deletes the grounds account.`
   const selectedSops = useMemo(
     () => sops.filter((x) => x.property_id === selectedPropertyId),
     [sops, selectedPropertyId]
+  );
+  const selectedPropertyChecklistItems = useMemo(
+    () =>
+      propertyCleaningChecklistItems
+        .filter((item) => item.property_id === selectedPropertyId && item.active !== false)
+        .sort((a, b) => a.sort_order - b.sort_order || a.title.localeCompare(b.title)),
+    [propertyCleaningChecklistItems, selectedPropertyId]
   );
   const selectedPropertyVendors = useMemo(
     () => propertyVendors.filter((vendor) => vendor.property_id === selectedPropertyId),
@@ -18798,6 +18906,7 @@ This removes its linked members and deletes the grounds account.`
       { id: "knowledge", label: "Knowledge" },
       { id: "vendors", label: "Vendors" },
       { id: "sops", label: "SOPs" },
+      { id: "checklists", label: "Checklists" },
     ];
     const propertySetupTabStyles: Record<PropertySetupTab, { dot: string; idle: string; active: string }> = {
       overview: {
@@ -18829,6 +18938,11 @@ This removes its linked members and deletes the grounds account.`
         dot: "bg-[#ef4444]",
         idle: "border-[#f5b5b5] bg-[#fff5f5] text-[#a43b30] hover:bg-white",
         active: "border-[#ef4444] bg-[#ef4444] text-white shadow-[0_10px_22px_rgba(239,68,68,0.22)]",
+      },
+      checklists: {
+        dot: "bg-[#22c55e]",
+        idle: "border-[#bbf7d0] bg-[#f0fdf4] text-[#15803d] hover:bg-white",
+        active: "border-[#22c55e] bg-[#22c55e] text-white shadow-[0_10px_22px_rgba(34,197,94,0.22)]",
       },
     };
 
@@ -18870,6 +18984,9 @@ This removes its linked members and deletes the grounds account.`
                     </span>
                     <span className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-medium text-[#6f6255]">
                       {selectedSops.length} SOP{selectedSops.length === 1 ? "" : "s"}
+                    </span>
+                    <span className="rounded-full border border-[#bbf7d0] bg-[#f0fdf4] px-3 py-1 text-xs font-medium text-[#15803d]">
+                      {selectedPropertyChecklistItems.length} checklist item{selectedPropertyChecklistItems.length === 1 ? "" : "s"}
                     </span>
                     <span className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-medium text-[#6f6255]">
                       {selectedPropertyVendors.length} vendor{selectedPropertyVendors.length === 1 ? "" : "s"}
@@ -20257,6 +20374,78 @@ This removes its linked members and deletes the grounds account.`
                         </div>
                       );
                     })}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {propertySetupTab === "checklists" ? (
+              <div className="mt-6 grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
+                <div className="rounded-[24px] border border-[#d7e6df] bg-[#f6fbf8] p-5">
+                  <h3 className="text-lg font-semibold text-[#17382d]">Add Cleaning Checklist Item</h3>
+                  <p className="mt-1 text-sm leading-6 text-[#5e7469]">
+                    These items are copied onto cleaner job cards when a job checklist is created.
+                  </p>
+                  <div className="mt-4 space-y-3">
+                    <input
+                      value={checklistItemTitle}
+                      onChange={(e) => setChecklistItemTitle(e.target.value)}
+                      placeholder="Clean kitchen sink"
+                      className="w-full rounded-[18px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
+                    />
+                    <textarea
+                      value={checklistItemDescription}
+                      onChange={(e) => setChecklistItemDescription(e.target.value)}
+                      placeholder="Optional detail for this property"
+                      className="min-h-[110px] w-full rounded-[18px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void addPropertyChecklistItem()}
+                      disabled={savingChecklistItem}
+                      className="inline-flex items-center justify-center rounded-full bg-[#17382d] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#254d40] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {savingChecklistItem ? "Saving..." : "Add checklist item"}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="mb-3 text-lg font-semibold text-[#241c15]">Cleaner Checklist</h3>
+                  <div className="space-y-3">
+                    {selectedPropertyChecklistItems.length === 0 ? (
+                      <div className="rounded-[24px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-5 py-6 text-sm leading-6 text-[#8a7b68]">
+                        No custom checklist items yet. Cleaner jobs will use the default cleaning checklist until you add property-specific items here.
+                      </div>
+                    ) : null}
+
+                    {selectedPropertyChecklistItems.map((item, index) => (
+                      <div key={item.id} className="rounded-[22px] border border-[#d7e6df] bg-white p-4 shadow-sm">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#f0fdf4] text-xs font-bold text-[#15803d]">
+                                {index + 1}
+                              </span>
+                              <div className="text-base font-semibold text-[#241c15]">{item.title}</div>
+                            </div>
+                            {item.description ? (
+                              <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#6f6255]">
+                                {item.description}
+                              </div>
+                            ) : null}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void deletePropertyChecklistItem(item.id)}
+                            disabled={deletingChecklistItemId === item.id}
+                            className="rounded-full border border-[#e7c6c1] bg-white px-4 py-2 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff4f2] disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {deletingChecklistItemId === item.id ? "Removing..." : "Remove"}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>

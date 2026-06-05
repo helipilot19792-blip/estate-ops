@@ -373,6 +373,8 @@ export default function CleanerMobileView({
   selectedJobProperty,
   selectedJobAccess,
   selectedJobSops,
+  selectedJobChecklistItems,
+  handleToggleChecklistItem,
   sopImagesBySopId,
   profile,
   cleanerAccount,
@@ -832,6 +834,49 @@ export default function CleanerMobileView({
                               </div>
                             ) : null}
                           </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+
+                {selectedJobChecklistItems.length > 0 ? (
+                  <div>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-xs uppercase tracking-[0.18em] text-[#b08b47]">
+                        Cleaning Checklist
+                      </div>
+                      <span className="rounded-full border border-[#7a5c2e]/30 bg-[#100d0a] px-3 py-1 text-[11px] font-semibold text-[#f5efe4]">
+                        {selectedJobChecklistItems.filter((check) => check.completed_at).length}/{selectedJobChecklistItems.length}
+                      </span>
+                    </div>
+                    <div className="mt-2 space-y-2">
+                      {selectedJobChecklistItems.map((check) => {
+                        const completed = !!check.completed_at;
+                        return (
+                          <label
+                            key={check.id}
+                            className={`flex items-start gap-3 rounded-xl border px-3 py-3 text-sm transition ${
+                              completed
+                                ? "border-emerald-500/35 bg-emerald-500/10 text-emerald-100"
+                                : "border-[#7a5c2e]/20 bg-[#100d0a] text-[#e8ddca]"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={completed}
+                              onChange={(event) => void handleToggleChecklistItem(check.id, event.target.checked)}
+                              className="mt-1 h-4 w-4 accent-emerald-500"
+                            />
+                            <span className="min-w-0">
+                              <span className={`block font-medium ${completed ? "line-through opacity-75" : ""}`}>
+                                {check.title}
+                              </span>
+                              {check.description ? (
+                                <span className="mt-1 block text-xs leading-5 text-[#cdbda0]">{check.description}</span>
+                              ) : null}
+                            </span>
+                          </label>
                         );
                       })}
                     </div>

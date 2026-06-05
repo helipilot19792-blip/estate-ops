@@ -212,6 +212,7 @@ export async function GET(request: Request) {
       strandedJobsRes,
       accessRowsRes,
       sopsRes,
+      propertyCleaningChecklistItemsRes,
       propertyKnowledgeRes,
       propertyKnowledgeImagesRes,
       propertyVendorsRes,
@@ -252,6 +253,9 @@ export async function GET(request: Request) {
         : emptyResult(),
       propertyIds.length > 0
         ? serviceClient.from("property_sops").select("*").in("property_id", propertyIds).order("created_at", { ascending: false })
+        : emptyResult(),
+      propertyIds.length > 0
+        ? serviceClient.from("property_cleaning_checklist_items").select("*").in("property_id", propertyIds).eq("active", true).order("sort_order", { ascending: true })
         : emptyResult(),
       propertyIds.length > 0
         ? serviceClient.from("property_knowledge").select("*").in("property_id", propertyIds).order("updated_at", { ascending: false })
@@ -327,6 +331,7 @@ export async function GET(request: Request) {
         strandedJobs: strandedJobsRes.data ?? [],
         accessRows: accessRowsRes.data ?? [],
         sops: sopsRes.data ?? [],
+        propertyCleaningChecklistItems: propertyCleaningChecklistItemsRes.error && isOptionalTableError(propertyCleaningChecklistItemsRes.error) ? [] : propertyCleaningChecklistItemsRes.data ?? [],
         propertyKnowledge: propertyKnowledgeRes.error && isOptionalTableError(propertyKnowledgeRes.error) ? [] : propertyKnowledgeRes.data ?? [],
         propertyKnowledgeImages: propertyKnowledgeImagesRes.error && isOptionalTableError(propertyKnowledgeImagesRes.error) ? [] : propertyKnowledgeImagesRes.data ?? [],
         propertyVendors: propertyVendorsRes.error && isOptionalTableError(propertyVendorsRes.error) ? [] : propertyVendorsRes.data ?? [],
