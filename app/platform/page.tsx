@@ -715,42 +715,42 @@ export default function PlatformPage() {
                       </div>
                     </div>
 
-                    {organization.organization_type === "cleaning_company" ? (
-                      <div className="mt-4 rounded-[22px] border border-[#cfe4cf] bg-[#f4fbf4] px-4 py-4">
-                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                          <div>
-                            <div className="text-[11px] uppercase tracking-[0.18em] text-[#2f6b2f]">Cleaning ops view</div>
-                            <div className="mt-1 text-sm font-semibold text-[#17382d]">
-                              {organization.cleaning_job_count} cleaning job{organization.cleaning_job_count === 1 ? "" : "s"} across {organization.property_count} propert{organization.property_count === 1 ? "y" : "ies"}
-                            </div>
-                            <p className="mt-1 text-xs leading-5 text-[#5e7469]">
-                              This tenant is using the cleaning-company admin shape: jobs, cleaners, schedules, property access, SOPs, checklists, issues, and invoices.
-                            </p>
+                    <div className="mt-4 rounded-[22px] border border-[#cfe4cf] bg-[#f4fbf4] px-4 py-4">
+                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                        <div>
+                          <div className="text-[11px] uppercase tracking-[0.18em] text-[#2f6b2f]">Cleaning admin preview</div>
+                          <div className="mt-1 text-sm font-semibold text-[#17382d]">
+                            {organization.cleaning_job_count} cleaning job{organization.cleaning_job_count === 1 ? "" : "s"} across {organization.property_count} propert{organization.property_count === 1 ? "y" : "ies"}
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => setAdminPreviewOrganizationId(organization.id)}
-                            className="rounded-full border border-[#b9d9ca] bg-white px-4 py-2 text-sm font-semibold text-[#2f6b55] transition hover:bg-[#f6fbf8]"
-                          >
-                            View cleaning admin
-                          </button>
+                          <p className="mt-1 text-xs leading-5 text-[#5e7469]">
+                            {organization.organization_type === "cleaning_company"
+                              ? "This tenant is using the cleaning-company admin shape: jobs, cleaners, schedules, property access, SOPs, checklists, issues, and invoices."
+                              : "Developer preview only. This opens the cleaning-company admin shape for inspection without changing this tenant's real organization type."}
+                          </p>
                         </div>
-                        <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                          <div className="rounded-[16px] border border-[#cfe4cf] bg-white px-3 py-3">
-                            <div className="text-[11px] uppercase tracking-[0.16em] text-[#6a8a7d]">Properties</div>
-                            <div className="mt-1 text-lg font-semibold text-[#17382d]">{organization.property_count}</div>
-                          </div>
-                          <div className="rounded-[16px] border border-[#cfe4cf] bg-white px-3 py-3">
-                            <div className="text-[11px] uppercase tracking-[0.16em] text-[#6a8a7d]">Cleaning jobs</div>
-                            <div className="mt-1 text-lg font-semibold text-[#17382d]">{organization.cleaning_job_count}</div>
-                          </div>
-                          <div className="rounded-[16px] border border-[#cfe4cf] bg-white px-3 py-3">
-                            <div className="text-[11px] uppercase tracking-[0.16em] text-[#6a8a7d]">Members</div>
-                            <div className="mt-1 text-lg font-semibold text-[#17382d]">{organization.member_count}</div>
-                          </div>
+                        <button
+                          type="button"
+                          onClick={() => setAdminPreviewOrganizationId(organization.id)}
+                          className="rounded-full border border-[#b9d9ca] bg-white px-4 py-2 text-sm font-semibold text-[#2f6b55] transition hover:bg-[#f6fbf8]"
+                        >
+                          {organization.organization_type === "cleaning_company" ? "View cleaning admin" : "Preview cleaning admin mode"}
+                        </button>
+                      </div>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                        <div className="rounded-[16px] border border-[#cfe4cf] bg-white px-3 py-3">
+                          <div className="text-[11px] uppercase tracking-[0.16em] text-[#6a8a7d]">Properties</div>
+                          <div className="mt-1 text-lg font-semibold text-[#17382d]">{organization.property_count}</div>
+                        </div>
+                        <div className="rounded-[16px] border border-[#cfe4cf] bg-white px-3 py-3">
+                          <div className="text-[11px] uppercase tracking-[0.16em] text-[#6a8a7d]">Cleaning jobs</div>
+                          <div className="mt-1 text-lg font-semibold text-[#17382d]">{organization.cleaning_job_count}</div>
+                        </div>
+                        <div className="rounded-[16px] border border-[#cfe4cf] bg-white px-3 py-3">
+                          <div className="text-[11px] uppercase tracking-[0.16em] text-[#6a8a7d]">Members</div>
+                          <div className="mt-1 text-lg font-semibold text-[#17382d]">{organization.member_count}</div>
                         </div>
                       </div>
-                    ) : null}
+                    </div>
 
                     <div className="mt-4 rounded-[22px] border border-[#d7e6df] bg-[#f6fbf8] px-4 py-4">
                       <div className="flex flex-wrap items-center justify-between gap-2">
