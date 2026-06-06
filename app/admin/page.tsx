@@ -389,6 +389,22 @@ type PropertyCleaningChecklistItemRow = {
   updated_at?: string | null;
 };
 
+type TurnoverJobChecklistItemRow = {
+  id: string;
+  organization_id: string;
+  job_id: string;
+  slot_id: string;
+  property_id: string | null;
+  source_item_id?: string | null;
+  title: string;
+  description: string | null;
+  sort_order: number;
+  completed_at: string | null;
+  completed_by_profile_id?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
 type PropertyVendorRow = {
   id: string;
   organization_id: string;
@@ -1342,6 +1358,7 @@ export default function AdminPage() {
   const [sops, setSops] = useState<SopRow[]>([]);
   const [sopImages, setSopImages] = useState<SopImageRow[]>([]);
   const [propertyCleaningChecklistItems, setPropertyCleaningChecklistItems] = useState<PropertyCleaningChecklistItemRow[]>([]);
+  const [turnoverJobChecklistItems, setTurnoverJobChecklistItems] = useState<TurnoverJobChecklistItemRow[]>([]);
   const [propertyKnowledgeRows, setPropertyKnowledgeRows] = useState<PropertyKnowledgeRow[]>([]);
   const [propertyKnowledgeImages, setPropertyKnowledgeImages] = useState<PropertyKnowledgeImageRow[]>([]);
   const [propertyVendors, setPropertyVendors] = useState<PropertyVendorRow[]>([]);
@@ -1608,6 +1625,7 @@ export default function AdminPage() {
   const [jobScheduledFor, setJobScheduledFor] = useState("");
   const [showSupport, setShowSupport] = useState(false);
   const [showAdminNav, setShowAdminNav] = useState(false);
+  const [expandedTodayProgressIds, setExpandedTodayProgressIds] = useState<Set<string>>(() => new Set());
   const [adminMenuOrientation, setAdminMenuOrientation] = useState<AdminMenuOrientation>("side");
   const [adminMenuOrder, setAdminMenuOrder] = useState<AdminSection[]>([]);
   const [adminMenuSeenCounts, setAdminMenuSeenCounts] = useState<Partial<Record<AdminSection, number>>>({});
@@ -2468,6 +2486,7 @@ export default function AdminPage() {
     setSops((data.sops ?? []) as SopRow[]);
     setSopImages((data.sopImages ?? []) as SopImageRow[]);
     setPropertyCleaningChecklistItems((data.propertyCleaningChecklistItems ?? []) as PropertyCleaningChecklistItemRow[]);
+    setTurnoverJobChecklistItems((data.turnoverJobChecklistItems ?? []) as TurnoverJobChecklistItemRow[]);
     setPropertyKnowledgeRows((data.propertyKnowledge ?? []) as PropertyKnowledgeRow[]);
     setPropertyKnowledgeImages((data.propertyKnowledgeImages ?? []) as PropertyKnowledgeImageRow[]);
     setPropertyVendors((data.propertyVendors ?? []) as PropertyVendorRow[]);
@@ -2670,6 +2689,7 @@ export default function AdminPage() {
       ownerInvoicesRes,
       ownerInvoiceEventsRes,
       staffJobStatusEventsRes,
+      turnoverJobChecklistItemsRes,
       accountDeletionRequestsRes,
       chatConversationsRes,
       chatParticipantsRes,
@@ -2818,6 +2838,11 @@ export default function AdminPage() {
         .order("created_at", { ascending: false })
         .limit(100),
       supabase
+        .from("turnover_job_checklist_items")
+        .select("*")
+        .eq("organization_id", currentOrganizationId)
+        .order("sort_order", { ascending: true }),
+      supabase
         .from("account_deletion_requests")
         .select("*")
         .eq("organization_id", currentOrganizationId)
@@ -2882,6 +2907,7 @@ export default function AdminPage() {
       propertyInvoiceRatesRes,
       ownerInvoicesRes,
       staffJobStatusEventsRes,
+      turnoverJobChecklistItemsRes,
       accountDeletionRequestsRes,
       chatConversationsRes,
       chatParticipantsRes,
@@ -2900,6 +2926,7 @@ export default function AdminPage() {
         response !== propertyVendorsRes &&
         response !== propertyBookingEventsRes &&
         response !== staffJobStatusEventsRes &&
+        response !== turnoverJobChecklistItemsRes &&
         response !== accountDeletionRequestsRes &&
         response !== inspectionRulesRes &&
         response !== inspectionLogsRes &&
@@ -2946,6 +2973,12 @@ export default function AdminPage() {
       loadedGroundsAccountIds.has(member.grounds_account_id)
     );
     const loadedJobSlots = ((jobSlotsRes.data ?? []) as JobSlot[]).filter((slot) => loadedJobIds.has(slot.job_id));
+    const loadedTurnoverJobChecklistItems =
+      turnoverJobChecklistItemsRes.error && isOptionalTableError(turnoverJobChecklistItemsRes.error)
+        ? []
+        : ((turnoverJobChecklistItemsRes.data ?? []) as TurnoverJobChecklistItemRow[]).filter((item) =>
+            loadedJobIds.has(item.job_id)
+          );
     const loadedGroundsJobSlots = ((groundsJobSlotsRes.data ?? []) as GroundsJobSlot[]).filter((slot) =>
       loadedGroundsJobIds.has(slot.job_id)
     );
@@ -2980,6 +3013,7 @@ export default function AdminPage() {
     setAssignments(loadedAssignments);
     setJobs((jobsRes.data ?? []) as Job[]);
     setJobSlots(loadedJobSlots);
+    setTurnoverJobChecklistItems(loadedTurnoverJobChecklistItems);
     setGroundsAccounts((groundsAccountsRes.data ?? []) as GroundsAccount[]);
     setGroundsAccountMembers(loadedGroundsAccountMembers);
     setGroundsAssignments(loadedGroundsAssignments);
@@ -8055,6 +8089,30 @@ This removes its linked members and deletes the grounds account.`
     return map;
   }, [jobSlots]);
 
+  const turnoverChecklistItemsByJobId = useMemo(() => {
+    const map: Record<string, TurnoverJobChecklistItemRow[]> = {};
+    for (const item of turnoverJobChecklistItems) {
+      if (!map[item.job_id]) map[item.job_id] = [];
+      map[item.job_id].push(item);
+    }
+    for (const key of Object.keys(map)) {
+      map[key].sort((a, b) => a.sort_order - b.sort_order || a.title.localeCompare(b.title));
+    }
+    return map;
+  }, [turnoverJobChecklistItems]);
+
+  const staffJobStatusEventsByJobId = useMemo(() => {
+    const map: Record<string, StaffJobStatusEventRow[]> = {};
+    for (const event of staffJobStatusEvents) {
+      if (!map[event.job_id]) map[event.job_id] = [];
+      map[event.job_id].push(event);
+    }
+    for (const key of Object.keys(map)) {
+      map[key].sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+    }
+    return map;
+  }, [staffJobStatusEvents]);
+
   const groundsJobSlotsByJobId = useMemo(() => {
     const map: Record<string, GroundsJobSlot[]> = {};
     for (const slot of groundsJobSlots) {
@@ -8677,6 +8735,93 @@ This removes its linked members and deletes the grounds account.`
   );
 
 
+  function getCleaningProgressSummary(jobId: string, slots: JobSlot[]) {
+    const checklistItems = turnoverChecklistItemsByJobId[jobId] ?? [];
+    const completedChecklistCount = checklistItems.filter((item) => !!item.completed_at).length;
+    const latestEvents = staffJobStatusEventsByJobId[jobId] ?? [];
+    const hasArrived = latestEvents.some((event) => event.job_kind === "cleaner" && event.event_type === "arrived");
+    const hasStarted =
+      latestEvents.some((event) => event.job_kind === "cleaner" && event.event_type === "started") ||
+      slots.some((slot) => slot.status === "in_progress");
+    const hasCompleted =
+      latestEvents.some((event) => event.job_kind === "cleaner" && event.event_type === "completed") ||
+      slots.some((slot) => slot.status === "completed");
+
+    const parts: string[] = [];
+    if (hasCompleted) parts.push("Completed");
+    else if (hasStarted) parts.push("Started");
+    else if (hasArrived) parts.push("Arrived");
+
+    if (checklistItems.length > 0) {
+      parts.push(`Checklist ${completedChecklistCount}/${checklistItems.length}`);
+    }
+    const phasePercent = hasCompleted ? 100 : hasStarted ? 66 : hasArrived ? 33 : 0;
+    const checklistPercent =
+      checklistItems.length > 0 ? Math.round((completedChecklistCount / checklistItems.length) * 100) : phasePercent;
+
+    return {
+      summary: parts.join(" - "),
+      hasArrived,
+      hasStarted,
+      hasCompleted,
+      checklistTotal: checklistItems.length,
+      checklistCompleted: completedChecklistCount,
+      progressPercent: Math.max(0, Math.min(100, checklistPercent)),
+    };
+  }
+
+  function toggleTodayProgress(id: string) {
+    setExpandedTodayProgressIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function renderTodayProgress(item: {
+    id: string;
+    kind: string;
+    progressSummary: string;
+    progressCompleted: number;
+    progressTotal: number;
+    progressPercent: number;
+  }) {
+    if (item.kind !== "Cleaning" || (!item.progressSummary && item.progressTotal === 0)) return null;
+
+    const expanded = expandedTodayProgressIds.has(item.id);
+    const label =
+      item.progressTotal > 0
+        ? `${item.progressCompleted}/${item.progressTotal}`
+        : item.progressSummary || "Progress";
+
+    return (
+      <button
+        type="button"
+        onClick={() => toggleTodayProgress(item.id)}
+        className="mt-2 block w-full rounded-xl border border-[#eadfce] bg-[#fffdf9] px-3 py-2 text-left transition hover:border-[#d8c7ab] hover:bg-white"
+        aria-expanded={expanded}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-[#f0e7d8]">
+            <div
+              className="h-full rounded-full bg-[#2f7d4f] transition-all"
+              style={{ width: `${item.progressPercent}%` }}
+            />
+          </div>
+          <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6f6255]">
+            {expanded ? "Hide" : label}
+          </span>
+        </div>
+        {expanded ? (
+          <div className="mt-2 text-xs font-medium text-[#5f5245]">
+            {item.progressSummary || "Checklist progress is being tracked."}
+          </div>
+        ) : null}
+      </button>
+    );
+  }
+
   const todayAtGlanceItems = useMemo(() => {
     const propertyById = new Map(properties.map((property) => [property.id, property]));
     const getCleanerContact = (cleanerAccountId: string | null): StaffContact | null => {
@@ -8720,11 +8865,12 @@ This removes its linked members and deletes the grounds account.`
         const slots = jobSlotsByJobId[job.id] ?? [];
         const waiting = slots.some((slot) => slot.status === "offered" || slot.status === "stranded");
         const acceptedCleanerContacts = slots
-          .filter((slot) => slot.status === "accepted")
+          .filter((slot) => ["accepted", "in_progress", "completed"].includes(slot.status))
           .map((slot) => getCleanerContact(slot.cleaner_account_id))
           .filter((contact): contact is StaffContact => !!contact);
         const acceptedCleanerNames = acceptedCleanerContacts.map((contact) => contact.name);
         const stranded = slots.some((slot) => slot.status === "stranded" || !slot.cleaner_account_id);
+        const progress = getCleaningProgressSummary(job.id, slots);
         const cleaningStatus = acceptedCleanerNames.length > 0
           ? acceptedCleanerNames.join(", ")
           : stranded
@@ -8741,6 +8887,10 @@ This removes its linked members and deletes the grounds account.`
           propertyName: property?.name || getPropertyName(job.property_id),
           city: getCityFromAddress(property?.address),
           status: cleaningStatus,
+          progressSummary: progress.summary,
+          progressCompleted: progress.checklistCompleted,
+          progressTotal: progress.checklistTotal,
+          progressPercent: progress.progressPercent,
           staffContacts: acceptedCleanerContacts,
           staffDetailLabel: "Cleaner",
           needsAttention: acceptedCleanerNames.length === 0,
@@ -8770,6 +8920,10 @@ This removes its linked members and deletes the grounds account.`
           status: acceptedGroundsContacts.length > 0
             ? acceptedGroundsContacts.map((contact) => contact.name).join(", ")
             : getGroundsJobDisplayStatus(job, slots),
+          progressSummary: "",
+          progressCompleted: 0,
+          progressTotal: 0,
+          progressPercent: 0,
           staffContacts: acceptedGroundsContacts,
           staffDetailLabel: "Grounds",
           needsAttention: false,
@@ -8779,7 +8933,7 @@ This removes its linked members and deletes the grounds account.`
     return [...cleaningItems, ...groundsItems].sort((a, b) =>
       a.sortDate.localeCompare(b.sortDate) || a.propertyName.localeCompare(b.propertyName)
     );
-  }, [jobs, groundsJobs, properties, todayYmd, jobSlotsByJobId, groundsJobSlots, cleanerAccounts, cleanerMembersByAccountId, groundsAccounts, groundsMembersByAccountId]);
+  }, [jobs, groundsJobs, properties, todayYmd, jobSlotsByJobId, turnoverChecklistItemsByJobId, staffJobStatusEventsByJobId, groundsJobSlots, cleanerAccounts, cleanerMembersByAccountId, groundsAccounts, groundsMembersByAccountId]);
 
   const occupiedTodayProperties = useMemo(() => {
     const propertyById = new Map(properties.map((property) => [property.id, property]));
@@ -8905,12 +9059,13 @@ This removes its linked members and deletes the grounds account.`
         const property = propertyById.get(job.property_id);
         const slots = jobSlotsByJobId[job.id] ?? [];
         const acceptedCleanerContacts = slots
-          .filter((slot) => slot.status === "accepted")
+          .filter((slot) => ["accepted", "in_progress", "completed"].includes(slot.status))
           .map((slot) => getCleanerContact(slot.cleaner_account_id))
           .filter((contact): contact is StaffContact => !!contact);
         const acceptedCleanerNames = acceptedCleanerContacts.map((contact) => contact.name);
         const stranded = slots.some((slot) => slot.status === "stranded" || !slot.cleaner_account_id);
         const offered = slots.some((slot) => slot.status === "offered");
+        const progress = getCleaningProgressSummary(job.id, slots);
         const cleanerDetail = acceptedCleanerNames.length > 0
           ? `Cleaner: ${acceptedCleanerNames.join(", ")}`
           : stranded
@@ -8928,6 +9083,10 @@ This removes its linked members and deletes the grounds account.`
           label: labelDate(dateYmd),
           title: property?.name || property?.address || "Unknown property",
           detail: [city, cleanerDetail].filter(Boolean).join(" - "),
+          progressSummary: progress.summary,
+          progressCompleted: progress.checklistCompleted,
+          progressTotal: progress.checklistTotal,
+          progressPercent: progress.progressPercent,
           staffContacts: acceptedCleanerContacts,
           staffDetailLabel: "Cleaner",
           bookingEventId: null as string | null,
@@ -8960,6 +9119,10 @@ This removes its linked members and deletes the grounds account.`
           detail: acceptedGroundsContacts.length > 0
             ? `${groundsDetail} - Grounds: ${acceptedGroundsContacts.map((contact) => contact.name).join(", ")}`
             : groundsDetail,
+          progressSummary: "",
+          progressCompleted: 0,
+          progressTotal: 0,
+          progressPercent: 0,
           staffContacts: acceptedGroundsContacts,
           staffDetailLabel: "Grounds",
           bookingEventId: null as string | null,
@@ -8978,6 +9141,10 @@ This removes its linked members and deletes the grounds account.`
       label: pickup.dateLabel,
       title: pickup.propertyName,
       detail: pickup.notes ? `${pickup.pickupLabel} - ${pickup.notes}` : pickup.pickupLabel,
+      progressSummary: "",
+      progressCompleted: 0,
+      progressTotal: 0,
+      progressPercent: 0,
       staffContacts: [] as StaffContact[],
       staffDetailLabel: "",
       bookingEventId: null as string | null,
@@ -9003,6 +9170,10 @@ This removes its linked members and deletes the grounds account.`
           label: labelDate(event.checkin_date || ""),
           title: property?.name || property?.address || "Unknown property",
           detail: [checkinTime ? `Check-in ${checkinTime}` : "", summary, guestDetail, sourceLabel].filter(Boolean).join(" - "),
+          progressSummary: "",
+          progressCompleted: 0,
+          progressTotal: 0,
+          progressPercent: 0,
           staffContacts: [] as StaffContact[],
           staffDetailLabel: "",
           bookingEventId: event.id,
@@ -9026,6 +9197,10 @@ This removes its linked members and deletes the grounds account.`
           label: isOverdue ? "Overdue" : labelDate(effectiveDate),
           title: rule.title,
           detail: getPropertyName(rule.property_id),
+          progressSummary: "",
+          progressCompleted: 0,
+          progressTotal: 0,
+          progressPercent: 0,
           staffContacts: [] as StaffContact[],
           staffDetailLabel: "",
           bookingEventId: null as string | null,
@@ -9046,6 +9221,8 @@ This removes its linked members and deletes the grounds account.`
     groundsJobs,
     properties,
     jobSlotsByJobId,
+    turnoverChecklistItemsByJobId,
+    staffJobStatusEventsByJobId,
     cleanerAccounts,
     cleanerMembersByAccountId,
     groundsAccounts,
@@ -22542,6 +22719,7 @@ This removes its linked members and deletes the grounds account.`
                       ) : (
                         <div className="truncate text-xs text-[#64748b]">{item.detail}</div>
                       )}
+                      {renderTodayProgress(item)}
                           {item.bookingEventId ? (
                             <div className="mt-1 flex flex-wrap items-center gap-2">
                               {item.adminNote ? (
@@ -22888,6 +23066,7 @@ This removes its linked members and deletes the grounds account.`
                             )}
                           </div>
                         </div>
+                        {renderTodayProgress(item)}
                       </div>
                     ))
                   )}

@@ -13,7 +13,7 @@ create table if not exists public.staff_job_status_events (
   metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   constraint staff_job_status_events_kind_check check (job_kind in ('cleaner', 'grounds')),
-  constraint staff_job_status_events_type_check check (event_type in ('accepted', 'started', 'completed'))
+  constraint staff_job_status_events_type_check check (event_type in ('accepted', 'arrived', 'started', 'completed'))
 );
 
 create index if not exists staff_job_status_events_org_created_idx
