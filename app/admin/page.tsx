@@ -8787,13 +8787,13 @@ This removes its linked members and deletes the grounds account.`
     progressTotal: number;
     progressPercent: number;
   }) {
-    if (item.kind !== "Cleaning" || (!item.progressSummary && item.progressTotal === 0)) return null;
+    if (item.kind !== "Cleaning") return null;
 
     const expanded = expandedTodayProgressIds.has(item.id);
     const label =
       item.progressTotal > 0
         ? `${item.progressCompleted}/${item.progressTotal}`
-        : item.progressSummary || "Progress";
+        : item.progressSummary || `${item.progressPercent}%`;
 
     return (
       <button
@@ -8815,7 +8815,7 @@ This removes its linked members and deletes the grounds account.`
         </div>
         {expanded ? (
           <div className="mt-2 text-xs font-medium text-[#5f5245]">
-            {item.progressSummary || "Checklist progress is being tracked."}
+            {item.progressSummary || "No cleaner progress has been recorded yet."}
           </div>
         ) : null}
       </button>
