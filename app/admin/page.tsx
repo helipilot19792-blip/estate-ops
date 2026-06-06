@@ -11194,6 +11194,7 @@ This removes its linked members and deletes the grounds account.`
                                 </button>
                               </div>
                             ) : null}
+                            {renderTodayProgress(item)}
                           </div>
                           <div className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${dateClass}`}>
                             {item.label}
@@ -11352,6 +11353,7 @@ This removes its linked members and deletes the grounds account.`
                                 </button>
                               </div>
                             ) : null}
+                            {renderTodayProgress(item)}
                           </div>
                           <div className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${dateClass}`}>
                             {item.label}
