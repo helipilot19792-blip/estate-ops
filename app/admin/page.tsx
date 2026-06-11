@@ -1760,6 +1760,7 @@ export default function AdminPage() {
   const [bookingNoteDraft, setBookingNoteDraft] = useState("");
   const [bookingNoteImportant, setBookingNoteImportant] = useState(false);
   const [savingBookingNote, setSavingBookingNote] = useState(false);
+  const promptedMissingBookingIdsRef = useRef<Set<string>>(new Set());
 
   const todayYmd = toYmd(now);
   const todayEmptyCopy = useMemo(
@@ -9278,6 +9279,59 @@ This removes its linked members and deletes the grounds account.`
     () => upcomingHomeHappenings.filter((item) => item.dateYmd !== todayYmd),
     [upcomingHomeHappenings, todayYmd]
   );
+
+  useEffect(() => {
+    if (!adminDataLoaded || editingBookingNote) return;
+
+    if (promptedMissingBookingIdsRef.current.size === 0 && typeof window !== "undefined") {
+      try {
+        const saved = window.sessionStorage.getItem("admin-missing-booking-prompts");
+        if (saved) {
+          promptedMissingBookingIdsRef.current = new Set(JSON.parse(saved) as string[]);
+        }
+      } catch {
+        promptedMissingBookingIdsRef.current = new Set();
+      }
+    }
+
+    const propertyById = new Map(properties.map((property) => [property.id, property]));
+    const nextPrompt = propertyBookingEvents
+      .filter((event) => {
+        const guestCount = Number.isFinite(Number(event.guest_count)) ? Number(event.guest_count) : null;
+        const missingGuestName = !event.summary?.trim();
+        const missingGuestCount = guestCount === null;
+        const isCurrentOrUpcoming = event.checkout_date > todayYmd;
+        return isCurrentOrUpcoming && (missingGuestName || missingGuestCount);
+      })
+      .sort((a, b) =>
+        String(b.updated_at || b.created_at || b.checkin_date || "").localeCompare(
+          String(a.updated_at || a.created_at || a.checkin_date || "")
+        )
+      )
+      .find((event) => !promptedMissingBookingIdsRef.current.has(event.id));
+
+    if (!nextPrompt) return;
+
+    const property = propertyById.get(nextPrompt.property_id) || null;
+    promptedMissingBookingIdsRef.current.add(nextPrompt.id);
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem(
+        "admin-missing-booking-prompts",
+        JSON.stringify(Array.from(promptedMissingBookingIdsRef.current))
+      );
+    }
+
+    openBookingNoteEditor({
+      id: nextPrompt.id,
+      propertyName: property?.name || property?.address || "Unknown property",
+      summary: nextPrompt.summary || "Reserved",
+      guestName: nextPrompt.summary?.trim() || "",
+      guestCount:
+        Number.isFinite(Number(nextPrompt.guest_count)) ? Number(nextPrompt.guest_count) : null,
+      adminNote: nextPrompt.admin_note?.trim() || "",
+      adminNoteImportant: Boolean(nextPrompt.admin_note_important),
+    });
+  }, [adminDataLoaded, editingBookingNote, properties, propertyBookingEvents, todayYmd]);
 
   const upcomingCheckInGlanceItems = useMemo(
     () => futureHomeHappenings.filter((item) => item.kind === "Check-in").slice(0, 3),
