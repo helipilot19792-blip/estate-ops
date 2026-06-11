@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Clock3, Monitor, RefreshCw, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Clock3, Monitor, RefreshCw } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 
 import { supabase } from "@/lib/supabase";
@@ -589,6 +589,12 @@ function TvBoard() {
     { label: "Waiting", value: waitingCards.length },
     { label: "Flags", value: openFlags.length },
   ];
+  const visibleCleaningCards = cleaningCards.slice(0, 3);
+  const visibleGroundsCards = groundsCards.slice(0, 3);
+  const visibleOccupiedCards = occupiedCards.slice(0, 2);
+  const visibleCheckInCards = upcomingCheckIns.slice(0, 4);
+  const visibleWaitingCards = waitingCards.slice(0, 3);
+  const visibleFlagCards = openFlags.slice(0, 3);
 
   if (loading) {
     return (
@@ -617,27 +623,17 @@ function TvBoard() {
   }
 
   return (
-    <main className="min-h-screen bg-[#eef2f6] px-6 py-6 text-[#0f172a] md:px-8 md:py-8">
-      <div className="mx-auto flex max-w-[1800px] flex-col gap-6">
-        <section className="rounded-[32px] border border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.98)_0%,rgba(240,249,255,0.96)_48%,rgba(240,253,244,0.96)_100%)] px-6 py-6 shadow-[0_18px_50px_rgba(15,23,42,0.08)] md:px-8">
-          <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-            <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-[#bfdbfe] bg-white/90 px-4 py-2 text-sm font-semibold text-[#1d4ed8]">
-                <ShieldCheck className="h-4 w-4" />
-                TV-safe view
-              </div>
-              <h1 className="mt-4 text-4xl font-semibold tracking-tight md:text-6xl">Today at a Glance</h1>
-              <p className="mt-3 text-lg text-[#475569] md:text-2xl">{formatLongDate(now)}</p>
-              <p className="mt-2 text-sm text-[#64748b] md:text-base">
-                Staff names are reduced to first names. Guest names, contact details, notes, and access details are hidden.
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-3 text-sm font-medium text-[#475569] md:text-base">
-              <div className="inline-flex items-center gap-2 rounded-full border border-[#dbe4ee] bg-white px-4 py-2.5">
+    <main className="h-screen overflow-hidden bg-[#eef2f6] px-4 py-4 text-[#0f172a] md:px-5 md:py-5">
+      <div className="mx-auto grid h-full max-w-[1850px] grid-rows-[auto_minmax(0,1.05fr)_minmax(0,1fr)] gap-4">
+        <section className="rounded-[28px] border border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.98)_0%,rgba(240,249,255,0.96)_48%,rgba(240,253,244,0.96)_100%)] px-4 py-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] md:px-5">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="text-2xl font-semibold tracking-tight text-[#0f172a] md:text-3xl">{formatLongDate(now)}</div>
+              <div className="inline-flex items-center gap-2 rounded-full border border-[#dbe4ee] bg-white px-4 py-2 text-sm font-medium text-[#475569]">
                 <Clock3 className="h-4 w-4" />
                 <span>Updates every minute</span>
               </div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-[#dbe4ee] bg-white px-4 py-2.5">
+              <div className="inline-flex items-center gap-2 rounded-full border border-[#dbe4ee] bg-white px-4 py-2 text-sm font-medium text-[#475569]">
                 <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
                 <span>
                   {lastLoadedAt
@@ -646,149 +642,163 @@ function TvBoard() {
                 </span>
               </div>
             </div>
-          </div>
-
-          <div className="mt-6 grid gap-4 md:grid-cols-3 xl:grid-cols-6">
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
             {stats.map((stat) => (
-              <div key={stat.label} className="rounded-[24px] border border-[#dbe4ee] bg-white/92 px-5 py-5 shadow-sm">
-                <div className="text-sm font-semibold uppercase tracking-[0.18em] text-[#64748b]">{stat.label}</div>
-                <div className="mt-3 text-5xl font-semibold tracking-tight text-[#0f172a]">{stat.value}</div>
+              <div key={stat.label} className="rounded-[20px] border border-[#dbe4ee] bg-white/92 px-4 py-3 shadow-sm">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">{stat.label}</div>
+                <div className="mt-1 text-3xl font-semibold tracking-tight text-[#0f172a] md:text-4xl">{stat.value}</div>
               </div>
             ))}
+            </div>
           </div>
         </section>
 
-        <section className="grid gap-5 xl:grid-cols-2">
-          <div className="rounded-[30px] border border-[#cfe1ff] bg-white px-6 py-6 shadow-sm">
+        <section className="grid min-h-0 gap-4 xl:grid-cols-2">
+          <div className="rounded-[28px] border border-[#cfe1ff] bg-white px-5 py-5 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2563eb]">Cleaning</div>
-                <h2 className="mt-2 text-3xl font-semibold">Today&apos;s cleaning jobs</h2>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#2563eb]">Cleaning</div>
+                <h2 className="mt-1 text-2xl font-semibold md:text-3xl">Today&apos;s cleaning</h2>
               </div>
               <div className="rounded-full bg-[#e8f1ff] px-4 py-2 text-lg font-semibold text-[#2957a4]">
                 {cleaningCards.length}
               </div>
             </div>
-            <div className="mt-5 grid gap-4">
-              {cleaningCards.length === 0 ? (
-                <div className="rounded-[24px] border border-dashed border-[#bfdbfe] bg-[#f8fbff] px-5 py-8 text-center text-xl text-[#5f6f86]">
+            <div className="mt-4 grid gap-3">
+              {visibleCleaningCards.length === 0 ? (
+                <div className="rounded-[22px] border border-dashed border-[#bfdbfe] bg-[#f8fbff] px-5 py-7 text-center text-lg text-[#5f6f86]">
                   No cleaning jobs scheduled today.
                 </div>
               ) : (
-                cleaningCards.map((card) => (
-                  <article key={card.id} className="rounded-[26px] border border-[#b9d1fb] bg-[#f8fbff] px-5 py-5">
-                    <div className="text-3xl font-semibold text-[#172554]">{card.propertyName}</div>
-                    <div className="mt-3 text-2xl text-[#2957a4]">{card.staffLabel}</div>
+                visibleCleaningCards.map((card) => (
+                  <article key={card.id} className="rounded-[22px] border border-[#b9d1fb] bg-[#f8fbff] px-5 py-4">
+                    <div className="text-2xl font-semibold text-[#172554] md:text-3xl">{card.propertyName}</div>
+                    <div className="mt-2 text-xl text-[#2957a4] md:text-2xl">{card.staffLabel}</div>
                   </article>
                 ))
               )}
+              {cleaningCards.length > visibleCleaningCards.length ? (
+                <div className="text-right text-sm font-semibold text-[#5f6f86]">
+                  +{cleaningCards.length - visibleCleaningCards.length} more
+                </div>
+              ) : null}
             </div>
           </div>
 
-          <div className="rounded-[30px] border border-[#bde7cf] bg-white px-6 py-6 shadow-sm">
+          <div className="rounded-[28px] border border-[#bde7cf] bg-white px-5 py-5 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="text-sm font-semibold uppercase tracking-[0.18em] text-[#15803d]">Grounds</div>
-                <h2 className="mt-2 text-3xl font-semibold">Today&apos;s grounds work</h2>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#15803d]">Grounds</div>
+                <h2 className="mt-1 text-2xl font-semibold md:text-3xl">Today&apos;s grounds</h2>
               </div>
               <div className="rounded-full bg-[#ecfdf5] px-4 py-2 text-lg font-semibold text-[#166534]">
                 {groundsCards.length}
               </div>
             </div>
-            <div className="mt-5 grid gap-4">
-              {groundsCards.length === 0 ? (
-                <div className="rounded-[24px] border border-dashed border-[#bbdfc0] bg-[#f0fbf2] px-5 py-8 text-center text-xl text-[#476a50]">
+            <div className="mt-4 grid gap-3">
+              {visibleGroundsCards.length === 0 ? (
+                <div className="rounded-[22px] border border-dashed border-[#bbdfc0] bg-[#f0fbf2] px-5 py-7 text-center text-lg text-[#476a50]">
                   No grounds work scheduled today.
                 </div>
               ) : (
-                groundsCards.map((card) => (
-                  <article key={card.id} className="rounded-[26px] border border-[#bbdfc0] bg-[#f0fbf2] px-5 py-5">
-                    <div className="text-3xl font-semibold text-[#14532d]">{card.propertyName}</div>
-                    <div className="mt-3 text-2xl text-[#166534]">{card.staffLabel}</div>
+                visibleGroundsCards.map((card) => (
+                  <article key={card.id} className="rounded-[22px] border border-[#bbdfc0] bg-[#f0fbf2] px-5 py-4">
+                    <div className="text-2xl font-semibold text-[#14532d] md:text-3xl">{card.propertyName}</div>
+                    <div className="mt-2 text-xl text-[#166534] md:text-2xl">{card.staffLabel}</div>
                   </article>
                 ))
               )}
+              {groundsCards.length > visibleGroundsCards.length ? (
+                <div className="text-right text-sm font-semibold text-[#476a50]">
+                  +{groundsCards.length - visibleGroundsCards.length} more
+                </div>
+              ) : null}
             </div>
           </div>
         </section>
 
-        <section className="grid gap-5 xl:grid-cols-2 2xl:grid-cols-4">
-          <div className="rounded-[30px] border border-[#dbe4ee] bg-white px-6 py-6 shadow-sm">
+        <section className="grid min-h-0 gap-4 xl:grid-cols-4">
+          <div className="rounded-[28px] border border-[#dbe4ee] bg-white px-5 py-5 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="text-sm font-semibold uppercase tracking-[0.18em] text-[#64748b]">Occupied</div>
-                <h2 className="mt-2 text-2xl font-semibold">Guests in house</h2>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">Occupied</div>
+                <h2 className="mt-1 text-xl font-semibold md:text-2xl">In house</h2>
               </div>
-              <div className="rounded-full bg-[#f8fafc] px-4 py-2 text-lg font-semibold text-[#334155]">
+              <div className="rounded-full bg-[#f8fafc] px-4 py-2 text-base font-semibold text-[#334155]">
                 {occupiedCards.length}
               </div>
             </div>
-            <div className="mt-5 grid gap-4">
-              {occupiedCards.length === 0 ? (
-                <div className="rounded-[24px] border border-dashed border-[#dbe4ee] bg-[#f8fafc] px-5 py-8 text-center text-lg text-[#64748b]">
-                  No occupied properties listed today.
+            <div className="mt-4 grid gap-3">
+              {visibleOccupiedCards.length === 0 ? (
+                <div className="rounded-[22px] border border-dashed border-[#dbe4ee] bg-[#f8fafc] px-4 py-6 text-center text-base text-[#64748b]">
+                  No occupied properties today.
                 </div>
               ) : (
-                occupiedCards.map((card) => (
-                  <article key={card.id} className="rounded-[24px] border border-[#dbe4ee] bg-[#f8fafc] px-5 py-4">
-                    <div className="text-2xl font-semibold">{card.propertyName}</div>
-                    <div className="mt-2 text-lg text-[#475569]">{card.guestCountLabel}</div>
-                    <div className="mt-1 text-lg text-[#475569]">{card.checkoutLabel}</div>
+                visibleOccupiedCards.map((card) => (
+                  <article key={card.id} className="rounded-[22px] border border-[#dbe4ee] bg-[#f8fafc] px-4 py-4">
+                    <div className="text-xl font-semibold md:text-2xl">{card.propertyName}</div>
+                    <div className="mt-2 text-base text-[#475569] md:text-lg">{card.guestCountLabel}</div>
+                    <div className="mt-1 text-base text-[#475569] md:text-lg">{card.checkoutLabel}</div>
                   </article>
                 ))
               )}
             </div>
           </div>
 
-          <div className="rounded-[30px] border border-[#ddd6fe] bg-white px-6 py-6 shadow-sm">
+          <div className="rounded-[28px] border border-[#ddd6fe] bg-white px-5 py-5 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="text-sm font-semibold uppercase tracking-[0.18em] text-[#6d28d9]">Check-ins</div>
-                <h2 className="mt-2 text-2xl font-semibold">Upcoming arrivals</h2>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6d28d9]">Check-ins</div>
+                <h2 className="mt-1 text-xl font-semibold md:text-2xl">Arrivals</h2>
               </div>
-              <div className="rounded-full bg-[#f5f3ff] px-4 py-2 text-lg font-semibold text-[#6d28d9]">
+              <div className="rounded-full bg-[#f5f3ff] px-4 py-2 text-base font-semibold text-[#6d28d9]">
                 {upcomingCheckIns.length}
               </div>
             </div>
-            <div className="mt-5 grid gap-4">
-              {upcomingCheckIns.length === 0 ? (
-                <div className="rounded-[24px] border border-dashed border-[#ddd6fe] bg-[#faf5ff] px-5 py-8 text-center text-lg text-[#7c3aed]">
-                  No upcoming check-ins on deck.
+            <div className="mt-4 grid gap-3">
+              {visibleCheckInCards.length === 0 ? (
+                <div className="rounded-[22px] border border-dashed border-[#ddd6fe] bg-[#faf5ff] px-4 py-6 text-center text-base text-[#7c3aed]">
+                  No upcoming check-ins.
                 </div>
               ) : (
-                upcomingCheckIns.map((card) => (
-                  <article key={card.id} className="rounded-[24px] border border-[#ddd6fe] bg-[#faf5ff] px-5 py-4">
-                    <div className="text-2xl font-semibold text-[#4c1d95]">{card.propertyName}</div>
-                    <div className="mt-2 text-lg text-[#6d28d9]">{card.dateLabel}</div>
-                    <div className="mt-1 text-lg text-[#6d28d9]">
+                visibleCheckInCards.map((card) => (
+                  <article key={card.id} className="rounded-[22px] border border-[#ddd6fe] bg-[#faf5ff] px-4 py-4">
+                    <div className="text-xl font-semibold text-[#4c1d95] md:text-2xl">{card.propertyName}</div>
+                    <div className="mt-2 text-base text-[#6d28d9] md:text-lg">{card.dateLabel}</div>
+                    <div className="mt-1 text-base text-[#6d28d9] md:text-lg">
                       {card.sourceLabel} | {card.guestCountLabel}
                     </div>
                   </article>
                 ))
               )}
+              {upcomingCheckIns.length > visibleCheckInCards.length ? (
+                <div className="text-right text-sm font-semibold text-[#6d28d9]">
+                  +{upcomingCheckIns.length - visibleCheckInCards.length} more
+                </div>
+              ) : null}
             </div>
           </div>
 
-          <div className="rounded-[30px] border border-[#fde68a] bg-white px-6 py-6 shadow-sm">
+          <div className="rounded-[28px] border border-[#fde68a] bg-white px-5 py-5 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="text-sm font-semibold uppercase tracking-[0.18em] text-[#a16207]">Waiting</div>
-                <h2 className="mt-2 text-2xl font-semibold">Jobs awaiting pickup</h2>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#a16207]">Waiting</div>
+                <h2 className="mt-1 text-xl font-semibold md:text-2xl">Pickup needed</h2>
               </div>
-              <div className="rounded-full bg-[#fffbeb] px-4 py-2 text-lg font-semibold text-[#a16207]">
+              <div className="rounded-full bg-[#fffbeb] px-4 py-2 text-base font-semibold text-[#a16207]">
                 {waitingCards.length}
               </div>
             </div>
-            <div className="mt-5 grid gap-4">
-              {waitingCards.length === 0 ? (
-                <div className="rounded-[24px] border border-dashed border-[#fde68a] bg-[#fffbeb] px-5 py-8 text-center text-lg text-[#946200]">
+            <div className="mt-4 grid gap-3">
+              {visibleWaitingCards.length === 0 ? (
+                <div className="rounded-[22px] border border-dashed border-[#fde68a] bg-[#fffbeb] px-4 py-6 text-center text-base text-[#946200]">
                   No waiting jobs right now.
                 </div>
               ) : (
-                waitingCards.map((card) => (
-                  <article key={card.id} className="rounded-[24px] border border-[#fde68a] bg-[#fffbeb] px-5 py-4">
-                    <div className="text-2xl font-semibold text-[#713f12]">{card.propertyName}</div>
-                    <div className={`mt-2 text-lg ${card.overdue ? "text-[#b91c1c]" : "text-[#a16207]"}`}>
+                visibleWaitingCards.map((card) => (
+                  <article key={card.id} className="rounded-[22px] border border-[#fde68a] bg-[#fffbeb] px-4 py-4">
+                    <div className="text-xl font-semibold text-[#713f12] md:text-2xl">{card.propertyName}</div>
+                    <div className={`mt-2 text-base md:text-lg ${card.overdue ? "text-[#b91c1c]" : "text-[#a16207]"}`}>
                       {card.overdue ? "Overdue response needed" : "Waiting for acceptance"}
                     </div>
                   </article>
@@ -797,26 +807,26 @@ function TvBoard() {
             </div>
           </div>
 
-          <div className="rounded-[30px] border border-[#fecaca] bg-white px-6 py-6 shadow-sm">
+          <div className="rounded-[28px] border border-[#fecaca] bg-white px-5 py-5 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="text-sm font-semibold uppercase tracking-[0.18em] text-[#b91c1c]">Flags</div>
-                <h2 className="mt-2 text-2xl font-semibold">Open maintenance</h2>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#b91c1c]">Flags</div>
+                <h2 className="mt-1 text-xl font-semibold md:text-2xl">Maintenance</h2>
               </div>
-              <div className="rounded-full bg-[#fff1f2] px-4 py-2 text-lg font-semibold text-[#b91c1c]">
+              <div className="rounded-full bg-[#fff1f2] px-4 py-2 text-base font-semibold text-[#b91c1c]">
                 {openFlags.length}
               </div>
             </div>
-            <div className="mt-5 grid gap-4">
-              {openFlags.length === 0 ? (
-                <div className="rounded-[24px] border border-dashed border-[#fecaca] bg-[#fff1f2] px-5 py-8 text-center text-lg text-[#b91c1c]">
+            <div className="mt-4 grid gap-3">
+              {visibleFlagCards.length === 0 ? (
+                <div className="rounded-[22px] border border-dashed border-[#fecaca] bg-[#fff1f2] px-4 py-6 text-center text-base text-[#b91c1c]">
                   No open maintenance flags.
                 </div>
               ) : (
-                openFlags.map((card) => (
-                  <article key={card.id} className="rounded-[24px] border border-[#fecaca] bg-[#fff1f2] px-5 py-4">
-                    <div className="text-2xl font-semibold text-[#7f1d1d]">{card.propertyName}</div>
-                    <div className="mt-2 text-lg text-[#b91c1c]">{card.urgencyLabel}</div>
+                visibleFlagCards.map((card) => (
+                  <article key={card.id} className="rounded-[22px] border border-[#fecaca] bg-[#fff1f2] px-4 py-4">
+                    <div className="text-xl font-semibold text-[#7f1d1d] md:text-2xl">{card.propertyName}</div>
+                    <div className="mt-2 text-base text-[#b91c1c] md:text-lg">{card.urgencyLabel}</div>
                   </article>
                 ))
               )}

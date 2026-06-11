@@ -131,15 +131,12 @@ async function requireStaff(
 
 export async function POST(request: NextRequest) {
   try {
-    const formData = await request.formData();
-    const propertyId = String(formData.get("propertyId") || "").trim();
-    const sourceValue = String(formData.get("source") || "").trim().toLowerCase();
-    const category = String(formData.get("category") || "").trim();
-    const urgency = String(formData.get("urgency") || "normal").trim() || "normal";
-    const notes = String(formData.get("notes") || "").trim();
-    const files = formData
-      .getAll("files")
-      .filter((value): value is File => value instanceof File && value.size > 0);
+    const body = await request.json().catch(() => null);
+    const propertyId = String(body?.propertyId || "").trim();
+    const sourceValue = String(body?.source || "").trim().toLowerCase();
+    const category = String(body?.category || "").trim();
+    const urgency = String(body?.urgency || "normal").trim() || "normal";
+    const notes = String(body?.notes || "").trim();
 
     if (!propertyId || !category || !notes) {
       return NextResponse.json({ error: "Missing required maintenance flag details." }, { status: 400 });
@@ -176,57 +173,100 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (files.length > 0) {
-      const uploads: Array<{
-        flag_id: string;
-        image_url: string;
-        sort_order: number;
-      }> = [];
-
-      for (let index = 0; index < files.length; index += 1) {
-        const file = files[index];
-        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-        const filePath = `${flag.id}/${Date.now()}-${index}-${safeName}`;
-        const fileBuffer = Buffer.from(await file.arrayBuffer());
-
-        const { error: uploadError } = await access.serviceClient.storage
-          .from("maintenance-flag-images")
-          .upload(filePath, fileBuffer, {
-            contentType: file.type || "application/octet-stream",
-            upsert: false,
-          });
-
-        if (uploadError) {
-          console.error(uploadError);
-          continue;
-        }
-
-        const { data } = access.serviceClient.storage
-          .from("maintenance-flag-images")
-          .getPublicUrl(filePath);
-
-        uploads.push({
-          flag_id: flag.id,
-          image_url: data.publicUrl,
-          sort_order: index,
-        });
-      }
-
-      if (uploads.length > 0) {
-        const { error: imageInsertError } = await access.serviceClient
-          .from("property_maintenance_flag_images")
-          .insert(uploads);
-
-        if (imageInsertError) {
-          console.error(imageInsertError);
-        }
-      }
-    }
-
     return NextResponse.json({ ok: true, flag });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Could not create maintenance flag." },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PUT(request: NextRequest) {
+  try {
+    const formData = await request.formData();
+    const flagId = String(formData.get("flagId") || "").trim();
+    const propertyId = String(formData.get("propertyId") || "").trim();
+    const sourceValue = String(formData.get("source") || "").trim().toLowerCase();
+    const files = formData
+      .getAll("files")
+      .filter((value): value is File => value instanceof File && value.size > 0);
+
+    if (!flagId || !propertyId || files.length === 0) {
+      return NextResponse.json({ error: "Missing maintenance flag image details." }, { status: 400 });
+    }
+
+    if (sourceValue !== "cleaner" && sourceValue !== "grounds") {
+      return NextResponse.json({ error: "Invalid issue source." }, { status: 400 });
+    }
+
+    const access = await requireStaff(request, sourceValue, propertyId);
+    if ("response" in access) return access.response;
+
+    const { data: flag, error: flagError } = await access.serviceClient
+      .from("property_maintenance_flags")
+      .select("id, property_id, organization_id")
+      .eq("id", flagId)
+      .eq("property_id", propertyId)
+      .eq("organization_id", access.property.organization_id)
+      .maybeSingle();
+
+    if (flagError) {
+      return NextResponse.json({ error: flagError.message }, { status: 500 });
+    }
+
+    if (!flag) {
+      return NextResponse.json({ error: "Maintenance flag not found." }, { status: 404 });
+    }
+
+    const uploads: Array<{
+      flag_id: string;
+      image_url: string;
+      sort_order: number;
+    }> = [];
+
+    for (let index = 0; index < files.length; index += 1) {
+      const file = files[index];
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const filePath = `${flag.id}/${Date.now()}-${index}-${safeName}`;
+
+      const { error: uploadError } = await access.serviceClient.storage
+        .from("maintenance-flag-images")
+        .upload(filePath, file, {
+          contentType: file.type || "application/octet-stream",
+          upsert: false,
+        });
+
+      if (uploadError) {
+        console.error(uploadError);
+        continue;
+      }
+
+      const { data } = access.serviceClient.storage
+        .from("maintenance-flag-images")
+        .getPublicUrl(filePath);
+
+      uploads.push({
+        flag_id: flag.id,
+        image_url: data.publicUrl,
+        sort_order: index,
+      });
+    }
+
+    if (uploads.length > 0) {
+      const { error: imageInsertError } = await access.serviceClient
+        .from("property_maintenance_flag_images")
+        .insert(uploads);
+
+      if (imageInsertError) {
+        console.error(imageInsertError);
+      }
+    }
+
+    return NextResponse.json({ ok: true, uploaded: uploads.length });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Could not upload maintenance flag images." },
       { status: 500 }
     );
   }

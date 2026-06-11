@@ -18,29 +18,46 @@ export async function reportStaffMaintenanceIssue(input: ReportStaffMaintenanceI
     throw new Error("Please sign in again before reporting an issue.");
   }
 
-  const formData = new FormData();
-  formData.set("propertyId", input.propertyId);
-  formData.set("source", input.source);
-  formData.set("category", input.category);
-  formData.set("urgency", input.urgency);
-  formData.set("notes", input.notes);
-
-  for (const file of input.files || []) {
-    formData.append("files", file);
-  }
-
   const response = await fetch("/api/staff-maintenance-flag", {
     method: "POST",
     headers: {
+      "Content-Type": "application/json",
       Authorization: `Bearer ${session.access_token}`,
     },
-    body: formData,
+    body: JSON.stringify({
+      propertyId: input.propertyId,
+      source: input.source,
+      category: input.category,
+      urgency: input.urgency,
+      notes: input.notes,
+    }),
   });
 
   const payload = await response.json().catch(() => null);
 
   if (!response.ok || !payload?.ok) {
     throw new Error(payload?.error || "Failed to create issue.");
+  }
+
+  if ((input.files?.length || 0) > 0 && payload?.flag?.id) {
+    const uploadFormData = new FormData();
+    uploadFormData.set("flagId", String(payload.flag.id));
+    uploadFormData.set("propertyId", input.propertyId);
+    uploadFormData.set("source", input.source);
+
+    for (const file of input.files || []) {
+      uploadFormData.append("files", file);
+    }
+
+    void fetch("/api/staff-maintenance-flag", {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: uploadFormData,
+    }).catch((uploadError) => {
+      console.error("Maintenance image upload failed.", uploadError);
+    });
   }
 
   return payload;
