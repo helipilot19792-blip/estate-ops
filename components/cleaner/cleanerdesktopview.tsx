@@ -3,8 +3,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
-import { supabase } from "@/lib/supabase";
 import OnboardingChecklist, { type OnboardingStep } from "@/components/onboarding-checklist";
+import { reportStaffMaintenanceIssue } from "@/lib/staff-maintenance-report";
 import type { CleanerJob, CleanerViewProps } from "@/components/cleaner/cleanershell";
 
 
@@ -93,73 +93,23 @@ function ReportIssueModal({
     setSaving(true);
     setError("");
 
-    const { data: flag, error: insertError } = await supabase
-      .from("property_maintenance_flags")
-      .insert({
-        property_id: propertyId,
+    try {
+      await reportStaffMaintenanceIssue({
+        propertyId,
         source: "cleaner",
         category,
         urgency,
-        status: "open",
         notes: trimmedNotes,
-        flagged_by_profile_id: currentProfileId,
-        flagged_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
+        files,
+      });
 
-    if (insertError || !flag) {
-      setError(insertError?.message || "Failed to create issue.");
       setSaving(false);
-      return;
+      onSubmitted?.();
+      onClose();
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "Failed to create issue.");
+      setSaving(false);
     }
-
-    if (files.length > 0) {
-      const uploads: Array<{
-        flag_id: string;
-        image_url: string;
-        sort_order: number;
-      }> = [];
-
-      for (let i = 0; i < files.length; i += 1) {
-        const file = files[i];
-        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-        const filePath = `${flag.id}/${Date.now()}-${i}-${safeName}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from("maintenance-flag-images")
-          .upload(filePath, file);
-
-        if (uploadError) {
-          console.error(uploadError);
-          continue;
-        }
-
-        const { data } = supabase.storage
-          .from("maintenance-flag-images")
-          .getPublicUrl(filePath);
-
-        uploads.push({
-          flag_id: flag.id,
-          image_url: data.publicUrl,
-          sort_order: i,
-        });
-      }
-
-      if (uploads.length > 0) {
-        const { error: imageInsertError } = await supabase
-          .from("property_maintenance_flag_images")
-          .insert(uploads);
-
-        if (imageInsertError) {
-          console.error(imageInsertError);
-        }
-      }
-    }
-
-    setSaving(false);
-    onSubmitted?.();
-    onClose();
   }
 
   return (

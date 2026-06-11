@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Copy, Eye, EyeOff, Mail, MapPin, Navigation, Phone, Search } from "lucide-react";
+import { Check, Copy, Eye, EyeOff, Mail, MapPin, Monitor, Navigation, Phone, Search } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { trackFeatureUsage } from "@/lib/feature-usage";
 import OnboardingChecklist, { type OnboardingStep } from "@/components/onboarding-checklist";
@@ -10563,6 +10563,25 @@ This removes its linked members and deletes the grounds account.`
     }
   }
 
+  function openAdminTvWindow() {
+    if (!currentOrganizationId) {
+      setError("Select an organization before opening the TV view.");
+      return;
+    }
+
+    if (typeof window === "undefined") return;
+
+    const url = `/admin/tv?organizationId=${encodeURIComponent(currentOrganizationId)}`;
+    const nextWindow = window.open(url, "admin-tv-view");
+
+    if (!nextWindow) {
+      setError("The TV view could not open. Please allow pop-ups for this site and try again.");
+      return;
+    }
+
+    nextWindow.focus();
+  }
+
   function renderAdminNavigation(orientation: AdminMenuOrientation = "side") {
     const isTop = orientation === "top";
 
@@ -10616,6 +10635,15 @@ This removes its linked members and deletes the grounds account.`
               {t("admin.navigation.resetOrder")}
             </button>
           ) : null}
+          <button
+            type="button"
+            onClick={openAdminTvWindow}
+            className="inline-flex min-h-10 items-center gap-2 rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-2 text-sm font-semibold text-[#5f5245] transition hover:bg-white"
+            title="Open TV-safe today view"
+          >
+            <Monitor className="h-4 w-4" />
+            <span>TV</span>
+          </button>
         </nav>
       );
     }
@@ -10627,15 +10655,26 @@ This removes its linked members and deletes the grounds account.`
               <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#9a8b78]">
                 {t("admin.navigation.label")}
               </div>
-              {adminMenuOrder.length > 0 ? (
+              <div className="flex items-center gap-2">
+                {adminMenuOrder.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={resetAdminMenuOrder}
+                    className="rounded-full border border-[#d8c7ab] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#6f6255] transition hover:bg-[#fcfaf7]"
+                  >
+                    {t("admin.navigation.reset")}
+                  </button>
+                ) : null}
                 <button
                   type="button"
-                  onClick={resetAdminMenuOrder}
-                  className="rounded-full border border-[#d8c7ab] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#6f6255] transition hover:bg-[#fcfaf7]"
+                  onClick={openAdminTvWindow}
+                  className="inline-flex items-center gap-1 rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-2.5 py-1 text-[11px] font-semibold text-[#5f5245] transition hover:bg-white"
+                  title="Open TV-safe today view"
                 >
-                  {t("admin.navigation.reset")}
+                  <Monitor className="h-3.5 w-3.5" />
+                  <span>TV</span>
                 </button>
-              ) : null}
+              </div>
             </div>
             <div className="mt-2 space-y-1.5">
               {orderedAdminMenuItems.map((item) => {
