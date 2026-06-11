@@ -8,6 +8,7 @@ type PlatformAction =
   | { type: "ensure_cleaning_demo" }
   | { type: "extend_trial"; organizationId: string; days?: number }
   | { type: "set_status"; organizationId: string; status: "trialing" | "active" | "past_due" | "canceled" | "suspended" }
+  | { type: "set_organization_type"; organizationId: string; organizationType: "property_management" | "cleaning_company" }
   | {
       type: "set_plan";
       organizationId: string;
@@ -1045,6 +1046,30 @@ export async function POST(req: NextRequest) {
         targetId: body.organizationId,
         metadata: {
           status: body.status,
+        },
+      });
+    } else if (body.type === "set_organization_type") {
+      const { error: updateError } = await serviceClient
+        .from("organizations")
+        .update({
+          organization_type: body.organizationType,
+        })
+        .eq("id", body.organizationId);
+
+      if (updateError) {
+        return NextResponse.json({ ok: false, error: updateError.message }, { status: 500 });
+      }
+
+      await writeAuditLog(serviceClient, {
+        actorProfileId: profile.id,
+        actorEmail: profile.email,
+        actorRole: profile.role,
+        organizationId: body.organizationId,
+        actionType: "platform.set_organization_type",
+        targetType: "organization",
+        targetId: body.organizationId,
+        metadata: {
+          organization_type: body.organizationType,
         },
       });
     } else if (body.type === "set_plan") {

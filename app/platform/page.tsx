@@ -870,6 +870,45 @@ export default function PlatformPage() {
                             Suspend
                           </button>
                         </div>
+                        <div className="mt-4 border-t border-[#eadfce] pt-4">
+                          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">Company type</div>
+                          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                            <button
+                              type="button"
+                              disabled={isActing || organization.organization_type === "property_management"}
+                              onClick={() =>
+                                void handleAction(
+                                  {
+                                    type: "set_organization_type",
+                                    organizationId: organization.id,
+                                    organizationType: "property_management",
+                                  },
+                                  `${organization.name || "Organization"} changed to property management.`
+                                )
+                              }
+                              className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2.5 text-sm font-medium text-[#5f5245] transition hover:bg-[#fcfaf7] disabled:opacity-60"
+                            >
+                              Property management
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isActing || organization.organization_type === "cleaning_company"}
+                              onClick={() =>
+                                void handleAction(
+                                  {
+                                    type: "set_organization_type",
+                                    organizationId: organization.id,
+                                    organizationType: "cleaning_company",
+                                  },
+                                  `${organization.name || "Organization"} changed to cleaning company.`
+                                )
+                              }
+                              className="rounded-full border border-[#b9d9ca] bg-white px-4 py-2.5 text-sm font-medium text-[#2f6b55] transition hover:bg-[#eef8f2] disabled:opacity-60"
+                            >
+                              Cleaning company
+                            </button>
+                          </div>
+                        </div>
                       </div>
 
                       <div className="rounded-[22px] border border-[#d7e6df] bg-[#f6fbf8] px-4 py-4">
