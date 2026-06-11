@@ -1755,6 +1755,8 @@ export default function AdminPage() {
     propertyName: string;
     summary: string;
   } | null>(null);
+  const [bookingGuestNameDraft, setBookingGuestNameDraft] = useState("");
+  const [bookingGuestCountDraft, setBookingGuestCountDraft] = useState("");
   const [bookingNoteDraft, setBookingNoteDraft] = useState("");
   const [bookingNoteImportant, setBookingNoteImportant] = useState(false);
   const [savingBookingNote, setSavingBookingNote] = useState(false);
@@ -4642,6 +4644,8 @@ export default function AdminPage() {
     title?: string;
     summary?: string;
     detail?: string;
+    guestName?: string | null;
+    guestCount?: number | null;
     adminNote?: string;
     adminNoteImportant?: boolean;
   }) {
@@ -4653,6 +4657,10 @@ export default function AdminPage() {
       propertyName: booking.propertyName || booking.title || "Booking",
       summary: booking.summary || booking.detail || "",
     });
+    setBookingGuestNameDraft(booking.guestName || booking.summary || "");
+    setBookingGuestCountDraft(
+      typeof booking.guestCount === "number" ? String(booking.guestCount) : ""
+    );
     setBookingNoteDraft(booking.adminNote || "");
     setBookingNoteImportant(Boolean(booking.adminNoteImportant));
     setError("");
@@ -4689,6 +4697,8 @@ export default function AdminPage() {
         body: JSON.stringify({
           organizationId: currentOrganizationId,
           bookingEventId: editingBookingNote.id,
+          guestName: bookingGuestNameDraft,
+          guestCount: bookingGuestCountDraft,
           adminNote: bookingNoteDraft,
           adminNoteImportant: bookingNoteImportant,
         }),
@@ -4706,6 +4716,8 @@ export default function AdminPage() {
           row.id === editingBookingNote.id
             ? {
                 ...row,
+                summary: updatedBooking?.summary ?? null,
+                guest_count: updatedBooking?.guest_count ?? null,
                 admin_note: updatedBooking?.admin_note ?? null,
                 admin_note_important: Boolean(updatedBooking?.admin_note_important),
               }
@@ -4713,9 +4725,11 @@ export default function AdminPage() {
         )
       );
       setEditingBookingNote(null);
+      setBookingGuestNameDraft("");
+      setBookingGuestCountDraft("");
       setBookingNoteDraft("");
       setBookingNoteImportant(false);
-      setActionMessage("Booking note saved.");
+      setActionMessage("Booking details saved.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save booking note.");
     } finally {
@@ -8941,13 +8955,20 @@ This removes its linked members and deletes the grounds account.`
       .filter((event) => event.checkin_date <= todayYmd && event.checkout_date > todayYmd)
       .map((event) => {
         const property = propertyById.get(event.property_id) || null;
+        const guestCount = Number.isFinite(Number(event.guest_count)) ? Number(event.guest_count) : null;
+        const missingBookingFields = [
+          event.summary?.trim() ? "" : "guest name",
+          guestCount === null ? "guest count" : "",
+        ].filter(Boolean);
         return {
           id: event.id,
           propertyName: property?.name || property?.address || "Unknown property",
           city: getCityFromAddress(property?.address),
           source: getBookingSourceLabel(event.source),
           summary: event.summary || "Reserved",
-          guestCount: Number.isFinite(Number(event.guest_count)) ? Number(event.guest_count) : null,
+          guestName: event.summary?.trim() || "",
+          guestCount,
+          missingBookingFields,
           checkinDate: event.checkin_date,
           checkoutDate: event.checkout_date,
           checkoutTime: formatTimeLabel(property?.default_checkout_time),
@@ -9090,6 +9111,7 @@ This removes its linked members and deletes the grounds account.`
           staffContacts: acceptedCleanerContacts,
           staffDetailLabel: "Cleaner",
           bookingEventId: null as string | null,
+          missingBookingFields: [] as string[],
           adminNote: "",
           adminNoteImportant: false,
         };
@@ -9126,6 +9148,7 @@ This removes its linked members and deletes the grounds account.`
           staffContacts: acceptedGroundsContacts,
           staffDetailLabel: "Grounds",
           bookingEventId: null as string | null,
+          missingBookingFields: [] as string[],
           adminNote: "",
           adminNoteImportant: false,
         };
@@ -9148,6 +9171,7 @@ This removes its linked members and deletes the grounds account.`
       staffContacts: [] as StaffContact[],
       staffDetailLabel: "",
       bookingEventId: null as string | null,
+      missingBookingFields: [] as string[],
       adminNote: "",
       adminNoteImportant: false,
     }));
@@ -9160,6 +9184,10 @@ This removes its linked members and deletes the grounds account.`
         const guestDetail = formatGuestCountLabel(guestCount);
         const summary = event.summary?.trim();
         const checkinTime = formatTimeLabel(property?.default_checkin_time);
+        const missingBookingFields = [
+          summary ? "" : "guest name",
+          guestCount === null ? "guest count" : "",
+        ].filter(Boolean);
 
         return {
           id: `checkin-${event.id}`,
@@ -9170,6 +9198,9 @@ This removes its linked members and deletes the grounds account.`
           label: labelDate(event.checkin_date || ""),
           title: property?.name || property?.address || "Unknown property",
           detail: [checkinTime ? `Check-in ${checkinTime}` : "", summary, guestDetail, sourceLabel].filter(Boolean).join(" - "),
+          summary: summary || sourceLabel,
+          guestName: summary || "",
+          guestCount,
           progressSummary: "",
           progressCompleted: 0,
           progressTotal: 0,
@@ -9177,6 +9208,7 @@ This removes its linked members and deletes the grounds account.`
           staffContacts: [] as StaffContact[],
           staffDetailLabel: "",
           bookingEventId: event.id,
+          missingBookingFields,
           adminNote: event.admin_note?.trim() || "",
           adminNoteImportant: Boolean(event.admin_note_important),
         };
@@ -9204,6 +9236,7 @@ This removes its linked members and deletes the grounds account.`
           staffContacts: [] as StaffContact[],
           staffDetailLabel: "",
           bookingEventId: null as string | null,
+          missingBookingFields: [] as string[],
           adminNote: "",
           adminNoteImportant: false,
           onClick: () => {
@@ -11171,6 +11204,21 @@ This removes its linked members and deletes the grounds account.`
                                 )}
                               </div>
                             )}
+                            {item.missingBookingFields.length > 0 ? (
+                              <div className="mt-2 flex flex-wrap items-center gap-2 rounded-[12px] border border-[#facc15] bg-[#fefce8] px-3 py-2 text-xs font-semibold text-[#854d0e]">
+                                <span>Missing booking: {item.missingBookingFields.join(", ")}</span>
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    openBookingNoteEditor(item);
+                                  }}
+                                  className="rounded-full border border-[#eab308] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#854d0e] transition hover:bg-[#fffbeb]"
+                                >
+                                  Complete booking info
+                                </button>
+                              </div>
+                            ) : null}
                             {item.bookingEventId ? (
                               <div className="mt-2 flex flex-wrap items-center gap-2">
                                 {item.adminNote ? (
@@ -11330,6 +11378,21 @@ This removes its linked members and deletes the grounds account.`
                                 )}
                               </div>
                             )}
+                            {item.missingBookingFields.length > 0 ? (
+                              <div className="mt-2 flex flex-wrap items-center gap-2 rounded-[12px] border border-[#facc15] bg-[#fefce8] px-3 py-2 text-xs font-semibold text-[#854d0e]">
+                                <span>Missing booking: {item.missingBookingFields.join(", ")}</span>
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    openBookingNoteEditor(item);
+                                  }}
+                                  className="rounded-full border border-[#eab308] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#854d0e] transition hover:bg-[#fffbeb]"
+                                >
+                                  Complete booking info
+                                </button>
+                              </div>
+                            ) : null}
                             {item.bookingEventId ? (
                               <div className="mt-2 flex flex-wrap items-center gap-2">
                                 {item.adminNote ? (
@@ -11428,6 +11491,18 @@ This removes its linked members and deletes the grounds account.`
                           <p className="mt-1 text-sm text-[#456452]">
                             {item.summary}
                           </p>
+                          {item.missingBookingFields.length > 0 ? (
+                            <div className="mt-2 flex flex-wrap items-center gap-2 rounded-[12px] border border-[#facc15] bg-[#fefce8] px-3 py-2 text-xs font-semibold text-[#854d0e]">
+                              <span>Missing booking: {item.missingBookingFields.join(", ")}</span>
+                              <button
+                                type="button"
+                                onClick={() => openBookingNoteEditor(item)}
+                                className="rounded-full border border-[#eab308] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#854d0e] transition hover:bg-[#fffbeb]"
+                              >
+                                Complete booking info
+                              </button>
+                            </div>
+                          ) : null}
                           {item.adminNote ? (
                             <div className={`mt-2 rounded-[12px] border px-3 py-2 text-xs font-medium ${
                               item.adminNoteImportant
@@ -22421,7 +22496,7 @@ This removes its linked members and deletes the grounds account.`
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#8a7b68]">
-                  Booking note
+                  Booking details
                 </div>
                 <h2 className="mt-2 truncate text-xl font-semibold text-[#241c15]">
                   {editingBookingNote.propertyName}
@@ -22435,6 +22510,8 @@ This removes its linked members and deletes the grounds account.`
                 onClick={() => {
                   if (savingBookingNote) return;
                   setEditingBookingNote(null);
+                  setBookingGuestNameDraft("");
+                  setBookingGuestCountDraft("");
                   setBookingNoteDraft("");
                   setBookingNoteImportant(false);
                 }}
@@ -22443,6 +22520,33 @@ This removes its linked members and deletes the grounds account.`
               >
                 Close
               </button>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-[minmax(0,1fr)_120px]">
+              <label className="block text-sm font-semibold text-[#241c15]" htmlFor="booking-guest-name">
+                Guest name
+                <input
+                  id="booking-guest-name"
+                  value={bookingGuestNameDraft}
+                  onChange={(event) => setBookingGuestNameDraft(event.target.value)}
+                  maxLength={300}
+                  className="mt-2 w-full rounded-[18px] border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-3 text-sm font-normal text-[#241c15] outline-none transition focus:border-[#b9975b] focus:bg-white focus:ring-2 focus:ring-[#eadfce]"
+                  placeholder="Guest name"
+                />
+              </label>
+              <label className="block text-sm font-semibold text-[#241c15]" htmlFor="booking-guest-count">
+                Guests
+                <input
+                  id="booking-guest-count"
+                  value={bookingGuestCountDraft}
+                  onChange={(event) => setBookingGuestCountDraft(event.target.value)}
+                  min={1}
+                  max={99}
+                  type="number"
+                  className="mt-2 w-full rounded-[18px] border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-3 text-sm font-normal text-[#241c15] outline-none transition focus:border-[#b9975b] focus:bg-white focus:ring-2 focus:ring-[#eadfce]"
+                  placeholder="Count"
+                />
+              </label>
             </div>
 
             <label className="mt-5 block text-sm font-semibold text-[#241c15]" htmlFor="booking-note-draft">
@@ -22484,6 +22588,8 @@ This removes its linked members and deletes the grounds account.`
               <button
                 type="button"
                 onClick={() => {
+                  setBookingGuestNameDraft("");
+                  setBookingGuestCountDraft("");
                   setBookingNoteDraft("");
                   setBookingNoteImportant(false);
                 }}
@@ -22498,7 +22604,7 @@ This removes its linked members and deletes the grounds account.`
                 className="rounded-full bg-[#241c15] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#352a21] disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={savingBookingNote}
               >
-                {savingBookingNote ? "Saving..." : "Save note"}
+                {savingBookingNote ? "Saving..." : "Save booking"}
               </button>
             </div>
           </div>
@@ -22721,6 +22827,18 @@ This removes its linked members and deletes the grounds account.`
                       ) : (
                         <div className="truncate text-xs text-[#64748b]">{item.detail}</div>
                       )}
+                      {item.missingBookingFields.length > 0 ? (
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5 rounded-[12px] border border-[#facc15] bg-[#fefce8] px-2 py-1 text-[11px] font-semibold text-[#854d0e]">
+                          <span>Missing booking: {item.missingBookingFields.join(", ")}</span>
+                          <button
+                            type="button"
+                            onClick={() => openBookingNoteEditor(item)}
+                            className="rounded-full border border-[#eab308] bg-white px-2 py-0.5 text-[10px] font-semibold text-[#854d0e] transition hover:bg-[#fffbeb]"
+                          >
+                            Complete
+                          </button>
+                        </div>
+                      ) : null}
                       {renderTodayProgress(item)}
                           {item.bookingEventId ? (
                             <div className="mt-1 flex flex-wrap items-center gap-2">
@@ -22754,6 +22872,18 @@ This removes its linked members and deletes the grounds account.`
                       </div>
                       <div className="mt-1 truncate text-sm font-semibold text-[#17202a]">{item.title}</div>
                       <div className="truncate text-xs text-[#64748b]">{item.detail}</div>
+                      {item.missingBookingFields.length > 0 ? (
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5 rounded-[12px] border border-[#facc15] bg-[#fefce8] px-2 py-1 text-[11px] font-semibold text-[#854d0e]">
+                          <span>Missing booking: {item.missingBookingFields.join(", ")}</span>
+                          <button
+                            type="button"
+                            onClick={() => openBookingNoteEditor(item)}
+                            className="rounded-full border border-[#eab308] bg-white px-2 py-0.5 text-[10px] font-semibold text-[#854d0e] transition hover:bg-[#fffbeb]"
+                          >
+                            Complete
+                          </button>
+                        </div>
+                      ) : null}
                       {item.adminNote ? (
                         <div className={`mt-1 truncate rounded-full border px-2 py-0.5 text-[11px] font-medium ${
                           item.adminNoteImportant
@@ -22804,6 +22934,18 @@ This removes its linked members and deletes the grounds account.`
                       <div className="truncate text-xs text-[#64748b]">
                         Checks out {formatDateLabel(property.checkoutDate)}
                       </div>
+                      {property.missingBookingFields.length > 0 ? (
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5 rounded-[12px] border border-[#facc15] bg-[#fefce8] px-2 py-1 text-[11px] font-semibold text-[#854d0e]">
+                          <span>Missing booking: {property.missingBookingFields.join(", ")}</span>
+                          <button
+                            type="button"
+                            onClick={() => openBookingNoteEditor(property)}
+                            className="rounded-full border border-[#eab308] bg-white px-2 py-0.5 text-[10px] font-semibold text-[#854d0e] transition hover:bg-[#fffbeb]"
+                          >
+                            Complete
+                          </button>
+                        </div>
+                      ) : null}
                       {property.adminNote ? (
                         <div className={`mt-1 truncate rounded-full border px-2 py-0.5 text-[11px] font-medium ${
                           property.adminNoteImportant

@@ -27,6 +27,7 @@ type PropertyRow = {
 type TurnoverJobRow = {
   id: string;
   property_id: string;
+  booking_event_id?: string | null;
   notes: string | null;
   scheduled_for: string | null;
   status: string | null;
@@ -423,10 +424,26 @@ async function applyCleanerTrainingRotationToJob(jobId: string, property: Proper
   await applyServerCleanerTrainingRotationToJob(supabase, jobId);
 }
 
-async function findSyncedJob(propertyId: string, marker: string): Promise<TurnoverJobRow | null> {
+async function findSyncedJob(
+  propertyId: string,
+  marker: string,
+  bookingEventId: string | null
+): Promise<TurnoverJobRow | null> {
+  if (bookingEventId) {
+    const { data, error } = await supabase
+      .from("turnover_jobs")
+      .select("id, property_id, booking_event_id, notes, scheduled_for, status")
+      .eq("property_id", propertyId)
+      .eq("booking_event_id", bookingEventId)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (data) return data as TurnoverJobRow;
+  }
+
   const { data, error } = await supabase
     .from("turnover_jobs")
-    .select("id, property_id, notes, scheduled_for, status")
+    .select("id, property_id, booking_event_id, notes, scheduled_for, status")
     .eq("property_id", propertyId)
     .limit(200);
 
@@ -441,15 +458,23 @@ async function findSyncedJob(propertyId: string, marker: string): Promise<Turnov
 async function updateSyncedJobIfChanged(
   job: TurnoverJobRow,
   event: ParsedEvent,
-  notes: string
+  notes: string,
+  bookingEventId: string | null
 ) {
-  if (job.scheduled_for === event.checkoutDate && (job.notes || "") === notes) {
+  const nextBookingEventId = bookingEventId ?? job.booking_event_id ?? null;
+
+  if (
+    job.scheduled_for === event.checkoutDate &&
+    (job.notes || "") === notes &&
+    (job.booking_event_id || null) === nextBookingEventId
+  ) {
     return false;
   }
 
   const { error } = await supabase
     .from("turnover_jobs")
     .update({
+      booking_event_id: nextBookingEventId,
       scheduled_for: event.checkoutDate,
       notes,
     })
@@ -468,15 +493,39 @@ async function deleteStaleUpcomingSyncedJobs(
   const todayYmd = getTodayYmd();
   const { data, error } = await supabase
     .from("turnover_jobs")
-    .select("id, property_id, notes, scheduled_for, status")
+    .select("id, property_id, booking_event_id, notes, scheduled_for, status")
     .eq("property_id", propertyId)
     .limit(500);
 
   if (error) throw error;
 
+  const jobs = (data ?? []) as TurnoverJobRow[];
+  const bookingEventIds = [
+    ...new Set(jobs.map((job) => job.booking_event_id).filter(Boolean) as string[]),
+  ];
+  const linkedBookingUidById = new Map<string, string>();
+
+  if (bookingEventIds.length > 0) {
+    const { data: linkedEvents, error: linkedEventsError } = await supabase
+      .from("property_booking_events")
+      .select("id, source, external_uid")
+      .in("id", bookingEventIds)
+      .eq("source", source);
+
+    if (linkedEventsError) throw linkedEventsError;
+
+    for (const event of linkedEvents ?? []) {
+      if (event.external_uid) {
+        linkedBookingUidById.set(event.id, event.external_uid);
+      }
+    }
+  }
+
   const staleJobIds = ((data ?? []) as TurnoverJobRow[])
     .filter((job) => {
-      const uid = getSyncMarkerUid(job.notes, source);
+      const uid =
+        (job.booking_event_id ? linkedBookingUidById.get(job.booking_event_id) : null) ??
+        getSyncMarkerUid(job.notes, source);
       if (!uid || seenExternalUids.has(uid)) return false;
 
       const jobDate = job.scheduled_for || getCheckoutDateFromNotes(job.notes) || "";
@@ -545,7 +594,7 @@ async function upsertBookingEvent(
   event: ParsedEvent,
   externalUid: string
 ) {
-  if (!event.checkinDate || !event.checkoutDate) return;
+  if (!event.checkinDate || !event.checkoutDate) return null;
 
   const payload = {
     organization_id: property.organization_id,
@@ -563,26 +612,30 @@ async function upsertBookingEvent(
     updated_at: new Date().toISOString(),
   };
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("property_booking_events")
     .upsert(payload, {
       onConflict: "property_id,source,external_uid",
-    });
+    })
+    .select("id")
+    .single();
 
-  if (!error) return;
+  if (!error) return data?.id ?? null;
 
   const message = error.message || "";
   if (message.includes("guest_count") || error.code === "PGRST204" || error.code === "PGRST205") {
     const fallbackPayload = { ...payload };
     delete (fallbackPayload as Partial<typeof payload>).guest_count;
-    const { error: fallbackError } = await supabase
+    const { data: fallbackData, error: fallbackError } = await supabase
       .from("property_booking_events")
       .upsert(fallbackPayload, {
         onConflict: "property_id,source,external_uid",
-      });
+      })
+      .select("id")
+      .single();
 
     if (fallbackError) throw fallbackError;
-    return;
+    return fallbackData?.id ?? null;
   }
 
   throw error;
@@ -754,10 +807,11 @@ export async function POST(request: Request) {
             event.uid ||
             `${calendar.property_id}:${calendar.source}:${event.dtstartRaw ?? "start"}:${event.dtendRaw ?? "end"}:${event.summary}`;
           seenExternalUids.add(uid);
+          let bookingEventId: string | null = null;
 
           if (property?.organization_id && event.checkinDate) {
             try {
-              await upsertBookingEvent(calendar, property, event, uid);
+              bookingEventId = await upsertBookingEvent(calendar, property, event, uid);
               resultBucket.booking_events_saved += 1;
             } catch (bookingEventError: any) {
               resultBucket.errors.push(
@@ -773,11 +827,11 @@ export async function POST(request: Request) {
 
           const marker = buildSyncMarker(calendar.source, uid);
           const notes = buildAutoSyncNotes(calendar, propertyName, event, marker);
-          const existingJob = await findSyncedJob(calendar.property_id, marker);
+          const existingJob = await findSyncedJob(calendar.property_id, marker, bookingEventId);
 
           if (existingJob) {
             try {
-              const updated = await updateSyncedJobIfChanged(existingJob, event, notes);
+              const updated = await updateSyncedJobIfChanged(existingJob, event, notes, bookingEventId);
               if (updated) {
                 resultBucket.updated_jobs += 1;
                 resultBucket.updated_dates.push(event.checkoutDate);
@@ -802,6 +856,7 @@ export async function POST(request: Request) {
             .insert({
               organization_id: property?.organization_id,
               property_id: calendar.property_id,
+              booking_event_id: bookingEventId,
               status: "pending",
               notes,
               scheduled_for: event.checkoutDate,
@@ -865,15 +920,15 @@ export async function POST(request: Request) {
           resultBucket.created_dates.push(event.checkoutDate);
         }
 
-        resultBucket.removed_missing_future = await deleteStaleUpcomingBookingEvents(
-          calendar.id,
-          seenExternalUids
-        );
         const staleJobCleanup = await deleteStaleUpcomingSyncedJobs(
           calendar.property_id,
           calendar.source,
           seenExternalUids,
           new URL(request.url).origin
+        );
+        resultBucket.removed_missing_future = await deleteStaleUpcomingBookingEvents(
+          calendar.id,
+          seenExternalUids
         );
         resultBucket.removed_missing_future_jobs = staleJobCleanup.removed;
         resultBucket.cancellation_notifications_sent = staleJobCleanup.notificationSent;

@@ -45,6 +45,11 @@ export async function POST(request: NextRequest) {
     const bookingEventId = String(body?.bookingEventId || "").trim();
     const noteText = String(body?.adminNote || "").trim();
     const noteImportant = Boolean(body?.adminNoteImportant);
+    const guestName = String(body?.guestName || "").trim();
+    const guestCountValue =
+      body?.guestCount === "" || body?.guestCount === null || body?.guestCount === undefined
+        ? null
+        : Number(body.guestCount);
 
     if (!organizationId || !bookingEventId) {
       return NextResponse.json({ error: "Missing organization or booking." }, { status: 400 });
@@ -52,6 +57,14 @@ export async function POST(request: NextRequest) {
 
     if (noteText.length > 1000) {
       return NextResponse.json({ error: "Booking note must be 1000 characters or less." }, { status: 400 });
+    }
+
+    if (guestName.length > 300) {
+      return NextResponse.json({ error: "Guest name must be 300 characters or less." }, { status: 400 });
+    }
+
+    if (guestCountValue !== null && (!Number.isInteger(guestCountValue) || guestCountValue < 1 || guestCountValue > 99)) {
+      return NextResponse.json({ error: "Guest count must be between 1 and 99." }, { status: 400 });
     }
 
     const serviceClient = createClient(supabaseUrl, serviceRoleKey, {
@@ -108,6 +121,8 @@ export async function POST(request: NextRequest) {
     const { data: bookingEvent, error: updateError } = await serviceClient
       .from("property_booking_events")
       .update({
+        summary: guestName || null,
+        guest_count: guestCountValue,
         admin_note: noteText || null,
         admin_note_important: noteText ? noteImportant : false,
       })

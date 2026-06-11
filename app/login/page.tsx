@@ -720,6 +720,11 @@ export default function LoginPage() {
                     <div className="mt-4 rounded-[20px] border border-[#efd8a8] bg-[#fff8e8] px-4 py-3 text-sm leading-6 text-[#6f5525]">
                       {t("login.testingNotice")}
                     </div>
+                    {error ? (
+                      <div className="mt-4 rounded-[20px] border border-[#e7c6c1] bg-[#fff4f2] px-4 py-3 text-sm text-[#8a2e22] shadow-sm">
+                        {error}
+                      </div>
+                    ) : null}
 
                     <form onSubmit={handleCompanySignup} className="mt-5 grid gap-3 md:grid-cols-2">
                       <input
