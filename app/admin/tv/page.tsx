@@ -586,7 +586,7 @@ function TvBoard() {
     { label: "Grounds", value: groundsCards.length },
     { label: "Occupied", value: occupiedCards.length },
     { label: "Check-ins", value: upcomingCheckIns.length },
-    { label: "Waiting", value: waitingCards.length },
+    { label: "Awaiting", value: waitingCards.length },
     { label: "Flags", value: openFlags.length },
   ];
   const visibleCleaningCards = cleaningCards.slice(0, 3);
@@ -782,8 +782,8 @@ function TvBoard() {
           <div className="rounded-[28px] border border-[#fde68a] bg-white px-5 py-5 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#a16207]">Waiting</div>
-                <h2 className="mt-1 text-xl font-semibold md:text-2xl">Pickup needed</h2>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#a16207]">Awaiting</div>
+                <h2 className="mt-1 text-xl font-semibold md:text-2xl">Awaiting acceptance</h2>
               </div>
               <div className="rounded-full bg-[#fffbeb] px-4 py-2 text-base font-semibold text-[#a16207]">
                 {waitingCards.length}
