@@ -125,6 +125,7 @@ export async function POST(request: NextRequest) {
         guest_count: guestCountValue,
         admin_note: noteText || null,
         admin_note_important: noteText ? noteImportant : false,
+        updated_at: new Date().toISOString(),
       })
       .eq("id", bookingEventId)
       .eq("organization_id", organizationId)

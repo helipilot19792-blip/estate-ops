@@ -49,6 +49,14 @@ type SyncAuthContext = {
   organizationIds: string[] | null;
 };
 
+type ExistingBookingEventRow = {
+  id: string;
+  summary: string | null;
+  guest_count: number | null;
+  last_seen_at: string | null;
+  updated_at: string | null;
+};
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -484,6 +492,16 @@ async function updateSyncedJobIfChanged(
   return true;
 }
 
+function hasManualBookingEdits(existingBookingEvent: ExistingBookingEventRow | null) {
+  if (!existingBookingEvent?.updated_at || !existingBookingEvent?.last_seen_at) return false;
+
+  const updatedAt = Date.parse(existingBookingEvent.updated_at);
+  const lastSeenAt = Date.parse(existingBookingEvent.last_seen_at);
+
+  if (!Number.isFinite(updatedAt) || !Number.isFinite(lastSeenAt)) return false;
+  return updatedAt > lastSeenAt;
+}
+
 async function deleteStaleUpcomingSyncedJobs(
   propertyId: string,
   source: string,
@@ -596,14 +614,43 @@ async function upsertBookingEvent(
 ) {
   if (!event.checkinDate || !event.checkoutDate) return null;
 
+  const { data: existingBookingEvent, error: existingBookingEventError } = await supabase
+    .from("property_booking_events")
+    .select("id, summary, guest_count, last_seen_at, updated_at")
+    .eq("property_id", calendar.property_id)
+    .eq("source", calendar.source)
+    .eq("external_uid", externalUid)
+    .maybeSingle();
+
+  if (existingBookingEventError) throw existingBookingEventError;
+
+  const incomingSummary = event.summary || "Reservation";
+  const preserveManualGuestFields = hasManualBookingEdits(
+    (existingBookingEvent as ExistingBookingEventRow | null) ?? null
+  );
+  const preservedSummary =
+    preserveManualGuestFields &&
+    typeof existingBookingEvent?.summary === "string" &&
+    existingBookingEvent.summary.trim() &&
+    existingBookingEvent.summary.trim() !== incomingSummary.trim()
+      ? existingBookingEvent.summary.trim()
+      : incomingSummary;
+  const preservedGuestCount =
+    preserveManualGuestFields &&
+    typeof existingBookingEvent?.guest_count === "number" &&
+    existingBookingEvent.guest_count > 0 &&
+    existingBookingEvent.guest_count !== event.guestCount
+      ? existingBookingEvent.guest_count
+      : event.guestCount;
+
   const payload = {
     organization_id: property.organization_id,
     property_id: calendar.property_id,
     property_calendar_id: calendar.id,
     source: calendar.source,
     external_uid: externalUid,
-    summary: event.summary || "Reservation",
-    guest_count: event.guestCount,
+    summary: preservedSummary,
+    guest_count: preservedGuestCount,
     checkin_date: event.checkinDate,
     checkout_date: event.checkoutDate,
     raw_dtstart: event.dtstartRaw,
