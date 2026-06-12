@@ -1,6 +1,15 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { AlertTriangle, Clock3, Monitor, RefreshCw } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 
@@ -150,6 +159,114 @@ type FlagCard = {
   propertyName: string;
   urgencyLabel: string;
 };
+
+type TvAutoScrollStackProps<T> = {
+  items: T[];
+  getKey: (item: T, index: number) => string;
+  renderItem: (item: T, index: number) => ReactNode;
+  emptyState: ReactNode;
+  stackClassName?: string;
+  speedPxPerSecond?: number;
+  minDurationSeconds?: number;
+};
+
+function TvAutoScrollStack<T>({
+  items,
+  getKey,
+  renderItem,
+  emptyState,
+  stackClassName = "grid gap-2",
+  speedPxPerSecond = 18,
+  minDurationSeconds = 22,
+}: TvAutoScrollStackProps<T>) {
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const [overflowing, setOverflowing] = useState(false);
+  const [durationSeconds, setDurationSeconds] = useState(minDurationSeconds);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    const content = contentRef.current;
+
+    if (!viewport || !content || items.length === 0) {
+      return;
+    }
+
+    const measure = () => {
+      const viewportHeight = viewport.clientHeight;
+      const contentHeight = content.scrollHeight;
+      const hasOverflow = contentHeight - viewportHeight > 4;
+
+      setOverflowing(hasOverflow);
+
+      if (hasOverflow) {
+        const nextDuration = Math.max(minDurationSeconds, contentHeight / speedPxPerSecond);
+        setDurationSeconds(Number(nextDuration.toFixed(1)));
+      }
+    };
+
+    measure();
+
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(() => {
+            measure();
+          });
+
+    observer?.observe(viewport);
+    observer?.observe(content);
+    window.addEventListener("resize", measure);
+
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [items, minDurationSeconds, speedPxPerSecond]);
+
+  if (items.length === 0) {
+    return <div className="mt-3">{emptyState}</div>;
+  }
+
+  const stack = (duplicate = false) => (
+    <div
+      ref={duplicate ? null : contentRef}
+      aria-hidden={duplicate || undefined}
+      className={stackClassName}
+    >
+      {items.map((item, index) => (
+        <div key={`${getKey(item, index)}${duplicate ? "-duplicate" : ""}`}>{renderItem(item, index)}</div>
+      ))}
+    </div>
+  );
+
+  if (!overflowing) {
+    return (
+      <div ref={viewportRef} className="mt-3 min-h-0 overflow-hidden">
+        {stack()}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={viewportRef}
+      className="tv-auto-scroll-viewport mt-3 min-h-0 overflow-hidden [mask-image:linear-gradient(to_bottom,transparent_0,black_5%,black_95%,transparent_100%)]"
+    >
+      <div
+        className="tv-auto-scroll-track"
+        style={
+          {
+            "--tv-auto-scroll-duration": `${durationSeconds}s`,
+          } as CSSProperties
+        }
+      >
+        {stack()}
+        {stack(true)}
+      </div>
+    </div>
+  );
+}
 
 function ymdToLocalDate(dateString: string) {
   const [year, month, day] = dateString.split("-").map(Number);
@@ -598,13 +715,13 @@ function TvBoard() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#f4f6f8] px-6 text-center text-[#334155]">
+      <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,rgba(212,175,55,0.08),transparent_24%),linear-gradient(180deg,#061222_0%,#081a33_40%,#0b1f3f_100%)] px-6 text-center text-[#f6f2e8]">
         <div>
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-white shadow-sm">
-            <Monitor className="h-8 w-8" />
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-[rgba(212,175,55,0.35)] bg-[rgba(255,255,255,0.05)] shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
+            <Monitor className="h-8 w-8 text-[#f0d88a]" />
           </div>
-          <h1 className="mt-6 text-3xl font-semibold text-[#0f172a]">Preparing TV view</h1>
-          <p className="mt-2 text-lg text-[#64748b]">Loading today&apos;s sterilized operations board.</p>
+          <h1 className="tv-brand-serif mt-6 text-3xl font-semibold text-[#f0d88a]">Preparing TV view</h1>
+          <p className="mt-2 text-lg text-[#c8ced8]">Loading today&apos;s sterilized operations board.</p>
         </div>
       </div>
     );
@@ -612,29 +729,32 @@ function TvBoard() {
 
   if (error) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#fff7ed] px-6">
-        <div className="max-w-xl rounded-[28px] border border-[#fdba74] bg-white p-8 text-center shadow-sm">
-          <AlertTriangle className="mx-auto h-12 w-12 text-[#c2410c]" />
-          <h1 className="mt-4 text-3xl font-semibold text-[#7c2d12]">TV view unavailable</h1>
-          <p className="mt-3 text-lg text-[#9a3412]">{error}</p>
+      <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,rgba(212,175,55,0.08),transparent_24%),linear-gradient(180deg,#061222_0%,#081a33_40%,#0b1f3f_100%)] px-6">
+        <div className="max-w-xl rounded-[28px] border border-[rgba(212,175,55,0.35)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.025))] p-8 text-center shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
+          <AlertTriangle className="mx-auto h-12 w-12 text-[#f0d88a]" />
+          <h1 className="tv-brand-serif mt-4 text-3xl font-semibold text-[#f0d88a]">TV view unavailable</h1>
+          <p className="mt-3 text-lg text-[#c8ced8]">{error}</p>
         </div>
       </div>
     );
   }
 
   return (
-    <main className="h-screen overflow-hidden bg-[#eef2f6] px-3 py-3 text-[#0f172a] md:px-4 md:py-4">
+    <main className="h-screen overflow-hidden bg-[radial-gradient(circle_at_top,rgba(212,175,55,0.08),transparent_24%),linear-gradient(180deg,#061222_0%,#081a33_40%,#0b1f3f_100%)] px-3 py-3 text-[#f6f2e8] md:px-4 md:py-4">
       <div className="mx-auto grid h-full max-w-[1850px] grid-rows-[auto_minmax(0,1fr)_auto] gap-3">
-        <section className="rounded-[24px] border border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.98)_0%,rgba(240,249,255,0.96)_48%,rgba(240,253,244,0.96)_100%)] px-4 py-3 shadow-[0_18px_50px_rgba(15,23,42,0.08)] md:px-5">
+        <section className="rounded-[24px] border border-[rgba(212,175,55,0.35)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.025))] px-4 py-3 shadow-[0_20px_50px_rgba(0,0,0,0.35)] md:px-5">
           <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex flex-wrap items-center gap-3">
-              <div className="text-xl font-semibold tracking-tight text-[#0f172a] md:text-2xl">{formatLongDate(now)}</div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-[#dbe4ee] bg-white px-3 py-1.5 text-xs font-medium text-[#475569] md:text-sm">
-                <Clock3 className="h-4 w-4" />
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#f0d88a]">Estate of Mind</div>
+                <div className="tv-brand-serif text-2xl font-semibold tracking-tight text-[#f6f2e8] md:text-3xl">{formatLongDate(now)}</div>
+              </div>
+              <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(212,175,55,0.35)] bg-[rgba(255,255,255,0.04)] px-3 py-1.5 text-xs font-medium text-[#c8ced8] md:text-sm">
+                <Clock3 className="h-4 w-4 text-[#f0d88a]" />
                 <span>Updates every minute</span>
               </div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-[#dbe4ee] bg-white px-3 py-1.5 text-xs font-medium text-[#475569] md:text-sm">
-                <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+              <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(212,175,55,0.35)] bg-[rgba(255,255,255,0.04)] px-3 py-1.5 text-xs font-medium text-[#c8ced8] md:text-sm">
+                <RefreshCw className={`h-4 w-4 text-[#f0d88a] ${refreshing ? "animate-spin" : ""}`} />
                 <span>
                   {lastLoadedAt
                     ? `Last refresh ${lastLoadedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
@@ -644,9 +764,9 @@ function TvBoard() {
             </div>
             <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
             {stats.map((stat) => (
-              <div key={stat.label} className="rounded-[18px] border border-[#dbe4ee] bg-white/92 px-3 py-2 shadow-sm">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">{stat.label}</div>
-                <div className="mt-1 text-2xl font-semibold tracking-tight text-[#0f172a] md:text-3xl">{stat.value}</div>
+              <div key={stat.label} className="rounded-[18px] border border-[rgba(212,175,55,0.35)] bg-[rgba(255,255,255,0.04)] px-3 py-2 shadow-[0_20px_50px_rgba(0,0,0,0.2)]">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#f0d88a]">{stat.label}</div>
+                <div className="mt-1 text-2xl font-semibold tracking-tight text-[#f6f2e8] md:text-3xl">{stat.value}</div>
               </div>
             ))}
             </div>
@@ -654,170 +774,179 @@ function TvBoard() {
         </section>
 
         <section className="grid min-h-0 gap-3 xl:grid-cols-[minmax(0,1.45fr)_minmax(280px,0.82fr)_minmax(280px,0.82fr)]">
-          <div className="min-h-0 overflow-hidden rounded-[24px] border border-[#ddd6fe] bg-white px-4 py-4 shadow-sm">
+          <div className="min-h-0 overflow-hidden rounded-[24px] border border-[rgba(212,175,55,0.35)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.025))] px-4 py-4 shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6d28d9]">Check-ins</div>
-                <h2 className="mt-1 text-xl font-semibold md:text-2xl">Arrivals</h2>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#f0d88a]">Check-ins</div>
+                <h2 className="tv-brand-serif mt-1 text-xl font-semibold text-[#f6f2e8] md:text-2xl">Arrivals</h2>
               </div>
-              <div className="rounded-full bg-[#f5f3ff] px-3 py-1.5 text-sm font-semibold text-[#6d28d9]">
+              <div className="rounded-full bg-[linear-gradient(135deg,#d4af37,#b88d1d)] px-3 py-1.5 text-sm font-semibold text-[#0a1630]">
                 {upcomingCheckIns.length}
               </div>
             </div>
-            <div className="mt-3 grid gap-2">
-              {visibleCheckInCards.length === 0 ? (
-                <div className="rounded-[18px] border border-dashed border-[#ddd6fe] bg-[#faf5ff] px-3 py-5 text-center text-sm text-[#7c3aed]">
+            <TvAutoScrollStack
+              items={visibleCheckInCards}
+              getKey={(card) => card.id}
+              emptyState={
+                <div className="rounded-[18px] border border-dashed border-[rgba(212,175,55,0.28)] bg-[rgba(255,255,255,0.04)] px-3 py-5 text-center text-sm text-[#c8ced8]">
                   No upcoming check-ins.
                 </div>
-              ) : (
-                visibleCheckInCards.map((card) => (
-                  <article key={card.id} className="rounded-[18px] border border-[#ddd6fe] bg-[#faf5ff] px-3 py-3">
-                    <div className="text-lg font-semibold text-[#4c1d95] md:text-xl">{card.propertyName}</div>
-                    <div className="mt-1 text-sm text-[#6d28d9] md:text-base">{card.dateLabel}</div>
-                    <div className="mt-1 text-sm text-[#6d28d9] md:text-base">
-                      {card.sourceLabel} | {card.guestCountLabel}
-                    </div>
-                  </article>
-                ))
+              }
+              renderItem={(card) => (
+                <article className="rounded-[18px] border border-[rgba(212,175,55,0.2)] bg-[rgba(255,255,255,0.04)] px-3 py-3">
+                  <div className="text-lg font-semibold text-[#f0d88a] md:text-xl">{card.propertyName}</div>
+                  <div className="mt-1 text-sm text-[#f6f2e8] md:text-base">{card.dateLabel}</div>
+                  <div className="mt-1 text-sm text-[#c8ced8] md:text-base">
+                    {card.sourceLabel} | {card.guestCountLabel}
+                  </div>
+                </article>
               )}
-            </div>
+            />
           </div>
 
           <div className="grid min-h-0 gap-3">
-            <div className="min-h-0 overflow-hidden rounded-[24px] border border-[#dbe4ee] bg-white px-4 py-4 shadow-sm">
+            <div className="min-h-0 overflow-hidden rounded-[24px] border border-[rgba(212,175,55,0.35)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.025))] px-4 py-4 shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">Occupied</div>
-                  <h2 className="mt-1 text-lg font-semibold md:text-xl">In house</h2>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#f0d88a]">Occupied</div>
+                  <h2 className="tv-brand-serif mt-1 text-lg font-semibold text-[#f6f2e8] md:text-xl">In house</h2>
                 </div>
-                <div className="rounded-full bg-[#f8fafc] px-3 py-1.5 text-sm font-semibold text-[#334155]">
+                <div className="rounded-full bg-[rgba(255,255,255,0.06)] px-3 py-1.5 text-sm font-semibold text-[#f0d88a]">
                   {occupiedCards.length}
                 </div>
               </div>
-              <div className="mt-3 grid gap-2">
-                {visibleOccupiedCards.length === 0 ? (
-                  <div className="rounded-[18px] border border-dashed border-[#dbe4ee] bg-[#f8fafc] px-3 py-5 text-center text-sm text-[#64748b]">
+              <TvAutoScrollStack
+                items={visibleOccupiedCards}
+                getKey={(card) => card.id}
+                emptyState={
+                  <div className="rounded-[18px] border border-dashed border-[rgba(212,175,55,0.28)] bg-[rgba(255,255,255,0.04)] px-3 py-5 text-center text-sm text-[#c8ced8]">
                     No occupied properties today.
                   </div>
-                ) : (
-                  visibleOccupiedCards.map((card) => (
-                    <article key={card.id} className="rounded-[18px] border border-[#dbe4ee] bg-[#f8fafc] px-3 py-3">
-                      <div className="text-lg font-semibold md:text-xl">{card.propertyName}</div>
-                      <div className="mt-1 text-sm text-[#475569] md:text-base">{card.guestCountLabel}</div>
-                      <div className="mt-1 text-sm text-[#475569] md:text-base">{card.checkoutLabel}</div>
-                    </article>
-                  ))
+                }
+                renderItem={(card) => (
+                  <article className="rounded-[18px] border border-[rgba(212,175,55,0.18)] bg-[rgba(255,255,255,0.04)] px-3 py-3">
+                    <div className="text-lg font-semibold text-[#f6f2e8] md:text-xl">{card.propertyName}</div>
+                    <div className="mt-1 text-sm text-[#c8ced8] md:text-base">{card.guestCountLabel}</div>
+                    <div className="mt-1 text-sm text-[#c8ced8] md:text-base">{card.checkoutLabel}</div>
+                  </article>
                 )}
-              </div>
+              />
             </div>
 
-            <div className="min-h-0 overflow-hidden rounded-[24px] border border-[#fecaca] bg-white px-4 py-4 shadow-sm">
+            <div className="min-h-0 overflow-hidden rounded-[24px] border border-[rgba(212,175,55,0.35)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.025))] px-4 py-4 shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#b91c1c]">Flags</div>
-                  <h2 className="mt-1 text-lg font-semibold md:text-xl">Maintenance</h2>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#f0d88a]">Flags</div>
+                  <h2 className="tv-brand-serif mt-1 text-lg font-semibold text-[#f6f2e8] md:text-xl">Maintenance</h2>
                 </div>
-                <div className="rounded-full bg-[#fff1f2] px-3 py-1.5 text-sm font-semibold text-[#b91c1c]">
+                <div className="rounded-full bg-[linear-gradient(135deg,#d4af37,#b88d1d)] px-3 py-1.5 text-sm font-semibold text-[#0a1630]">
                   {openFlags.length}
                 </div>
               </div>
-              <div className="mt-3 grid gap-2">
-                {visibleFlagCards.length === 0 ? (
-                  <div className="rounded-[18px] border border-dashed border-[#fecaca] bg-[#fff1f2] px-3 py-5 text-center text-sm text-[#b91c1c]">
+              <TvAutoScrollStack
+                items={visibleFlagCards}
+                getKey={(card) => card.id}
+                emptyState={
+                  <div className="rounded-[18px] border border-dashed border-[rgba(212,175,55,0.28)] bg-[rgba(255,255,255,0.04)] px-3 py-5 text-center text-sm text-[#c8ced8]">
                     No open maintenance flags.
                   </div>
-                ) : (
-                  visibleFlagCards.map((card) => (
-                    <article key={card.id} className="rounded-[18px] border border-[#fecaca] bg-[#fff1f2] px-3 py-3">
-                      <div className="text-lg font-semibold text-[#7f1d1d] md:text-xl">{card.propertyName}</div>
-                      <div className="mt-1 text-sm text-[#b91c1c] md:text-base">{card.urgencyLabel}</div>
-                    </article>
-                  ))
+                }
+                renderItem={(card) => (
+                  <article className="rounded-[18px] border border-[rgba(224,94,94,0.35)] bg-[rgba(127,29,29,0.16)] px-3 py-3">
+                    <div className="text-lg font-semibold text-[#f6f2e8] md:text-xl">{card.propertyName}</div>
+                    <div className="mt-1 text-sm text-[#f8b4b4] md:text-base">{card.urgencyLabel}</div>
+                  </article>
                 )}
-              </div>
+              />
             </div>
           </div>
         </section>
 
         <section className="grid min-h-0 gap-3 xl:grid-cols-3">
-          <div className="min-h-0 overflow-hidden rounded-[22px] border border-[#cfe1ff] bg-white px-4 py-3 shadow-sm">
+          <div className="min-h-0 overflow-hidden rounded-[22px] border border-[rgba(212,175,55,0.35)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.025))] px-4 py-3 shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#2563eb]">Cleaning</div>
-                <h2 className="mt-1 text-lg font-semibold md:text-xl">Today&apos;s cleaning</h2>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#f0d88a]">Cleaning</div>
+                <h2 className="tv-brand-serif mt-1 text-lg font-semibold text-[#f6f2e8] md:text-xl">Today&apos;s cleaning</h2>
               </div>
-              <div className="rounded-full bg-[#e8f1ff] px-3 py-1.5 text-sm font-semibold text-[#2957a4]">
+              <div className="rounded-full bg-[rgba(255,255,255,0.06)] px-3 py-1.5 text-sm font-semibold text-[#f0d88a]">
                 {cleaningCards.length}
               </div>
             </div>
-            <div className="mt-3 grid gap-2">
-              {visibleCleaningCards.length === 0 ? (
-                <div className="rounded-[18px] border border-dashed border-[#bfdbfe] bg-[#f8fbff] px-3 py-4 text-center text-sm text-[#5f6f86]">
+            <TvAutoScrollStack
+              items={visibleCleaningCards}
+              getKey={(card) => card.id}
+              emptyState={
+                <div className="rounded-[18px] border border-dashed border-[rgba(212,175,55,0.28)] bg-[rgba(255,255,255,0.04)] px-3 py-4 text-center text-sm text-[#c8ced8]">
                   No cleaning jobs scheduled today.
                 </div>
-              ) : (
-                visibleCleaningCards.map((card) => (
-                  <article key={card.id} className="rounded-[18px] border border-[#b9d1fb] bg-[#f8fbff] px-3 py-3">
-                    <div className="text-lg font-semibold text-[#172554] md:text-xl">{card.propertyName}</div>
-                    <div className="mt-1 text-sm text-[#2957a4] md:text-base">{card.staffLabel}</div>
-                  </article>
-                ))
+              }
+              renderItem={(card) => (
+                <article className="rounded-[18px] border border-[rgba(212,175,55,0.18)] bg-[rgba(255,255,255,0.04)] px-3 py-3">
+                  <div className="text-lg font-semibold text-[#f6f2e8] md:text-xl">{card.propertyName}</div>
+                  <div className="mt-1 text-sm text-[#c8ced8] md:text-base">{card.staffLabel}</div>
+                </article>
               )}
-            </div>
+              minDurationSeconds={18}
+            />
           </div>
 
-          <div className="min-h-0 overflow-hidden rounded-[22px] border border-[#bde7cf] bg-white px-4 py-3 shadow-sm">
+          <div className="min-h-0 overflow-hidden rounded-[22px] border border-[rgba(212,175,55,0.35)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.025))] px-4 py-3 shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#15803d]">Grounds</div>
-                <h2 className="mt-1 text-lg font-semibold md:text-xl">Today&apos;s grounds</h2>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#f0d88a]">Grounds</div>
+                <h2 className="tv-brand-serif mt-1 text-lg font-semibold text-[#f6f2e8] md:text-xl">Today&apos;s grounds</h2>
               </div>
-              <div className="rounded-full bg-[#ecfdf5] px-3 py-1.5 text-sm font-semibold text-[#166534]">
+              <div className="rounded-full bg-[rgba(255,255,255,0.06)] px-3 py-1.5 text-sm font-semibold text-[#f0d88a]">
                 {groundsCards.length}
               </div>
             </div>
-            <div className="mt-3 grid gap-2">
-              {visibleGroundsCards.length === 0 ? (
-                <div className="rounded-[18px] border border-dashed border-[#bbdfc0] bg-[#f0fbf2] px-3 py-4 text-center text-sm text-[#476a50]">
+            <TvAutoScrollStack
+              items={visibleGroundsCards}
+              getKey={(card) => card.id}
+              emptyState={
+                <div className="rounded-[18px] border border-dashed border-[rgba(212,175,55,0.28)] bg-[rgba(255,255,255,0.04)] px-3 py-4 text-center text-sm text-[#c8ced8]">
                   No grounds work scheduled today.
                 </div>
-              ) : (
-                visibleGroundsCards.map((card) => (
-                  <article key={card.id} className="rounded-[18px] border border-[#bbdfc0] bg-[#f0fbf2] px-3 py-3">
-                    <div className="text-lg font-semibold text-[#14532d] md:text-xl">{card.propertyName}</div>
-                    <div className="mt-1 text-sm text-[#166534] md:text-base">{card.staffLabel}</div>
-                  </article>
-                ))
+              }
+              renderItem={(card) => (
+                <article className="rounded-[18px] border border-[rgba(212,175,55,0.18)] bg-[rgba(255,255,255,0.04)] px-3 py-3">
+                  <div className="text-lg font-semibold text-[#f6f2e8] md:text-xl">{card.propertyName}</div>
+                  <div className="mt-1 text-sm text-[#c8ced8] md:text-base">{card.staffLabel}</div>
+                </article>
               )}
-            </div>
+              minDurationSeconds={18}
+            />
           </div>
 
-          <div className="min-h-0 overflow-hidden rounded-[22px] border border-[#fde68a] bg-white px-4 py-3 shadow-sm">
+          <div className="min-h-0 overflow-hidden rounded-[22px] border border-[rgba(212,175,55,0.35)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.025))] px-4 py-3 shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#a16207]">Awaiting</div>
-                <h2 className="mt-1 text-lg font-semibold md:text-xl">Awaiting acceptance</h2>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#f0d88a]">Awaiting</div>
+                <h2 className="tv-brand-serif mt-1 text-lg font-semibold text-[#f6f2e8] md:text-xl">Awaiting acceptance</h2>
               </div>
-              <div className="rounded-full bg-[#fffbeb] px-3 py-1.5 text-sm font-semibold text-[#a16207]">
+              <div className="rounded-full bg-[rgba(255,255,255,0.06)] px-3 py-1.5 text-sm font-semibold text-[#f0d88a]">
                 {waitingCards.length}
               </div>
             </div>
-            <div className="mt-3 grid gap-2">
-              {visibleWaitingCards.length === 0 ? (
-                <div className="rounded-[18px] border border-dashed border-[#fde68a] bg-[#fffbeb] px-3 py-4 text-center text-sm text-[#946200]">
+            <TvAutoScrollStack
+              items={visibleWaitingCards}
+              getKey={(card) => card.id}
+              emptyState={
+                <div className="rounded-[18px] border border-dashed border-[rgba(212,175,55,0.28)] bg-[rgba(255,255,255,0.04)] px-3 py-4 text-center text-sm text-[#c8ced8]">
                   No waiting jobs right now.
                 </div>
-              ) : (
-                visibleWaitingCards.map((card) => (
-                  <article key={card.id} className="rounded-[18px] border border-[#fde68a] bg-[#fffbeb] px-3 py-3">
-                    <div className="text-lg font-semibold text-[#713f12] md:text-xl">{card.propertyName}</div>
-                    <div className={`mt-1 text-sm md:text-base ${card.overdue ? "text-[#b91c1c]" : "text-[#a16207]"}`}>
-                      {card.overdue ? "Overdue response needed" : "Waiting for acceptance"}
-                    </div>
-                  </article>
-                ))
+              }
+              renderItem={(card) => (
+                <article className="rounded-[18px] border border-[rgba(212,175,55,0.18)] bg-[rgba(255,255,255,0.04)] px-3 py-3">
+                  <div className="text-lg font-semibold text-[#f6f2e8] md:text-xl">{card.propertyName}</div>
+                  <div className={`mt-1 text-sm md:text-base ${card.overdue ? "text-[#f8b4b4]" : "text-[#c8ced8]"}`}>
+                    {card.overdue ? "Overdue response needed" : "Waiting for acceptance"}
+                  </div>
+                </article>
               )}
-            </div>
+              minDurationSeconds={18}
+            />
           </div>
         </section>
       </div>
@@ -829,9 +958,9 @@ export default function AdminTvPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-screen items-center justify-center bg-[#f4f6f8] px-6 text-center text-[#334155]">
+        <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,rgba(212,175,55,0.08),transparent_24%),linear-gradient(180deg,#061222_0%,#081a33_40%,#0b1f3f_100%)] px-6 text-center text-[#f6f2e8]">
           <div>
-            <Monitor className="mx-auto h-10 w-10" />
+            <Monitor className="mx-auto h-10 w-10 text-[#f0d88a]" />
             <p className="mt-4 text-lg">Loading TV view...</p>
           </div>
         </div>

@@ -25,6 +25,38 @@ body {
   font-family: var(--font-geist-sans), "Aptos", "Segoe UI", Arial, Helvetica, sans-serif;
 }
 
+.tv-brand-serif {
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+.tv-auto-scroll-viewport {
+  position: relative;
+}
+
+.tv-auto-scroll-track {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  animation: tv-auto-scroll var(--tv-auto-scroll-duration, 26s) linear infinite;
+  will-change: transform;
+}
+
+@keyframes tv-auto-scroll {
+  from {
+    transform: translateY(0);
+  }
+
+  to {
+    transform: translateY(calc(-50% - 0.25rem));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tv-auto-scroll-track {
+    animation: none;
+  }
+}
+
 .admin-shell {
   background:
     radial-gradient(circle at 18% 8%, rgba(125, 211, 252, 0.18), transparent 28%),
