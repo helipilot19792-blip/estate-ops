@@ -160,6 +160,8 @@ type FlagCard = {
   urgencyLabel: string;
 };
 
+const TV_REFRESH_INTERVAL_MS = 12 * 60 * 60 * 1000;
+
 type TvAutoScrollStackProps<T> = {
   items: T[];
   getKey: (item: T, index: number) => string;
@@ -242,7 +244,7 @@ function TvAutoScrollStack<T>({
 
   if (!overflowing) {
     return (
-      <div ref={viewportRef} className="mt-3 min-h-0 overflow-hidden">
+      <div ref={viewportRef} className="mt-3 min-h-0 flex-1 overflow-hidden">
         {stack()}
       </div>
     );
@@ -251,7 +253,7 @@ function TvAutoScrollStack<T>({
   return (
     <div
       ref={viewportRef}
-      className="tv-auto-scroll-viewport mt-3 min-h-0 overflow-hidden [mask-image:linear-gradient(to_bottom,transparent_0,black_5%,black_95%,transparent_100%)]"
+      className="tv-auto-scroll-viewport mt-3 min-h-0 flex-1 overflow-hidden [mask-image:linear-gradient(to_bottom,transparent_0,black_5%,black_95%,transparent_100%)]"
     >
       <div
         className="tv-auto-scroll-track"
@@ -453,7 +455,7 @@ function TvBoard() {
     void loadTvBoard(false);
     const intervalId = window.setInterval(() => {
       void loadTvBoard(true);
-    }, 60_000);
+    }, TV_REFRESH_INTERVAL_MS);
 
     return () => {
       cancelled = true;
@@ -751,7 +753,7 @@ function TvBoard() {
               </div>
               <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(212,175,55,0.35)] bg-[rgba(255,255,255,0.04)] px-3 py-1.5 text-xs font-medium text-[#c8ced8] md:text-sm">
                 <Clock3 className="h-4 w-4 text-[#f0d88a]" />
-                <span>Updates every minute</span>
+                <span>Updates twice daily</span>
               </div>
               <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(212,175,55,0.35)] bg-[rgba(255,255,255,0.04)] px-3 py-1.5 text-xs font-medium text-[#c8ced8] md:text-sm">
                 <RefreshCw className={`h-4 w-4 text-[#f0d88a] ${refreshing ? "animate-spin" : ""}`} />
@@ -774,7 +776,7 @@ function TvBoard() {
         </section>
 
         <section className="grid min-h-0 gap-3 xl:grid-cols-[minmax(0,1.45fr)_minmax(280px,0.82fr)_minmax(280px,0.82fr)]">
-          <div className="min-h-0 overflow-hidden rounded-[24px] border border-[rgba(212,175,55,0.35)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.025))] px-4 py-4 shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
+          <div className="flex min-h-0 flex-col overflow-hidden rounded-[24px] border border-[rgba(212,175,55,0.35)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.025))] px-4 py-4 shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#f0d88a]">Check-ins</div>
@@ -805,7 +807,7 @@ function TvBoard() {
           </div>
 
           <div className="grid min-h-0 gap-3">
-            <div className="min-h-0 overflow-hidden rounded-[24px] border border-[rgba(212,175,55,0.35)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.025))] px-4 py-4 shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
+            <div className="flex min-h-0 flex-col overflow-hidden rounded-[24px] border border-[rgba(212,175,55,0.35)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.025))] px-4 py-4 shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#f0d88a]">Occupied</div>
@@ -833,7 +835,7 @@ function TvBoard() {
               />
             </div>
 
-            <div className="min-h-0 overflow-hidden rounded-[24px] border border-[rgba(212,175,55,0.35)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.025))] px-4 py-4 shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
+            <div className="flex min-h-0 flex-col overflow-hidden rounded-[24px] border border-[rgba(212,175,55,0.35)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.025))] px-4 py-4 shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#f0d88a]">Flags</div>
@@ -863,7 +865,7 @@ function TvBoard() {
         </section>
 
         <section className="grid min-h-0 gap-3 xl:grid-cols-3">
-          <div className="min-h-0 overflow-hidden rounded-[22px] border border-[rgba(212,175,55,0.35)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.025))] px-4 py-3 shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
+          <div className="flex min-h-0 flex-col overflow-hidden rounded-[22px] border border-[rgba(212,175,55,0.35)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.025))] px-4 py-3 shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#f0d88a]">Cleaning</div>
@@ -891,7 +893,7 @@ function TvBoard() {
             />
           </div>
 
-          <div className="min-h-0 overflow-hidden rounded-[22px] border border-[rgba(212,175,55,0.35)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.025))] px-4 py-3 shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
+          <div className="flex min-h-0 flex-col overflow-hidden rounded-[22px] border border-[rgba(212,175,55,0.35)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.025))] px-4 py-3 shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#f0d88a]">Grounds</div>
@@ -919,7 +921,7 @@ function TvBoard() {
             />
           </div>
 
-          <div className="min-h-0 overflow-hidden rounded-[22px] border border-[rgba(212,175,55,0.35)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.025))] px-4 py-3 shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
+          <div className="flex min-h-0 flex-col overflow-hidden rounded-[22px] border border-[rgba(212,175,55,0.35)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.025))] px-4 py-3 shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#f0d88a]">Awaiting</div>
