@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { LOCALE_LABELS, SUPPORTED_LOCALES, type Locale } from "@/lib/i18n";
 import { useI18n } from "@/components/i18n-provider";
 import MyAccountControl from "@/components/my-account-control";
 import { supabase } from "@/lib/supabase";
 
 export default function LanguageSwitcher() {
+  const pathname = usePathname();
   const { locale, setLocale, t } = useI18n();
   const [authChecked, setAuthChecked] = useState(false);
   const [signedIn, setSignedIn] = useState(false);
@@ -31,6 +33,10 @@ export default function LanguageSwitcher() {
       listener.subscription.unsubscribe();
     };
   }, []);
+
+  if (pathname?.startsWith("/admin/tv")) {
+    return null;
+  }
 
   return (
     <div className="border-b border-[#e7ddd0] bg-[#fffdf9] px-4 py-2 text-[#241c15]">
