@@ -1,12 +1,14 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import PortalChat from "@/components/chat/portalchat";
 import PortalInstallControl from "@/components/pwa/portalinstallcontrol";
 import { trackFeatureUsage } from "@/lib/feature-usage";
 import { useI18n } from "@/components/i18n-provider";
 import type { TranslationPath } from "@/lib/i18n";
+
+const PortalChat = dynamic(() => import("@/components/chat/portalchat"));
 
 type OwnerAccountRow = {
   id: string;

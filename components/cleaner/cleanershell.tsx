@@ -1,13 +1,15 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { trackFeatureUsage } from "@/lib/feature-usage";
-import PortalChat from "@/components/chat/portalchat";
-import CleanerDesktopView from "@/components/cleaner/cleanerdesktopview";
-import CleanerMobileView from "@/components/cleaner/cleanermobileview";
 import PushNotificationControl from "@/components/cleaner/pushnotificationcontrol";
+
+const PortalChat = dynamic(() => import("@/components/chat/portalchat"));
+const CleanerDesktopView = dynamic(() => import("@/components/cleaner/cleanerdesktopview"));
+const CleanerMobileView = dynamic(() => import("@/components/cleaner/cleanermobileview"));
 
 type Profile = {
   id: string;

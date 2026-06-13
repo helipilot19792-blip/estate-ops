@@ -1,14 +1,18 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Image from "next/image";
 import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Copy, Eye, EyeOff, Mail, MapPin, Monitor, Navigation, Phone, Search } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { trackFeatureUsage } from "@/lib/feature-usage";
-import OnboardingChecklist, { type OnboardingStep } from "@/components/onboarding-checklist";
-import PortalInstallControl from "@/components/pwa/portalinstallcontrol";
 import { useI18n } from "@/components/i18n-provider";
+
+import type { OnboardingStep } from "@/components/onboarding-checklist";
+
+const OnboardingChecklist = dynamic(() => import("@/components/onboarding-checklist"));
+const PortalInstallControl = dynamic(() => import("@/components/pwa/portalinstallcontrol"));
 
 function getCityFromAddress(address?: string | null) {
   if (!address) return "";

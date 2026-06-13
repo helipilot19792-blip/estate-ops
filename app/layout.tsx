@@ -1,9 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import AppClientChrome from "@/components/app-client-chrome";
 import { I18nProvider } from "@/components/i18n-provider";
-import LanguageSwitcher from "@/components/language-switcher";
-import LegalConsentBanner from "@/components/legal-consent-banner";
-import HelpAssistant from "@/components/help/helpassistant";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -44,10 +42,8 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
         <I18nProvider>
-          <LanguageSwitcher />
+          <AppClientChrome />
           {children}
-          <HelpAssistant />
-          <LegalConsentBanner />
         </I18nProvider>
       </body>
     </html>

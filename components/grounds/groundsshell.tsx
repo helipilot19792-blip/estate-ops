@@ -1,13 +1,15 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { trackFeatureUsage } from "@/lib/feature-usage";
-import PortalChat from "@/components/chat/portalchat";
-import GroundsDesktopView from "@/components/grounds/groundsdesktopview";
-import GroundsMobileView from "@/components/grounds/groundsmobileview";
 import PortalInstallControl from "@/components/pwa/portalinstallcontrol";
+
+const PortalChat = dynamic(() => import("@/components/chat/portalchat"));
+const GroundsDesktopView = dynamic(() => import("@/components/grounds/groundsdesktopview"));
+const GroundsMobileView = dynamic(() => import("@/components/grounds/groundsmobileview"));
 
 type Profile = {
   id: string;

@@ -1,11 +1,13 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { LOCALE_LABELS, SUPPORTED_LOCALES, type Locale } from "@/lib/i18n";
 import { useI18n } from "@/components/i18n-provider";
-import MyAccountControl from "@/components/my-account-control";
 import { supabase } from "@/lib/supabase";
+
+const MyAccountControl = dynamic(() => import("@/components/my-account-control"));
 
 export default function LanguageSwitcher() {
   const pathname = usePathname();
