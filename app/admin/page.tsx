@@ -5,6 +5,7 @@ import Image from "next/image";
 import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Copy, Eye, EyeOff, Mail, MapPin, Monitor, Navigation, Phone, Search } from "lucide-react";
+import AdminLoadingScene from "@/components/admin/admin-loading-scene";
 import { supabase } from "@/lib/supabase";
 import { trackFeatureUsage } from "@/lib/feature-usage";
 import { useI18n } from "@/components/i18n-provider";
@@ -22693,40 +22694,12 @@ This removes its linked members and deletes the grounds account.`
 
   function renderAdminWorkspaceLoading() {
     return (
-      <section className="rounded-[30px] border border-[#dbeafe] bg-[linear-gradient(180deg,#f8fbff_0%,#eef6ff_100%)] p-5 shadow-[0_18px_45px_rgba(59,130,246,0.08)]">
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#3563a8]">
-              {t("admin.shell.loadingWorkspace")}
-            </p>
-            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#17202a]">
-              {t("admin.shell.loadingTitle")}
-            </h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-[#52657a]">
-              {t("admin.shell.loadingBody")}
-            </p>
-          </div>
-          <span className="rounded-full border border-[#bfdbfe] bg-white px-3 py-1 text-xs font-semibold text-[#1d4ed8]">
-            {t("admin.shell.firstLoad")}
-          </span>
-        </div>
-
-        <div className="mt-5 grid gap-3 md:grid-cols-3">
-          {[
-            t("admin.shell.loadingCards.propertiesCalendars"),
-            t("admin.shell.loadingCards.jobsAssignments"),
-            t("admin.shell.loadingCards.invoicesMessages"),
-          ].map((label) => (
-            <div key={label} className="rounded-[20px] border border-[#bfdbfe] bg-white p-4">
-              <div className="h-3 w-32 rounded-full bg-[#dbeafe]" />
-              <div className="mt-4 h-8 w-16 rounded-full bg-[#eff6ff]" />
-              <div className="mt-3 h-2 w-full rounded-full bg-[#e0efff]" />
-              <div className="mt-2 h-2 w-2/3 rounded-full bg-[#e0efff]" />
-              <div className="mt-4 text-xs font-semibold uppercase tracking-[0.16em] text-[#3563a8]">{label}</div>
-            </div>
-          ))}
-        </div>
-      </section>
+      <AdminLoadingScene
+        eyebrow={t("admin.shell.loadingWorkspace")}
+        title={t("admin.shell.loadingTitle")}
+        body={t("admin.shell.loadingBody")}
+        badge={t("admin.shell.firstLoad")}
+      />
     );
   }
 
@@ -22734,24 +22707,12 @@ This removes its linked members and deletes the grounds account.`
     return (
       <main className="min-h-screen bg-[#f7f3ee] text-[#241c15]">
         <div className="mx-auto max-w-7xl p-6">
-          <div className="rounded-[32px] border border-[#e7ddd0] bg-white p-8 shadow-[0_20px_50px_rgba(0,0,0,0.06)]">
-            <div className="flex items-center gap-4">
-              <div className="flex h-[90px] w-[90px] items-center justify-center rounded-[18px] border border-white/20 bg-white/10 backdrop-blur">
-                <Image
-                  src="/guleraoslogo.png"
-                  alt="GuleraOS"
-                  width={120}
-                  height={120}
-                  className="h-[70px] w-auto"
-                  priority
-                />
-              </div>
-              <div>
-                <div className="text-xs uppercase tracking-[0.28em] text-[#8a7b68]">GULERAOS</div>
-                <div className="mt-1 text-2xl font-semibold">{t("admin.shell.checkingAccess")}</div>
-              </div>
-            </div>
-          </div>
+          <AdminLoadingScene
+            eyebrow="GuleraOS"
+            title={t("admin.shell.checkingAccess")}
+            body="We are checking your organization access and waking up the admin workspace. This is still the same dashboard load, just with better lawn care."
+            badge="Secure sign-in"
+          />
         </div>
       </main>
     );
