@@ -9,6 +9,7 @@ Cleaner and grounds portals are focused on daily work, job response, property de
 - Open a job card to see timing, property, notes, access details, SOPs, and photos.
 - Accept or decline work so management knows availability.
 - Report Issue is used for damage, missing supplies, access trouble, safety concerns, and other property problems.
+- Report Issue can include photos from the device camera or the camera roll/file picker when supported by the device and browser.
 - Chat is for quick questions with management.
 
 ## Grounds Portal
@@ -18,6 +19,7 @@ Cleaner and grounds portals are focused on daily work, job response, property de
 - Job details may include service windows, notes, property details, access details, SOPs, and photos.
 - Accept or decline work so management can route the work correctly.
 - Report Issue is used for exterior concerns, hazards, access trouble, damage, or other property problems.
+- Report Issue can include photos from the device camera or the camera roll/file picker when supported by the device and browser.
 - Chat is for quick questions with management.
 
 ## Alerts
@@ -39,3 +41,11 @@ Check that you are signed into the correct portal and account. Admins should con
 ### Should I use chat or report issue?
 
 Use Report Issue when something needs to be tracked as a property problem. Use Chat for a quick question, clarification, or conversation.
+
+### I reported an issue and it kept saying Reporting.
+
+If the issue does not finish sending, check that the staff account is linked to the correct cleaner or grounds account for that organization and property. If the report eventually fails, ask an admin to confirm that the property assignment and staff account membership are set up correctly.
+
+### Can I attach a photo from my phone?
+
+Yes. The issue flow supports adding photos. Depending on the device and browser, this may appear as a camera option, a photo library option, or a file picker.
