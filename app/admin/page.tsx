@@ -603,6 +603,7 @@ type AdminSection =
   | "assignments"
   | "jobs"
   | "calendar"
+  | "bookings"
   | "maintenance"
   | "inspections"
   | "invites"
@@ -619,6 +620,7 @@ type InvoiceDocumentKind = "invoice" | "statement";
 type TeamWorkflowTab = "invites" | "users" | "cleaners" | "grounds";
 type TeamInviteRole = "admin" | "cleaner" | "grounds";
 type InvoiceHistoryFilter = "all" | "unpaid" | "paid" | "draft" | "void";
+type BookingsFilterStatus = "upcoming" | "current" | "past" | "all";
 type AdminMenuOrientation = "side" | "top";
 type OrganizationType = "property_management" | "cleaning_company";
 type PushDiagnosticsDevice = {
@@ -668,6 +670,7 @@ const ADMIN_FEATURE_LABELS: Record<AdminSection, string> = {
   assignments: "Assignments",
   jobs: "Jobs",
   calendar: "Calendar",
+  bookings: "Bookings",
   maintenance: "Maintenance Flags",
   inspections: "Property Inspections",
   invites: "Invites",
@@ -1409,6 +1412,9 @@ export default function AdminPage() {
   const [resetConfirmText, setResetConfirmText] = useState("");
   const [resettingOrganization, setResettingOrganization] = useState(false);
   const [selectedJobsPropertyFilter, setSelectedJobsPropertyFilter] = useState("all");
+  const [selectedBookingsPropertyFilter, setSelectedBookingsPropertyFilter] = useState("all");
+  const [bookingsFilterStatus, setBookingsFilterStatus] = useState<BookingsFilterStatus>("upcoming");
+  const [bookingsSearchQuery, setBookingsSearchQuery] = useState("");
   const [maintenanceModalOpen, setMaintenanceModalOpen] = useState(false);
   const [maintenanceFormPropertyId, setMaintenanceFormPropertyId] = useState("");
   const [maintenanceFormCategory, setMaintenanceFormCategory] = useState("");
@@ -5982,7 +5988,7 @@ This removes its linked members and deletes the grounds account.`
     setNearbyGpsError("");
   }
 
-  async function useCurrentLocationForSelectedProperty() {
+  async function setCurrentLocationForSelectedProperty() {
     if (!selectedPropertyId) {
       setError("Select a property before setting GPS.");
       return;
@@ -8980,6 +8986,70 @@ This removes its linked members and deletes the grounds account.`
       .sort((a, b) => a.checkoutDate.localeCompare(b.checkoutDate) || a.propertyName.localeCompare(b.propertyName));
   }, [properties, propertyBookingEvents, todayYmd]);
 
+  const bookingDirectoryItems = useMemo(() => {
+    const propertyById = new Map(properties.map((property) => [property.id, property]));
+
+    return propertyBookingEvents
+      .map((event) => {
+        const property = propertyById.get(event.property_id) || null;
+        const guestCount = Number.isFinite(Number(event.guest_count)) ? Number(event.guest_count) : null;
+        const summary = event.summary?.trim() || "";
+        const sourceLabel = getBookingSourceLabel(event.source);
+        const checkinTime = formatTimeLabel(property?.default_checkin_time);
+        const checkoutTime = formatTimeLabel(property?.default_checkout_time);
+        const isCurrent = event.checkin_date <= todayYmd && event.checkout_date > todayYmd;
+        const isUpcoming = event.checkin_date > todayYmd;
+        const status: BookingsFilterStatus = isCurrent ? "current" : isUpcoming ? "upcoming" : "past";
+
+        return {
+          id: event.id,
+          propertyId: event.property_id,
+          propertyName: property?.name || property?.address || "Unknown property",
+          sourceLabel,
+          summary,
+          guestName: summary,
+          guestCount,
+          adminNote: event.admin_note?.trim() || "",
+          adminNoteImportant: Boolean(event.admin_note_important),
+          checkinDate: event.checkin_date,
+          checkoutDate: event.checkout_date,
+          checkinLabel: `${formatDateLabel(event.checkin_date)}${checkinTime ? ` at ${checkinTime}` : ""}`,
+          checkoutLabel: `${formatDateLabel(event.checkout_date)}${checkoutTime ? ` at ${checkoutTime}` : ""}`,
+          status,
+          sortBucket: status === "current" ? 0 : status === "upcoming" ? 1 : 2,
+          searchBlob: [
+            property?.name || "",
+            property?.address || "",
+            summary,
+            sourceLabel,
+            event.external_uid || "",
+            event.checkin_date,
+            event.checkout_date,
+          ]
+            .join(" ")
+            .toLowerCase(),
+        };
+      })
+      .sort((a, b) => {
+        if (a.sortBucket !== b.sortBucket) return a.sortBucket - b.sortBucket;
+        if (a.status === "past" && b.status === "past") {
+          return b.checkinDate.localeCompare(a.checkinDate) || a.propertyName.localeCompare(b.propertyName);
+        }
+        return a.checkinDate.localeCompare(b.checkinDate) || a.propertyName.localeCompare(b.propertyName);
+      });
+  }, [properties, propertyBookingEvents, todayYmd]);
+
+  const filteredBookingDirectoryItems = useMemo(() => {
+    const query = bookingsSearchQuery.trim().toLowerCase();
+
+    return bookingDirectoryItems.filter((item) => {
+      if (selectedBookingsPropertyFilter !== "all" && item.propertyId !== selectedBookingsPropertyFilter) return false;
+      if (bookingsFilterStatus !== "all" && item.status !== bookingsFilterStatus) return false;
+      if (query && !item.searchBlob.includes(query)) return false;
+      return true;
+    });
+  }, [bookingDirectoryItems, bookingsFilterStatus, bookingsSearchQuery, selectedBookingsPropertyFilter]);
+
   const upcomingWastePickups = useMemo(() => {
     const pickups: Array<{
       id: string;
@@ -9662,6 +9732,7 @@ This removes its linked members and deletes the grounds account.`
     "home",
     "notifications",
     "calendar",
+    "bookings",
     "chat",
     "jobs",
     "maintenance",
@@ -9917,6 +9988,13 @@ This removes its linked members and deletes the grounds account.`
           hint: t("admin.navigation.items.calendar.hint"),
           accent: "bg-[#14b8a6]",
           activeClass: "border-[#99f6e4] bg-[#ecfdf5] text-[#0f766e]",
+        },
+        {
+          key: "bookings",
+          label: t("admin.navigation.items.bookings.label"),
+          hint: t("admin.navigation.items.bookings.hint"),
+          accent: "bg-[#7c3aed]",
+          activeClass: "border-[#ddd6fe] bg-[#f5f3ff] text-[#6d28d9]",
         },
         {
           key: "chat",
@@ -19062,7 +19140,7 @@ This removes its linked members and deletes the grounds account.`
           <div>
             <h2 className="text-xl font-semibold tracking-tight">Admin Calendar</h2>
             <p className="mt-1 text-sm text-[#7f7263]">
-              Month view of scheduled cleaning jobs. New iCal feeds appear here after calendars are saved and synced into future checkout jobs.
+              Month view of synced bookings and scheduled jobs. Booking chips open the note editor directly, and new iCal feeds appear here after calendars are saved and synced.
             </p>
           </div>
 
@@ -19119,11 +19197,10 @@ This removes its linked members and deletes the grounds account.`
               const isToday = dateYmd === toYmd(now);
 
               return (
-                <button
+                <div
                   key={dateYmd}
-                  type="button"
                   onClick={() => selectAdminCalendarDate(dateYmd)}
-                  className={`min-h-[118px] border-r border-b border-[#eadfce] p-2 text-left align-top transition ${isSelected
+                  className={`min-h-[118px] cursor-pointer border-r border-b border-[#eadfce] p-2 text-left align-top transition ${isSelected
                     ? "bg-[#fffaf3] shadow-[inset_0_0_0_2px_rgba(180,141,78,0.65)]"
                     : "hover:bg-[#fcfaf7]"
                     } ${!isCurrentMonth ? "bg-[#fbf9f5] text-[#b1a392]" : "text-[#241c15]"}`}
@@ -19165,12 +19242,26 @@ This removes its linked members and deletes the grounds account.`
                     })}
 
                     {dayBookings.slice(0, dayJobs.length > 0 ? 1 : 2).map((booking) => (
-                      <div
+                      <button
                         key={booking.id}
-                        className="truncate rounded-full border border-[#d8b4fe] bg-[#faf5ff] px-2 py-1 text-[11px] font-medium text-[#6d28d9]"
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          const property = properties.find((item) => item.id === booking.property_id) || null;
+                          openBookingNoteEditor({
+                            bookingEventId: booking.id,
+                            propertyName: property?.name || property?.address || "Booking",
+                            summary: booking.summary || getBookingSourceLabel(booking.source),
+                            guestName: booking.summary?.trim() || "",
+                            guestCount: Number.isFinite(Number(booking.guest_count)) ? Number(booking.guest_count) : null,
+                            adminNote: booking.admin_note?.trim() || "",
+                            adminNoteImportant: Boolean(booking.admin_note_important),
+                          });
+                        }}
+                        className="block w-full truncate rounded-full border border-[#d8b4fe] bg-[#faf5ff] px-2 py-1 text-left text-[11px] font-medium text-[#6d28d9] transition hover:bg-[#f3e8ff] focus:outline-none focus:ring-2 focus:ring-[#c084fc]"
                       >
                         Check-in: {getPropertyName(booking.property_id)}
-                      </div>
+                      </button>
                     ))}
 
                     {dayItemCount > 2 ? (
@@ -19183,7 +19274,7 @@ This removes its linked members and deletes the grounds account.`
                       </div>
                     ) : null}
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>
@@ -19357,6 +19448,167 @@ This removes its linked members and deletes the grounds account.`
       </section>
     );
   }
+
+  function renderBookingsSection() {
+    const bookingStats = {
+      upcoming: bookingDirectoryItems.filter((item) => item.status === "upcoming").length,
+      current: bookingDirectoryItems.filter((item) => item.status === "current").length,
+      past: bookingDirectoryItems.filter((item) => item.status === "past").length,
+      total: bookingDirectoryItems.length,
+    };
+
+    return (
+      <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold tracking-tight">Bookings</h2>
+            <p className="mt-1 max-w-3xl text-sm text-[#7f7263]">
+              Full synced booking list across current and future reservations. Filter by property or search by guest,
+              property, source, or date, then open the booking note editor directly.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {[
+              { label: "Upcoming", value: bookingStats.upcoming },
+              { label: "Current", value: bookingStats.current },
+              { label: "Past", value: bookingStats.past },
+              { label: "Total", value: bookingStats.total },
+            ].map((stat) => (
+              <div key={stat.label} className="rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3 text-center">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8a7b68]">{stat.label}</div>
+                <div className="mt-2 text-2xl font-semibold text-[#241c15]">{stat.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(220px,0.8fr)_minmax(220px,0.8fr)_minmax(260px,1.2fr)]">
+          <label className="block text-xs font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
+            Property
+            <select
+              value={selectedBookingsPropertyFilter}
+              onChange={(e) => setSelectedBookingsPropertyFilter(e.target.value)}
+              className="mt-1 w-full rounded-[14px] border border-[#d8c7ab] bg-white px-3 py-2 text-sm font-medium normal-case tracking-normal text-[#241c15] outline-none focus:border-[#b48d4e]"
+            >
+              <option value="all">All properties</option>
+              {properties
+                .slice()
+                .sort((a, b) => (a.name || a.address || "").localeCompare(b.name || b.address || ""))
+                .map((property) => (
+                  <option key={property.id} value={property.id}>
+                    {property.name || property.address || "Unknown property"}
+                  </option>
+                ))}
+            </select>
+          </label>
+
+          <label className="block text-xs font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
+            Status
+            <select
+              value={bookingsFilterStatus}
+              onChange={(e) => setBookingsFilterStatus(e.target.value as BookingsFilterStatus)}
+              className="mt-1 w-full rounded-[14px] border border-[#d8c7ab] bg-white px-3 py-2 text-sm font-medium normal-case tracking-normal text-[#241c15] outline-none focus:border-[#b48d4e]"
+            >
+              <option value="upcoming">Upcoming</option>
+              <option value="current">Current</option>
+              <option value="past">Past</option>
+              <option value="all">All bookings</option>
+            </select>
+          </label>
+
+          <label className="block text-xs font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
+            Search
+            <input
+              value={bookingsSearchQuery}
+              onChange={(e) => setBookingsSearchQuery(e.target.value)}
+              placeholder="Guest, property, source, or date"
+              className="mt-1 w-full rounded-[14px] border border-[#d8c7ab] bg-white px-3 py-2 text-sm font-medium normal-case tracking-normal text-[#241c15] outline-none focus:border-[#b48d4e]"
+            />
+          </label>
+        </div>
+
+        <div className="mt-4 rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3 text-sm text-[#7f7263]">
+          Showing {filteredBookingDirectoryItems.length} booking{filteredBookingDirectoryItems.length === 1 ? "" : "s"}.
+        </div>
+
+        <div className="mt-4 space-y-3">
+          {filteredBookingDirectoryItems.length === 0 ? (
+            <div className="rounded-[20px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-4 py-6 text-sm text-[#7f7263]">
+              No bookings match the current filters.
+            </div>
+          ) : (
+            filteredBookingDirectoryItems.map((booking) => (
+              <div
+                key={booking.id}
+                className="rounded-[20px] border border-[#e7ddd0] bg-white p-4 shadow-sm"
+                style={{ boxShadow: "inset 4px 0 0 #7c3aed" }}
+              >
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-[#7c3aed] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white">
+                        {booking.status === "current" ? "Current" : booking.status === "past" ? "Past" : "Upcoming"}
+                      </span>
+                      <div className="text-base font-semibold text-[#241c15]">{booking.propertyName}</div>
+                    </div>
+                    <div className="mt-1 text-sm text-[#6f6255]">
+                      {[booking.checkinLabel ? `In ${booking.checkinLabel}` : "", `Out ${booking.checkoutLabel}`, booking.sourceLabel].filter(Boolean).join(" - ")}
+                    </div>
+                    <div className="mt-1 text-sm text-[#8a7b68]">
+                      {booking.guestName || "Reserved"} {booking.guestName ? " - " : ""}{formatGuestCountLabel(booking.guestCount)}
+                    </div>
+                    {booking.adminNote ? (
+                      <div
+                        className={`mt-3 rounded-[14px] border px-3 py-2 text-sm ${
+                          booking.adminNoteImportant
+                            ? "animate-pulse border-[#b91c1c] bg-[#fff1f2] text-[#991b1b] shadow-[0_8px_22px_rgba(185,28,28,0.16)]"
+                            : "border-[#eadfce] bg-[#fffaf0] text-[#5f5245]"
+                        }`}
+                      >
+                        Note: {booking.adminNote}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 xl:w-[280px] xl:justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAdminCalendarMonth(ymdToLocalDate(booking.checkinDate));
+                        setAdminSelectedDate(booking.checkinDate);
+                        setActiveSection("calendar");
+                      }}
+                      className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-semibold text-[#5f5245] transition hover:bg-white"
+                    >
+                      View on calendar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        openBookingNoteEditor({
+                          bookingEventId: booking.id,
+                          propertyName: booking.propertyName,
+                          summary: booking.guestName || booking.sourceLabel,
+                          guestName: booking.guestName,
+                          guestCount: booking.guestCount,
+                          adminNote: booking.adminNote,
+                          adminNoteImportant: booking.adminNoteImportant,
+                        })
+                      }
+                      className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-semibold text-[#5f5245] transition hover:bg-[#fcfaf7]"
+                    >
+                      {booking.adminNote ? "Edit note" : "Add note"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </section>
+    );
+  }
+
   function renderPropertySetupSection() {
     const selectedOwner = selectedPropertyOwnerEmail
       ? ownerAccounts.find(
@@ -19736,7 +19988,7 @@ This removes its linked members and deletes the grounds account.`
                           </div>
                           <button
                             type="button"
-                            onClick={() => void useCurrentLocationForSelectedProperty()}
+                            onClick={() => void setCurrentLocationForSelectedProperty()}
                             disabled={settingSelectedPropertyGps}
                             className="inline-flex items-center justify-center gap-2 rounded-full border border-[#b7d8c9] bg-[#f6fbf8] px-4 py-2 text-sm font-semibold text-[#245444] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
                           >
@@ -22418,6 +22670,8 @@ This removes its linked members and deletes the grounds account.`
         return renderJobsSection();
       case "calendar":
         return renderCalendarSection();
+      case "bookings":
+        return renderBookingsSection();
       case "maintenance":
         return renderMaintenanceSection();
       case "inspections":
