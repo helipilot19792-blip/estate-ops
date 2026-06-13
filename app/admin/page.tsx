@@ -19236,7 +19236,7 @@ This removes its linked members and deletes the grounds account.`
                             borderColor: isStranded ? "#efc6c6" : isOffered ? "#f2d49b" : propertyColor.border,
                           }}
                         >
-                          {getPropertyName(job.property_id)}
+                          Cleaning: {getPropertyName(job.property_id)}
                         </div>
                       );
                     })}
