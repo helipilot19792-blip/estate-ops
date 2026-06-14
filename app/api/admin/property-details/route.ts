@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { geocodePropertyAddress } from "@/lib/server/property-geocoding";
 
 export const dynamic = "force-dynamic";
 
@@ -114,6 +115,7 @@ export async function POST(request: NextRequest) {
       default_checkin_time: normalizeOptionalTime(body?.defaultCheckinTime),
       default_checkout_time: normalizeOptionalTime(body?.defaultCheckoutTime),
     };
+    let geocodeWarning: string | null = null;
 
     if (updatePayload.default_checkin_time === "" || updatePayload.default_checkout_time === "") {
       return NextResponse.json({ error: "Property check-in/check-out times must use HH:mm format." }, { status: 400 });
@@ -121,6 +123,35 @@ export async function POST(request: NextRequest) {
 
     if (updatePayload.latitude === "" || updatePayload.longitude === "") {
       return NextResponse.json({ error: "Property GPS coordinates must be valid latitude and longitude values." }, { status: 400 });
+    }
+
+    const { data: existingProperty, error: existingPropertyError } = await serviceClient
+      .from("properties")
+      .select("id, address")
+      .eq("id", propertyId)
+      .eq("organization_id", organizationId)
+      .maybeSingle();
+
+    if (existingPropertyError) {
+      return NextResponse.json({ error: existingPropertyError.message }, { status: 500 });
+    }
+
+    if (!existingProperty) {
+      return NextResponse.json({ error: "Property not found in this organization." }, { status: 404 });
+    }
+
+    if (updatePayload.latitude === null && updatePayload.longitude === null && existingProperty.address) {
+      try {
+        const geocoded = await geocodePropertyAddress(existingProperty.address);
+        if (geocoded) {
+          updatePayload.latitude = geocoded.latitude;
+          updatePayload.longitude = geocoded.longitude;
+        } else {
+          geocodeWarning = "Property details were saved, but GPS coordinates could not be found automatically.";
+        }
+      } catch {
+        geocodeWarning = "Property details were saved, but automatic GPS lookup did not complete.";
+      }
     }
 
     const { data: property, error: updateError } = await serviceClient
@@ -135,7 +166,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: updateError.message }, { status: 500 });
     }
 
-    return NextResponse.json({ ok: true, property });
+    return NextResponse.json({ ok: true, property, geocodeWarning });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Could not save property details." },

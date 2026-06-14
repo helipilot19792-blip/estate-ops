@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import CleanerShell from "@/components/cleaner/cleanershell";
+import PortalLoadingScene from "@/components/portal/portal-loading-scene";
 
 export default function CleanerPage() {
   const [hasMounted, setHasMounted] = useState(false);
@@ -39,8 +40,15 @@ export default function CleanerPage() {
 
   if (!hasMounted) {
     return (
-      <main className="staff-shell cleaner-shell flex min-h-screen items-center justify-center bg-[#0f0d0a] text-[#f5efe4]">
-        <div className="text-sm text-[#cdbda0]">Loading cleaner dashboard...</div>
+      <main className="staff-shell cleaner-shell min-h-screen bg-[#0f0d0a] px-4 py-6 text-[#241c15] md:px-6">
+        <div className="mx-auto max-w-7xl">
+          <PortalLoadingScene
+            eyebrow="Cleaner portal"
+            title="Rolling into the cleaning board."
+            body="Assigned cleanings, access details, and checklist progress are loading now. The mower is keeping things tidy while the cleaner portal wakes up."
+            badge="Loading jobs"
+          />
+        </div>
       </main>
     );
   }

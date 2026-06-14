@@ -150,6 +150,7 @@ export type CleanerViewProps = {
   pageError: string | null;
   accountWarning: string | null;
   jobsWarning: string | null;
+  jobsSuccess: string | null;
   sopsWarning: string | null;
   calendarMonth: Date;
   setCalendarMonth: React.Dispatch<React.SetStateAction<Date>>;
@@ -729,6 +730,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
   const [pageError, setPageError] = useState<string | null>(null);
   const [accountWarning, setAccountWarning] = useState<string | null>(null);
   const [jobsWarning, setJobsWarning] = useState<string | null>(null);
+  const [jobsSuccess, setJobsSuccess] = useState<string | null>(null);
   const [sopsWarning, setSopsWarning] = useState<string | null>(null);
 
   const [calendarMonth, setCalendarMonth] = useState(() => {
@@ -1196,6 +1198,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     const acceptedJobDate = selectedCleanerJob.jobDate;
 
     setJobsWarning(null);
+    setJobsSuccess(null);
     setActionLoading("accept");
     setSelectionDismissed(false);
 
@@ -1234,7 +1237,9 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
       }
 
       setSelectedSlotId(acceptedSlotId);
+      setJobsSuccess("Job accepted.");
     } catch (error: any) {
+      setJobsSuccess(null);
       setJobsWarning(error?.message || "Could not accept job.");
     } finally {
       setActionLoading(null);
@@ -1245,6 +1250,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     if (!selectedCleanerJob || !profile?.id) return;
 
     setJobsWarning(null);
+    setJobsSuccess(null);
     setActionLoading("decline");
 
     try {
@@ -1279,7 +1285,9 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
       await refreshCleanerJobs();
 
       setSelectedSlotId((current) => (current === declinedSlotId ? null : current));
+      setJobsSuccess("Job declined.");
     } catch (error: any) {
+      setJobsSuccess(null);
       setJobsWarning(error?.message || "Could not decline job.");
     } finally {
       setActionLoading(null);
@@ -1291,6 +1299,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     if (!targetSlotId || !profile?.id) return;
 
     setJobsWarning(null);
+    setJobsSuccess(null);
     setActionLoading(action);
 
     try {
@@ -1325,11 +1334,27 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
       setSelectedSlotId(targetSlotId);
 
       const pushErrors = Array.isArray(payload.adminPush?.errors) ? payload.adminPush.errors : [];
+      const adminPushSent = Number(payload.adminPush?.sent || 0);
+      const successMessage =
+        action === "arrive"
+          ? adminPushSent > 0
+            ? "Arrival recorded and admin notified."
+            : "Arrival recorded."
+          : action === "start"
+            ? adminPushSent > 0
+              ? "Cleaning started and admin notified."
+              : "Cleaning started."
+            : adminPushSent > 0
+              ? "Cleaning marked complete and admin notified."
+              : "Cleaning marked complete.";
+
+      setJobsSuccess(successMessage);
       if (pushErrors.length > 0) {
         const label = action === "arrive" ? "arrival recorded" : action === "start" ? "started" : "finished";
         setJobsWarning(`Job ${label}, but admin push notification failed: ${pushErrors[0]}`);
       }
     } catch (error: any) {
+      setJobsSuccess(null);
       setJobsWarning(error?.message || `Could not ${action} job.`);
     } finally {
       setActionLoading(null);
@@ -1741,6 +1766,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     pageError,
     accountWarning,
     jobsWarning,
+    jobsSuccess,
     sopsWarning,
     calendarMonth,
     setCalendarMonth,

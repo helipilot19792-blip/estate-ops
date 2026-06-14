@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import PortalInstallControl from "@/components/pwa/portalinstallcontrol";
 import { trackFeatureUsage } from "@/lib/feature-usage";
 import { useI18n } from "@/components/i18n-provider";
+import PortalLoadingScene from "@/components/portal/portal-loading-scene";
 import type { TranslationPath } from "@/lib/i18n";
 
 const PortalChat = dynamic(() => import("@/components/chat/portalchat"));
@@ -2200,9 +2201,14 @@ export default function OwnerPage() {
 
   if (loading) {
     return (
-    <main className="owner-shell min-h-screen bg-[#0f0d0a] px-4 py-10 text-[#f7f1e8]">
-        <div className="mx-auto max-w-6xl rounded-[32px] border border-white/8 bg-[#15110d] p-8">
-          {t("ownerPortal.loading")}
+      <main className="owner-shell min-h-screen bg-[#0f0d0a] px-4 py-6 text-[#241c15] md:px-6">
+        <div className="mx-auto max-w-7xl">
+          <PortalLoadingScene
+            eyebrow="Owner portal"
+            title="Rolling into the owner dashboard."
+            body={t("ownerPortal.loading")}
+            badge="Loading updates"
+          />
         </div>
       </main>
     );

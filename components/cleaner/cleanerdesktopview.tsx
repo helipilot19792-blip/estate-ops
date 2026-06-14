@@ -687,6 +687,7 @@ export default function CleanerDesktopView({
   pageError,
   accountWarning,
   jobsWarning,
+  jobsSuccess,
   calendarMonth,
   setCalendarMonth,
   selectedDate,
@@ -1248,6 +1249,12 @@ export default function CleanerDesktopView({
                   )}
                 </div>
               </div>
+
+              {jobsSuccess && (
+                <p className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-950/25 p-3 text-sm text-emerald-100">
+                  {jobsSuccess}
+                </p>
+              )}
 
               {jobsWarning && (
                 <p className="mt-4 rounded-xl border border-amber-500/25 bg-amber-950/20 p-3 text-sm text-[#e6d8be]">

@@ -3719,7 +3719,7 @@ export default function AdminPage() {
     const ownerWasProvided = !!propertyOwnerEmail.trim();
 
     try {
-      await createPropertyViaAdminApi({
+      const created = await createPropertyViaAdminApi({
         name: propertyName.trim(),
         address: buildPropertyAddress([
           propertyStreet,
@@ -3739,6 +3739,11 @@ export default function AdminPage() {
         ownerEmail: propertyOwnerEmail,
         ownerName: propertyOwnerName,
       });
+
+      const geocodeWarning = String(created?.geocodeWarning || "").trim();
+      if (geocodeWarning) {
+        setError(geocodeWarning);
+      }
     } catch (err: any) {
       const message = err?.message || "Could not create property.";
       setError(
@@ -3816,6 +3821,9 @@ export default function AdminPage() {
 
       const insertedProperty = created.property;
       if (!insertedProperty?.id) throw new Error("Could not create Airbnb property.");
+      if (created?.geocodeWarning) {
+        setError(String(created.geocodeWarning));
+      }
 
       insertedPropertyId = insertedProperty.id;
 
@@ -6363,6 +6371,9 @@ This removes its linked members and deletes the grounds account.`
 
       setPropertyManualDetailsDirty(false);
       setActionMessage("Property details saved.");
+      if (payload?.geocodeWarning) {
+        setError(String(payload.geocodeWarning));
+      }
       await loadData();
     } catch (err: any) {
       const message = String(err?.message || "Could not save property details.");

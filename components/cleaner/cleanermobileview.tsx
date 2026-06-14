@@ -335,6 +335,8 @@ export default function CleanerMobileView({
   profile,
   cleanerAccount,
   properties,
+  jobsWarning,
+  jobsSuccess,
   canSwitchToGrounds,
   groundsWaitingCount,
   handleSwitchToGrounds,
@@ -433,6 +435,24 @@ export default function CleanerMobileView({
       .sort((a, b) => a.distanceMeters - b.distanceMeters)[0] || null;
   }, [accessByPropertyId, activeJobs, cleanerLocation, propertyById, sopsByPropertyId]);
 
+  async function recordArrival(slotId: string) {
+    if (arrivedSlotIds.has(slotId) || arrivingSlotIds.has(slotId)) {
+      return;
+    }
+
+    setArrivingSlotIds((current) => new Set(current).add(slotId));
+    try {
+      await handleArriveJob(slotId);
+      setArrivedSlotIds((current) => new Set(current).add(slotId));
+    } finally {
+      setArrivingSlotIds((current) => {
+        const next = new Set(current);
+        next.delete(slotId);
+        return next;
+      });
+    }
+  }
+
   useEffect(() => {
     if (typeof navigator === "undefined" || !("geolocation" in navigator)) {
       setNearbyGpsStatus("blocked");
@@ -464,6 +484,13 @@ export default function CleanerMobileView({
 
     return () => navigator.geolocation.clearWatch(watchId);
   }, []);
+
+  useEffect(() => {
+    if (!nearbyAssignedJob) return;
+
+    const slotId = nearbyAssignedJob.item.slot.id;
+    void recordArrival(slotId);
+  }, [nearbyAssignedJob]);
 
   const onboardingSteps: OnboardingStep[] = [
     {
@@ -556,22 +583,7 @@ export default function CleanerMobileView({
 
     setSelectedSlotId(nearbyAssignedJob.item.slot.id);
     setNearbyAccessOpen(true);
-
-    if (arrivedSlotIds.has(nearbyAssignedJob.item.slot.id) || arrivingSlotIds.has(nearbyAssignedJob.item.slot.id)) {
-      return;
-    }
-
-    setArrivingSlotIds((current) => new Set(current).add(nearbyAssignedJob.item.slot.id));
-    try {
-      await handleArriveJob(nearbyAssignedJob.item.slot.id);
-      setArrivedSlotIds((current) => new Set(current).add(nearbyAssignedJob.item.slot.id));
-    } finally {
-      setArrivingSlotIds((current) => {
-        const next = new Set(current);
-        next.delete(nearbyAssignedJob.item.slot.id);
-        return next;
-      });
-    }
+    await recordArrival(nearbyAssignedJob.item.slot.id);
   }
 
   function getParsedNotes(notes: string | null) {
@@ -617,14 +629,9 @@ export default function CleanerMobileView({
     return items.map((item) => {
       const tone = getStatusTone(item.slot.status, item.job.staffing_status);
       const isSelected = selectedSlotId === item.slot.id;
-      const propertyName =
-        selectedJobProperty?.name ||
-        properties.find((p) => p.id === item.job.property_id)?.name ||
-        "Property job";
-      const propertyAddress =
-        selectedJobProperty?.address ||
-        properties.find((p) => p.id === item.job.property_id)?.address ||
-        "No property address";
+      const itemProperty = propertyById.get(item.job.property_id);
+      const propertyName = itemProperty?.name || itemProperty?.address || "Property job";
+      const propertyAddress = itemProperty?.address || "No property address";
       const parsedNotes = getParsedNotes(item.job.notes);
 
       return (
@@ -997,6 +1004,18 @@ export default function CleanerMobileView({
           steps={onboardingSteps}
           tone="staff"
         />
+
+        {jobsSuccess ? (
+          <div className="rounded-2xl border border-emerald-500/35 bg-emerald-950/25 p-4 text-sm text-emerald-100">
+            {jobsSuccess}
+          </div>
+        ) : null}
+
+        {jobsWarning ? (
+          <div className="rounded-2xl border border-amber-500/35 bg-amber-950/25 p-4 text-sm text-[#f0dfbf]">
+            {jobsWarning}
+          </div>
+        ) : null}
 
         <div className="rounded-2xl border border-[#356046]/35 bg-[#111b15] p-4 text-[#e8f6eb]">
           <div className="flex items-start justify-between gap-3">

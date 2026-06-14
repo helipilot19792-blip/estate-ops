@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { geocodePropertyAddress } from "@/lib/server/property-geocoding";
 
 export const dynamic = "force-dynamic";
 
@@ -320,8 +321,24 @@ export async function POST(request: NextRequest) {
       show_team_status_to_cleaners: body?.showTeamStatusToCleaners !== false,
     };
 
+    let geocodeWarning: string | null = null;
+
     if (latitude !== null) propertyPayload.latitude = latitude;
     if (longitude !== null) propertyPayload.longitude = longitude;
+
+    if (latitude === null && longitude === null && propertyPayload.address) {
+      try {
+        const geocoded = await geocodePropertyAddress(String(propertyPayload.address));
+        if (geocoded) {
+          propertyPayload.latitude = geocoded.latitude;
+          propertyPayload.longitude = geocoded.longitude;
+        } else {
+          geocodeWarning = "The address was saved, but GPS coordinates could not be found automatically.";
+        }
+      } catch {
+        geocodeWarning = "The address was saved, but automatic GPS lookup did not complete.";
+      }
+    }
 
     const { data: property, error: propertyError } = await serviceClient
       .from("properties")
@@ -374,7 +391,7 @@ export async function POST(request: NextRequest) {
       calendar = insertedCalendar;
     }
 
-    return NextResponse.json({ ok: true, property, ownerAccountId, calendar });
+    return NextResponse.json({ ok: true, property, ownerAccountId, calendar, geocodeWarning });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Could not create property." },
