@@ -625,6 +625,8 @@ type InvoiceDocumentKind = "invoice" | "statement";
 type TeamWorkflowTab = "invites" | "users" | "cleaners" | "grounds";
 type TeamInviteRole = "admin" | "cleaner" | "grounds";
 type InvoiceHistoryFilter = "all" | "unpaid" | "paid" | "draft" | "void";
+const DEFAULT_INVOICE_WORKFLOW_TAB: InvoiceWorkflowTab = "history";
+const DEFAULT_INVOICE_HISTORY_STATUS_FILTER: InvoiceHistoryFilter = "unpaid";
 type BookingsFilterStatus = "upcoming" | "current" | "past" | "all";
 type AdminMenuOrientation = "side" | "top";
 type OrganizationType = "property_management" | "cleaning_company";
@@ -1481,7 +1483,9 @@ export default function AdminPage() {
   const [invoiceReminderMaxCount, setInvoiceReminderMaxCount] = useState("3");
   const [invoiceDocumentKind, setInvoiceDocumentKind] = useState<InvoiceDocumentKind>("invoice");
   const [editingOwnerInvoiceId, setEditingOwnerInvoiceId] = useState<string | null>(null);
-  const [invoiceWorkflowTab, setInvoiceWorkflowTab] = useState<InvoiceWorkflowTab>("create");
+  const [invoiceWorkflowTab, setInvoiceWorkflowTab] = useState<InvoiceWorkflowTab>(
+    DEFAULT_INVOICE_WORKFLOW_TAB
+  );
   const [externalInvoiceUrl, setExternalInvoiceUrl] = useState("");
   const [externalInvoiceName, setExternalInvoiceName] = useState("");
   const [externalInvoiceContentType, setExternalInvoiceContentType] = useState("");
@@ -1493,7 +1497,9 @@ export default function AdminPage() {
   const [invoiceApplyTax, setInvoiceApplyTax] = useState(true);
   const [invoiceCcEmails, setInvoiceCcEmails] = useState("");
   const [invoiceHistorySearch, setInvoiceHistorySearch] = useState("");
-  const [invoiceHistoryStatusFilter, setInvoiceHistoryStatusFilter] = useState<InvoiceHistoryFilter>("all");
+  const [invoiceHistoryStatusFilter, setInvoiceHistoryStatusFilter] = useState<InvoiceHistoryFilter>(
+    DEFAULT_INVOICE_HISTORY_STATUS_FILTER
+  );
   const [invoiceHistoryPropertyFilter, setInvoiceHistoryPropertyFilter] = useState("all");
   const [selectedInvoiceIdsToCombine, setSelectedInvoiceIdsToCombine] = useState<string[]>([]);
   const [voidCombinedOriginalInvoices, setVoidCombinedOriginalInvoices] = useState(true);
@@ -14517,7 +14523,7 @@ This removes its linked members and deletes the grounds account.`
     const filteredUnpaidTotal = activeInvoices.reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
     const invoiceFilterActive =
       !!normalizedInvoiceSearch ||
-      invoiceHistoryStatusFilter !== "all" ||
+      invoiceHistoryStatusFilter !== DEFAULT_INVOICE_HISTORY_STATUS_FILTER ||
       invoiceHistoryPropertyFilter !== "all";
     const invoiceWorkflowOptions: Array<{
       key: InvoiceWorkflowTab;
@@ -14576,8 +14582,8 @@ This removes its linked members and deletes the grounds account.`
       },
       {
         key: "history",
-        title: "Invoice history",
-        description: "Review drafts, sent invoices, paid invoices, downloads, and resend actions.",
+        title: "Invoices",
+        description: "Review unpaid invoices first, then filter into drafts, paid, void, downloads, and resend actions.",
         meta: `${ownerInvoices.length} total`,
         accent: "bg-[#ef4444]",
         activeClass: "border-[#241c15] bg-[#241c15] text-[#f8f2e8] shadow-[0_18px_36px_rgba(36,28,21,0.18)]",
@@ -15792,9 +15798,9 @@ This removes its linked members and deletes the grounds account.`
         <section className={`${showInvoiceHistory ? "" : "hidden"} rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]`}>
           <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
             <div>
-              <h3 className="text-lg font-semibold text-[#241c15]">Invoice history</h3>
+              <h3 className="text-lg font-semibold text-[#241c15]">Invoices</h3>
               <p className="mt-1 text-sm text-[#7f7263]">
-                Search invoice history by property, owner, invoice number, status, amount, notes, or line item.
+                Unpaid invoices are shown first by default. Search by property, owner, invoice number, status, amount, notes, or line item.
               </p>
             </div>
             <span className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-semibold text-[#6f6255]">
@@ -15861,7 +15867,7 @@ This removes its linked members and deletes the grounds account.`
               <div className="mt-1 text-xl font-semibold text-[#6f4b9a]">{allDraftInvoices.length}</div>
             </div>
             <div className="rounded-[16px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">Filtered unpaid</div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">Visible unpaid</div>
               <div className="mt-1 text-xl font-semibold text-[#7f1d1d]">{formatCurrency(filteredUnpaidTotal)}</div>
             </div>
           </div>
@@ -15870,12 +15876,12 @@ This removes its linked members and deletes the grounds account.`
               type="button"
               onClick={() => {
                 setInvoiceHistorySearch("");
-                setInvoiceHistoryStatusFilter("all");
+                setInvoiceHistoryStatusFilter(DEFAULT_INVOICE_HISTORY_STATUS_FILTER);
                 setInvoiceHistoryPropertyFilter("all");
               }}
               className="mt-3 rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-semibold text-[#5f5245] transition hover:bg-[#fcfaf7]"
             >
-              Clear invoice filters
+              Reset invoice view
             </button>
           ) : null}
           {selectedInvoicesToCombine.length > 0 ? (
