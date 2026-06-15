@@ -14482,14 +14482,6 @@ This removes its linked members and deletes the grounds account.`
         .toLowerCase()
         .includes(normalizedInvoiceSearch);
     };
-    const invoiceMatchesStatus = (invoice: OwnerInvoiceRow) => {
-      if (invoiceHistoryStatusFilter === "all") return true;
-      if (invoiceHistoryStatusFilter === "unpaid") return invoice.status === "sent";
-      if (invoiceHistoryStatusFilter === "paid") return invoice.status === "paid";
-      if (invoiceHistoryStatusFilter === "draft") return invoice.status === "draft";
-      if (invoiceHistoryStatusFilter === "void") return invoice.status === "void";
-      return true;
-    };
     const sortInvoicesByPropertyThenDate = (invoices: OwnerInvoiceRow[]) => {
       return [...invoices].sort((a, b) => {
         const aProperty = properties.find((item) => item.id === a.property_id);
@@ -14503,17 +14495,20 @@ This removes its linked members and deletes the grounds account.`
         return bDate.localeCompare(aDate);
       });
     };
-    const filteredOwnerInvoices = sortInvoicesByPropertyThenDate(
+    const scopedOwnerInvoices = sortInvoicesByPropertyThenDate(
       ownerInvoices.filter((invoice) => {
         const matchesProperty =
           invoiceHistoryPropertyFilter === "all" ||
           (invoice.property_id || "unassigned") === invoiceHistoryPropertyFilter;
-        return matchesProperty && invoiceMatchesStatus(invoice) && invoiceMatchesSearch(invoice);
+        return matchesProperty && invoiceMatchesSearch(invoice);
       })
     );
-    const draftInvoices = filteredOwnerInvoices.filter((invoice) => invoice.status === "draft");
-    const activeInvoices = filteredOwnerInvoices.filter((invoice) => invoice.status === "sent");
-    const paidInvoices = filteredOwnerInvoices.filter((invoice) => invoice.status === "paid" || invoice.status === "void");
+    const draftInvoices = scopedOwnerInvoices.filter((invoice) => invoice.status === "draft");
+    const activeInvoices = scopedOwnerInvoices.filter((invoice) => invoice.status === "sent");
+    const paidOnlyInvoices = scopedOwnerInvoices.filter((invoice) => invoice.status === "paid");
+    const voidInvoices = scopedOwnerInvoices.filter((invoice) => invoice.status === "void");
+    const paidInvoices =
+      invoiceHistoryStatusFilter === "void" ? voidInvoices : scopedOwnerInvoices.filter((invoice) => invoice.status === "paid" || invoice.status === "void");
     const selectedInvoicesToCombine = selectedInvoiceIdsToCombine
       .map((id) => ownerInvoices.find((invoice) => invoice.id === id))
       .filter((invoice): invoice is OwnerInvoiceRow => invoice?.status === "sent");
@@ -14521,6 +14516,19 @@ This removes its linked members and deletes the grounds account.`
     const canCombineSelectedInvoices = selectedInvoicesToCombine.length >= 2 && selectedCombineOwnerIds.length === 1;
     const selectedCombineTotal = selectedInvoicesToCombine.reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
     const filteredUnpaidTotal = activeInvoices.reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
+    const visibleInvoiceCount =
+      invoiceHistoryStatusFilter === "unpaid"
+        ? activeInvoices.length
+        : invoiceHistoryStatusFilter === "paid"
+          ? paidOnlyInvoices.length
+          : invoiceHistoryStatusFilter === "draft"
+            ? draftInvoices.length
+            : invoiceHistoryStatusFilter === "void"
+              ? voidInvoices.length
+              : scopedOwnerInvoices.length;
+    const showDraftSection = invoiceHistoryStatusFilter === "all" || invoiceHistoryStatusFilter === "draft";
+    const showUnpaidSection = invoiceHistoryStatusFilter === "all" || invoiceHistoryStatusFilter === "unpaid";
+    const showPaidSection = invoiceHistoryStatusFilter === "all" || invoiceHistoryStatusFilter === "paid" || invoiceHistoryStatusFilter === "void";
     const invoiceFilterActive =
       !!normalizedInvoiceSearch ||
       invoiceHistoryStatusFilter !== DEFAULT_INVOICE_HISTORY_STATUS_FILTER ||
@@ -15804,7 +15812,7 @@ This removes its linked members and deletes the grounds account.`
               </p>
             </div>
             <span className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-semibold text-[#6f6255]">
-              {filteredOwnerInvoices.length} of {ownerInvoices.length} total
+              {visibleInvoiceCount} of {ownerInvoices.length} total
             </span>
           </div>
           <div className="mt-4 grid gap-3 xl:grid-cols-[1.2fr_220px_auto]">
@@ -15930,9 +15938,20 @@ This removes its linked members and deletes the grounds account.`
             </div>
           ) : null}
           <div className="mt-4 space-y-3">
-            {renderInvoiceHistoryGroup("drafts", "Running drafts", draftInvoices, "No running invoice drafts yet.")}
-            {renderInvoiceHistoryGroup("active", "Sent and unpaid", activeInvoices, "No sent unpaid invoices.")}
-            {renderInvoiceHistoryGroup("paid", "Paid and closed", paidInvoices, "No paid or closed invoices.")}
+            {showDraftSection
+              ? renderInvoiceHistoryGroup("drafts", "Running drafts", draftInvoices, "No running invoice drafts yet.")
+              : null}
+            {showUnpaidSection
+              ? renderInvoiceHistoryGroup("active", "Sent and unpaid", activeInvoices, "No sent unpaid invoices.")
+              : null}
+            {showPaidSection
+              ? renderInvoiceHistoryGroup(
+                  "paid",
+                  invoiceHistoryStatusFilter === "void" ? "Void invoices" : "Paid and closed",
+                  paidInvoices,
+                  invoiceHistoryStatusFilter === "void" ? "No void invoices." : "No paid or closed invoices."
+                )
+              : null}
           </div>
         </section>
       </div>
