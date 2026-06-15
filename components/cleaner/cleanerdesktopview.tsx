@@ -286,6 +286,23 @@ function parseDesktopJobNotes(notes: string | null) {
     detailLines: cleaned,
   };
 }
+
+function SameDayTurnoverBanner({
+  sameDayCheckInLabel,
+}: {
+  sameDayCheckInLabel: string | null | undefined;
+}) {
+  return (
+    <div className="mt-3 rounded-2xl border border-amber-400/45 bg-amber-500/12 px-4 py-3 text-sm text-[#f6e2ba]">
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-200">Same-day turnover</p>
+      <p className="mt-1">
+        Incoming guest checks in the same day. Please prioritize timing
+        {sameDayCheckInLabel ? ` (${sameDayCheckInLabel}).` : "."}
+      </p>
+    </div>
+  );
+}
+
 function JobCard({
   item,
   isSelected,
@@ -380,6 +397,10 @@ function JobCard({
               Cleaning date: {formatDateLabel(item.jobDate)}
             </p>
 
+            {item.job.sameDayTurnover ? (
+              <SameDayTurnoverBanner sameDayCheckInLabel={item.job.sameDayCheckInLabel} />
+            ) : null}
+
             <p className="mt-2 text-sm text-[#d9c5a1]">{getTeamMessage(item)}</p>
 
             {waiting && remainingMs !== null && (
@@ -425,6 +446,9 @@ function JobCard({
               <p className="mt-2 text-sm text-[#e7c98a]">
                 Cleaning date: {formatDateLabel(item.jobDate)}
               </p>
+              {item.job.sameDayTurnover ? (
+                <SameDayTurnoverBanner sameDayCheckInLabel={item.job.sameDayCheckInLabel} />
+              ) : null}
               <p className="mt-2 text-sm text-[#d9c5a1]">{getTeamMessage(item)}</p>
             </div>
 

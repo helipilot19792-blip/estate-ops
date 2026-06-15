@@ -298,6 +298,24 @@ function ReportIssueModal({
   );
 }
 
+function SameDayTurnoverBanner({
+  sameDayCheckInLabel,
+}: {
+  sameDayCheckInLabel: string | null | undefined;
+}) {
+  return (
+    <div className="rounded-2xl border border-amber-400/45 bg-amber-500/12 px-4 py-3 text-sm text-[#f6e2ba]">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-200">
+        Same-day turnover
+      </div>
+      <div className="mt-1">
+        Incoming guest checks in the same day. Please prioritize timing
+        {sameDayCheckInLabel ? ` (${sameDayCheckInLabel}).` : "."}
+      </div>
+    </div>
+  );
+}
+
 export default function CleanerMobileView({
   activeJobs,
   historyJobs,
@@ -685,6 +703,13 @@ export default function CleanerMobileView({
                   <p className="mt-1 text-sm text-[#f0d59f]">
                     Cleaning date: {formatDateLabel(normalizeJobDate(selectedCleanerJob.jobDate))}
                   </p>
+                  {selectedCleanerJob.job.sameDayTurnover ? (
+                    <div className="mt-3">
+                      <SameDayTurnoverBanner
+                        sameDayCheckInLabel={selectedCleanerJob.job.sameDayCheckInLabel}
+                      />
+                    </div>
+                  ) : null}
                 </div>
 
                 <span

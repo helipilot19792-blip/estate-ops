@@ -54,6 +54,77 @@ function extractCheckoutDate(notes: string | null): string | null {
   return match?.[1] || null;
 }
 
+type SameDayTurnoverInfo = {
+  sameDayTurnover: boolean;
+  sameDayCheckInLabel: string | null;
+};
+
+function getSameDayTurnoverKey(propertyId: string, jobDate: string) {
+  return `${propertyId}::${jobDate}`;
+}
+
+function buildSameDayCheckInLabel(booking: {
+  source?: string | null;
+  summary?: string | null;
+  guest_count?: number | null;
+}) {
+  const source = String(booking.source || "").trim();
+  const summary = String(booking.summary || "").trim();
+  const guestCount = typeof booking.guest_count === "number" ? booking.guest_count : null;
+  const parts = [source, summary, guestCount ? `${guestCount} guest${guestCount === 1 ? "" : "s"}` : ""].filter(Boolean);
+  return parts.length > 0 ? parts.join(" - ") : "Incoming guest checks in the same day";
+}
+
+async function loadSameDayTurnoverMap(
+  jobs: Array<{ property_id?: string | null; scheduled_for?: string | null; notes?: string | null }>
+) {
+  const pairs = jobs
+    .map((job) => ({
+      propertyId: job.property_id || null,
+      jobDate: job.scheduled_for || extractCheckoutDate(job.notes || null),
+    }))
+    .filter((pair): pair is { propertyId: string; jobDate: string } => Boolean(pair.propertyId && pair.jobDate));
+
+  if (pairs.length === 0) {
+    return new Map<string, SameDayTurnoverInfo>();
+  }
+
+  const propertyIds = [...new Set(pairs.map((pair) => pair.propertyId))];
+  const jobDates = [...new Set(pairs.map((pair) => pair.jobDate))];
+
+  const { data, error } = await serviceClient
+    .from("property_booking_events")
+    .select("property_id, checkin_date, source, summary, guest_count")
+    .in("property_id", propertyIds)
+    .in("checkin_date", jobDates);
+
+  if (error) {
+    if (isOptionalTableError(error)) {
+      return new Map<string, SameDayTurnoverInfo>();
+    }
+    throw new Error(error.message);
+  }
+
+  const wantedKeys = new Set(pairs.map((pair) => getSameDayTurnoverKey(pair.propertyId, pair.jobDate)));
+  const sameDayMap = new Map<string, SameDayTurnoverInfo>();
+
+  for (const booking of data ?? []) {
+    const propertyId = typeof booking.property_id === "string" ? booking.property_id : null;
+    const checkinDate = typeof booking.checkin_date === "string" ? booking.checkin_date : null;
+    if (!propertyId || !checkinDate) continue;
+
+    const key = getSameDayTurnoverKey(propertyId, checkinDate);
+    if (!wantedKeys.has(key) || sameDayMap.has(key)) continue;
+
+    sameDayMap.set(key, {
+      sameDayTurnover: true,
+      sameDayCheckInLabel: buildSameDayCheckInLabel(booking),
+    });
+  }
+
+  return sameDayMap;
+}
+
 function sortStaffJobsNearestFirst<T extends { jobDate: string | null; slot: { created_at?: string | null } }>(
   items: T[]
 ) {
@@ -342,7 +413,21 @@ async function loadCleanerDashboard(profileId: string) {
   if (jobsRes.error) throw new Error(jobsRes.error.message);
   if (allSlotsRes.error) throw new Error(allSlotsRes.error.message);
 
-  const jobsById = new Map((jobsRes.data ?? []).map((job: { id: string }) => [job.id, job]));
+  const sameDayTurnoverMap = await loadSameDayTurnoverMap(jobsRes.data ?? []);
+  const jobsById = new Map(
+    (jobsRes.data ?? []).map((job: { id: string; property_id?: string | null; scheduled_for?: string | null; notes?: string | null }) => {
+      const jobDate = job.scheduled_for || extractCheckoutDate(job.notes || null);
+      const sameDayInfo =
+        job.property_id && jobDate
+          ? sameDayTurnoverMap.get(getSameDayTurnoverKey(job.property_id, jobDate)) || {
+              sameDayTurnover: false,
+              sameDayCheckInLabel: null,
+            }
+          : { sameDayTurnover: false, sameDayCheckInLabel: null };
+
+      return [job.id, { ...job, ...sameDayInfo }];
+    })
+  );
   const checklistItems = await loadCleanerChecklistItems(slots, jobsById, profileId);
   const slotCounts = new Map<string, { total: number; accepted: number }>();
 

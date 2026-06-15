@@ -13615,15 +13615,26 @@ This removes its linked members and deletes the grounds account.`
   }
 
   function getInvoiceRecipientContext() {
-    const property = properties.find((item) => item.id === invoicePropertyId) || null;
-    const owner = ownerAccounts.find((account) => account.id === getInvoiceOwnerId()) || null;
+    const ownerId = getInvoiceOwnerId();
+    const owner = ownerAccounts.find((account) => account.id === ownerId) || null;
+    const property =
+      invoiceDocumentKind === "statement"
+        ? null
+        : properties.find((item) => item.id === invoicePropertyId) || null;
+    const ownerLinkedProperties = ownerId ? getPropertiesForOwner(ownerId) : [];
+    const propertyName =
+      invoiceDocumentKind === "statement"
+        ? ownerLinkedProperties.length > 0
+          ? "All linked properties"
+          : "Owner statement"
+        : property?.name || property?.address || "All linked properties";
 
     return {
       owner,
       property,
       ownerName: owner?.full_name || owner?.email || "Owner",
       ownerEmail: owner?.email || "",
-      propertyName: property?.name || property?.address || "All linked properties",
+      propertyName,
     };
   }
 
@@ -13650,24 +13661,41 @@ This removes its linked members and deletes the grounds account.`
   }
 
   function autoPopulateInvoiceItems() {
-    if (!invoicePropertyId) {
-      setError("Choose a property before auto-populating invoice items.");
+    const ownerId = getInvoiceOwnerId();
+    const isStatement = invoiceDocumentKind === "statement";
+    const scopedProperties = isStatement
+      ? ownerId
+        ? getPropertiesForOwner(ownerId)
+        : []
+      : invoicePropertyId
+        ? properties.filter((property) => property.id === invoicePropertyId)
+        : [];
+
+    if (scopedProperties.length === 0) {
+      setError(
+        isStatement
+          ? "Choose an owner with linked properties before auto-populating a statement."
+          : "Choose a property before auto-populating invoice items."
+      );
       return;
     }
 
-    const {
-      turnover: turnoverRate,
-      grounds: groundsRate,
-      billTurnover,
-      billGrounds,
-    } = getPropertyInvoiceRate(invoicePropertyId);
+    const propertyIds = new Set(scopedProperties.map((property) => property.id));
     const generated: OwnerInvoiceLineItem[] = [];
 
-    if (invoiceAutoTurnover && billTurnover && turnoverRate > 0) {
-      for (const job of jobs.filter((item) => item.property_id === invoicePropertyId)) {
+    if (invoiceAutoTurnover) {
+      for (const job of jobs.filter((item) => propertyIds.has(item.property_id))) {
+        const {
+          turnover: turnoverRate,
+          billTurnover,
+        } = getPropertyInvoiceRate(job.property_id);
+        if (!billTurnover || turnoverRate <= 0) continue;
+
+        const property = properties.find((item) => item.id === job.property_id);
+        const propertyLabel = property?.name || property?.address || "Property";
         generated.push({
           id: `turnover-${job.id}`,
-          description: `Turnover cleaning - ${formatDateLabel(job.scheduled_for || job.created_at?.slice(0, 10) || null)}`,
+          description: `${isStatement ? `${propertyLabel} - ` : ""}Turnover cleaning - ${formatDateLabel(job.scheduled_for || job.created_at?.slice(0, 10) || null)}`,
           category: "turnover",
           quantity: Number(job.cleaner_units_needed || 1),
           rate: turnoverRate,
@@ -13677,11 +13705,19 @@ This removes its linked members and deletes the grounds account.`
       }
     }
 
-    if (invoiceAutoGrounds && billGrounds && groundsRate > 0) {
-      for (const job of groundsJobs.filter((item) => item.property_id === invoicePropertyId)) {
+    if (invoiceAutoGrounds) {
+      for (const job of groundsJobs.filter((item) => propertyIds.has(item.property_id))) {
+        const {
+          grounds: groundsRate,
+          billGrounds,
+        } = getPropertyInvoiceRate(job.property_id);
+        if (!billGrounds || groundsRate <= 0) continue;
+
+        const property = properties.find((item) => item.id === job.property_id);
+        const propertyLabel = property?.name || property?.address || "Property";
         generated.push({
           id: `grounds-${job.id}`,
-          description: `${job.job_type || "Grounds service"} - ${formatDateLabel(job.scheduled_for || job.created_at?.slice(0, 10) || null)}`,
+          description: `${isStatement ? `${propertyLabel} - ` : ""}${job.job_type || "Grounds service"} - ${formatDateLabel(job.scheduled_for || job.created_at?.slice(0, 10) || null)}`,
           category: "grounds",
           quantity: Number(job.grounds_units_needed || 1),
           rate: groundsRate,
@@ -13702,8 +13738,12 @@ This removes its linked members and deletes the grounds account.`
     setInvoiceDraftDirty(true);
     setActionMessage(
       generated.length > 0
-        ? `Added ${generated.length} job line item${generated.length === 1 ? "" : "s"} from this property.`
-        : "No billable jobs found. Check that this property is set to bill the owner for cleaning or grounds, and that rates are saved."
+        ? isStatement
+          ? `Added ${generated.length} job line item${generated.length === 1 ? "" : "s"} across ${scopedProperties.length} linked propert${scopedProperties.length === 1 ? "y" : "ies"}.`
+          : `Added ${generated.length} job line item${generated.length === 1 ? "" : "s"} from this property.`
+        : isStatement
+          ? "No billable jobs found across this owner's linked properties. Check that the properties are linked to the owner, marked to bill the owner, and have saved rates."
+          : "No billable jobs found. Check that this property is set to bill the owner for cleaning or grounds, and that rates are saved."
     );
   }
 
@@ -13867,7 +13907,7 @@ This removes its linked members and deletes the grounds account.`
       const timestamp = new Date().toISOString();
       const invoicePayload = {
         owner_account_id: effectiveOwnerId,
-        property_id: invoicePropertyId || null,
+        property_id: invoiceDocumentKind === "statement" ? null : invoicePropertyId || null,
         invoice_number: invoiceNumber,
         status,
         issue_date: invoiceIssueDate || getTodayYmd(),
@@ -15505,6 +15545,11 @@ This removes its linked members and deletes the grounds account.`
                     </option>
                   ))}
                 </select>
+                {invoiceDocumentKind === "statement" ? (
+                  <div className="rounded-[18px] border border-[#d8c7ab] bg-[#fffaf0] px-4 py-3 text-sm text-[#5f4c3b] md:col-span-2">
+                    Statements now gather billable jobs across all properties linked to the selected owner. The property picker is only used to help pick the owner faster.
+                  </div>
+                ) : null}
                 <div className="flex flex-wrap gap-2 rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] p-3 md:col-span-2">
                   <button
                     type="button"
@@ -15556,7 +15601,9 @@ This removes its linked members and deletes the grounds account.`
                   onClick={autoPopulateInvoiceItems}
                   className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#f7f1e8]"
                 >
-                  Auto-populate from jobs
+                  {invoiceDocumentKind === "statement"
+                    ? "Auto-populate from linked properties"
+                    : "Auto-populate from jobs"}
                 </button>
               </div>
 

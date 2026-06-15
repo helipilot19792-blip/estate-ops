@@ -60,6 +60,8 @@ type TurnoverJob = {
   cleaner_units_needed?: number | null;
   cleaner_units_required_strict?: boolean | null;
   show_team_status_to_cleaners?: boolean | null;
+  sameDayTurnover?: boolean | null;
+  sameDayCheckInLabel?: string | null;
 };
 
 type TurnoverJobSlot = {
@@ -280,6 +282,8 @@ function buildCleanerPreviewDashboard(profile: Profile): CleanerDashboardPayload
       cleaner_units_needed: 1,
       cleaner_units_required_strict: true,
       show_team_status_to_cleaners: true,
+      sameDayTurnover: false,
+      sameDayCheckInLabel: null,
     },
     jobDate: toYmd(today),
     acceptedSlots: 1,
@@ -316,6 +320,8 @@ function buildCleanerPreviewDashboard(profile: Profile): CleanerDashboardPayload
       cleaner_units_needed: 1,
       cleaner_units_required_strict: true,
       show_team_status_to_cleaners: true,
+      sameDayTurnover: true,
+      sameDayCheckInLabel: "Airbnb - Same-day arrival preview - 3 guests",
     },
     jobDate: toYmd(tomorrow),
     acceptedSlots: 0,
