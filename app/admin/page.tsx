@@ -6215,6 +6215,8 @@ This removes its linked members and deletes the grounds account.`
         selectedPropertyDefaultTurnoverPayout.trim() === ""
           ? 0
           : Number(selectedPropertyDefaultTurnoverPayout);
+      const normalizedTurnoverPayout = Math.round(parsedTurnoverPayout * 100) / 100;
+      const nextUnitsNeeded = Number(selectedPropertyUnitsNeeded || "1");
 
       if (!Number.isFinite(parsedTurnoverPayout) || parsedTurnoverPayout < 0) {
         throw new Error("Standard turnover payout must be a valid non-negative amount.");
@@ -6223,14 +6225,28 @@ This removes its linked members and deletes the grounds account.`
       const { error } = await supabase
         .from("properties")
         .update({
-          default_cleaner_units_needed: Number(selectedPropertyUnitsNeeded || "1"),
+          default_cleaner_units_needed: nextUnitsNeeded,
           cleaner_units_required_strict: selectedPropertyUnitsStrict,
           show_team_status_to_cleaners: selectedPropertyShowTeamStatus,
-          default_turnover_payout: Math.round(parsedTurnoverPayout * 100) / 100,
+          default_turnover_payout: normalizedTurnoverPayout,
         })
         .eq("id", selectedPropertyId);
 
       if (error) throw error;
+      setProperties((current) =>
+        current.map((property) =>
+          property.id === selectedPropertyId
+            ? {
+                ...property,
+                default_cleaner_units_needed: nextUnitsNeeded,
+                cleaner_units_required_strict: selectedPropertyUnitsStrict,
+                show_team_status_to_cleaners: selectedPropertyShowTeamStatus,
+                default_turnover_payout: normalizedTurnoverPayout,
+              }
+            : property
+        )
+      );
+      setSelectedPropertyDefaultTurnoverPayout(String(normalizedTurnoverPayout));
       setPropertyDefaultsDirty(false);
       setActionMessage("Property defaults saved.");
       await loadData();
@@ -8957,6 +8973,17 @@ This removes its linked members and deletes the grounds account.`
     );
   }
 
+  function openCleanerPayoutSection() {
+    setActiveSection("jobs");
+    setJobWorkflowTab("active");
+    setTimeout(() => {
+      document.getElementById("cleaner-payment-log-section")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 50);
+  }
+
   const todayAtGlanceItems = useMemo(() => {
     const propertyById = new Map(properties.map((property) => [property.id, property]));
     const getCleanerContact = (cleanerAccountId: string | null): StaffContact | null => {
@@ -11487,6 +11514,13 @@ This removes its linked members and deletes the grounds account.`
                 className="inline-flex items-center justify-center rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#f7f1e8]"
               >
                 View jobs
+              </button>
+              <button
+                type="button"
+                onClick={openCleanerPayoutSection}
+                className="inline-flex items-center justify-center rounded-full border border-[#cfe1ff] bg-[#f8fbff] px-4 py-2 text-sm font-medium text-[#2957a4] transition hover:bg-[#eef5ff]"
+              >
+                Cleaner payouts
               </button>
               <button
                 type="button"
@@ -19444,7 +19478,10 @@ This removes its linked members and deletes the grounds account.`
             })}
           </div>
         </section>
-        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+        <section
+          id="cleaner-payment-log-section"
+          className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]"
+        >
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
               <h2 className="text-xl font-semibold tracking-tight">Cleaner Payment Log</h2>
