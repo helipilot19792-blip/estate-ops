@@ -1053,6 +1053,14 @@ function getDefaultDueDateYmd() {
   return toYmd(due);
 }
 
+function getCalendarYearStartYmd(base = new Date()) {
+  return toYmd(new Date(base.getFullYear(), 0, 1));
+}
+
+function getCalendarYearEndYmd(base = new Date()) {
+  return toYmd(new Date(base.getFullYear(), 11, 31));
+}
+
 function getTrialDaysRemaining(trialEndsAt?: string | null, now = new Date()) {
   if (!trialEndsAt) return null;
   const end = new Date(trialEndsAt);
@@ -1064,6 +1072,13 @@ function extractCheckoutDate(notes: string | null): string | null {
   if (!notes) return null;
   const match = notes.match(/Checkout date:\s*(\d{4}-\d{2}-\d{2})/i);
   return match?.[1] ?? null;
+}
+
+function extractStatementRange(notes: string | null) {
+  if (!notes) return null;
+  const match = notes.match(/Statement range:\s*(\d{4}-\d{2}-\d{2})\s+to\s+(\d{4}-\d{2}-\d{2})/i);
+  if (!match) return null;
+  return { startDate: match[1], endDate: match[2] };
 }
 
 function getResponseWindowHours(jobDate: string | null, now: Date) {
@@ -1509,6 +1524,8 @@ export default function AdminPage() {
   const [invoicePropertyId, setInvoicePropertyId] = useState("");
   const [invoiceIssueDate, setInvoiceIssueDate] = useState(() => getTodayYmd());
   const [invoiceDueDate, setInvoiceDueDate] = useState(() => getDefaultDueDateYmd());
+  const [statementStartDate, setStatementStartDate] = useState(() => getCalendarYearStartYmd());
+  const [statementEndDate, setStatementEndDate] = useState(() => getCalendarYearEndYmd());
   const [invoiceNotes, setInvoiceNotes] = useState("");
   const [invoiceCompanyName, setInvoiceCompanyName] = useState("");
   const [invoiceLogoUrl, setInvoiceLogoUrl] = useState("");
@@ -13776,6 +13793,8 @@ This removes its linked members and deletes the grounds account.`
     setInvoicePropertyId("");
     setInvoiceIssueDate(getTodayYmd());
     setInvoiceDueDate(getDefaultDueDateYmd());
+    setStatementStartDate(getCalendarYearStartYmd());
+    setStatementEndDate(getCalendarYearEndYmd());
     setInvoiceNotes("");
     setInvoiceCcEmails("");
     setInvoiceDocumentKind("invoice");
@@ -13825,6 +13844,11 @@ This removes its linked members and deletes the grounds account.`
       setInvoiceTaxLines(loadedTaxLines);
     }
     setInvoiceApplyTax(Number(invoice.tax_total || 0) > 0 || loadedTaxLines.some((line) => Number(line.rate || 0) > 0));
+    if (getInvoiceDocumentKind(invoice) === "statement") {
+      const parsedRange = extractStatementRange(invoice.notes || null);
+      setStatementStartDate(parsedRange?.startDate || getCalendarYearStartYmd());
+      setStatementEndDate(parsedRange?.endDate || getCalendarYearEndYmd());
+    }
     setInvoiceWorkflowTab("running");
     setInvoiceDraftDirty(false);
     setActionMessage(`Loaded running invoice ${invoice.invoice_number}.`);
@@ -13861,16 +13885,11 @@ This removes its linked members and deletes the grounds account.`
   function getInvoiceRecipientContext() {
     const ownerId = getInvoiceOwnerId();
     const owner = ownerAccounts.find((account) => account.id === ownerId) || null;
-    const property =
-      invoiceDocumentKind === "statement"
-        ? null
-        : properties.find((item) => item.id === invoicePropertyId) || null;
+    const property = properties.find((item) => item.id === invoicePropertyId) || null;
     const ownerLinkedProperties = ownerId ? getPropertiesForOwner(ownerId) : [];
     const propertyName =
       invoiceDocumentKind === "statement"
-        ? ownerLinkedProperties.length > 0
-          ? "All linked properties"
-          : "Owner statement"
+        ? property?.name || property?.address || "Property statement"
         : property?.name || property?.address || "All linked properties";
 
     return {
@@ -13879,6 +13898,100 @@ This removes its linked members and deletes the grounds account.`
       ownerName: owner?.full_name || owner?.email || "Owner",
       ownerEmail: owner?.email || "",
       propertyName,
+    };
+  }
+
+  function getStatementSourceData() {
+    if (invoiceDocumentKind !== "statement") {
+      return { ok: false as const, error: "Statement mode is not selected." };
+    }
+
+    if (!invoicePropertyId) {
+      return { ok: false as const, error: "Choose a property before generating a statement." };
+    }
+
+    const property = properties.find((item) => item.id === invoicePropertyId) || null;
+    if (!property) {
+      return { ok: false as const, error: "Selected property was not found." };
+    }
+
+    const owner = getOwnerForProperty(invoicePropertyId);
+    if (!owner) {
+      return { ok: false as const, error: "Link an owner to this property before generating a statement." };
+    }
+
+    if (!statementStartDate || !statementEndDate) {
+      return { ok: false as const, error: "Choose a start and end date for the statement." };
+    }
+
+    if (statementStartDate > statementEndDate) {
+      return { ok: false as const, error: "Statement start date must be on or before the end date." };
+    }
+
+    const includedInvoices = ownerInvoices
+      .filter((invoice) => {
+        if (invoice.owner_account_id !== owner.id) return false;
+        if (invoice.property_id !== invoicePropertyId) return false;
+        if (invoice.status === "draft" || invoice.status === "void") return false;
+        if (getInvoiceDocumentKind(invoice) === "statement") return false;
+
+        const invoiceDate = invoice.issue_date || invoice.created_at?.slice(0, 10) || "";
+        if (!invoiceDate) return false;
+        return invoiceDate >= statementStartDate && invoiceDate <= statementEndDate;
+      })
+      .sort((a, b) => {
+        const left = a.issue_date || a.created_at || "";
+        const right = b.issue_date || b.created_at || "";
+        return left.localeCompare(right);
+      });
+
+    const lineItems: OwnerInvoiceLineItem[] = includedInvoices.map((invoice) => {
+      const invoiceDate = invoice.issue_date || invoice.created_at?.slice(0, 10) || null;
+      const paymentLabel = invoice.status === "paid" ? "Paid" : "Unpaid";
+      return {
+        id: `statement-invoice-${invoice.id}`,
+        description: `${invoice.invoice_number} - ${formatDateLabel(invoiceDate)} - ${paymentLabel}`,
+        category: "other",
+        quantity: 1,
+        rate: Number(invoice.total || 0),
+        taxable: false,
+        source_id: invoice.id,
+      };
+    });
+
+    const subtotal = lineItems.reduce((sum, item) => sum + Number(item.rate || 0), 0);
+    const totalTax = includedInvoices.reduce((sum, invoice) => sum + Number(invoice.tax_total || 0), 0);
+    const totalPaid = includedInvoices
+      .filter((invoice) => invoice.status === "paid")
+      .reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
+    const totalUnpaid = includedInvoices
+      .filter((invoice) => invoice.status === "sent")
+      .reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
+    const summaryLines = [
+      `Statement range: ${statementStartDate} to ${statementEndDate}`,
+      `Included invoices: ${includedInvoices.length}`,
+      `Total invoiced: ${formatCurrency(subtotal)}`,
+      `Total tax: ${formatCurrency(totalTax)}`,
+      `Total paid: ${formatCurrency(totalPaid)}`,
+      `Total unpaid: ${formatCurrency(totalUnpaid)}`,
+    ];
+    const notes = [summaryLines.join("\n"), invoiceNotes.trim()].filter(Boolean).join("\n\n");
+
+    return {
+      ok: true as const,
+      owner,
+      property,
+      includedInvoices,
+      lineItems,
+      subtotal,
+      taxLines: [] as Array<{ id: string; label: string; rate: number; amount: number }>,
+      taxTotal: 0,
+      total: subtotal,
+      totalTax,
+      totalPaid,
+      totalUnpaid,
+      notes,
+      summaryLines,
     };
   }
 
@@ -13905,20 +14018,15 @@ This removes its linked members and deletes the grounds account.`
   }
 
   function autoPopulateInvoiceItems() {
-    const ownerId = getInvoiceOwnerId();
     const isStatement = invoiceDocumentKind === "statement";
-    const scopedProperties = isStatement
-      ? ownerId
-        ? getPropertiesForOwner(ownerId)
-        : []
-      : invoicePropertyId
-        ? properties.filter((property) => property.id === invoicePropertyId)
-        : [];
+    const scopedProperties = invoicePropertyId
+      ? properties.filter((property) => property.id === invoicePropertyId)
+      : [];
 
     if (scopedProperties.length === 0) {
       setError(
         isStatement
-          ? "Choose an owner with linked properties before auto-populating a statement."
+          ? "Choose a property before generating a statement."
           : "Choose a property before auto-populating invoice items."
       );
       return;
@@ -13928,48 +14036,24 @@ This removes its linked members and deletes the grounds account.`
     const generated: OwnerInvoiceLineItem[] = [];
 
     if (isStatement) {
-      const statementInvoices = ownerInvoices
-        .filter((invoice) => {
-          if (invoice.owner_account_id !== ownerId) return false;
-          if (invoice.status !== "sent") return false;
-          if (getInvoiceDocumentKind(invoice) === "statement") return false;
-          if (invoice.property_id && !propertyIds.has(invoice.property_id)) return false;
-          return true;
-        })
-        .sort((a, b) => {
-          const left = a.issue_date || a.created_at || "";
-          const right = b.issue_date || b.created_at || "";
-          return left.localeCompare(right);
-        });
-
-      for (const invoice of statementInvoices) {
-        const property = properties.find((item) => item.id === invoice.property_id);
-        const propertyLabel = property?.name || property?.address || "Property";
-        generated.push({
-          id: `statement-invoice-${invoice.id}`,
-          description: `${propertyLabel} - ${invoice.invoice_number} - ${formatDateLabel(invoice.issue_date || invoice.created_at?.slice(0, 10) || null)}`,
-          category: "other",
-          quantity: 1,
-          rate: Number(invoice.total || 0),
-          taxable: false,
-          source_id: invoice.id,
-        });
+      const statementData = getStatementSourceData();
+      if (!statementData.ok) {
+        setError(statementData.error);
+        return;
       }
 
+      setInvoiceOwnerId(statementData.owner.id);
       setInvoiceApplyTax(false);
-      setInvoiceLineItems((items) => {
-        const customItems = items.filter((item) => !item.source_id && item.description.trim());
-        return generated.length > 0
-          ? [...generated, ...customItems]
-          : customItems.length > 0
-            ? customItems
-            : [{ id: "custom-1", description: "", category: "expense", quantity: 1, rate: 0, taxable: false }];
-      });
+      setInvoiceLineItems(
+        statementData.lineItems.length > 0
+          ? statementData.lineItems
+          : [{ id: "statement-empty", description: "", category: "other", quantity: 1, rate: 0, taxable: false }]
+      );
       setInvoiceDraftDirty(true);
       setActionMessage(
-        generated.length > 0
-          ? `Added ${generated.length} open invoice${generated.length === 1 ? "" : "s"} across ${scopedProperties.length} linked propert${scopedProperties.length === 1 ? "y" : "ies"}. Statement tax was turned off so prior invoice totals are not taxed again.`
-          : "No open invoices were found across this owner's linked properties."
+        statementData.lineItems.length > 0
+          ? `Generated statement from ${statementData.lineItems.length} invoice${statementData.lineItems.length === 1 ? "" : "s"} for ${statementData.property.name || statementData.property.address || "this property"}.`
+          : "No non-draft invoices were found for this property in the selected date range."
       );
       return;
     }
@@ -14162,28 +14246,62 @@ This removes its linked members and deletes the grounds account.`
 
   async function createOwnerInvoice(status: "draft" | "sent" = "draft") {
     if (!currentOrganizationId) return;
-    const effectiveOwnerId = getInvoiceOwnerId();
+    const statementData = invoiceDocumentKind === "statement" ? getStatementSourceData() : null;
+    const effectiveOwnerId =
+      invoiceDocumentKind === "statement"
+        ? statementData?.ok
+          ? statementData.owner.id
+          : ""
+        : getInvoiceOwnerId();
     const editingInvoice = editingOwnerInvoiceId
       ? ownerInvoices.find((invoice) => invoice.id === editingOwnerInvoiceId)
       : null;
 
     if (!effectiveOwnerId) {
-      setError("Choose an owner for this invoice.");
+      setError(
+        invoiceDocumentKind === "statement"
+          ? statementData && !statementData.ok
+            ? statementData.error
+            : "Choose a property with a linked owner for this statement."
+          : "Choose an owner for this invoice."
+      );
       return;
     }
 
-    const validLineItems = getValidInvoiceLineItems();
+    const validLineItems =
+      invoiceDocumentKind === "statement"
+        ? statementData?.ok
+          ? statementData.lineItems
+          : []
+        : getValidInvoiceLineItems();
 
     if (validLineItems.length === 0) {
-      setError("Add at least one invoice line item.");
+      setError(
+        invoiceDocumentKind === "statement"
+          ? "No saved invoices were found for this property in the selected date range."
+          : "Add at least one invoice line item."
+      );
       return;
     }
 
-    const subtotal = getInvoiceLineItemsTotal(validLineItems);
-    const taxableSubtotal = getInvoiceTaxableSubtotal(validLineItems);
-    const taxLines = getInvoiceTaxLinesForSubtotal(taxableSubtotal, invoiceApplyTax);
-    const taxTotal = taxLines.reduce((sum, line) => sum + line.amount, 0);
-    const total = subtotal + taxTotal;
+    const subtotal =
+      invoiceDocumentKind === "statement" && statementData?.ok
+        ? statementData.subtotal
+        : getInvoiceLineItemsTotal(validLineItems);
+    const taxableSubtotal =
+      invoiceDocumentKind === "statement" ? 0 : getInvoiceTaxableSubtotal(validLineItems);
+    const taxLines =
+      invoiceDocumentKind === "statement" && statementData?.ok
+        ? statementData.taxLines
+        : getInvoiceTaxLinesForSubtotal(taxableSubtotal, invoiceApplyTax);
+    const taxTotal =
+      invoiceDocumentKind === "statement" && statementData?.ok
+        ? statementData.taxTotal
+        : taxLines.reduce((sum, line) => sum + line.amount, 0);
+    const total =
+      invoiceDocumentKind === "statement" && statementData?.ok
+        ? statementData.total
+        : subtotal + taxTotal;
     const documentLabel = invoiceDocumentKind === "statement" ? "Statement" : "Invoice";
     const documentLabelLower = documentLabel.toLowerCase();
     const invoiceNumber =
@@ -14198,18 +14316,21 @@ This removes its linked members and deletes the grounds account.`
       const timestamp = new Date().toISOString();
       const invoicePayload = {
         owner_account_id: effectiveOwnerId,
-        property_id: invoiceDocumentKind === "statement" ? null : invoicePropertyId || null,
+        property_id: invoicePropertyId || null,
         invoice_number: invoiceNumber,
         status,
         issue_date: invoiceIssueDate || getTodayYmd(),
-        due_date: invoiceDueDate || null,
+        due_date: invoiceDocumentKind === "statement" ? null : invoiceDueDate || null,
         company_name: invoiceCompanyName.trim() || null,
         logo_url: invoiceLogoUrl.trim() || null,
         from_email: invoiceFromEmail.trim().toLowerCase() || null,
         reply_to_email: invoiceReplyToEmail.trim().toLowerCase() || null,
         header_text: invoiceHeaderText.trim() || null,
         tax_lines: taxLines,
-        notes: invoiceNotes.trim() || null,
+        notes:
+          invoiceDocumentKind === "statement" && statementData?.ok
+            ? statementData.notes || null
+            : invoiceNotes.trim() || null,
         payment_instructions: invoicePaymentInstructions.trim() || null,
         line_items: validLineItems,
         subtotal,
@@ -14415,11 +14536,21 @@ This removes its linked members and deletes the grounds account.`
   }
 
   async function previewInvoicePdf() {
-    const validLineItems = getValidInvoiceLineItems();
+    const statementData = invoiceDocumentKind === "statement" ? getStatementSourceData() : null;
+    const validLineItems =
+      invoiceDocumentKind === "statement"
+        ? statementData?.ok
+          ? statementData.lineItems
+          : []
+        : getValidInvoiceLineItems();
     const documentLabelLower = invoiceDocumentKind === "statement" ? "statement" : "invoice";
 
     if (validLineItems.length === 0) {
-      setError(`Add at least one ${documentLabelLower} line item before previewing the PDF.`);
+      setError(
+        invoiceDocumentKind === "statement" && statementData && !statementData.ok
+          ? statementData.error
+          : `Add at least one ${documentLabelLower} line item before previewing the PDF.`
+      );
       return;
     }
 
@@ -14437,10 +14568,20 @@ This removes its linked members and deletes the grounds account.`
       }
 
       const context = getInvoiceRecipientContext();
-      const subtotal = getInvoiceLineItemsTotal(validLineItems);
-      const taxableSubtotal = getInvoiceTaxableSubtotal(validLineItems);
-      const taxLines = getInvoiceTaxLinesForSubtotal(taxableSubtotal, invoiceApplyTax);
-      const taxTotal = taxLines.reduce((sum, line) => sum + line.amount, 0);
+      const subtotal =
+        invoiceDocumentKind === "statement" && statementData?.ok
+          ? statementData.subtotal
+          : getInvoiceLineItemsTotal(validLineItems);
+      const taxableSubtotal =
+        invoiceDocumentKind === "statement" ? 0 : getInvoiceTaxableSubtotal(validLineItems);
+      const taxLines =
+        invoiceDocumentKind === "statement" && statementData?.ok
+          ? statementData.taxLines
+          : getInvoiceTaxLinesForSubtotal(taxableSubtotal, invoiceApplyTax);
+      const taxTotal =
+        invoiceDocumentKind === "statement" && statementData?.ok
+          ? statementData.taxTotal
+          : taxLines.reduce((sum, line) => sum + line.amount, 0);
       const response = await fetch("/api/admin/preview-owner-invoice", {
         method: "POST",
         headers: {
@@ -14456,14 +14597,20 @@ This removes its linked members and deletes the grounds account.`
           ownerEmail: context.ownerEmail,
           propertyName: context.propertyName,
           issueDate: invoiceIssueDate || getTodayYmd(),
-          dueDate: invoiceDueDate || null,
+          dueDate: invoiceDocumentKind === "statement" ? null : invoiceDueDate || null,
           headerText: invoiceHeaderText.trim() || null,
-          notes: invoiceNotes.trim() || null,
+          notes:
+            invoiceDocumentKind === "statement" && statementData?.ok
+              ? statementData.notes || null
+              : invoiceNotes.trim() || null,
           paymentInstructions: invoicePaymentInstructions.trim() || null,
           subtotal,
           taxLines,
           taxTotal,
-          total: subtotal + taxTotal,
+          total:
+            invoiceDocumentKind === "statement" && statementData?.ok
+              ? statementData.total
+              : subtotal + taxTotal,
           lineItems: validLineItems,
         }),
       });
@@ -14764,11 +14911,28 @@ This removes its linked members and deletes the grounds account.`
 
   function renderInvoicesSection() {
     const ownerProperties = invoiceOwnerId ? getPropertiesForOwner(invoiceOwnerId) : properties;
-    const invoiceSubtotal = getInvoiceLineItemsTotal(invoiceLineItems);
-    const invoiceTaxableSubtotal = getInvoiceTaxableSubtotal(invoiceLineItems);
-    const invoiceTaxLinesWithAmounts = getInvoiceTaxLinesForSubtotal(invoiceTaxableSubtotal, invoiceApplyTax);
-    const invoiceTaxTotal = invoiceTaxLinesWithAmounts.reduce((sum, line) => sum + line.amount, 0);
-    const invoiceTotal = invoiceSubtotal + invoiceTaxTotal;
+    const isStatementComposer = invoiceDocumentKind === "statement";
+    const statementSourceData = isStatementComposer ? getStatementSourceData() : null;
+    const statementPreviewItems = statementSourceData?.ok ? statementSourceData.lineItems : [];
+    const displayedInvoiceLineItems = isStatementComposer ? statementPreviewItems : invoiceLineItems;
+    const invoiceSubtotal =
+      isStatementComposer && statementSourceData?.ok
+        ? statementSourceData.subtotal
+        : getInvoiceLineItemsTotal(invoiceLineItems);
+    const invoiceTaxableSubtotal =
+      isStatementComposer ? 0 : getInvoiceTaxableSubtotal(invoiceLineItems);
+    const invoiceTaxLinesWithAmounts =
+      isStatementComposer && statementSourceData?.ok
+        ? []
+        : getInvoiceTaxLinesForSubtotal(invoiceTaxableSubtotal, invoiceApplyTax);
+    const invoiceTaxTotal =
+      isStatementComposer && statementSourceData?.ok
+        ? statementSourceData.taxTotal
+        : invoiceTaxLinesWithAmounts.reduce((sum, line) => sum + line.amount, 0);
+    const invoiceTotal =
+      isStatementComposer && statementSourceData?.ok
+        ? statementSourceData.total
+        : invoiceSubtotal + invoiceTaxTotal;
     const invoiceTaxLabel =
       invoiceTaxLines
         .filter((line) => line.enabled !== false)
@@ -15828,6 +15992,7 @@ This removes its linked members and deletes the grounds account.`
                     setInvoiceOwnerId(e.target.value);
                     setInvoicePropertyId("");
                   }}
+                  disabled={isStatementComposer}
                 >
                   <option value="">Owner auto-selected</option>
                   {ownerAccounts.map((owner) => (
@@ -15838,7 +16003,7 @@ This removes its linked members and deletes the grounds account.`
                 </select>
                 {invoiceDocumentKind === "statement" ? (
                   <div className="rounded-[18px] border border-[#d8c7ab] bg-[#fffaf0] px-4 py-3 text-sm text-[#5f4c3b] md:col-span-2">
-                    Statements now gather open invoice totals across all properties linked to the selected owner. The property picker is only used to help pick the owner faster.
+                    Statements now summarize saved invoice history for the selected property only. Draft and void invoices are excluded so the statement stays accurate for bookkeeping and tax use.
                   </div>
                 ) : null}
                 <div className="flex flex-wrap gap-2 rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] p-3 md:col-span-2">
@@ -15866,15 +16031,38 @@ This removes its linked members and deletes the grounds account.`
                     setInvoiceIssueDate(e.target.value);
                   }}
                 />
-                <input
-                  type="date"
-                  className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                  value={invoiceDueDate}
-                  onChange={(e) => {
-                    setInvoiceDraftDirty(true);
-                    setInvoiceDueDate(e.target.value);
-                  }}
-                />
+                {isStatementComposer ? (
+                  <input
+                    type="date"
+                    className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                    value={statementStartDate}
+                    onChange={(e) => {
+                      setInvoiceDraftDirty(true);
+                      setStatementStartDate(e.target.value);
+                    }}
+                  />
+                ) : (
+                  <input
+                    type="date"
+                    className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                    value={invoiceDueDate}
+                    onChange={(e) => {
+                      setInvoiceDraftDirty(true);
+                      setInvoiceDueDate(e.target.value);
+                    }}
+                  />
+                )}
+                {isStatementComposer ? (
+                  <input
+                    type="date"
+                    className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                    value={statementEndDate}
+                    onChange={(e) => {
+                      setInvoiceDraftDirty(true);
+                      setStatementEndDate(e.target.value);
+                    }}
+                  />
+                ) : null}
                 <input
                   className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e] md:col-span-2"
                   placeholder="CC email addresses, separated by commas"
@@ -15893,35 +16081,62 @@ This removes its linked members and deletes the grounds account.`
                   className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#f7f1e8]"
                 >
                   {invoiceDocumentKind === "statement"
-                    ? "Auto-populate from linked properties"
+                    ? "Generate statement from invoice history"
                     : "Auto-populate from jobs"}
                 </button>
               </div>
 
-              <label className="mt-4 flex cursor-pointer flex-wrap items-center justify-between gap-3 rounded-[18px] border border-[#d8c7ab] bg-[#fffaf0] px-4 py-3 text-sm text-[#5f4c3b]">
-                <span className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    checked={invoiceApplyTax}
-                    onChange={(e) => {
-                      setInvoiceDraftDirty(true);
-                      setInvoiceApplyTax(e.target.checked);
-                    }}
-                  />
-                  <span className="font-semibold text-[#241c15]">Apply {invoiceTaxModeLabel} to this invoice</span>
-                </span>
-                <span className="text-xs font-medium text-[#8a7b68]">{invoiceTaxLabel}</span>
-              </label>
+              {isStatementComposer ? (
+                <div className="mt-4 rounded-[18px] border border-[#d8c7ab] bg-[#fffaf0] px-4 py-3 text-sm text-[#5f4c3b]">
+                  Statement totals come from saved invoice totals, so extra statement tax is always turned off.
+                </div>
+              ) : (
+                <label className="mt-4 flex cursor-pointer flex-wrap items-center justify-between gap-3 rounded-[18px] border border-[#d8c7ab] bg-[#fffaf0] px-4 py-3 text-sm text-[#5f4c3b]">
+                  <span className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={invoiceApplyTax}
+                      onChange={(e) => {
+                        setInvoiceDraftDirty(true);
+                        setInvoiceApplyTax(e.target.checked);
+                      }}
+                    />
+                    <span className="font-semibold text-[#241c15]">Apply {invoiceTaxModeLabel} to this invoice</span>
+                  </span>
+                  <span className="text-xs font-medium text-[#8a7b68]">{invoiceTaxLabel}</span>
+                </label>
+              )}
+
+              {isStatementComposer && statementSourceData?.ok ? (
+                <div className="mt-4 grid gap-3 md:grid-cols-4">
+                  <div className="rounded-[18px] border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">Invoices</div>
+                    <div className="mt-1 text-xl font-semibold text-[#241c15]">{statementSourceData.includedInvoices.length}</div>
+                  </div>
+                  <div className="rounded-[18px] border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">Total invoiced</div>
+                    <div className="mt-1 text-xl font-semibold text-[#241c15]">{formatCurrency(statementSourceData.subtotal)}</div>
+                  </div>
+                  <div className="rounded-[18px] border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">Total paid</div>
+                    <div className="mt-1 text-xl font-semibold text-[#236b30]">{formatCurrency(statementSourceData.totalPaid)}</div>
+                  </div>
+                  <div className="rounded-[18px] border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">Total unpaid</div>
+                    <div className="mt-1 text-xl font-semibold text-[#7f1d1d]">{formatCurrency(statementSourceData.totalUnpaid)}</div>
+                  </div>
+                </div>
+              ) : null}
 
               <section className="mt-5 overflow-hidden rounded-[24px] border border-[#d5ad67] bg-[#fff7e8] shadow-[0_16px_36px_rgba(181,128,48,0.12)]">
                 <div className="flex flex-col gap-3 border-b border-[#e4c78f] bg-[#fff2d4] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[#8a5b18]">Running draft items</div>
-                    <div className="mt-1 text-lg font-semibold text-[#241c15]">Invoice line items</div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[#8a5b18]">{isStatementComposer ? "Statement invoice history" : "Running draft items"}</div>
+                    <div className="mt-1 text-lg font-semibold text-[#241c15]">{isStatementComposer ? "Included invoices" : "Invoice line items"}</div>
                   </div>
                   <div className="flex flex-wrap gap-2 text-xs font-semibold text-[#5f4c3b]">
                     <span className="rounded-full border border-[#d5ad67] bg-white px-3 py-1.5">
-                      {invoiceLineItems.length} item{invoiceLineItems.length === 1 ? "" : "s"}
+                      {displayedInvoiceLineItems.length} item{displayedInvoiceLineItems.length === 1 ? "" : "s"}
                     </span>
                     <span className="rounded-full border border-[#d5ad67] bg-white px-3 py-1.5">
                       Working subtotal: {formatCurrency(invoiceSubtotal)}
@@ -15930,7 +16145,13 @@ This removes its linked members and deletes the grounds account.`
                 </div>
 
                 <div className="space-y-3 p-3">
-                  {invoiceLineItems.map((item, index) => (
+                  {displayedInvoiceLineItems.length === 0 ? (
+                    <div className="rounded-[20px] border border-dashed border-[#d5ad67] bg-white px-4 py-6 text-sm text-[#7f7263]">
+                      {isStatementComposer
+                        ? "No invoices were found in the selected property/date range yet."
+                        : "No invoice line items yet."}
+                    </div>
+                  ) : displayedInvoiceLineItems.map((item, index) => (
                     <div key={item.id} className="overflow-hidden rounded-[20px] border border-[#dfc18d] bg-white shadow-[0_10px_24px_rgba(95,76,59,0.08)]">
                       <div className="flex items-center justify-between gap-3 border-b border-[#f0dfc3] bg-[#fffdf8] px-3 py-2">
                         <div className="flex min-w-0 items-center gap-2">
@@ -15946,114 +16167,125 @@ This removes its linked members and deletes the grounds account.`
                         </span>
                       </div>
                       <div className="border-l-4 border-[#c8892c] p-3">
-                        <div className="grid gap-2 md:grid-cols-[1fr_130px_110px_120px_auto] md:items-end">
-                          <label className="text-xs font-medium text-[#5f5245]">
-                            Description
-                            <input
-                              className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
-                              placeholder="Line item description"
-                              value={item.description}
-                              onChange={(e) => updateInvoiceLineItem(item.id, { description: e.target.value })}
-                            />
-                          </label>
-                          <label className="text-xs font-medium text-[#5f5245]">
-                            Category
-                            <select
-                              className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
-                              value={item.category}
-                              onChange={(e) => updateInvoiceLineItem(item.id, { category: e.target.value as OwnerInvoiceLineItem["category"] })}
-                            >
-                              <option value="turnover">Turnover</option>
-                              <option value="grounds">Grounds</option>
-                              <option value="expense">Expense</option>
-                              <option value="other">Other</option>
-                            </select>
-                          </label>
-                          <label className="text-xs font-medium text-[#5f5245]">
-                            Quantity
-                            <input
-                              type="number"
-                              min="0"
-                              step="1"
-                              className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
-                              value={item.quantity}
-                              onChange={(e) => updateInvoiceLineItem(item.id, { quantity: e.target.value })}
-                              onBlur={(e) => {
-                                const roundedQuantity = Math.max(1, Math.round(Number(e.target.value || 1)));
-                                updateInvoiceLineItem(item.id, { quantity: roundedQuantity });
-                              }}
-                            />
-                          </label>
-                          <label className="text-xs font-medium text-[#5f5245]">
-                            Rate
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
-                              value={item.rate}
-                              onFocus={() => {
-                                if (Number(item.rate || 0) === 0) {
-                                  updateInvoiceLineItem(item.id, { rate: "" });
-                                }
-                              }}
-                              onChange={(e) => updateInvoiceLineItem(item.id, { rate: e.target.value })}
-                            />
-                          </label>
-                          <button
-                            type="button"
-                            onClick={() => removeInvoiceLineItem(item.id)}
-                            className="rounded-full border border-[#efc6c6] bg-[#fff5f5] px-3 py-2 text-sm text-[#8a2e22]"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                        <div className="mt-3 flex flex-wrap items-center gap-2">
-                          <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-[#d8c7ab] bg-[#fffdf8] px-3 py-1.5 text-xs font-medium text-[#5f4c3b] hover:bg-[#fff7e8]">
-                            <input
-                              type="checkbox"
-                              checked={item.taxable !== false}
-                              onChange={(e) => updateInvoiceLineItem(item.id, { taxable: e.target.checked })}
-                            />
-                            Taxable / subject to configured tax
-                          </label>
-                          <label className="inline-flex cursor-pointer items-center rounded-full border border-[#d8c7ab] bg-[#fffdf8] px-3 py-1.5 text-xs font-medium text-[#5f4c3b] hover:bg-[#fff7e8]">
-                            {uploadingReceiptLineItemId === item.id ? "Uploading..." : "Attach receipt"}
-                            <input
-                              type="file"
-                              multiple
-                              accept="image/*,.pdf"
-                              className="hidden"
-                              disabled={uploadingReceiptLineItemId === item.id}
-                              onChange={(e) => void uploadInvoiceReceipts(item.id, e.target.files)}
-                            />
-                          </label>
-                          <label className="inline-flex cursor-pointer items-center rounded-full border border-[#d8c7ab] bg-[#fffdf8] px-3 py-1.5 text-xs font-medium text-[#5f4c3b] hover:bg-[#fff7e8]">
-                            Take receipt photo
-                            <input
-                              type="file"
-                              accept="image/*"
-                              capture="environment"
-                              className="hidden"
-                              disabled={uploadingReceiptLineItemId === item.id}
-                              onChange={(e) => void uploadInvoiceReceipts(item.id, e.target.files)}
-                            />
-                          </label>
-                          {(item.receipt_urls || []).map((url, receiptIndex) => (
-                            <span key={`${url}-${receiptIndex}`} className="inline-flex items-center gap-2 rounded-full border border-[#d8c7ab] bg-[#fffdf8] px-3 py-1.5 text-xs text-[#5f4c3b]">
-                              <a href={url} target="_blank" rel="noreferrer" className="underline">
-                                {item.receipt_names?.[receiptIndex] || `Receipt ${receiptIndex + 1}`}
-                              </a>
+                        {isStatementComposer ? (
+                          <div className="grid gap-2 md:grid-cols-[1fr_160px] md:items-end">
+                            <div className="text-sm text-[#5f5245]">{item.description}</div>
+                            <div className="rounded-[14px] border border-[#d9ccbb] bg-[#fcfaf7] px-3 py-2 text-right text-sm font-semibold text-[#241c15]">
+                              {formatCurrency(Number(item.rate || 0))}
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="grid gap-2 md:grid-cols-[1fr_130px_110px_120px_auto] md:items-end">
+                              <label className="text-xs font-medium text-[#5f5245]">
+                                Description
+                                <input
+                                  className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                                  placeholder="Line item description"
+                                  value={item.description}
+                                  onChange={(e) => updateInvoiceLineItem(item.id, { description: e.target.value })}
+                                />
+                              </label>
+                              <label className="text-xs font-medium text-[#5f5245]">
+                                Category
+                                <select
+                                  className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                                  value={item.category}
+                                  onChange={(e) => updateInvoiceLineItem(item.id, { category: e.target.value as OwnerInvoiceLineItem["category"] })}
+                                >
+                                  <option value="turnover">Turnover</option>
+                                  <option value="grounds">Grounds</option>
+                                  <option value="expense">Expense</option>
+                                  <option value="other">Other</option>
+                                </select>
+                              </label>
+                              <label className="text-xs font-medium text-[#5f5245]">
+                                Quantity
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="1"
+                                  className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                                  value={item.quantity}
+                                  onChange={(e) => updateInvoiceLineItem(item.id, { quantity: e.target.value })}
+                                  onBlur={(e) => {
+                                    const roundedQuantity = Math.max(1, Math.round(Number(e.target.value || 1)));
+                                    updateInvoiceLineItem(item.id, { quantity: roundedQuantity });
+                                  }}
+                                />
+                              </label>
+                              <label className="text-xs font-medium text-[#5f5245]">
+                                Rate
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                                  value={item.rate}
+                                  onFocus={() => {
+                                    if (Number(item.rate || 0) === 0) {
+                                      updateInvoiceLineItem(item.id, { rate: "" });
+                                    }
+                                  }}
+                                  onChange={(e) => updateInvoiceLineItem(item.id, { rate: e.target.value })}
+                                />
+                              </label>
                               <button
                                 type="button"
-                                onClick={() => removeInvoiceReceipt(item.id, receiptIndex)}
-                                className="font-semibold text-[#8a2e22]"
+                                onClick={() => removeInvoiceLineItem(item.id)}
+                                className="rounded-full border border-[#efc6c6] bg-[#fff5f5] px-3 py-2 text-sm text-[#8a2e22]"
                               >
-                                x
+                                Remove
                               </button>
-                            </span>
-                          ))}
-                        </div>
+                            </div>
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                              <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-[#d8c7ab] bg-[#fffdf8] px-3 py-1.5 text-xs font-medium text-[#5f4c3b] hover:bg-[#fff7e8]">
+                                <input
+                                  type="checkbox"
+                                  checked={item.taxable !== false}
+                                  onChange={(e) => updateInvoiceLineItem(item.id, { taxable: e.target.checked })}
+                                />
+                                Taxable / subject to configured tax
+                              </label>
+                              <label className="inline-flex cursor-pointer items-center rounded-full border border-[#d8c7ab] bg-[#fffdf8] px-3 py-1.5 text-xs font-medium text-[#5f4c3b] hover:bg-[#fff7e8]">
+                                {uploadingReceiptLineItemId === item.id ? "Uploading..." : "Attach receipt"}
+                                <input
+                                  type="file"
+                                  multiple
+                                  accept="image/*,.pdf"
+                                  className="hidden"
+                                  disabled={uploadingReceiptLineItemId === item.id}
+                                  onChange={(e) => void uploadInvoiceReceipts(item.id, e.target.files)}
+                                />
+                              </label>
+                              <label className="inline-flex cursor-pointer items-center rounded-full border border-[#d8c7ab] bg-[#fffdf8] px-3 py-1.5 text-xs font-medium text-[#5f4c3b] hover:bg-[#fff7e8]">
+                                Take receipt photo
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  capture="environment"
+                                  className="hidden"
+                                  disabled={uploadingReceiptLineItemId === item.id}
+                                  onChange={(e) => void uploadInvoiceReceipts(item.id, e.target.files)}
+                                />
+                              </label>
+                              {(item.receipt_urls || []).map((url, receiptIndex) => (
+                                <span key={`${url}-${receiptIndex}`} className="inline-flex items-center gap-2 rounded-full border border-[#d8c7ab] bg-[#fffdf8] px-3 py-1.5 text-xs text-[#5f4c3b]">
+                                  <a href={url} target="_blank" rel="noreferrer" className="underline">
+                                    {item.receipt_names?.[receiptIndex] || `Receipt ${receiptIndex + 1}`}
+                                  </a>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeInvoiceReceipt(item.id, receiptIndex)}
+                                    className="font-semibold text-[#8a2e22]"
+                                  >
+                                    x
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -16063,13 +16295,19 @@ This removes its linked members and deletes the grounds account.`
                   <div className="text-sm font-semibold text-[#5f3e12]">
                     Line items subtotal: {formatCurrency(invoiceSubtotal)}
                   </div>
-                  <button
-                    type="button"
-                    onClick={addInvoiceLineItem}
-                    className="w-full rounded-full border border-[#b9822b] bg-white px-4 py-2 text-sm font-semibold text-[#5f3e12] transition hover:bg-[#fffaf0] sm:w-auto"
-                  >
-                    + Add custom expense
-                  </button>
+                  {isStatementComposer ? (
+                    <div className="text-xs font-medium text-[#8a5b18]">
+                      Statements are regenerated from invoice history when you preview, save, or send them.
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={addInvoiceLineItem}
+                      className="w-full rounded-full border border-[#b9822b] bg-white px-4 py-2 text-sm font-semibold text-[#5f3e12] transition hover:bg-[#fffaf0] sm:w-auto"
+                    >
+                      + Add custom expense
+                    </button>
+                  )}
                 </div>
               </section>
 
