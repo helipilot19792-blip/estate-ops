@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { sendJobOfferEmailsForSlots } from "@/lib/server/job-notifications";
+import { writeAuditLog } from "@/lib/server/audit-log";
+import { sendJobCancellationNotificationsForJobs, sendJobOfferEmailsForSlots } from "@/lib/server/job-notifications";
 
 export const dynamic = "force-dynamic";
 
@@ -153,7 +154,7 @@ export async function POST(request: NextRequest) {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    await requireAdmin(service, token, organizationId);
+    const { user, profile } = await requireAdmin(service, token, organizationId);
 
     const { data: job, error: jobError } = await service
       .from("turnover_jobs")
@@ -171,6 +172,13 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === "delete") {
+      const cancellationNotificationResult = await sendJobCancellationNotificationsForJobs(
+        "cleaner",
+        [jobId],
+        request.nextUrl.origin,
+        { allowedOrganizationIds: new Set([organizationId]) }
+      );
+
       const { error: slotDeleteError } = await service
         .from("turnover_job_slots")
         .delete()
@@ -196,7 +204,29 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "No job was deleted." }, { status: 409 });
       }
 
-      return NextResponse.json({ ok: true, action, deletedJobId: jobId });
+      await writeAuditLog(service, {
+        actorProfileId: profile.id,
+        actorEmail: user.email || null,
+        actorRole: profile.role,
+        organizationId,
+        actionType: "admin.delete_cleaning_job",
+        targetType: "turnover_jobs",
+        targetId: jobId,
+        metadata: {
+          property_id: job.property_id,
+          scheduled_for: job.scheduled_for,
+          cancellation_notifications_sent: cancellationNotificationResult.sent,
+          cancellation_push_sent: cancellationNotificationResult.pushSent,
+          cancellation_error_count: cancellationNotificationResult.errors.length,
+        },
+      });
+
+      return NextResponse.json({
+        ok: true,
+        action,
+        deletedJobId: jobId,
+        cancellationNotificationResult,
+      });
     }
 
     const { data: account, error: accountError } = await service

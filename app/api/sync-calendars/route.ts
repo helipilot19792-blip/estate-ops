@@ -20,6 +20,7 @@ type PropertyRow = {
   organization_id: string;
   name: string | null;
   address: string | null;
+  default_turnover_payout?: number | null;
   cleaner_assignment_mode?: string | null;
   cleaner_rotation_next_cleaner_account_id?: string | null;
 };
@@ -430,6 +431,24 @@ async function loadPropertiesMap(organizationIds?: string[] | null) {
 async function applyCleanerTrainingRotationToJob(jobId: string, property: PropertyRow) {
   if (property.cleaner_assignment_mode !== "training_rotation") return;
   await applyServerCleanerTrainingRotationToJob(supabase, jobId);
+}
+
+async function seedTurnoverSlotPayouts(jobId: string, defaultTurnoverPayout: number | null | undefined) {
+  const { error } = await supabase
+    .from("turnover_job_slots")
+    .update({
+      payout_type: "standard",
+      expected_payout_amount: Number(defaultTurnoverPayout || 0),
+      payment_status: "unpaid",
+      paid_amount: null,
+      payout_notes: null,
+      payment_notes: null,
+      paid_at: null,
+      payment_recorded_by_profile_id: null,
+    })
+    .eq("job_id", jobId);
+
+  if (error) throw error;
 }
 
 async function findSyncedJob(
@@ -932,6 +951,14 @@ export async function POST(request: Request) {
               `Job created but slot creation failed for ${event.summary || "reservation"} on ${event.checkoutDate}: ${slotError.message}`
             );
             continue;
+          }
+
+          try {
+            await seedTurnoverSlotPayouts(insertedJob.id, property?.default_turnover_payout);
+          } catch (payoutError: any) {
+            resultBucket.errors.push(
+              `Job created but payout defaults failed for ${event.summary || "reservation"} on ${event.checkoutDate}: ${payoutError?.message || "Unknown payout error"}`
+            );
           }
 
           try {

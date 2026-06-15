@@ -57,6 +57,24 @@ function getCleanerOfferExpiresAt(jobDate: string | null, now = new Date()) {
   return new Date(now.getTime() + responseHours * 60 * 60 * 1000).toISOString();
 }
 
+async function seedTurnoverSlotPayouts(jobId: string, defaultTurnoverPayout: number | null | undefined) {
+  const { error } = await service
+    .from("turnover_job_slots")
+    .update({
+      payout_type: "standard",
+      expected_payout_amount: Number(defaultTurnoverPayout || 0),
+      payment_status: "unpaid",
+      paid_amount: null,
+      payout_notes: null,
+      payment_notes: null,
+      paid_at: null,
+      payment_recorded_by_profile_id: null,
+    })
+    .eq("job_id", jobId);
+
+  if (error) throw new Error(error.message);
+}
+
 async function ensureManualCleaningJobHasOfferedSlots(params: {
   jobId: string;
   propertyId: string;
@@ -224,7 +242,7 @@ export async function POST(request: NextRequest) {
 
     const { data: property, error: propertyError } = await service
       .from("properties")
-      .select("id, organization_id")
+      .select("id, organization_id, default_turnover_payout")
       .eq("id", propertyId)
       .eq("organization_id", organizationId)
       .maybeSingle();
@@ -279,6 +297,8 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    await seedTurnoverSlotPayouts(insertedJob.id, property.default_turnover_payout);
 
     await applyCleanerTrainingRotationToJob(service, insertedJob.id);
 

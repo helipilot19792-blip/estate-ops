@@ -112,6 +112,18 @@ const QUIRKY_SYNCING_COPY = [
 const SHOW_ADMIN_TOP_BANNER = false;
 const MAINTENANCE_FLAG_SNOOZE_DAYS = 3;
 const SHOW_ADMIN_TOP_OVERVIEW = false;
+const CLEANER_PAYOUT_TYPE_OPTIONS = [
+  { value: "standard", label: "Standard" },
+  { value: "hourly", label: "Hourly" },
+  { value: "light_clean", label: "Light clean" },
+  { value: "extra_clean", label: "Extra clean" },
+  { value: "custom", label: "Custom" },
+] as const;
+const CLEANER_PAYMENT_STATUS_OPTIONS = [
+  { value: "unpaid", label: "Unpaid" },
+  { value: "partial", label: "Partially paid" },
+  { value: "paid", label: "Paid" },
+] as const;
 const PROPERTY_TIME_OPTIONS = Array.from({ length: 29 }, (_, index) => {
   const totalMinutes = 6 * 60 + index * 30;
   const hours = Math.floor(totalMinutes / 60);
@@ -143,6 +155,7 @@ type Property = {
   longitude?: number | string | null;
   default_checkin_time?: string | null;
   default_checkout_time?: string | null;
+  default_turnover_payout?: number | null;
   default_cleaner_units_needed: number;
   cleaner_units_required_strict: boolean;
   show_team_status_to_cleaners: boolean;
@@ -221,8 +234,34 @@ type JobSlot = {
   offer_push_sent_at?: string | null;
   offer_reminder_push_sent_at?: string | null;
   day_of_reminder_push_sent_at?: string | null;
+  payout_type?: "standard" | "hourly" | "light_clean" | "extra_clean" | "custom" | null;
+  expected_payout_amount?: number | null;
+  paid_amount?: number | null;
+  payment_status?: "unpaid" | "partial" | "paid" | null;
+  payout_notes?: string | null;
+  payment_notes?: string | null;
+  paid_at?: string | null;
+  payment_recorded_by_profile_id?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+};
+
+type CleanerPaymentRecordRow = {
+  id: string;
+  organization_id: string;
+  property_id: string | null;
+  cleaner_account_id: string | null;
+  job_id: string | null;
+  slot_id: string | null;
+  payout_type: "standard" | "hourly" | "light_clean" | "extra_clean" | "custom";
+  expected_payout_amount: number | null;
+  paid_amount: number | null;
+  payment_status: "unpaid" | "partial" | "paid";
+  payout_notes?: string | null;
+  payment_notes?: string | null;
+  paid_at?: string | null;
+  recorded_by_profile_id?: string | null;
+  created_at?: string | null;
 };
 
 
@@ -1691,6 +1730,7 @@ export default function AdminPage() {
   const [selectedPropertyUnitsNeeded, setSelectedPropertyUnitsNeeded] = useState("1");
   const [selectedPropertyUnitsStrict, setSelectedPropertyUnitsStrict] = useState(false);
   const [selectedPropertyShowTeamStatus, setSelectedPropertyShowTeamStatus] = useState(true);
+  const [selectedPropertyDefaultTurnoverPayout, setSelectedPropertyDefaultTurnoverPayout] = useState("");
   const [selectedPropertyWifiNetwork, setSelectedPropertyWifiNetwork] = useState("");
   const [selectedPropertyWifiPassword, setSelectedPropertyWifiPassword] = useState("");
   const [selectedPropertyGarbageDay, setSelectedPropertyGarbageDay] = useState("");
@@ -1708,11 +1748,26 @@ export default function AdminPage() {
   const [settingSelectedPropertyGps, setSettingSelectedPropertyGps] = useState(false);
   const [propertyManualDetailsDirty, setPropertyManualDetailsDirty] = useState(false);
   const [savingSelectedPropertyDefaults, setSavingSelectedPropertyDefaults] = useState(false);
+  const [savingSlotPaymentId, setSavingSlotPaymentId] = useState<string | null>(null);
   const [doorCode, setDoorCode] = useState("");
   const [alarmCode, setAlarmCode] = useState("");
   const [accessNotes, setAccessNotes] = useState("");
   const [accessDirty, setAccessDirty] = useState(false);
   const [propertyDefaultsDirty, setPropertyDefaultsDirty] = useState(false);
+  const [cleanerPaymentRecords, setCleanerPaymentRecords] = useState<CleanerPaymentRecordRow[]>([]);
+  const [slotPaymentDrafts, setSlotPaymentDrafts] = useState<
+    Record<
+      string,
+      {
+        payoutType: string;
+        expectedPayoutAmount: string;
+        paymentStatus: string;
+        paidAmount: string;
+        payoutNotes: string;
+        paymentNotes: string;
+      }
+    >
+  >({});
   const [nearbyGpsEnabled, setNearbyGpsEnabled] = useState(false);
   const [nearbyPosition, setNearbyPosition] = useState<{ latitude: number; longitude: number } | null>(null);
   const [nearbyGpsStatus, setNearbyGpsStatus] = useState<"idle" | "locating" | "ready" | "blocked">("idle");
@@ -2310,6 +2365,7 @@ export default function AdminPage() {
       setSelectedPropertyGarbageWeekBLabel("Recycling only");
       setSelectedPropertyLatitude("");
       setSelectedPropertyLongitude("");
+      setSelectedPropertyDefaultTurnoverPayout("");
       applyPropertyKnowledgeDraft(EMPTY_PROPERTY_KNOWLEDGE);
       setAccessDirty(false);
       setPropertyDefaultsDirty(false);
@@ -2350,6 +2406,11 @@ export default function AdminPage() {
       setSelectedPropertyUnitsNeeded(String(selectedProperty?.default_cleaner_units_needed || 1));
       setSelectedPropertyUnitsStrict(!!selectedProperty?.cleaner_units_required_strict);
       setSelectedPropertyShowTeamStatus(selectedProperty?.show_team_status_to_cleaners !== false);
+      setSelectedPropertyDefaultTurnoverPayout(
+        selectedProperty?.default_turnover_payout !== null && selectedProperty?.default_turnover_payout !== undefined
+          ? String(selectedProperty.default_turnover_payout)
+          : ""
+      );
     }
 
     if (!propertyManualDetailsDirty) {
@@ -2560,6 +2621,7 @@ export default function AdminPage() {
     setChatConversations((data.chatConversations ?? []) as ChatConversationRow[]);
     setChatParticipants((data.chatParticipants ?? []) as ChatParticipantRow[]);
     setChatMessages((data.chatMessages ?? []) as ChatMessageRow[]);
+    setCleanerPaymentRecords((data.cleanerPaymentRecords ?? []) as CleanerPaymentRecordRow[]);
     setChatHiddenItems((data.chatHiddenItems ?? []) as ChatHiddenItemRow[]);
 
     setReassignSelections((prev) => {
@@ -2714,6 +2776,7 @@ export default function AdminPage() {
       chatConversationsRes,
       chatParticipantsRes,
       chatMessagesRes,
+      cleanerPaymentRecordsRes,
       chatHiddenItemsRes,
     ] = await Promise.all([
       supabase
@@ -2883,6 +2946,12 @@ export default function AdminPage() {
         .select("id,organization_id,conversation_id,sender_profile_id,body,created_at,updated_at")
         .eq("organization_id", currentOrganizationId)
         .order("created_at", { ascending: true }),
+      supabase
+        .from("cleaner_payment_records")
+        .select("*")
+        .eq("organization_id", currentOrganizationId)
+        .order("created_at", { ascending: false })
+        .limit(200),
       currentAdminUserId
         ? supabase
             .from("chat_hidden_items")
@@ -2932,6 +3001,7 @@ export default function AdminPage() {
       chatConversationsRes,
       chatParticipantsRes,
       chatMessagesRes,
+      cleanerPaymentRecordsRes,
       chatHiddenItemsRes,
     ];
 
@@ -2954,6 +3024,7 @@ export default function AdminPage() {
         response !== chatConversationsRes &&
         response !== chatParticipantsRes &&
         response !== chatMessagesRes &&
+        response !== cleanerPaymentRecordsRes &&
         response !== chatHiddenItemsRes
       ) {
         setError(response.error.message);
@@ -3117,6 +3188,11 @@ export default function AdminPage() {
     );
     setChatParticipants(
       chatParticipantsRes.error ? [] : ((chatParticipantsRes.data ?? []) as ChatParticipantRow[])
+    );
+    setCleanerPaymentRecords(
+      cleanerPaymentRecordsRes.error && isOptionalTableError(cleanerPaymentRecordsRes.error)
+        ? []
+        : ((cleanerPaymentRecordsRes.data ?? []) as CleanerPaymentRecordRow[])
     );
     setChatMessages(chatMessagesRes.error ? [] : ((chatMessagesRes.data ?? []) as ChatMessageRow[]));
     setChatHiddenItems(
@@ -5425,7 +5501,13 @@ export default function AdminPage() {
         throw new Error(payload?.error || "Could not delete job.");
       }
 
-      setActionMessage("Job deleted.");
+      const cancellationEmailSent = Number(payload?.cancellationNotificationResult?.sent || 0);
+      const cancellationPushSent = Number(payload?.cancellationNotificationResult?.pushSent || 0);
+      setActionMessage(
+        cancellationEmailSent > 0 || cancellationPushSent > 0
+          ? `Job deleted. ${cancellationEmailSent} cancellation email${cancellationEmailSent === 1 ? "" : "s"} and ${cancellationPushSent} push alert${cancellationPushSent === 1 ? "" : "s"} sent.`
+          : "Job deleted."
+      );
       await loadData();
     } catch (err: any) {
       setError(err?.message || "Could not delete job.");
@@ -6129,12 +6211,22 @@ This removes its linked members and deletes the grounds account.`
     setSavingSelectedPropertyDefaults(true);
 
     try {
+      const parsedTurnoverPayout =
+        selectedPropertyDefaultTurnoverPayout.trim() === ""
+          ? 0
+          : Number(selectedPropertyDefaultTurnoverPayout);
+
+      if (!Number.isFinite(parsedTurnoverPayout) || parsedTurnoverPayout < 0) {
+        throw new Error("Standard turnover payout must be a valid non-negative amount.");
+      }
+
       const { error } = await supabase
         .from("properties")
         .update({
           default_cleaner_units_needed: Number(selectedPropertyUnitsNeeded || "1"),
           cleaner_units_required_strict: selectedPropertyUnitsStrict,
           show_team_status_to_cleaners: selectedPropertyShowTeamStatus,
+          default_turnover_payout: Math.round(parsedTurnoverPayout * 100) / 100,
         })
         .eq("id", selectedPropertyId);
 
@@ -9859,6 +9951,25 @@ This removes its linked members and deletes the grounds account.`
   );
 
   const selectedGroundsProperty = properties.find((p) => p.id === groundsJobPropertyId);
+  const unpaidCleanerSlots = useMemo(
+    () =>
+      jobSlots.filter((slot) => {
+        const job = jobs.find((entry) => entry.id === slot.job_id);
+        if (!job) return false;
+        const slotStatus = String(slot.status || "").toLowerCase().trim();
+        const paymentStatus = String(slot.payment_status || "unpaid").toLowerCase().trim();
+        return (
+          !!slot.cleaner_account_id &&
+          ["accepted", "in_progress", "completed"].includes(slotStatus) &&
+          paymentStatus !== "paid"
+        );
+      }),
+    [jobSlots, jobs]
+  );
+  const recentCleanerPaymentRecords = useMemo(
+    () => cleanerPaymentRecords.slice(0, 18),
+    [cleanerPaymentRecords]
+  );
 
   function getGroundsJobDisplayStatus(job: GroundsJob, slots: GroundsJobSlot[]) {
     const needed = job.grounds_units_needed || Math.max(slots.length, 1);
@@ -9956,6 +10067,105 @@ This removes its linked members and deletes the grounds account.`
         ))}
       </div>
     );
+  }
+
+  function getCleanerPayoutTypeLabel(value: string | null | undefined) {
+    return CLEANER_PAYOUT_TYPE_OPTIONS.find((option) => option.value === value)?.label || "Custom";
+  }
+
+  function getCleanerPaymentStatusLabel(value: string | null | undefined) {
+    return CLEANER_PAYMENT_STATUS_OPTIONS.find((option) => option.value === value)?.label || "Unpaid";
+  }
+
+  function getSlotPaymentDraft(slot: JobSlot) {
+    return (
+      slotPaymentDrafts[slot.id] || {
+        payoutType: slot.payout_type || "standard",
+        expectedPayoutAmount:
+          slot.expected_payout_amount !== null && slot.expected_payout_amount !== undefined
+            ? String(slot.expected_payout_amount)
+            : "0",
+        paymentStatus: slot.payment_status || "unpaid",
+        paidAmount:
+          slot.paid_amount !== null && slot.paid_amount !== undefined ? String(slot.paid_amount) : "",
+        payoutNotes: slot.payout_notes || "",
+        paymentNotes: slot.payment_notes || "",
+      }
+    );
+  }
+
+  function updateSlotPaymentDraft(slotId: string, updates: Partial<ReturnType<typeof getSlotPaymentDraft>>) {
+    setSlotPaymentDrafts((current) => ({
+      ...current,
+      [slotId]: {
+        ...(current[slotId] || {
+          payoutType: "standard",
+          expectedPayoutAmount: "0",
+          paymentStatus: "unpaid",
+          paidAmount: "",
+          payoutNotes: "",
+          paymentNotes: "",
+        }),
+        ...updates,
+      },
+    }));
+  }
+
+  async function saveSlotPayment(slot: JobSlot) {
+    if (!currentOrganizationId) {
+      setError("No organization selected.");
+      return;
+    }
+
+    const draft = getSlotPaymentDraft(slot);
+    setSavingSlotPaymentId(slot.id);
+    setError("");
+    setActionMessage("");
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("Could not verify your admin session.");
+      }
+
+      const response = await fetch("/api/admin/cleaner-payment", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          organizationId: currentOrganizationId,
+          slotId: slot.id,
+          payoutType: draft.payoutType,
+          expectedPayoutAmount: draft.expectedPayoutAmount,
+          paymentStatus: draft.paymentStatus,
+          paidAmount: draft.paidAmount,
+          payoutNotes: draft.payoutNotes,
+          paymentNotes: draft.paymentNotes,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || "Could not save cleaner payment.");
+      }
+
+      setSlotPaymentDrafts((current) => {
+        const next = { ...current };
+        delete next[slot.id];
+        return next;
+      });
+      setActionMessage(`Cleaner payout saved for slot ${slot.slot_number}.`);
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Could not save cleaner payment.");
+    } finally {
+      setSavingSlotPaymentId(null);
+    }
   }
 
   function getJobNotificationTone(slot: JobSlot | GroundsJobSlot) {
@@ -18251,6 +18461,8 @@ This removes its linked members and deletes the grounds account.`
               <div className="rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] p-4 text-sm text-[#6f6255]">
                 Default staffing: {selectedPropertyDefaults.default_cleaner_units_needed} unit{selectedPropertyDefaults.default_cleaner_units_needed === 1 ? "" : "s"}
                 {selectedPropertyDefaults.cleaner_units_required_strict ? ", full team required" : ", one unit may proceed"}
+                <br />
+                Default payout per assigned cleaner slot: {formatCurrency(selectedPropertyDefaults.default_turnover_payout)}
               </div>
             ) : null}
 
@@ -18910,6 +19122,14 @@ This removes its linked members and deletes the grounds account.`
             {visibleJobs.map((job) => {
               const slots = jobSlotsByJobId[job.id] ?? [];
               const acceptedCount = slots.filter((slot) => slot.status === "accepted").length;
+              const expectedPayoutTotal = slots.reduce(
+                (sum, slot) => sum + Number(slot.expected_payout_amount || 0),
+                0
+              );
+              const paidPayoutTotal = slots.reduce(
+                (sum, slot) => sum + Number(slot.paid_amount || 0),
+                0
+              );
               const propertyCleanerAccounts = getCleanerAccountsForProperty(job.property_id);
               const currentAdminAssignedSlot = slots.find(
                 (slot) =>
@@ -18941,6 +19161,9 @@ This removes its linked members and deletes the grounds account.`
                   </div>
                   <div className="mt-1 text-sm text-[#8a7b68]">
                     Cleaning date: {formatScheduledFor(job.scheduled_for || extractCheckoutDate(job.notes))}
+                  </div>
+                  <div className="mt-1 text-sm text-[#8a7b68]">
+                    Cleaner payout: {formatCurrency(expectedPayoutTotal)} expected, {formatCurrency(paidPayoutTotal)} marked paid
                   </div>
 
                   {isCleaningCompanyMode ? (
@@ -18993,27 +19216,173 @@ This removes its linked members and deletes the grounds account.`
                   )}
 
                   <div className="mt-3 space-y-2">
-                    {slots.map((slot) => (
-                      <div key={slot.id} className="rounded-[18px] border border-[#eadfce] bg-white px-3 py-2 text-xs text-[#6f6255]">
-                        <div>Slot {slot.slot_number}: {getCleanerAccountName(slot.cleaner_account_id)}</div>
-                        <div>Status: {slot.status}</div>
-                        <div>Offered: {formatDateTime(slot.offered_at)}</div>
-                        <div>Expires: {formatDateTime(slot.expires_at)}</div>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleSlotNotificationDetails(slot.id);
-                          }}
-                          className={`mt-2 inline-flex rounded-full border px-2 py-1 text-left font-semibold transition hover:brightness-[0.98] ${getJobNotificationTone(slot)}`}
-                        >
-                          Notifications: {getSlotNotificationSummary(slot)}
-                        </button>
-                        {expandedNotificationSlotIds.has(slot.id) ? renderSlotNotificationDetails(slot) : null}
-                        <div>Accepted: {formatDateTime(slot.accepted_at)}</div>
-                        <div>Declined: {formatDateTime(slot.declined_at)}</div>
-                      </div>
-                    ))}
+                    {slots.map((slot) => {
+                      const draft = getSlotPaymentDraft(slot);
+
+                      return (
+                        <div key={slot.id} className="rounded-[18px] border border-[#eadfce] bg-white px-3 py-3 text-xs text-[#6f6255]">
+                          <div>Slot {slot.slot_number}: {getCleanerAccountName(slot.cleaner_account_id)}</div>
+                          <div>Status: {slot.status}</div>
+                          <div>Offered: {formatDateTime(slot.offered_at)}</div>
+                          <div>Expires: {formatDateTime(slot.expires_at)}</div>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleSlotNotificationDetails(slot.id);
+                            }}
+                            className={`mt-2 inline-flex rounded-full border px-2 py-1 text-left font-semibold transition hover:brightness-[0.98] ${getJobNotificationTone(slot)}`}
+                          >
+                            Notifications: {getSlotNotificationSummary(slot)}
+                          </button>
+                          {expandedNotificationSlotIds.has(slot.id) ? renderSlotNotificationDetails(slot) : null}
+                          <div>Accepted: {formatDateTime(slot.accepted_at)}</div>
+                          <div>Declined: {formatDateTime(slot.declined_at)}</div>
+
+                          <div
+                            className="mt-3 rounded-[16px] border border-[#d9ccbb] bg-[#fcfaf7] p-3 text-[#5f5245]"
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8a7b68]">
+                                Cleaner payout
+                              </div>
+                              <div className="rounded-full border border-[#d8c7ab] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#6f6255]">
+                                {getCleanerPaymentStatusLabel(slot.payment_status)}
+                              </div>
+                            </div>
+
+                            <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                              <div>
+                                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8a7b68]">
+                                  Payout type
+                                </label>
+                                <select
+                                  className="w-full rounded-[12px] border border-[#d9ccbb] bg-white px-3 py-2 text-xs outline-none focus:border-[#b48d4e]"
+                                  value={draft.payoutType}
+                                  onChange={(event) =>
+                                    updateSlotPaymentDraft(slot.id, { payoutType: event.target.value })
+                                  }
+                                >
+                                  {CLEANER_PAYOUT_TYPE_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8a7b68]">
+                                  Expected
+                                </label>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  inputMode="decimal"
+                                  className="w-full rounded-[12px] border border-[#d9ccbb] bg-white px-3 py-2 text-xs outline-none focus:border-[#b48d4e]"
+                                  value={draft.expectedPayoutAmount}
+                                  onChange={(event) =>
+                                    updateSlotPaymentDraft(slot.id, {
+                                      expectedPayoutAmount: event.target.value,
+                                    })
+                                  }
+                                />
+                              </div>
+
+                              <div>
+                                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8a7b68]">
+                                  Payment status
+                                </label>
+                                <select
+                                  className="w-full rounded-[12px] border border-[#d9ccbb] bg-white px-3 py-2 text-xs outline-none focus:border-[#b48d4e]"
+                                  value={draft.paymentStatus}
+                                  onChange={(event) =>
+                                    updateSlotPaymentDraft(slot.id, {
+                                      paymentStatus: event.target.value,
+                                    })
+                                  }
+                                >
+                                  {CLEANER_PAYMENT_STATUS_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8a7b68]">
+                                  Paid amount
+                                </label>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  inputMode="decimal"
+                                  className="w-full rounded-[12px] border border-[#d9ccbb] bg-white px-3 py-2 text-xs outline-none focus:border-[#b48d4e]"
+                                  value={draft.paidAmount}
+                                  onChange={(event) =>
+                                    updateSlotPaymentDraft(slot.id, { paidAmount: event.target.value })
+                                  }
+                                  placeholder={draft.paymentStatus === "unpaid" ? "0.00" : draft.expectedPayoutAmount}
+                                />
+                              </div>
+                            </div>
+
+                            <div className="mt-2 grid gap-2 xl:grid-cols-2">
+                              <div>
+                                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8a7b68]">
+                                  Payout note
+                                </label>
+                                <input
+                                  type="text"
+                                  className="w-full rounded-[12px] border border-[#d9ccbb] bg-white px-3 py-2 text-xs outline-none focus:border-[#b48d4e]"
+                                  value={draft.payoutNotes}
+                                  onChange={(event) =>
+                                    updateSlotPaymentDraft(slot.id, { payoutNotes: event.target.value })
+                                  }
+                                  placeholder="Example: Extra clean after long stay"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8a7b68]">
+                                  Payment note
+                                </label>
+                                <input
+                                  type="text"
+                                  className="w-full rounded-[12px] border border-[#d9ccbb] bg-white px-3 py-2 text-xs outline-none focus:border-[#b48d4e]"
+                                  value={draft.paymentNotes}
+                                  onChange={(event) =>
+                                    updateSlotPaymentDraft(slot.id, { paymentNotes: event.target.value })
+                                  }
+                                  placeholder="Example: Sent by e-transfer"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => void saveSlotPayment(slot)}
+                                disabled={savingSlotPaymentId === slot.id}
+                                className="rounded-full bg-[#241c15] px-4 py-2 text-xs font-semibold text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60"
+                              >
+                                {savingSlotPaymentId === slot.id ? "Saving..." : "Save payout"}
+                              </button>
+                              <span className="text-[11px] text-[#8a7b68]">
+                                {getCleanerPayoutTypeLabel(slot.payout_type)} · {formatCurrency(slot.expected_payout_amount)} expected
+                                {slot.payment_status && slot.payment_status !== "unpaid"
+                                  ? ` · ${formatCurrency(slot.paid_amount)} paid`
+                                  : ""}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
 
                   {acceptedCount < job.cleaner_units_needed ? (
@@ -19073,6 +19442,88 @@ This removes its linked members and deletes the grounds account.`
 
               );
             })}
+          </div>
+        </section>
+        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-xl font-semibold tracking-tight">Cleaner Payment Log</h2>
+              <p className="mt-1 text-sm text-[#7f7263]">
+                Keep a running ledger of cleaner payouts without exposing rates in the cleaner portal.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <span className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-semibold text-[#6f6255]">
+                {unpaidCleanerSlots.length} unpaid or partial slot{unpaidCleanerSlots.length === 1 ? "" : "s"}
+              </span>
+              <span className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-semibold text-[#6f6255]">
+                {cleanerPaymentRecords.length} logged update{cleanerPaymentRecords.length === 1 ? "" : "s"}
+              </span>
+            </div>
+          </div>
+
+          {unpaidCleanerSlots.length > 0 ? (
+            <div className="mt-4 rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8a7b68]">
+                Still waiting on payment
+              </div>
+              <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {unpaidCleanerSlots.slice(0, 9).map((slot) => {
+                  const job = jobs.find((entry) => entry.id === slot.job_id);
+                  return (
+                    <div key={slot.id} className="rounded-[18px] border border-[#eadfce] bg-white p-3 text-sm text-[#6f6255]">
+                      <div className="font-semibold text-[#241c15]">{getCleanerAccountName(slot.cleaner_account_id)}</div>
+                      <div className="mt-1">{getPropertyName(job?.property_id || null)}</div>
+                      <div className="mt-1">Slot {slot.slot_number}</div>
+                      <div className="mt-1">Status: {getCleanerPaymentStatusLabel(slot.payment_status)}</div>
+                      <div className="mt-1">Expected: {formatCurrency(slot.expected_payout_amount)}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="mt-4 space-y-3">
+            {recentCleanerPaymentRecords.length === 0 ? (
+              <div className="rounded-[20px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-5 py-8 text-sm text-[#8a7b68]">
+                No cleaner payment records yet. Saving payout changes on a cleaner slot will create the first log entry.
+              </div>
+            ) : (
+              recentCleanerPaymentRecords.map((record) => {
+                const job = jobs.find((entry) => entry.id === record.job_id);
+                return (
+                  <div key={record.id} className="rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                      <div>
+                        <div className="text-base font-semibold text-[#241c15]">
+                          {getCleanerAccountName(record.cleaner_account_id)}
+                        </div>
+                        <div className="mt-1 text-sm text-[#6f6255]">
+                          {getPropertyName(record.property_id)}{job?.scheduled_for ? ` · ${formatScheduledFor(job.scheduled_for)}` : ""}
+                        </div>
+                        <div className="mt-1 text-sm text-[#8a7b68]">
+                          {getCleanerPayoutTypeLabel(record.payout_type)} · {getCleanerPaymentStatusLabel(record.payment_status)}
+                        </div>
+                        {record.payout_notes ? (
+                          <div className="mt-2 text-sm text-[#6f6255]">Payout note: {record.payout_notes}</div>
+                        ) : null}
+                        {record.payment_notes ? (
+                          <div className="mt-1 text-sm text-[#6f6255]">Payment note: {record.payment_notes}</div>
+                        ) : null}
+                      </div>
+
+                      <div className="rounded-[18px] border border-[#eadfce] bg-white px-4 py-3 text-sm text-[#6f6255]">
+                        <div>Expected: {formatCurrency(record.expected_payout_amount)}</div>
+                        <div className="mt-1">Paid: {formatCurrency(record.paid_amount)}</div>
+                        <div className="mt-1">Saved: {formatDateTime(record.created_at)}</div>
+                        <div className="mt-1">Paid at: {formatDateTime(record.paid_at)}</div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         </section>
         </>
@@ -20305,7 +20756,7 @@ This removes its linked members and deletes the grounds account.`
                       </button>
                     </div>
 
-                    <div className="mt-4 grid gap-4 md:grid-cols-3">
+                    <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                       <div>
                         <label className="mb-2 block text-sm font-medium text-[#5f5245]">Cleaner units needed</label>
                         <select
@@ -20320,6 +20771,26 @@ This removes its linked members and deletes the grounds account.`
                           <option value="2">2 cleaner units</option>
                           <option value="3">3 cleaner units</option>
                         </select>
+                      </div>
+
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-[#5f5245]">Standard turnover payout</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          inputMode="decimal"
+                          className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                          value={selectedPropertyDefaultTurnoverPayout}
+                          onChange={(e) => {
+                            setSelectedPropertyDefaultTurnoverPayout(e.target.value);
+                            setPropertyDefaultsDirty(true);
+                          }}
+                          placeholder="0.00"
+                        />
+                        <p className="mt-2 text-xs leading-5 text-[#8a7b68]">
+                          Used as the starting payout for each assigned cleaner slot on new turnover jobs.
+                        </p>
                       </div>
 
                       <label className="flex items-center gap-2 rounded-[18px] border border-[#eadfce] bg-white px-4 py-3 text-sm text-[#6f6255]">

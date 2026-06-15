@@ -122,6 +122,7 @@ export async function GET(request: Request) {
       chatConversationsRes,
       chatParticipantsRes,
       chatMessagesRes,
+      cleanerPaymentRecordsRes,
       chatHiddenItemsRes,
     ] = await Promise.all([
       serviceClient.from("properties").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
@@ -169,6 +170,7 @@ export async function GET(request: Request) {
       serviceClient.from("chat_conversations").select("id,organization_id,subject,context_type,context_id,created_by_profile_id,last_message_at,created_at,updated_at").eq("organization_id", organizationId).order("updated_at", { ascending: false }),
       serviceClient.from("chat_participants").select("id,organization_id,conversation_id,participant_type,participant_profile_id,participant_owner_account_id,participant_role,display_name,email,last_read_at,created_at").eq("organization_id", organizationId).order("created_at", { ascending: true }),
       serviceClient.from("chat_messages").select("id,organization_id,conversation_id,sender_profile_id,body,created_at,updated_at").eq("organization_id", organizationId).order("created_at", { ascending: true }),
+      serviceClient.from("cleaner_payment_records").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }).limit(200),
       serviceClient.from("chat_hidden_items").select("id,organization_id,conversation_id,message_id,hidden_by_profile_id,hidden_by_owner_account_id,hidden_at").eq("organization_id", organizationId).eq("hidden_by_profile_id", user.id),
     ]);
 
@@ -360,6 +362,7 @@ export async function GET(request: Request) {
         chatConversations: chatConversationsRes.error && isOptionalTableError(chatConversationsRes.error) ? [] : chatConversationsRes.data ?? [],
         chatParticipants: chatParticipantsRes.error && isOptionalTableError(chatParticipantsRes.error) ? [] : chatParticipantsRes.data ?? [],
         chatMessages: chatMessagesRes.error && isOptionalTableError(chatMessagesRes.error) ? [] : chatMessagesRes.data ?? [],
+        cleanerPaymentRecords: cleanerPaymentRecordsRes.error && isOptionalTableError(cleanerPaymentRecordsRes.error) ? [] : cleanerPaymentRecordsRes.data ?? [],
         chatHiddenItems: chatHiddenItemsRes.error && isOptionalTableError(chatHiddenItemsRes.error) ? [] : chatHiddenItemsRes.data ?? [],
       },
     });
