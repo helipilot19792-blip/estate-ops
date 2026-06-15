@@ -214,7 +214,7 @@ export async function createInvoicePdfBuffer(input: InvoicePdfInput) {
     for (const line of wrapPdfText(input.notes, 82)) drawText(line, pageLeft, 10.5, { color: muted, gap: 15 });
   }
 
-  if (input.paymentInstructions) {
+  if (input.documentKind !== "statement" && input.paymentInstructions) {
     drawText("Payment", pageLeft, 12, { bold: true, gap: 17 });
     for (const line of wrapPdfText(input.paymentInstructions, 82)) drawText(line, pageLeft, 10.5, { color: muted, gap: 15 });
   }

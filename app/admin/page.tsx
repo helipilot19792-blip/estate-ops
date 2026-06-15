@@ -14331,7 +14331,10 @@ This removes its linked members and deletes the grounds account.`
           invoiceDocumentKind === "statement" && statementData?.ok
             ? statementData.notes || null
             : invoiceNotes.trim() || null,
-        payment_instructions: invoicePaymentInstructions.trim() || null,
+        payment_instructions:
+          invoiceDocumentKind === "statement"
+            ? null
+            : invoicePaymentInstructions.trim() || null,
         line_items: validLineItems,
         subtotal,
         tax_total: taxTotal,
@@ -14603,7 +14606,10 @@ This removes its linked members and deletes the grounds account.`
             invoiceDocumentKind === "statement" && statementData?.ok
               ? statementData.notes || null
               : invoiceNotes.trim() || null,
-          paymentInstructions: invoicePaymentInstructions.trim() || null,
+          paymentInstructions:
+            invoiceDocumentKind === "statement"
+              ? null
+              : invoicePaymentInstructions.trim() || null,
           subtotal,
           taxLines,
           taxTotal,
@@ -16022,46 +16028,58 @@ This removes its linked members and deletes the grounds account.`
                     Add Property
                   </button>
                 </div>
-                <input
-                  type="date"
-                  className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                  value={invoiceIssueDate}
-                  onChange={(e) => {
-                    setInvoiceDraftDirty(true);
-                    setInvoiceIssueDate(e.target.value);
-                  }}
-                />
+                <label className="text-xs font-medium text-[#5f5245]">
+                  {isStatementComposer ? "Statement date" : "Invoice date"}
+                  <input
+                    type="date"
+                    className="mt-1 w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                    value={invoiceIssueDate}
+                    onChange={(e) => {
+                      setInvoiceDraftDirty(true);
+                      setInvoiceIssueDate(e.target.value);
+                    }}
+                  />
+                </label>
                 {isStatementComposer ? (
-                  <input
-                    type="date"
-                    className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                    value={statementStartDate}
-                    onChange={(e) => {
-                      setInvoiceDraftDirty(true);
-                      setStatementStartDate(e.target.value);
-                    }}
-                  />
+                  <label className="text-xs font-medium text-[#5f5245]">
+                    Statement start date
+                    <input
+                      type="date"
+                      className="mt-1 w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                      value={statementStartDate}
+                      onChange={(e) => {
+                        setInvoiceDraftDirty(true);
+                        setStatementStartDate(e.target.value);
+                      }}
+                    />
+                  </label>
                 ) : (
-                  <input
-                    type="date"
-                    className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                    value={invoiceDueDate}
-                    onChange={(e) => {
-                      setInvoiceDraftDirty(true);
-                      setInvoiceDueDate(e.target.value);
-                    }}
-                  />
+                  <label className="text-xs font-medium text-[#5f5245]">
+                    Due date
+                    <input
+                      type="date"
+                      className="mt-1 w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                      value={invoiceDueDate}
+                      onChange={(e) => {
+                        setInvoiceDraftDirty(true);
+                        setInvoiceDueDate(e.target.value);
+                      }}
+                    />
+                  </label>
                 )}
                 {isStatementComposer ? (
-                  <input
-                    type="date"
-                    className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                    value={statementEndDate}
-                    onChange={(e) => {
-                      setInvoiceDraftDirty(true);
-                      setStatementEndDate(e.target.value);
-                    }}
-                  />
+                  <label className="text-xs font-medium text-[#5f5245]">
+                    Statement end date
+                    <input
+                      type="date"
+                      className="mt-1 w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                      value={statementEndDate}
+                      onChange={(e) => {
+                        setInvoiceDraftDirty(true);
+                        setStatementEndDate(e.target.value);
+                      }}
+                    />
+                  </label>
                 ) : null}
                 <input
                   className="rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e] md:col-span-2"

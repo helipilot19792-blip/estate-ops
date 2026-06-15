@@ -277,7 +277,7 @@ export async function POST(request: NextRequest) {
           </div>
         </div>
         ${invoice.notes ? `<p style="margin-top:18px;color:#5f5245;">${escapeHtml(invoice.notes)}</p>` : ""}
-        ${invoice.payment_instructions ? `<p style="margin-top:18px;"><strong>Payment:</strong> ${escapeHtml(invoice.payment_instructions)}</p>` : ""}
+        ${documentKind !== "statement" && invoice.payment_instructions ? `<p style="margin-top:18px;"><strong>Payment:</strong> ${escapeHtml(invoice.payment_instructions)}</p>` : ""}
         <div style="margin-top:22px;padding:16px;border:1px solid #eadfce;border-radius:14px;background:#fcfaf7;">
           <p style="margin:0 0 12px;color:#5f5245;">
             Log in to your owner portal to view billing history and download files, including PDF, CSV, and JSON exports.
@@ -306,7 +306,7 @@ export async function POST(request: NextRequest) {
           dueDate: invoice.due_date || null,
           headerText: invoice.header_text || null,
           notes: invoice.notes || null,
-          paymentInstructions: invoice.payment_instructions || null,
+          paymentInstructions: documentKind === "statement" ? null : invoice.payment_instructions || null,
           subtotal: Number(invoice.subtotal || 0),
           taxLines,
           taxTotal: Number(invoice.tax_total || 0),

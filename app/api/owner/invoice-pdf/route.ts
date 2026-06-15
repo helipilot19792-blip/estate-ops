@@ -145,7 +145,7 @@ export async function POST(request: NextRequest) {
       dueDate: invoice.due_date || null,
       headerText: invoice.header_text || null,
       notes: invoice.notes || null,
-      paymentInstructions: invoice.payment_instructions || null,
+      paymentInstructions: documentKind === "statement" ? null : invoice.payment_instructions || null,
       subtotal: Number(invoice.subtotal || 0),
       taxLines: normalizeTaxLines(invoice),
       taxTotal: Number(invoice.tax_total || 0),
