@@ -13927,6 +13927,53 @@ This removes its linked members and deletes the grounds account.`
     const propertyIds = new Set(scopedProperties.map((property) => property.id));
     const generated: OwnerInvoiceLineItem[] = [];
 
+    if (isStatement) {
+      const statementInvoices = ownerInvoices
+        .filter((invoice) => {
+          if (invoice.owner_account_id !== ownerId) return false;
+          if (invoice.status !== "sent") return false;
+          if (getInvoiceDocumentKind(invoice) === "statement") return false;
+          if (invoice.property_id && !propertyIds.has(invoice.property_id)) return false;
+          return true;
+        })
+        .sort((a, b) => {
+          const left = a.issue_date || a.created_at || "";
+          const right = b.issue_date || b.created_at || "";
+          return left.localeCompare(right);
+        });
+
+      for (const invoice of statementInvoices) {
+        const property = properties.find((item) => item.id === invoice.property_id);
+        const propertyLabel = property?.name || property?.address || "Property";
+        generated.push({
+          id: `statement-invoice-${invoice.id}`,
+          description: `${propertyLabel} - ${invoice.invoice_number} - ${formatDateLabel(invoice.issue_date || invoice.created_at?.slice(0, 10) || null)}`,
+          category: "other",
+          quantity: 1,
+          rate: Number(invoice.total || 0),
+          taxable: false,
+          source_id: invoice.id,
+        });
+      }
+
+      setInvoiceApplyTax(false);
+      setInvoiceLineItems((items) => {
+        const customItems = items.filter((item) => !item.source_id && item.description.trim());
+        return generated.length > 0
+          ? [...generated, ...customItems]
+          : customItems.length > 0
+            ? customItems
+            : [{ id: "custom-1", description: "", category: "expense", quantity: 1, rate: 0, taxable: false }];
+      });
+      setInvoiceDraftDirty(true);
+      setActionMessage(
+        generated.length > 0
+          ? `Added ${generated.length} open invoice${generated.length === 1 ? "" : "s"} across ${scopedProperties.length} linked propert${scopedProperties.length === 1 ? "y" : "ies"}. Statement tax was turned off so prior invoice totals are not taxed again.`
+          : "No open invoices were found across this owner's linked properties."
+      );
+      return;
+    }
+
     if (invoiceAutoTurnover) {
       for (const job of jobs.filter((item) => propertyIds.has(item.property_id))) {
         const {
@@ -15791,7 +15838,7 @@ This removes its linked members and deletes the grounds account.`
                 </select>
                 {invoiceDocumentKind === "statement" ? (
                   <div className="rounded-[18px] border border-[#d8c7ab] bg-[#fffaf0] px-4 py-3 text-sm text-[#5f4c3b] md:col-span-2">
-                    Statements now gather billable jobs across all properties linked to the selected owner. The property picker is only used to help pick the owner faster.
+                    Statements now gather open invoice totals across all properties linked to the selected owner. The property picker is only used to help pick the owner faster.
                   </div>
                 ) : null}
                 <div className="flex flex-wrap gap-2 rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] p-3 md:col-span-2">
