@@ -6,6 +6,9 @@ export const dynamic = "force-dynamic";
 
 type PlatformAction =
   | { type: "ensure_cleaning_demo" }
+  | { type: "set_ai_master"; enabled: boolean }
+  | { type: "set_ai_organization"; organizationId: string; enabled: boolean }
+  | { type: "set_ai_member"; organizationId: string; memberId: string; enabled: boolean }
   | { type: "extend_trial"; organizationId: string; days?: number }
   | { type: "set_status"; organizationId: string; status: "trialing" | "active" | "past_due" | "canceled" | "suspended" }
   | { type: "set_organization_type"; organizationId: string; organizationType: "property_management" | "cleaning_company" }
@@ -42,13 +45,16 @@ type OrganizationRow = {
   property_limit?: number | null;
   member_limit?: number | null;
   billing_override_reason?: string | null;
+  ai_copilot_enabled?: boolean | null;
 };
 
 type OrganizationMemberRow = {
+  id: string;
   organization_id: string;
   profile_id: string;
   role: string | null;
   created_at?: string | null;
+  ai_copilot_enabled?: boolean | null;
 };
 
 type ProfileRow = {
@@ -117,6 +123,11 @@ type FeatureUsageSummary = {
   >;
 };
 
+type PlatformSettingsRow = {
+  id: boolean;
+  ai_copilot_enabled?: boolean | null;
+};
+
 function getClients(token?: string | null) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey =
@@ -180,7 +191,7 @@ async function requirePlatformAdmin(token?: string | null) {
 
 async function loadOrganizationOverview(serviceClient: ReturnType<typeof getClients>["serviceClient"]) {
   const organizationSelect =
-    "id,name,slug,created_at,created_by,subscription_status,trial_started_at,trial_ends_at,billing_enabled,stripe_customer_id,stripe_subscription_id,organization_type,account_type,plan_name,property_limit,member_limit,billing_override_reason";
+    "id,name,slug,created_at,created_by,subscription_status,trial_started_at,trial_ends_at,billing_enabled,stripe_customer_id,stripe_subscription_id,organization_type,account_type,plan_name,property_limit,member_limit,billing_override_reason,ai_copilot_enabled";
   const [
     membersRes,
     profilesRes,
@@ -191,7 +202,7 @@ async function loadOrganizationOverview(serviceClient: ReturnType<typeof getClie
   ] = await Promise.all([
     serviceClient
       .from("organization_members")
-      .select("organization_id, profile_id, role, created_at"),
+      .select("id, organization_id, profile_id, role, created_at, ai_copilot_enabled"),
     serviceClient
       .from("profiles")
       .select("id,email,full_name,role"),
@@ -221,9 +232,16 @@ async function loadOrganizationOverview(serviceClient: ReturnType<typeof getClie
       .order("created_at", { ascending: false });
   }
 
+  let safeMembersRes = membersRes;
+  if (safeMembersRes.error?.code === "42703") {
+    safeMembersRes = await serviceClient
+      .from("organization_members")
+      .select("id, organization_id, profile_id, role, created_at");
+  }
+
   const responses = [
     organizationsRes,
-    membersRes,
+    safeMembersRes,
     profilesRes,
     propertiesRes,
     turnoverJobsRes,
@@ -243,9 +261,13 @@ async function loadOrganizationOverview(serviceClient: ReturnType<typeof getClie
     plan_name: "Beta trial",
     property_limit: 10,
     member_limit: 15,
+    ai_copilot_enabled: false,
     ...organization,
   }));
-  const members = (membersRes.data ?? []) as OrganizationMemberRow[];
+  const members = ((safeMembersRes.data ?? []) as OrganizationMemberRow[]).map((member) => ({
+    ai_copilot_enabled: false,
+    ...member,
+  }));
   const profiles = (profilesRes.data ?? []) as ProfileRow[];
   const properties = (propertiesRes.data ?? []) as OrganizationLinkedRow[];
   const turnoverJobs = (turnoverJobsRes.data ?? []) as OrganizationLinkedRow[];
@@ -264,8 +286,12 @@ async function loadOrganizationOverview(serviceClient: ReturnType<typeof getClie
       .filter((profile): profile is ProfileRow => !!profile)
       .map((profile) => ({
         id: profile.id,
+        membership_id: adminMembers.find((member) => member.profile_id === profile.id)?.id || "",
         full_name: profile.full_name,
         email: profile.email,
+        ai_copilot_enabled: Boolean(
+          adminMembers.find((member) => member.profile_id === profile.id)?.ai_copilot_enabled
+        ),
       }));
 
     return {
@@ -418,6 +444,41 @@ async function loadFeatureUsageSummary(serviceClient: ReturnType<typeof getClien
   }
 
   return summarizeFeatureUsage((data ?? []) as FeatureUsageEventRow[]);
+}
+
+function isMissingAiCopilotControlsError(error: { code?: string | null; message?: string | null } | null | undefined) {
+  const message = error?.message || "";
+  return (
+    error?.code === "42P01" ||
+    error?.code === "42703" ||
+    message.includes("platform_settings") ||
+    message.includes("ai_copilot_enabled")
+  );
+}
+
+async function loadPlatformSettings(serviceClient: ReturnType<typeof getClients>["serviceClient"]) {
+  const { data, error } = await serviceClient
+    .from("platform_settings")
+    .select("id,ai_copilot_enabled")
+    .eq("id", true)
+    .maybeSingle();
+
+  if (error) {
+    if (isMissingAiCopilotControlsError(error)) {
+      return {
+        available: false,
+        ai_copilot_enabled: false,
+      };
+    }
+
+    throw new Error(error.message);
+  }
+
+  const row = data as PlatformSettingsRow | null;
+  return {
+    available: true,
+    ai_copilot_enabled: Boolean(row?.ai_copilot_enabled),
+  };
 }
 
 async function deleteRowsByOrganization(
@@ -925,6 +986,7 @@ export async function GET(req: NextRequest) {
     const organizations = await loadOrganizationOverview(serviceClient);
     const auditLogState = await loadRecentAuditLogs(serviceClient);
     const featureUsage = await loadFeatureUsageSummary(serviceClient);
+    const platformSettings = await loadPlatformSettings(serviceClient);
 
     return NextResponse.json({
       ok: true,
@@ -937,6 +999,7 @@ export async function GET(req: NextRequest) {
       auditLogs: auditLogState.entries,
       auditLogAvailable: auditLogState.available,
       featureUsage,
+      platformSettings,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected server error.";
@@ -980,8 +1043,126 @@ export async function POST(req: NextRequest) {
           organization_type: "cleaning_company",
         },
       });
+    } else if (body.type === "set_ai_master") {
+      const { error: upsertError } = await serviceClient
+        .from("platform_settings")
+        .upsert({
+          id: true,
+          ai_copilot_enabled: body.enabled,
+          updated_at: new Date().toISOString(),
+        });
+
+      if (upsertError) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: isMissingAiCopilotControlsError(upsertError)
+              ? "AI copilot controls are missing. Run supabase/add_ai_copilot_controls.sql in Supabase first."
+              : upsertError.message,
+          },
+          { status: 500 }
+        );
+      }
+
+      await writeAuditLog(serviceClient, {
+        actorProfileId: profile.id,
+        actorEmail: profile.email,
+        actorRole: profile.role,
+        organizationId: null,
+        actionType: "platform.set_ai_master",
+        targetType: "platform_settings",
+        targetId: "platform_settings:true",
+        metadata: {
+          ai_copilot_enabled: body.enabled,
+        },
+      });
     } else if (!body.organizationId) {
       return NextResponse.json({ ok: false, error: "Missing organizationId." }, { status: 400 });
+    } else if (body.type === "set_ai_organization") {
+      const { error: updateError } = await serviceClient
+        .from("organizations")
+        .update({
+          ai_copilot_enabled: body.enabled,
+        })
+        .eq("id", body.organizationId);
+
+      if (updateError) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: isMissingAiCopilotControlsError(updateError)
+              ? "AI copilot controls are missing. Run supabase/add_ai_copilot_controls.sql in Supabase first."
+              : updateError.message,
+          },
+          { status: 500 }
+        );
+      }
+
+      await writeAuditLog(serviceClient, {
+        actorProfileId: profile.id,
+        actorEmail: profile.email,
+        actorRole: profile.role,
+        organizationId: body.organizationId,
+        actionType: "platform.set_ai_organization",
+        targetType: "organization",
+        targetId: body.organizationId,
+        metadata: {
+          ai_copilot_enabled: body.enabled,
+        },
+      });
+    } else if (body.type === "set_ai_member") {
+      const { data: membership, error: membershipError } = await serviceClient
+        .from("organization_members")
+        .select("id, organization_id, profile_id, role")
+        .eq("id", body.memberId)
+        .eq("organization_id", body.organizationId)
+        .maybeSingle();
+
+      if (membershipError) {
+        return NextResponse.json({ ok: false, error: membershipError.message }, { status: 500 });
+      }
+
+      if (!membership) {
+        return NextResponse.json({ ok: false, error: "Organization member not found." }, { status: 404 });
+      }
+
+      if (membership.role !== "admin") {
+        return NextResponse.json({ ok: false, error: "Only admin members can receive copilot access." }, { status: 400 });
+      }
+
+      const { error: updateError } = await serviceClient
+        .from("organization_members")
+        .update({
+          ai_copilot_enabled: body.enabled,
+        })
+        .eq("id", body.memberId)
+        .eq("organization_id", body.organizationId);
+
+      if (updateError) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: isMissingAiCopilotControlsError(updateError)
+              ? "AI copilot controls are missing. Run supabase/add_ai_copilot_controls.sql in Supabase first."
+              : updateError.message,
+          },
+          { status: 500 }
+        );
+      }
+
+      await writeAuditLog(serviceClient, {
+        actorProfileId: profile.id,
+        actorEmail: profile.email,
+        actorRole: profile.role,
+        organizationId: body.organizationId,
+        actionType: "platform.set_ai_member",
+        targetType: "organization_member",
+        targetId: body.memberId,
+        metadata: {
+          profile_id: membership.profile_id,
+          ai_copilot_enabled: body.enabled,
+        },
+      });
     } else if (body.type === "extend_trial") {
       const extraDays = Number(body.days || 30);
       const { data: organization, error: orgError } = await serviceClient
@@ -1184,6 +1365,7 @@ export async function POST(req: NextRequest) {
     const organizations = await loadOrganizationOverview(serviceClient);
     const auditLogState = await loadRecentAuditLogs(serviceClient);
     const featureUsage = await loadFeatureUsageSummary(serviceClient);
+    const platformSettings = await loadPlatformSettings(serviceClient);
     return NextResponse.json({
       ok: true,
       previewOrganizationId,
@@ -1191,6 +1373,7 @@ export async function POST(req: NextRequest) {
       auditLogs: auditLogState.entries,
       auditLogAvailable: auditLogState.available,
       featureUsage,
+      platformSettings,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected server error.";

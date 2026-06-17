@@ -21,6 +21,7 @@ type PlatformOrganization = {
   property_limit?: number | null;
   member_limit?: number | null;
   billing_override_reason?: string | null;
+  ai_copilot_enabled?: boolean | null;
   member_count: number;
   admin_count: number;
   property_count: number;
@@ -29,8 +30,10 @@ type PlatformOrganization = {
   owner_count: number;
   admins: Array<{
     id: string;
+    membership_id: string;
     full_name: string | null;
     email: string | null;
+    ai_copilot_enabled?: boolean | null;
   }>;
 };
 
@@ -50,6 +53,11 @@ type PlatformAuditLog = {
   target_type?: string | null;
   target_id?: string | null;
   metadata?: Record<string, unknown> | null;
+};
+
+type PlatformSettings = {
+  available: boolean;
+  ai_copilot_enabled: boolean;
 };
 
 type FeatureUsageSummary = {
@@ -173,6 +181,7 @@ export default function PlatformPage() {
   const [auditLogs, setAuditLogs] = useState<PlatformAuditLog[]>([]);
   const [auditLogAvailable, setAuditLogAvailable] = useState(true);
   const [featureUsage, setFeatureUsage] = useState<FeatureUsageSummary | null>(null);
+  const [platformSettings, setPlatformSettings] = useState<PlatformSettings | null>(null);
   const [error, setError] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [actingOrganizationId, setActingOrganizationId] = useState<string | null>(null);
@@ -217,6 +226,7 @@ export default function PlatformPage() {
     setAuditLogs((payload.auditLogs || []) as PlatformAuditLog[]);
     setAuditLogAvailable(payload.auditLogAvailable !== false);
     setFeatureUsage((payload.featureUsage || null) as FeatureUsageSummary | null);
+    setPlatformSettings((payload.platformSettings || null) as PlatformSettings | null);
     setLoading(false);
   }
 
@@ -304,6 +314,7 @@ export default function PlatformPage() {
       setAuditLogs((payload.auditLogs || []) as PlatformAuditLog[]);
       setAuditLogAvailable(payload.auditLogAvailable !== false);
       setFeatureUsage((payload.featureUsage || null) as FeatureUsageSummary | null);
+      setPlatformSettings((payload.platformSettings || null) as PlatformSettings | null);
       setStatusMessage(message);
       return true;
     } catch (err) {
@@ -351,6 +362,7 @@ export default function PlatformPage() {
       setAuditLogs((payload.auditLogs || []) as PlatformAuditLog[]);
       setAuditLogAvailable(payload.auditLogAvailable !== false);
       setFeatureUsage((payload.featureUsage || null) as FeatureUsageSummary | null);
+      setPlatformSettings((payload.platformSettings || null) as PlatformSettings | null);
       setCleaningAdminPreviewOrganization(demoOrganization);
       setStatusMessage("Cleaning company demo opened as its own isolated organization.");
     } catch (err) {
@@ -458,6 +470,61 @@ export default function PlatformPage() {
             {statusMessage}
           </div>
         ) : null}
+
+        <section className="mt-6 rounded-[28px] border border-[#d8deea] bg-[linear-gradient(135deg,#fffdf8_0%,#f8fbff_100%)] p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#506586]">AI Copilot</div>
+              <h2 className="mt-2 text-xl font-semibold tracking-tight text-[#1f314d]">Global master switch</h2>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-[#617087]">
+                This is the top-level kill switch. Organizations and users must still be enabled beneath it before Copilot can run.
+              </p>
+            </div>
+            <span
+              className={`w-fit rounded-full border px-3 py-1 text-xs font-semibold ${
+                platformSettings?.ai_copilot_enabled
+                  ? "border-[#b9d9ca] bg-[#eef8f2] text-[#2f6b55]"
+                  : "border-[#eadfce] bg-white text-[#7f7263]"
+              }`}
+            >
+              {platformSettings?.ai_copilot_enabled ? "Globally on" : "Globally off"}
+            </span>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button
+              type="button"
+              disabled={platformSettings?.available === false || platformSettings?.ai_copilot_enabled === true}
+              onClick={() =>
+                void handleAction(
+                  { type: "set_ai_master", enabled: true },
+                  "AI Copilot is now globally enabled."
+                )
+              }
+              className="rounded-full border border-[#b9d9ca] bg-white px-4 py-2.5 text-sm font-medium text-[#2f6b55] transition hover:bg-[#eef8f2] disabled:opacity-60"
+            >
+              Turn on globally
+            </button>
+            <button
+              type="button"
+              disabled={platformSettings?.available === false || platformSettings?.ai_copilot_enabled === false}
+              onClick={() =>
+                void handleAction(
+                  { type: "set_ai_master", enabled: false },
+                  "AI Copilot is now globally disabled."
+                )
+              }
+              className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2.5 text-sm font-medium text-[#5f5245] transition hover:bg-[#fcfaf7] disabled:opacity-60"
+            >
+              Turn off globally
+            </button>
+            {platformSettings?.available === false ? (
+              <div className="rounded-full border border-[#efc6c6] bg-[#fff5f5] px-4 py-2.5 text-sm text-[#8a2e22]">
+                Run `supabase/add_ai_copilot_controls.sql` in Supabase to activate these controls.
+              </div>
+            ) : null}
+          </div>
+        </section>
 
         <section className="mt-6 rounded-[28px] border border-[#d8deea] bg-[linear-gradient(135deg,#f8fbff_0%,#fffdf8_100%)] p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -778,6 +845,120 @@ export default function PlatformPage() {
                               .map((admin) => admin.full_name || admin.email || admin.id)
                               .join(", ")
                           : "No tenant admins found"}
+                      </div>
+                    </div>
+
+                    <div className="mt-4 rounded-[22px] border border-[#d8deea] bg-[linear-gradient(135deg,#fffdf8_0%,#f8fbff_100%)] px-4 py-4">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                        <div>
+                          <div className="text-[11px] uppercase tracking-[0.18em] text-[#506586]">AI Copilot access</div>
+                          <div className="mt-1 text-sm font-semibold text-[#1f314d]">
+                            {organization.ai_copilot_enabled ? "Organization enabled" : "Organization disabled"}
+                          </div>
+                          <p className="mt-1 max-w-2xl text-xs leading-5 text-[#617087]">
+                            Org access only matters when the global master switch is on. User access is limited to admin memberships below.
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            disabled={isActing || organization.ai_copilot_enabled === true || platformSettings?.available === false}
+                            onClick={() =>
+                              void handleAction(
+                                { type: "set_ai_organization", organizationId: organization.id, enabled: true },
+                                `${organization.name || "Organization"} can now use AI Copilot when enabled per user.`
+                              )
+                            }
+                            className="rounded-full border border-[#b9d9ca] bg-white px-4 py-2.5 text-sm font-medium text-[#2f6b55] transition hover:bg-[#eef8f2] disabled:opacity-60"
+                          >
+                            Enable org
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isActing || organization.ai_copilot_enabled === false || platformSettings?.available === false}
+                            onClick={() =>
+                              void handleAction(
+                                { type: "set_ai_organization", organizationId: organization.id, enabled: false },
+                                `${organization.name || "Organization"} no longer has AI Copilot access.`
+                              )
+                            }
+                            className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2.5 text-sm font-medium text-[#5f5245] transition hover:bg-[#fcfaf7] disabled:opacity-60"
+                          >
+                            Disable org
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 grid gap-3">
+                        {organization.admins.length > 0 ? (
+                          organization.admins.map((admin) => (
+                            <div
+                              key={`${organization.id}-${admin.membership_id}`}
+                              className="flex flex-col gap-3 rounded-[18px] border border-[#d9e4ef] bg-white px-4 py-3 md:flex-row md:items-center md:justify-between"
+                            >
+                              <div>
+                                <div className="text-sm font-semibold text-[#241c15]">
+                                  {admin.full_name || admin.email || admin.id}
+                                </div>
+                                <div className="mt-1 text-xs text-[#6b7c92]">
+                                  {admin.email || "No email"} | {admin.ai_copilot_enabled ? "User enabled" : "User disabled"}
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  disabled={
+                                    isActing ||
+                                    !admin.membership_id ||
+                                    admin.ai_copilot_enabled === true ||
+                                    platformSettings?.available === false
+                                  }
+                                  onClick={() =>
+                                    void handleAction(
+                                      {
+                                        type: "set_ai_member",
+                                        organizationId: organization.id,
+                                        memberId: admin.membership_id,
+                                        enabled: true,
+                                      },
+                                      `${admin.full_name || admin.email || "Admin"} can now use AI Copilot in ${organization.name || "this organization"}.`
+                                    )
+                                  }
+                                  className="rounded-full border border-[#b9d9ca] bg-[#eef8f2] px-3 py-2 text-xs font-semibold text-[#2f6b55] transition hover:bg-[#e4f4eb] disabled:opacity-60"
+                                >
+                                  Allow user
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={
+                                    isActing ||
+                                    !admin.membership_id ||
+                                    admin.ai_copilot_enabled === false ||
+                                    platformSettings?.available === false
+                                  }
+                                  onClick={() =>
+                                    void handleAction(
+                                      {
+                                        type: "set_ai_member",
+                                        organizationId: organization.id,
+                                        memberId: admin.membership_id,
+                                        enabled: false,
+                                      },
+                                      `${admin.full_name || admin.email || "Admin"} can no longer use AI Copilot in ${organization.name || "this organization"}.`
+                                    )
+                                  }
+                                  className="rounded-full border border-[#d8c7ab] bg-white px-3 py-2 text-xs font-semibold text-[#5f5245] transition hover:bg-[#fcfaf7] disabled:opacity-60"
+                                >
+                                  Block user
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="rounded-[18px] border border-dashed border-[#d9e4ef] bg-white px-4 py-4 text-sm text-[#617087]">
+                            Add a tenant admin first, then turn Copilot on for that specific admin user.
+                          </div>
+                        )}
                       </div>
                     </div>
 
