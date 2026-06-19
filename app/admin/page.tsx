@@ -4906,21 +4906,35 @@ export default function AdminPage() {
           ? property.cleaner_rotation_next_cleaner_account_id || propertyAssignments[0]?.cleaner_account_id || null
           : null;
 
-      const { data: updatedProperty, error } = await supabase
-        .from("properties")
-        .update({
-          cleaner_assignment_mode: mode,
-          cleaner_rotation_next_cleaner_account_id: nextCleanerId,
-        })
-        .eq("id", property.id)
-        .eq("organization_id", currentOrganizationId)
-        .select("id, cleaner_assignment_mode, cleaner_rotation_next_cleaner_account_id")
-        .maybeSingle();
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
 
-      if (error) throw error;
-      if (!updatedProperty) {
-        throw new Error("Training Rotation could not be saved for this property. Reload the page and try again.");
+      if (sessionError || !session?.access_token) {
+        throw new Error("No active admin session was found.");
       }
+
+      const response = await fetch("/api/admin/property-details", {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          organizationId: currentOrganizationId,
+          propertyId: property.id,
+          cleanerAssignmentMode: mode,
+          cleanerRotationNextCleanerAccountId: nextCleanerId,
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || !payload?.ok || !payload?.property) {
+        throw new Error(payload?.error || "Training Rotation could not be saved for this property. Reload the page and try again.");
+      }
+      const updatedProperty = payload.property as Property;
 
       setProperties((rows) =>
         rows.map((row) =>
@@ -4979,20 +4993,33 @@ export default function AdminPage() {
         if (assignmentError) throw assignmentError;
       }
 
-      const { data: updatedProperty, error: propertyError } = await supabase
-        .from("properties")
-        .update({
-          cleaner_assignment_mode: "priority",
-          cleaner_rotation_next_cleaner_account_id: null,
-        })
-        .eq("id", property.id)
-        .eq("organization_id", currentOrganizationId)
-        .select("id")
-        .maybeSingle();
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
 
-      if (propertyError) throw propertyError;
-      if (!updatedProperty) {
-        throw new Error("The property rotation mode could not be updated. Reload the page and try again.");
+      if (sessionError || !session?.access_token) {
+        throw new Error("No active admin session was found.");
+      }
+
+      const response = await fetch("/api/admin/property-details", {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          organizationId: currentOrganizationId,
+          propertyId: property.id,
+          cleanerAssignmentMode: "priority",
+          cleanerRotationNextCleanerAccountId: null,
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || !payload?.ok || !payload?.property) {
+        throw new Error(payload?.error || "The property rotation mode could not be updated. Reload the page and try again.");
       }
 
       setActionMessage(`${getCleanerAccountName(primaryCleanerAccountId)} is now primary for ${property.name || property.address || "property"}.`);

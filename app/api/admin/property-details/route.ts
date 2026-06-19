@@ -24,6 +24,12 @@ function normalizeOptionalCoordinate(value: unknown, min: number, max: number) {
   return parsed;
 }
 
+function normalizeCleanerAssignmentMode(value: unknown) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  return text === "priority" || text === "training_rotation" ? text : "";
+}
+
 export async function POST(request: NextRequest) {
   if (!supabaseUrl || !publicSupabaseKey || !serviceRoleKey) {
     return NextResponse.json(
@@ -114,7 +120,9 @@ export async function POST(request: NextRequest) {
       longitude: normalizeOptionalCoordinate(body?.longitude, -180, 180),
       default_checkin_time: normalizeOptionalTime(body?.defaultCheckinTime),
       default_checkout_time: normalizeOptionalTime(body?.defaultCheckoutTime),
-    };
+    } as Record<string, unknown>;
+    const cleanerAssignmentMode = normalizeCleanerAssignmentMode(body?.cleanerAssignmentMode);
+    const cleanerRotationNextCleanerAccountId = String(body?.cleanerRotationNextCleanerAccountId || "").trim() || null;
     let geocodeWarning: string | null = null;
 
     if (updatePayload.default_checkin_time === "" || updatePayload.default_checkout_time === "") {
@@ -123,6 +131,10 @@ export async function POST(request: NextRequest) {
 
     if (updatePayload.latitude === "" || updatePayload.longitude === "") {
       return NextResponse.json({ error: "Property GPS coordinates must be valid latitude and longitude values." }, { status: 400 });
+    }
+
+    if (cleanerAssignmentMode === "") {
+      return NextResponse.json({ error: "Cleaner assignment mode must be priority or training_rotation." }, { status: 400 });
     }
 
     const { data: existingProperty, error: existingPropertyError } = await serviceClient
@@ -152,6 +164,12 @@ export async function POST(request: NextRequest) {
       } catch {
         geocodeWarning = "Property details were saved, but automatic GPS lookup did not complete.";
       }
+    }
+
+    if (cleanerAssignmentMode) {
+      updatePayload.cleaner_assignment_mode = cleanerAssignmentMode;
+      updatePayload.cleaner_rotation_next_cleaner_account_id =
+        cleanerAssignmentMode === "training_rotation" ? cleanerRotationNextCleanerAccountId : null;
     }
 
     const { data: property, error: updateError } = await serviceClient
