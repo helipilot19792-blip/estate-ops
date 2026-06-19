@@ -6,9 +6,9 @@ export default function Loading() {
       <div className="mx-auto max-w-7xl">
         <AdminLoadingScene
           eyebrow="Admin workspace"
-          title="Rolling into the dashboard."
-          body="Properties, jobs, invoices, and team activity are loading now. The mower is just here to keep morale high while the admin page catches up."
-          badge="Starting up"
+          title="Preparing the dashboard."
+          body="Properties, jobs, invoices, and team activity are loading now."
+          badge="Loading"
         />
       </div>
     </main>

@@ -6,8 +6,8 @@ export default function Loading() {
       <div className="mx-auto max-w-7xl">
         <PortalLoadingScene
           eyebrow="Owner portal"
-          title="Rolling into the owner dashboard."
-          body="Bookings, invoices, and property updates are loading now. The mower is doing a quick pass while the owner portal gets settled."
+          title="Preparing your owner dashboard."
+          body="Bookings, invoices, and property updates are loading now."
           badge="Loading updates"
         />
       </div>

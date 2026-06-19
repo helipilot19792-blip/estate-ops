@@ -6,8 +6,8 @@ export default function Loading() {
       <div className="mx-auto max-w-7xl">
         <PortalLoadingScene
           eyebrow="Cleaner portal"
-          title="Rolling into the cleaning board."
-          body="Assigned cleanings, access details, and checklist progress are loading now. The mower is keeping things tidy while the cleaner portal wakes up."
+          title="Preparing the cleaning board."
+          body="Assigned cleanings, access details, and checklist progress are loading now."
           badge="Loading jobs"
         />
       </div>

@@ -6,8 +6,8 @@ export default function Loading() {
       <div className="mx-auto max-w-7xl">
         <PortalLoadingScene
           eyebrow="Grounds portal"
-          title="Rolling into the grounds board."
-          body="Recurring work, property tasks, and field updates are loading now. The mower animation is staying on brand while the grounds portal catches up."
+          title="Preparing the grounds board."
+          body="Recurring work, property tasks, and field updates are loading now."
           badge="Loading routes"
         />
       </div>
