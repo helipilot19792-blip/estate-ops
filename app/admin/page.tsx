@@ -4885,6 +4885,11 @@ export default function AdminPage() {
   }
 
   async function updateCleanerAssignmentMode(property: Property, mode: "priority" | "training_rotation") {
+    if (!currentOrganizationId) {
+      setError("Choose an organization before updating cleaner rotation.");
+      return;
+    }
+
     const propertyAssignments = getCleanerAssignmentsForProperty(property.id);
     if (mode === "training_rotation" && propertyAssignments.length < 2) {
       setError("Add at least two cleaner assignments before turning on Training Rotation.");
@@ -4901,24 +4906,29 @@ export default function AdminPage() {
           ? property.cleaner_rotation_next_cleaner_account_id || propertyAssignments[0]?.cleaner_account_id || null
           : null;
 
-      const { error } = await supabase
+      const { data: updatedProperty, error } = await supabase
         .from("properties")
         .update({
           cleaner_assignment_mode: mode,
           cleaner_rotation_next_cleaner_account_id: nextCleanerId,
         })
         .eq("id", property.id)
-        .eq("organization_id", currentOrganizationId);
+        .eq("organization_id", currentOrganizationId)
+        .select("id, cleaner_assignment_mode, cleaner_rotation_next_cleaner_account_id")
+        .maybeSingle();
 
       if (error) throw error;
+      if (!updatedProperty) {
+        throw new Error("Training Rotation could not be saved for this property. Reload the page and try again.");
+      }
 
       setProperties((rows) =>
         rows.map((row) =>
-          row.id === property.id
+          row.id === updatedProperty.id
             ? {
                 ...row,
-                cleaner_assignment_mode: mode,
-                cleaner_rotation_next_cleaner_account_id: nextCleanerId,
+                cleaner_assignment_mode: updatedProperty.cleaner_assignment_mode,
+                cleaner_rotation_next_cleaner_account_id: updatedProperty.cleaner_rotation_next_cleaner_account_id,
               }
             : row
         )
@@ -4928,6 +4938,7 @@ export default function AdminPage() {
           ? `Training Rotation turned on for ${property.name || property.address || "property"}.`
           : `Primary/backup mode restored for ${property.name || property.address || "property"}.`
       );
+      await loadData();
     } catch (err: unknown) {
       setError(getErrorMessage(err, "Could not update cleaner assignment mode. Run the Training Rotation SQL first if you have not already."));
     } finally {
@@ -4936,6 +4947,11 @@ export default function AdminPage() {
   }
 
   async function finishCleanerTrainingRotation(property: Property, primaryCleanerAccountId: string) {
+    if (!currentOrganizationId) {
+      setError("Choose an organization before finishing cleaner rotation.");
+      return;
+    }
+
     const propertyAssignments = getCleanerAssignmentsForProperty(property.id);
     if (propertyAssignments.length === 0) return;
 
@@ -4963,16 +4979,21 @@ export default function AdminPage() {
         if (assignmentError) throw assignmentError;
       }
 
-      const { error: propertyError } = await supabase
+      const { data: updatedProperty, error: propertyError } = await supabase
         .from("properties")
         .update({
           cleaner_assignment_mode: "priority",
           cleaner_rotation_next_cleaner_account_id: null,
         })
         .eq("id", property.id)
-        .eq("organization_id", currentOrganizationId);
+        .eq("organization_id", currentOrganizationId)
+        .select("id")
+        .maybeSingle();
 
       if (propertyError) throw propertyError;
+      if (!updatedProperty) {
+        throw new Error("The property rotation mode could not be updated. Reload the page and try again.");
+      }
 
       setActionMessage(`${getCleanerAccountName(primaryCleanerAccountId)} is now primary for ${property.name || property.address || "property"}.`);
       await loadData();
