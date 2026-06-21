@@ -449,6 +449,17 @@ type TurnoverJobChecklistItemRow = {
   updated_at?: string | null;
 };
 
+const DEFAULT_CLEANING_CHECKLIST = [
+  "Clean kitchen sink and counters",
+  "Clean toilets, tubs, and bathroom sinks",
+  "Replace linens and make beds",
+  "Vacuum and mop floors",
+  "Empty garbage and recycling",
+  "Restock guest supplies",
+  "Check for damage or left items",
+  "Take final walkthrough photos",
+] as const;
+
 type PropertyVendorRow = {
   id: string;
   organization_id: string;
@@ -8196,6 +8207,23 @@ This removes its linked members and deletes the grounds account.`
         .sort((a, b) => a.sort_order - b.sort_order || a.title.localeCompare(b.title)),
     [propertyCleaningChecklistItems, selectedPropertyId]
   );
+  const selectedPropertyEffectiveChecklistItems = useMemo(() => {
+    if (selectedPropertyChecklistItems.length > 0) {
+      return selectedPropertyChecklistItems.map((item) => ({
+        id: item.id,
+        title: item.title,
+        description: item.description,
+        isDefault: false,
+      }));
+    }
+
+    return DEFAULT_CLEANING_CHECKLIST.map((title, index) => ({
+      id: `default-${index + 1}`,
+      title,
+      description: null,
+      isDefault: true,
+    }));
+  }, [selectedPropertyChecklistItems]);
   const selectedPropertyVendors = useMemo(
     () => propertyVendors.filter((vendor) => vendor.property_id === selectedPropertyId),
     [propertyVendors, selectedPropertyId]
@@ -8986,6 +9014,12 @@ This removes its linked members and deletes the grounds account.`
     };
   }
 
+  function getCleaningChecklistItemsForJob(jobId: string) {
+    return (turnoverChecklistItemsByJobId[jobId] ?? []).slice().sort((a, b) => {
+      return a.sort_order - b.sort_order || a.title.localeCompare(b.title);
+    });
+  }
+
   function toggleTodayProgress(id: string) {
     setExpandedTodayProgressIds((current) => {
       const next = new Set(current);
@@ -9002,6 +9036,12 @@ This removes its linked members and deletes the grounds account.`
     progressCompleted: number;
     progressTotal: number;
     progressPercent: number;
+    progressChecklistItems?: Array<{
+      id: string;
+      title: string;
+      description: string | null;
+      completed_at: string | null;
+    }>;
   }) {
     if (item.kind !== "Cleaning") return null;
 
@@ -9030,8 +9070,33 @@ This removes its linked members and deletes the grounds account.`
           </span>
         </div>
         {expanded ? (
-          <div className="mt-2 text-xs font-medium text-[#5f5245]">
-            {item.progressSummary || "No cleaner progress has been recorded yet."}
+          <div className="mt-2 space-y-2 text-xs font-medium text-[#5f5245]">
+            <div>{item.progressSummary || "No cleaner progress has been recorded yet."}</div>
+            {item.progressChecklistItems && item.progressChecklistItems.length > 0 ? (
+              <div className="space-y-1 rounded-lg border border-[#eee3d2] bg-[#fcfaf7] p-2">
+                {item.progressChecklistItems.map((checklistItem, index) => (
+                  <div key={checklistItem.id} className="flex items-start gap-2">
+                    <span
+                      className={`mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[9px] font-bold ${
+                        checklistItem.completed_at
+                          ? "border-[#2f7d4f] bg-[#2f7d4f] text-white"
+                          : "border-[#d8c7ab] bg-white text-[#9a8d7d]"
+                      }`}
+                    >
+                      {checklistItem.completed_at ? "✓" : index + 1}
+                    </span>
+                    <div className="min-w-0">
+                      <div className={checklistItem.completed_at ? "text-[#2f7d4f]" : "text-[#5f5245]"}>
+                        {checklistItem.title}
+                      </div>
+                      {checklistItem.description ? (
+                        <div className="text-[11px] font-normal text-[#8a7b68]">{checklistItem.description}</div>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
         ) : null}
       </button>
@@ -9098,6 +9163,7 @@ This removes its linked members and deletes the grounds account.`
         const acceptedCleanerNames = acceptedCleanerContacts.map((contact) => contact.name);
         const stranded = slots.some((slot) => slot.status === "stranded" || !slot.cleaner_account_id);
         const progress = getCleaningProgressSummary(job.id, slots);
+        const progressChecklistItems = getCleaningChecklistItemsForJob(job.id);
         const cleaningStatus = acceptedCleanerNames.length > 0
           ? acceptedCleanerNames.join(", ")
           : stranded
@@ -9118,6 +9184,7 @@ This removes its linked members and deletes the grounds account.`
           progressCompleted: progress.checklistCompleted,
           progressTotal: progress.checklistTotal,
           progressPercent: progress.progressPercent,
+          progressChecklistItems,
           staffContacts: acceptedCleanerContacts,
           staffDetailLabel: "Cleaner",
           needsAttention: acceptedCleanerNames.length === 0,
@@ -9364,6 +9431,7 @@ This removes its linked members and deletes the grounds account.`
         const stranded = slots.some((slot) => slot.status === "stranded" || !slot.cleaner_account_id);
         const offered = slots.some((slot) => slot.status === "offered");
         const progress = getCleaningProgressSummary(job.id, slots);
+        const progressChecklistItems = getCleaningChecklistItemsForJob(job.id);
         const cleanerDetail = acceptedCleanerNames.length > 0
           ? `Cleaner: ${acceptedCleanerNames.join(", ")}`
           : stranded
@@ -9385,6 +9453,7 @@ This removes its linked members and deletes the grounds account.`
           progressCompleted: progress.checklistCompleted,
           progressTotal: progress.checklistTotal,
           progressPercent: progress.progressPercent,
+          progressChecklistItems,
           staffContacts: acceptedCleanerContacts,
           staffDetailLabel: "Cleaner",
           bookingEventId: null as string | null,
@@ -22088,11 +22157,11 @@ This removes its linked members and deletes the grounds account.`
                   <div className="space-y-3">
                     {selectedPropertyChecklistItems.length === 0 ? (
                       <div className="rounded-[24px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-5 py-6 text-sm leading-6 text-[#8a7b68]">
-                        No custom checklist items yet. Cleaner jobs will use the default cleaning checklist until you add property-specific items here.
+                        No custom checklist items yet. Cleaner jobs are currently using the default 8-step cleaning checklist shown below until you add property-specific items here.
                       </div>
                     ) : null}
 
-                    {selectedPropertyChecklistItems.map((item, index) => (
+                    {selectedPropertyEffectiveChecklistItems.map((item, index) => (
                       <div key={item.id} className="rounded-[22px] border border-[#d7e6df] bg-white p-4 shadow-sm">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                           <div className="min-w-0">
@@ -22101,6 +22170,11 @@ This removes its linked members and deletes the grounds account.`
                                 {index + 1}
                               </span>
                               <div className="text-base font-semibold text-[#241c15]">{item.title}</div>
+                              {item.isDefault ? (
+                                <span className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-2.5 py-0.5 text-xs font-semibold text-[#6f6255]">
+                                  Default
+                                </span>
+                              ) : null}
                             </div>
                             {item.description ? (
                               <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#6f6255]">
@@ -22108,14 +22182,16 @@ This removes its linked members and deletes the grounds account.`
                               </div>
                             ) : null}
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => void deletePropertyChecklistItem(item.id)}
-                            disabled={deletingChecklistItemId === item.id}
-                            className="rounded-full border border-[#e7c6c1] bg-white px-4 py-2 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff4f2] disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            {deletingChecklistItemId === item.id ? "Removing..." : "Remove"}
-                          </button>
+                          {!item.isDefault ? (
+                            <button
+                              type="button"
+                              onClick={() => void deletePropertyChecklistItem(item.id)}
+                              disabled={deletingChecklistItemId === item.id}
+                              className="rounded-full border border-[#e7c6c1] bg-white px-4 py-2 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff4f2] disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {deletingChecklistItemId === item.id ? "Removing..." : "Remove"}
+                            </button>
+                          ) : null}
                         </div>
                       </div>
                     ))}
