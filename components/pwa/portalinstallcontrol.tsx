@@ -341,8 +341,13 @@ export default function PortalInstallControl({
   const canOfferInstall = !isStandalone;
   const canInstall = !!installPrompt && !isStandalone;
   const showIOSInstallHint = isIOS && !isStandalone;
+  const installRequiresManualSteps = showIOSInstallHint || (canOfferInstall && !canInstall);
   const canShowPush = enablePush && status !== "checking";
-  const canTogglePush = canShowPush && status !== "unsupported" && status !== "disabled";
+  const canTogglePush =
+    canShowPush &&
+    status !== "unsupported" &&
+    status !== "disabled" &&
+    !(showIOSInstallHint && !isStandalone);
   const isActive = status === "active";
 
   if (isActive) {
@@ -368,7 +373,9 @@ export default function PortalInstallControl({
   const defaultMessage =
     enablePush && !isActive && (status === "ready" || status === "error")
       ? canOfferInstall
-        ? "Install the app, then enable alerts."
+        ? showIOSInstallHint
+          ? "Install from Safari Share first, then reopen it from your Home Screen to enable alerts."
+          : "Install the app, then enable alerts."
         : "Enable alerts for this device."
       : "";
 
@@ -386,7 +393,7 @@ export default function PortalInstallControl({
             <div className="mt-0.5 text-xs text-[#cdbda0]">{message || defaultMessage}</div>
           ) : null}
           {showIOSInstallHint ? (
-            <div className="mt-0.5 text-xs text-[#cdbda0]">Use Share, then Add to Home Screen.</div>
+            <div className="mt-0.5 text-xs text-[#cdbda0]">Use Safari Share, then Add to Home Screen.</div>
           ) : null}
           {showInstallHelp && !showIOSInstallHint ? (
             <div className="mt-0.5 text-xs text-[#cdbda0]">Use the browser menu, then Install app or Add to Home screen.</div>
@@ -399,7 +406,7 @@ export default function PortalInstallControl({
               onClick={() => void installApp()}
               className="rounded-full border border-[#b08b47]/55 px-3 py-1.5 text-xs font-semibold text-[#f5efe4] transition hover:bg-[#b08b47] hover:text-[#120f0b]"
             >
-              {canInstall ? "Install" : "How"}
+              {canInstall ? "Install" : installRequiresManualSteps ? "Install guide" : "How"}
             </button>
           ) : null}
           {canShowPush ? (
@@ -409,7 +416,17 @@ export default function PortalInstallControl({
               disabled={isBusy || !canTogglePush}
               className="rounded-full border border-[#b08b47]/55 px-3 py-1.5 text-xs font-semibold text-[#f5efe4] transition hover:bg-[#b08b47] hover:text-[#120f0b] disabled:opacity-50"
             >
-              {isBusy ? "Saving" : isActive ? "Turn off" : status === "disabled" ? "Needs setup" : status === "unsupported" ? "Unavailable" : "Enable alerts"}
+              {isBusy
+                ? "Saving"
+                : isActive
+                  ? "Turn off"
+                  : showIOSInstallHint && !isStandalone
+                    ? "Install first"
+                    : status === "disabled"
+                      ? "Needs setup"
+                      : status === "unsupported"
+                        ? "Unavailable"
+                        : "Enable alerts"}
             </button>
           ) : null}
         </div>

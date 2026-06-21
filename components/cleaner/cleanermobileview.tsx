@@ -320,6 +320,10 @@ export default function CleanerMobileView({
   activeJobs,
   historyJobs,
   unacceptedCount,
+  calendarMonth,
+  setCalendarMonth,
+  jobsByDate,
+  calendarDays,
   selectedCleanerJob,
   selectedSlotId,
   setSelectedSlotId,
@@ -362,6 +366,7 @@ export default function CleanerMobileView({
   const [reportOpen, setReportOpen] = useState(false);
   const [reportSubmittedMessage, setReportSubmittedMessage] = useState("");
   const [jobView, setJobView] = useState<"active" | "history">("active");
+  const [calendarView, setCalendarView] = useState<"week" | "month">("week");
   const [nearbyGpsStatus, setNearbyGpsStatus] = useState<"idle" | "locating" | "ready" | "blocked">("idle");
   const [nearbyGpsError, setNearbyGpsError] = useState("");
   const [cleanerLocation, setCleanerLocation] = useState<CleanerLocation | null>(null);
@@ -556,6 +561,35 @@ export default function CleanerMobileView({
       weekday: "short",
       day: "numeric",
     });
+  }
+
+  function formatMonthLabel(date: Date) {
+    return date.toLocaleDateString(undefined, {
+      month: "long",
+      year: "numeric",
+    });
+  }
+
+  function openCalendarDate(dateYmd: string) {
+    setJobView("active");
+
+    if (selectedDate === dateYmd) {
+      setSelectedDate(null);
+      return;
+    }
+
+    setSelectedDate(dateYmd);
+    const firstJob = activeJobs.find((item) => normalizeJobDate(item.jobDate) === dateYmd);
+    setSelectedSlotId(firstJob?.slot.id || null);
+  }
+
+  function openCalendarJob(item: CleanerJob, dateYmd?: string | null) {
+    setJobView("active");
+    setSelectedDate(dateYmd || normalizeJobDate(item.jobDate));
+    setSelectedSlotId(item.slot.id);
+    window.setTimeout(() => {
+      jobsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
   }
 
   function isOffered(status: string | null | undefined) {
@@ -1214,8 +1248,40 @@ export default function CleanerMobileView({
         </div>
 
         {jobView === "active" ? (
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {dateStrip.map((ymd) => {
+          <div className="space-y-3 rounded-2xl border border-[#7a5c2e]/25 bg-[#15110d] p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.16em] text-[#b08b47]">Cleaning Calendar</div>
+                <div className="mt-1 text-sm text-[#cdbda0]">
+                  Toggle between this week and the full month. Tap a job to jump to its details.
+                </div>
+              </div>
+
+              <div className="inline-flex shrink-0 rounded-full border border-[#7a5c2e]/30 bg-[#100d0a] p-1">
+                <button
+                  type="button"
+                  onClick={() => setCalendarView("week")}
+                  className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                    calendarView === "week" ? "bg-[#b08b47] text-[#120f0b]" : "text-[#f5efe4]"
+                  }`}
+                >
+                  Week
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCalendarView("month")}
+                  className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                    calendarView === "month" ? "bg-[#b08b47] text-[#120f0b]" : "text-[#f5efe4]"
+                  }`}
+                >
+                  Month
+                </button>
+              </div>
+            </div>
+
+            {calendarView === "week" ? (
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {dateStrip.map((ymd) => {
               const jobsForDay = activeJobs.filter((item) => normalizeJobDate(item.jobDate) === ymd);
 
               const hasOffered = jobsForDay.some((item) => isOffered(item.slot.status));
@@ -1231,16 +1297,8 @@ export default function CleanerMobileView({
               return (
                 <button
                   key={ymd}
-                  onClick={() => {
-                    if (isSelected) {
-                      setSelectedDate(null);
-                      return;
-                    }
-
-                    setSelectedDate(ymd);
-                    const first = jobsForDay[0];
-                    setSelectedSlotId(first?.slot.id || null);
-                  }}
+                  type="button"
+                  onClick={() => openCalendarDate(ymd)}
                   className={`min-w-[74px] rounded-xl border p-2 text-center transition ${
                     isSelected
                       ? "border-[#e7c98a] bg-[#2a2118] text-white ring-2 ring-[#e7c98a]"
@@ -1260,6 +1318,126 @@ export default function CleanerMobileView({
                 </button>
               );
             })}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#100d0a] p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))
+                      }
+                      className="rounded-full border border-[#7a5c2e]/40 px-3 py-2 text-xs font-semibold text-[#f5efe4] transition hover:bg-[#1b1510]"
+                    >
+                      Prev
+                    </button>
+                    <div className="text-sm font-semibold text-[#f8f2e8]">{formatMonthLabel(calendarMonth)}</div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))
+                      }
+                      className="rounded-full border border-[#7a5c2e]/40 px-3 py-2 text-xs font-semibold text-[#f5efe4] transition hover:bg-[#1b1510]"
+                    >
+                      Next
+                    </button>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-7 gap-1 text-center text-[10px] uppercase tracking-[0.12em] text-[#b08b47]">
+                    {["S", "M", "T", "W", "T", "F", "S"].map((label, index) => (
+                      <div key={`${label}-${index}`}>{label}</div>
+                    ))}
+                  </div>
+
+                  <div className="mt-2 grid grid-cols-7 gap-1">
+                    {calendarDays.map((day) => {
+                      const ymd = toYmd(day);
+                      const dayJobs = (jobsByDate.get(ymd) || []).filter((item) =>
+                        activeJobs.some((activeItem) => activeItem.slot.id === item.slot.id)
+                      );
+                      const isCurrentMonth = day.getMonth() === calendarMonth.getMonth();
+                      const isSelected = selectedDate === ymd;
+                      const isToday = ymd === toYmd(new Date());
+                      const hasOffered = dayJobs.some((item) => isOffered(item.slot.status));
+
+                      return (
+                        <div
+                          key={ymd}
+                          className={`min-h-[78px] rounded-xl border p-1 ${
+                            isSelected
+                              ? "border-[#e7c98a] bg-[#2a2118]"
+                              : hasOffered
+                                ? "border-red-500/45 bg-red-950/30"
+                                : "border-[#7a5c2e]/20 bg-[#100d0a]"
+                          } ${isCurrentMonth ? "" : "opacity-40"}`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => openCalendarDate(ymd)}
+                            className="flex w-full items-center justify-between rounded-lg px-1 py-0.5 text-left"
+                          >
+                            <span className={`text-[11px] font-semibold ${isToday ? "text-[#e7c98a]" : "text-[#f8f2e8]"}`}>
+                              {day.getDate()}
+                            </span>
+                            {dayJobs.length > 0 ? (
+                              <span
+                                className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${
+                                  hasOffered ? "bg-red-500 text-white" : "bg-[#b08b47]/15 text-[#e7c98a]"
+                                }`}
+                              >
+                                {dayJobs.length}
+                              </span>
+                            ) : null}
+                          </button>
+
+                          <div className="mt-1 space-y-1">
+                            {dayJobs.slice(0, 2).map((item) => {
+                              const property = propertyById.get(item.job.property_id);
+                              const isSelectedJob = selectedSlotId === item.slot.id;
+                              const isWaiting = isOffered(item.slot.status);
+
+                              return (
+                                <button
+                                  key={item.slot.id}
+                                  type="button"
+                                  onClick={() => openCalendarJob(item, ymd)}
+                                  className={`block w-full truncate rounded-md px-1.5 py-1 text-left text-[9px] font-medium transition ${
+                                    isSelectedJob
+                                      ? "bg-[#b08b47] text-[#120f0b]"
+                                      : isWaiting
+                                        ? "bg-red-500 text-white"
+                                        : "bg-emerald-500/20 text-emerald-100"
+                                  }`}
+                                >
+                                  {property?.name || "Property"}
+                                </button>
+                              );
+                            })}
+
+                            {dayJobs.length > 2 ? (
+                              <button
+                                type="button"
+                                onClick={() => openCalendarDate(ymd)}
+                                className="block w-full truncate px-1 text-left text-[9px] font-medium text-[#cdbda0]"
+                              >
+                                +{dayJobs.length - 2} more
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {selectedDate ? (
+                  <div className="rounded-xl border border-[#b08b47]/25 bg-[#100d0a] px-3 py-2 text-xs text-[#e7c98a]">
+                    Filtering: {formatDateLabel(selectedDate)}
+                  </div>
+                ) : null}
+              </div>
+            )}
           </div>
         ) : (
           <div className="rounded-2xl border border-[#7a5c2e]/20 bg-[#15110d] p-4 text-sm text-[#cdbda0]">
