@@ -60,6 +60,12 @@ function formatTimeLabel(value?: string | null) {
   });
 }
 
+function formatOccupiedBookingSummary(summary?: string | null, guestCount?: number | null) {
+  const guestName = summary?.trim() || "Reserved";
+  const guestCountLabel = formatGuestCountLabel(guestCount);
+  return `${guestName} - ${guestCountLabel}`;
+}
+
 function pickDailyCopy(options: string[], key: string) {
   if (options.length === 0) return "";
   const seed = Array.from(key).reduce((total, char) => total + char.charCodeAt(0), 0);
@@ -9231,32 +9237,101 @@ This removes its linked members and deletes the grounds account.`
 
   const occupiedTodayProperties = useMemo(() => {
     const propertyById = new Map(properties.map((property) => [property.id, property]));
-    return propertyBookingEvents
-      .filter((event) => event.checkin_date <= todayYmd && event.checkout_date > todayYmd)
-      .map((event) => {
-        const property = propertyById.get(event.property_id) || null;
-        const guestCount = Number.isFinite(Number(event.guest_count)) ? Number(event.guest_count) : null;
-        const missingBookingFields = [
-          event.summary?.trim() ? "" : "guest name",
-          guestCount === null ? "guest count" : "",
-        ].filter(Boolean);
+    const propertyEvents = new Map<string, PropertyBookingEvent[]>();
+    for (const event of propertyBookingEvents) {
+      if (event.checkin_date > todayYmd || event.checkout_date < todayYmd) continue;
+      const events = propertyEvents.get(event.property_id) || [];
+      events.push(event);
+      propertyEvents.set(event.property_id, events);
+    }
+
+    return Array.from(propertyEvents.entries())
+      .map(([propertyId, events]) => {
+        const property = propertyById.get(propertyId) || null;
+        const checkinTodayEvent = events.find((event) => event.checkin_date === todayYmd) || null;
+        const checkoutTodayEvent = events.find((event) => event.checkout_date === todayYmd) || null;
+        const continuingStayEvent =
+          events.find((event) => event.checkin_date < todayYmd && event.checkout_date > todayYmd) || null;
+        const primaryEvent = checkinTodayEvent || checkoutTodayEvent || continuingStayEvent || events[0];
+        const relevantEvents = [checkoutTodayEvent, checkinTodayEvent, continuingStayEvent].filter(
+          (event, index, array): event is PropertyBookingEvent => !!event && array.indexOf(event) === index
+        );
+        const missingBookingFields = Array.from(
+          new Set(
+            relevantEvents.flatMap((event) => {
+              const guestCount = Number.isFinite(Number(event.guest_count)) ? Number(event.guest_count) : null;
+              return [
+                event.summary?.trim() ? "" : "guest name",
+                guestCount === null ? "guest count" : "",
+              ].filter(Boolean);
+            })
+          )
+        );
+        const noteEvent =
+          relevantEvents.find((event) => Boolean(event.admin_note_important && event.admin_note?.trim())) ||
+          relevantEvents.find((event) => Boolean(event.admin_note?.trim())) ||
+          primaryEvent;
+        const status: "turnover" | "checkout" | "checkin" | "occupied" =
+          checkinTodayEvent && checkoutTodayEvent
+            ? "turnover"
+            : checkoutTodayEvent
+              ? "checkout"
+              : checkinTodayEvent
+                ? "checkin"
+                : "occupied";
+
         return {
-          id: event.id,
+          id: propertyId,
+          bookingId: primaryEvent.id,
           propertyName: property?.name || property?.address || "Unknown property",
           city: getCityFromAddress(property?.address),
-          source: getBookingSourceLabel(event.source),
-          summary: event.summary || "Reserved",
-          guestName: event.summary?.trim() || "",
-          guestCount,
+          source: getBookingSourceLabel(primaryEvent.source),
+          status,
+          summary: primaryEvent.summary || "Reserved",
+          guestName: primaryEvent.summary?.trim() || "",
+          guestCount: Number.isFinite(Number(primaryEvent.guest_count)) ? Number(primaryEvent.guest_count) : null,
           missingBookingFields,
-          checkinDate: event.checkin_date,
-          checkoutDate: event.checkout_date,
+          checkinDate: primaryEvent.checkin_date,
+          checkoutDate: primaryEvent.checkout_date,
+          checkinTime: formatTimeLabel(property?.default_checkin_time),
           checkoutTime: formatTimeLabel(property?.default_checkout_time),
-          adminNote: event.admin_note?.trim() || "",
-          adminNoteImportant: Boolean(event.admin_note_important),
+          checkinTodayGuest: checkinTodayEvent
+            ? {
+                summary: checkinTodayEvent.summary || "Reserved",
+                guestCount: Number.isFinite(Number(checkinTodayEvent.guest_count))
+                  ? Number(checkinTodayEvent.guest_count)
+                  : null,
+                source: getBookingSourceLabel(checkinTodayEvent.source),
+              }
+            : null,
+          checkoutTodayGuest: checkoutTodayEvent
+            ? {
+                summary: checkoutTodayEvent.summary || "Reserved",
+                guestCount: Number.isFinite(Number(checkoutTodayEvent.guest_count))
+                  ? Number(checkoutTodayEvent.guest_count)
+                  : null,
+                source: getBookingSourceLabel(checkoutTodayEvent.source),
+              }
+            : null,
+          continuingGuest: continuingStayEvent
+            ? {
+                summary: continuingStayEvent.summary || "Reserved",
+                guestCount: Number.isFinite(Number(continuingStayEvent.guest_count))
+                  ? Number(continuingStayEvent.guest_count)
+                  : null,
+                source: getBookingSourceLabel(continuingStayEvent.source),
+              }
+            : null,
+          adminNote: noteEvent?.admin_note?.trim() || "",
+          adminNoteImportant: Boolean(noteEvent?.admin_note_important),
         };
       })
-      .sort((a, b) => a.checkoutDate.localeCompare(b.checkoutDate) || a.propertyName.localeCompare(b.propertyName));
+      .sort((a, b) => {
+        const statusRank = { turnover: 0, checkout: 1, checkin: 2, occupied: 3 } as const;
+        const rankDiff = statusRank[a.status] - statusRank[b.status];
+        if (rankDiff !== 0) return rankDiff;
+        return a.propertyName.localeCompare(b.propertyName);
+      });
   }, [properties, propertyBookingEvents, todayYmd]);
 
   const bookingDirectoryItems = useMemo(() => {
@@ -12050,8 +12125,23 @@ This removes its linked members and deletes the grounds account.`
                     >
                       <div className="flex flex-col gap-3 sm:flex-row lg:flex-col sm:items-start sm:justify-between">
                         <div className="min-w-0">
-                          <div className="inline-flex items-center rounded-full bg-[#16a34a] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
-                            Occupied
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="inline-flex items-center rounded-full bg-[#16a34a] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
+                              Occupied
+                            </div>
+                            {item.status === "turnover" ? (
+                              <div className="inline-flex items-center rounded-full bg-[#dcfce7] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#166534]">
+                                Turnover today
+                              </div>
+                            ) : item.status === "checkin" ? (
+                              <div className="inline-flex items-center rounded-full bg-[#ecfdf5] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#047857]">
+                                Check-in today
+                              </div>
+                            ) : item.status === "checkout" ? (
+                              <div className="inline-flex items-center rounded-full bg-[#fef3c7] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#b45309]">
+                                Checkout today
+                              </div>
+                            ) : null}
                           </div>
                           <p className="mt-1 text-[15px] font-semibold text-[#20432f]">
                             {item.propertyName}
@@ -12059,9 +12149,36 @@ This removes its linked members and deletes the grounds account.`
                           <p className="mt-0.5 text-sm text-[#5d7767]">
                             {item.city || item.source}
                           </p>
-                          <p className="mt-1 text-sm text-[#456452]">
-                            {item.summary}
-                          </p>
+                          {item.status === "turnover" ? (
+                            <div className="mt-2 space-y-1.5 text-sm text-[#456452]">
+                              <p className="font-semibold text-[#8a4b14]">
+                                Checkout today{item.checkoutTime ? ` at ${item.checkoutTime}` : ""}
+                              </p>
+                              <p>{formatOccupiedBookingSummary(item.checkoutTodayGuest?.summary, item.checkoutTodayGuest?.guestCount)}</p>
+                              <p className="font-semibold text-[#166534]">
+                                Check-in today{item.checkinTime ? ` at ${item.checkinTime}` : ""}
+                              </p>
+                              <p>{formatOccupiedBookingSummary(item.checkinTodayGuest?.summary, item.checkinTodayGuest?.guestCount)}</p>
+                            </div>
+                          ) : item.status === "checkout" ? (
+                            <div className="mt-2 space-y-1 text-sm text-[#456452]">
+                              <p className="font-semibold text-[#8a4b14]">
+                                Checkout today{item.checkoutTime ? ` at ${item.checkoutTime}` : ""}
+                              </p>
+                              <p>{formatOccupiedBookingSummary(item.checkoutTodayGuest?.summary, item.checkoutTodayGuest?.guestCount)}</p>
+                            </div>
+                          ) : item.status === "checkin" ? (
+                            <div className="mt-2 space-y-1 text-sm text-[#456452]">
+                              <p className="font-semibold text-[#166534]">
+                                Check-in today{item.checkinTime ? ` at ${item.checkinTime}` : ""}
+                              </p>
+                              <p>{formatOccupiedBookingSummary(item.checkinTodayGuest?.summary, item.checkinTodayGuest?.guestCount)}</p>
+                            </div>
+                          ) : (
+                            <p className="mt-1 text-sm text-[#456452]">
+                              {formatOccupiedBookingSummary(item.continuingGuest?.summary || item.summary, item.continuingGuest?.guestCount ?? item.guestCount)}
+                            </p>
+                          )}
                           {item.missingBookingFields.length > 0 ? (
                             <div className="mt-2 flex flex-wrap items-center gap-2 rounded-[12px] border border-[#facc15] bg-[#fefce8] px-3 py-2 text-xs font-semibold text-[#854d0e]">
                               <span>Missing booking: {item.missingBookingFields.join(", ")}</span>
@@ -12085,12 +12202,44 @@ This removes its linked members and deletes the grounds account.`
                           ) : null}
                         </div>
                         <div className="shrink-0 text-left text-sm">
-                          <p className="font-semibold text-[#20432f]">
-                            {formatGuestCountLabel(item.guestCount)}
-                          </p>
-                          <p className="mt-1 text-xs font-medium text-[#5d7767]">
-                            Out {formatDateLabel(item.checkoutDate)}{item.checkoutTime ? ` at ${item.checkoutTime}` : ""}
-                          </p>
+                          {item.status === "turnover" ? (
+                            <>
+                              <p className="font-semibold text-[#20432f]">Two guest events today</p>
+                              <p className="mt-1 text-xs font-medium text-[#8a4b14]">
+                                Out today{item.checkoutTime ? ` at ${item.checkoutTime}` : ""}
+                              </p>
+                              <p className="mt-1 text-xs font-medium text-[#166534]">
+                                In today{item.checkinTime ? ` at ${item.checkinTime}` : ""}
+                              </p>
+                            </>
+                          ) : item.status === "checkout" ? (
+                            <>
+                              <p className="font-semibold text-[#20432f]">
+                                {formatGuestCountLabel(item.checkoutTodayGuest?.guestCount)}
+                              </p>
+                              <p className="mt-1 text-xs font-medium text-[#8a4b14]">
+                                Out today{item.checkoutTime ? ` at ${item.checkoutTime}` : ""}
+                              </p>
+                            </>
+                          ) : item.status === "checkin" ? (
+                            <>
+                              <p className="font-semibold text-[#20432f]">
+                                {formatGuestCountLabel(item.checkinTodayGuest?.guestCount)}
+                              </p>
+                              <p className="mt-1 text-xs font-medium text-[#166534]">
+                                In today{item.checkinTime ? ` at ${item.checkinTime}` : ""}
+                              </p>
+                            </>
+                          ) : (
+                            <>
+                              <p className="font-semibold text-[#20432f]">
+                                {formatGuestCountLabel(item.continuingGuest?.guestCount ?? item.guestCount)}
+                              </p>
+                              <p className="mt-1 text-xs font-medium text-[#5d7767]">
+                                Out {formatDateLabel(item.checkoutDate)}{item.checkoutTime ? ` at ${item.checkoutTime}` : ""}
+                              </p>
+                            </>
+                          )}
                           <p className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#2f6b2f]">
                             {item.source}
                           </p>
@@ -24260,10 +24409,65 @@ This removes its linked members and deletes the grounds account.`
                 <div className="mt-3 space-y-2">
                   {occupiedTodayProperties.slice(0, 2).map((property) => (
                     <div key={property.id} className="rounded-[16px] border border-[#bbf7d0] bg-white px-3 py-2.5">
-                      <div className="truncate text-sm font-semibold text-[#17202a]">{property.propertyName}</div>
-                      <div className="truncate text-xs text-[#64748b]">
-                        Checks out {formatDateLabel(property.checkoutDate)}
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <div className="truncate text-sm font-semibold text-[#17202a]">{property.propertyName}</div>
+                        {property.status === "turnover" ? (
+                          <div className="rounded-full bg-[#dcfce7] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#166534]">
+                            Turnover today
+                          </div>
+                        ) : property.status === "checkin" ? (
+                          <div className="rounded-full bg-[#ecfdf5] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#047857]">
+                            Check-in today
+                          </div>
+                        ) : property.status === "checkout" ? (
+                          <div className="rounded-full bg-[#fef3c7] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#b45309]">
+                            Checkout today
+                          </div>
+                        ) : null}
                       </div>
+                      {property.status === "turnover" ? (
+                        <div className="mt-1 space-y-1 text-xs">
+                          <div className="font-semibold text-[#8a4b14]">
+                            Checkout today{property.checkoutTime ? ` at ${property.checkoutTime}` : ""}
+                          </div>
+                          <div className="truncate text-[#64748b]">
+                            {formatOccupiedBookingSummary(property.checkoutTodayGuest?.summary, property.checkoutTodayGuest?.guestCount)}
+                          </div>
+                          <div className="font-semibold text-[#166534]">
+                            Check-in today{property.checkinTime ? ` at ${property.checkinTime}` : ""}
+                          </div>
+                          <div className="truncate text-[#64748b]">
+                            {formatOccupiedBookingSummary(property.checkinTodayGuest?.summary, property.checkinTodayGuest?.guestCount)}
+                          </div>
+                        </div>
+                      ) : property.status === "checkout" ? (
+                        <div className="mt-1 space-y-1 text-xs">
+                          <div className="font-semibold text-[#8a4b14]">
+                            Checkout today{property.checkoutTime ? ` at ${property.checkoutTime}` : ""}
+                          </div>
+                          <div className="truncate text-[#64748b]">
+                            {formatOccupiedBookingSummary(property.checkoutTodayGuest?.summary, property.checkoutTodayGuest?.guestCount)}
+                          </div>
+                        </div>
+                      ) : property.status === "checkin" ? (
+                        <div className="mt-1 space-y-1 text-xs">
+                          <div className="font-semibold text-[#166534]">
+                            Check-in today{property.checkinTime ? ` at ${property.checkinTime}` : ""}
+                          </div>
+                          <div className="truncate text-[#64748b]">
+                            {formatOccupiedBookingSummary(property.checkinTodayGuest?.summary, property.checkinTodayGuest?.guestCount)}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-1 space-y-1 text-xs">
+                          <div className="truncate text-[#64748b]">
+                            {formatOccupiedBookingSummary(property.continuingGuest?.summary || property.summary, property.continuingGuest?.guestCount ?? property.guestCount)}
+                          </div>
+                          <div className="truncate text-[#64748b]">
+                            Checks out {formatDateLabel(property.checkoutDate)}{property.checkoutTime ? ` at ${property.checkoutTime}` : ""}
+                          </div>
+                        </div>
+                      )}
                       {property.missingBookingFields.length > 0 ? (
                         <div className="mt-1 flex flex-wrap items-center gap-1.5 rounded-[12px] border border-[#facc15] bg-[#fefce8] px-2 py-1 text-[11px] font-semibold text-[#854d0e]">
                           <span>Missing booking: {property.missingBookingFields.join(", ")}</span>
