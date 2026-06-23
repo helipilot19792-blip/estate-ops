@@ -1412,6 +1412,7 @@ export default function AdminPage() {
   const [currentOrganizationId, setCurrentOrganizationId] = useState<string | null>(null);
   const [currentOrganizationBilling, setCurrentOrganizationBilling] = useState<OrganizationBillingRow | null>(null);
   const [myOrganizations, setMyOrganizations] = useState<MyOrganizationRow[]>([]);
+  const [adminHomeLoaded, setAdminHomeLoaded] = useState(false);
   const [adminDataLoaded, setAdminDataLoaded] = useState(false);
   const [now, setNow] = useState(() => new Date());
   const [adminCalendarMonth, setAdminCalendarMonth] = useState(() => {
@@ -2248,7 +2249,14 @@ export default function AdminPage() {
   }, [activeSection, chatConversations, selectedChatConversationId]);
   useEffect(() => {
     if (!checkingAuth && currentOrganizationId) {
-      void loadData();
+      setAdminHomeLoaded(false);
+      setAdminDataLoaded(false);
+      void (async () => {
+        const loadedHome = await loadHomeData();
+        if (loadedHome) {
+          void loadData({ background: true });
+        }
+      })();
     }
   }, [checkingAuth, currentOrganizationId]);
 
@@ -2665,7 +2673,27 @@ export default function AdminPage() {
       }
       return next;
     });
+    setAdminHomeLoaded(true);
     setAdminDataLoaded(true);
+  }
+
+  function applyAdminHomePayload(data: any) {
+    setProperties((data.properties ?? []) as Property[]);
+    setCleanerAccounts((data.cleanerAccounts ?? []) as CleanerAccount[]);
+    setCleanerAccountMembers((data.cleanerAccountMembers ?? []) as CleanerAccountMember[]);
+    setJobs((data.jobs ?? []) as Job[]);
+    setJobSlots((data.jobSlots ?? []) as JobSlot[]);
+    setGroundsAccounts((data.groundsAccounts ?? []) as GroundsAccount[]);
+    setGroundsAccountMembers((data.groundsAccountMembers ?? []) as GroundsAccountMember[]);
+    setGroundsJobs((data.groundsJobs ?? []) as GroundsJob[]);
+    setGroundsJobSlots((data.groundsJobSlots ?? []) as GroundsJobSlot[]);
+    setStrandedJobs((data.strandedJobs ?? []) as StrandedJob[]);
+    setPropertyBookingEvents((data.propertyBookingEvents ?? []) as PropertyBookingEvent[]);
+    setMaintenanceFlags((data.maintenanceFlags ?? []) as MaintenanceFlagRow[]);
+    setInspectionRules((data.inspectionRules ?? []) as PropertyInspectionRule[]);
+    setStaffJobStatusEvents((data.staffJobStatusEvents ?? []) as StaffJobStatusEventRow[]);
+    setTurnoverJobChecklistItems((data.turnoverJobChecklistItems ?? []) as TurnoverJobChecklistItemRow[]);
+    setAdminHomeLoaded(true);
   }
 
   async function loadPushDiagnostics() {
@@ -2725,12 +2753,52 @@ export default function AdminPage() {
     }
   }
 
-  async function loadData() {
+  async function loadHomeData() {
     setError("");
 
     if (!currentOrganizationId) {
       setError("No organization selected.");
-      return;
+      return false;
+    }
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      setError("No active admin session was found.");
+      return false;
+    }
+
+    const response = await fetch(
+      `/api/admin/home-data?organizationId=${encodeURIComponent(currentOrganizationId)}`,
+      {
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      }
+    );
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok || !payload?.ok) {
+      setError(payload?.error || "Could not load admin home data.");
+      return false;
+    }
+
+    applyAdminHomePayload(payload.data || {});
+    return true;
+  }
+
+  async function loadData(options?: { background?: boolean }) {
+    const background = options?.background === true;
+    if (!background) {
+      setError("");
+    }
+
+    if (!currentOrganizationId) {
+      if (!background) setError("No organization selected.");
+      return false;
     }
 
     if (currentPortalRole === "platform_admin" || currentPortalRole === "admin") {
@@ -2739,8 +2807,8 @@ export default function AdminPage() {
       } = await supabase.auth.getSession();
 
       if (!session?.access_token) {
-        setError("No active admin session was found.");
-        return;
+        if (!background) setError("No active admin session was found.");
+        return false;
       }
 
       const response = await fetch(
@@ -2755,12 +2823,12 @@ export default function AdminPage() {
       const payload = await response.json().catch(() => null);
 
       if (!response.ok || !payload?.ok) {
-        setError(payload?.error || "Could not load admin dashboard data.");
-        return;
+        if (!background) setError(payload?.error || "Could not load admin dashboard data.");
+        return false;
       }
 
       applyAdminDataPayload(payload.data || {});
-      return;
+      return true;
     }
 
 
@@ -3061,8 +3129,8 @@ export default function AdminPage() {
         response !== cleanerPaymentRecordsRes &&
         response !== chatHiddenItemsRes
       ) {
-        setError(response.error.message);
-        return;
+        if (!background) setError(response.error.message);
+        return false;
       }
     }
 
@@ -3240,7 +3308,9 @@ export default function AdminPage() {
       }
       return next;
     });
+    setAdminHomeLoaded(true);
     setAdminDataLoaded(true);
+    return true;
   }
 
   function updateDeletionRequestDraft(
@@ -9701,7 +9771,7 @@ This removes its linked members and deletes the grounds account.`
   );
 
   useEffect(() => {
-    if (!adminDataLoaded || editingBookingNote) return;
+    if (!adminHomeLoaded || editingBookingNote) return;
 
     if (promptedMissingBookingIdsRef.current.size === 0 && typeof window !== "undefined") {
       try {
@@ -9751,7 +9821,7 @@ This removes its linked members and deletes the grounds account.`
       adminNote: nextPrompt.admin_note?.trim() || "",
       adminNoteImportant: Boolean(nextPrompt.admin_note_important),
     });
-  }, [adminDataLoaded, editingBookingNote, properties, propertyBookingEvents, todayYmd]);
+  }, [adminHomeLoaded, editingBookingNote, properties, propertyBookingEvents, todayYmd]);
 
   const upcomingCheckInGlanceItems = useMemo(
     () => futureHomeHappenings.filter((item) => item.kind === "Check-in").slice(0, 3),
@@ -11913,7 +11983,7 @@ This removes its linked members and deletes the grounds account.`
                     );
                   })}
 
-                  {!adminDataLoaded ? (
+                  {!adminHomeLoaded ? (
                     <div className="rounded-[16px] border border-dashed border-[#b9d1fb] bg-white/80 px-4 py-3 text-sm text-[#5f6f86]">
                       {loadingWorkCopy}
                     </div>
@@ -12087,7 +12157,7 @@ This removes its linked members and deletes the grounds account.`
                     );
                   })}
 
-                  {adminDataLoaded && groupedFutureHomeHappenings.length === 0 ? (
+                  {adminHomeLoaded && groupedFutureHomeHappenings.length === 0 ? (
                     <div className="rounded-[16px] border border-dashed border-[#e3cda7] bg-white/80 px-4 py-3 text-sm text-[#6d5c40]">
                       {upcomingEmptyCopy}
                     </div>
@@ -24202,6 +24272,7 @@ This removes its linked members and deletes the grounds account.`
                       if (typeof window !== "undefined") {
                         window.localStorage.setItem(ADMIN_SELECTED_ORGANIZATION_KEY, nextOrganizationId);
                       }
+                      setAdminHomeLoaded(false);
                       setAdminDataLoaded(false);
                       setCurrentOrganizationId(nextOrganizationId);
                     }}
@@ -24381,14 +24452,14 @@ This removes its linked members and deletes the grounds account.`
                       </button>
                     </div>
                   ))}
-                  {adminDataLoaded && todaysHomeHappenings.length === 0 ? (
+                  {adminHomeLoaded && todaysHomeHappenings.length === 0 ? (
                     <div className="rounded-[16px] border border-dashed border-[#b9d1fb] bg-white/80 px-3 py-2.5 text-sm text-[#5f6f86] sm:col-span-2">
                       {upcomingCheckInGlanceItems.length === 0
                         ? todayEmptyCopy
                         : todayElseEmptyCopy}
                     </div>
                   ) : null}
-                  {!adminDataLoaded ? (
+                  {!adminHomeLoaded ? (
                     <div className="rounded-[16px] border border-dashed border-[#b9d1fb] bg-white/80 px-3 py-2.5 text-sm text-[#5f6f86] sm:col-span-2">
                       {loadingWorkCopy}
                     </div>
@@ -24797,7 +24868,9 @@ This removes its linked members and deletes the grounds account.`
           </div>
         ) : null}
 
-        {adminDataLoaded ? renderActiveSection() : renderAdminWorkspaceLoading()}
+        {(activeSection === "home" ? adminHomeLoaded : adminDataLoaded)
+          ? renderActiveSection()
+          : renderAdminWorkspaceLoading()}
         </div>
       </div>
 
