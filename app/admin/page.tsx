@@ -19135,7 +19135,7 @@ This removes its linked members and deletes the grounds account.`
                 Default staffing: {selectedPropertyDefaults.default_cleaner_units_needed} unit{selectedPropertyDefaults.default_cleaner_units_needed === 1 ? "" : "s"}
                 {selectedPropertyDefaults.cleaner_units_required_strict ? ", full team required" : ", one unit may proceed"}
                 <br />
-                Default payout per assigned cleaner slot: {formatCurrency(selectedPropertyDefaults.default_turnover_payout)}
+                Cleaner standard payout per assigned slot: {formatCurrency(selectedPropertyDefaults.default_turnover_payout)}
               </div>
             ) : null}
 
@@ -20890,7 +20890,7 @@ This removes its linked members and deletes the grounds account.`
     return (
       <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
         <h2 className="text-xl font-semibold tracking-tight">Property Setup</h2>
-        <p className="mt-1 text-sm text-[#7f7263]">Manage access notes, booking calendars, and visual SOPs.</p>
+        <p className="mt-1 text-sm text-[#7f7263]">Manage staffing defaults, cleaner payout, access notes, booking calendars, and visual SOPs.</p>
 
         <div className="mt-5">
           <select
@@ -20937,6 +20937,9 @@ This removes its linked members and deletes the grounds account.`
                     </span>
                     <span className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-medium text-[#6f6255]">
                       {selectedPropertyOwnerEmail ? "Owner linked" : "No owner linked"}
+                    </span>
+                    <span className="rounded-full border border-[#bbf7d0] bg-[#f0fdf4] px-3 py-1 text-xs font-medium text-[#15803d]">
+                      Cleaner payout {formatCurrency(selectedProperty?.default_turnover_payout)}
                     </span>
                   </div>
                 </div>
@@ -21414,9 +21417,9 @@ This removes its linked members and deletes the grounds account.`
                   <div className="rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] p-5">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                       <div>
-                        <h3 className="text-base font-semibold text-[#241c15]">Property Staffing Defaults</h3>
+                        <h3 className="text-base font-semibold text-[#241c15]">Cleaner Staffing and Payout Defaults</h3>
                         <p className="mt-1 text-sm text-[#7f7263]">
-                          Edit cleaner units, full-team requirement, and team status visibility.
+                          Set the default cleaner team size and the standard payout for each assigned cleaner.
                         </p>
                       </div>
 
@@ -21450,7 +21453,7 @@ This removes its linked members and deletes the grounds account.`
                       </div>
 
                       <div>
-                        <label className="mb-2 block text-sm font-medium text-[#5f5245]">Standard turnover payout</label>
+                        <label className="mb-2 block text-sm font-medium text-[#5f5245]">Cleaner standard payout</label>
                         <input
                           type="number"
                           min="0"
@@ -21465,7 +21468,7 @@ This removes its linked members and deletes the grounds account.`
                           placeholder="0.00"
                         />
                         <p className="mt-2 text-xs leading-5 text-[#8a7b68]">
-                          Used as the starting payout for each assigned cleaner slot on new turnover jobs.
+                          This is the default payout amount for each cleaner assigned to a new turnover job at this property.
                         </p>
                       </div>
 
