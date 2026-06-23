@@ -1538,6 +1538,8 @@ export default function AdminPage() {
   const chatThreadScrollRef = useRef<HTMLDivElement | null>(null);
   const maintenanceCameraInputRef = useRef<HTMLInputElement | null>(null);
   const maintenanceLibraryInputRef = useRef<HTMLInputElement | null>(null);
+  const latestHomeLoadIdRef = useRef(0);
+  const latestDataLoadIdRef = useRef(0);
   const [invoiceOwnerId, setInvoiceOwnerId] = useState("");
   const [invoicePropertyId, setInvoicePropertyId] = useState("");
   const [invoiceIssueDate, setInvoiceIssueDate] = useState(() => getTodayYmd());
@@ -2754,6 +2756,7 @@ export default function AdminPage() {
   }
 
   async function loadHomeData() {
+    const requestId = ++latestHomeLoadIdRef.current;
     setError("");
 
     if (!currentOrganizationId) {
@@ -2786,11 +2789,16 @@ export default function AdminPage() {
       return false;
     }
 
+    if (requestId !== latestHomeLoadIdRef.current) {
+      return false;
+    }
+
     applyAdminHomePayload(payload.data || {});
     return true;
   }
 
   async function loadData(options?: { background?: boolean }) {
+    const requestId = ++latestDataLoadIdRef.current;
     const background = options?.background === true;
     if (!background) {
       setError("");
@@ -2824,6 +2832,10 @@ export default function AdminPage() {
 
       if (!response.ok || !payload?.ok) {
         if (!background) setError(payload?.error || "Could not load admin dashboard data.");
+        return false;
+      }
+
+      if (requestId !== latestDataLoadIdRef.current) {
         return false;
       }
 
@@ -3308,6 +3320,9 @@ export default function AdminPage() {
       }
       return next;
     });
+    if (requestId !== latestDataLoadIdRef.current) {
+      return false;
+    }
     setAdminHomeLoaded(true);
     setAdminDataLoaded(true);
     return true;
@@ -6359,6 +6374,10 @@ This removes its linked members and deletes the grounds account.`
 
   async function saveSelectedPropertyDefaults() {
     if (!selectedPropertyId) return;
+    if (!currentOrganizationId) {
+      setError("Choose an organization before saving property defaults.");
+      return;
+    }
     setError("");
     setSavingSelectedPropertyDefaults(true);
 
@@ -6382,7 +6401,8 @@ This removes its linked members and deletes the grounds account.`
           show_team_status_to_cleaners: selectedPropertyShowTeamStatus,
           default_turnover_payout: normalizedTurnoverPayout,
         })
-        .eq("id", selectedPropertyId);
+        .eq("id", selectedPropertyId)
+        .eq("organization_id", currentOrganizationId);
 
       if (error) throw error;
       setProperties((current) =>
