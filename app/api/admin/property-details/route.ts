@@ -30,6 +30,14 @@ function normalizeCleanerAssignmentMode(value: unknown) {
   return text === "priority" || text === "training_rotation" ? text : "";
 }
 
+function normalizeOptionalCurrency(value: unknown) {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  const parsed = Number(text);
+  if (!Number.isFinite(parsed) || parsed < 0) return "";
+  return Math.round(parsed * 100) / 100;
+}
+
 export async function POST(request: NextRequest) {
   if (!supabaseUrl || !publicSupabaseKey || !serviceRoleKey) {
     return NextResponse.json(
@@ -121,6 +129,10 @@ export async function POST(request: NextRequest) {
       default_checkin_time: normalizeOptionalTime(body?.defaultCheckinTime),
       default_checkout_time: normalizeOptionalTime(body?.defaultCheckoutTime),
     } as Record<string, unknown>;
+    const defaultCleanerUnitsNeeded = body?.defaultCleanerUnitsNeeded;
+    const cleanerUnitsRequiredStrict = body?.cleanerUnitsRequiredStrict;
+    const showTeamStatusToCleaners = body?.showTeamStatusToCleaners;
+    const defaultTurnoverPayout = normalizeOptionalCurrency(body?.defaultTurnoverPayout);
     const cleanerAssignmentMode = normalizeCleanerAssignmentMode(body?.cleanerAssignmentMode);
     const cleanerRotationNextCleanerAccountId = String(body?.cleanerRotationNextCleanerAccountId || "").trim() || null;
     let geocodeWarning: string | null = null;
@@ -131,6 +143,10 @@ export async function POST(request: NextRequest) {
 
     if (updatePayload.latitude === "" || updatePayload.longitude === "") {
       return NextResponse.json({ error: "Property GPS coordinates must be valid latitude and longitude values." }, { status: 400 });
+    }
+
+    if (defaultTurnoverPayout === "") {
+      return NextResponse.json({ error: "Cleaner standard payout must be a valid non-negative amount." }, { status: 400 });
     }
 
     if (cleanerAssignmentMode === "") {
@@ -170,6 +186,26 @@ export async function POST(request: NextRequest) {
       updatePayload.cleaner_assignment_mode = cleanerAssignmentMode;
       updatePayload.cleaner_rotation_next_cleaner_account_id =
         cleanerAssignmentMode === "training_rotation" ? cleanerRotationNextCleanerAccountId : null;
+    }
+
+    if (defaultCleanerUnitsNeeded !== undefined) {
+      const parsedUnits = Number(defaultCleanerUnitsNeeded);
+      if (!Number.isFinite(parsedUnits) || parsedUnits <= 0) {
+        return NextResponse.json({ error: "Cleaner units needed must be a valid positive number." }, { status: 400 });
+      }
+      updatePayload.default_cleaner_units_needed = parsedUnits;
+    }
+
+    if (cleanerUnitsRequiredStrict !== undefined) {
+      updatePayload.cleaner_units_required_strict = Boolean(cleanerUnitsRequiredStrict);
+    }
+
+    if (showTeamStatusToCleaners !== undefined) {
+      updatePayload.show_team_status_to_cleaners = Boolean(showTeamStatusToCleaners);
+    }
+
+    if (defaultTurnoverPayout !== null) {
+      updatePayload.default_turnover_payout = defaultTurnoverPayout;
     }
 
     const { data: property, error: updateError } = await serviceClient

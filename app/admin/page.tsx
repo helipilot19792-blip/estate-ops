@@ -6393,32 +6393,49 @@ This removes its linked members and deletes the grounds account.`
         throw new Error("Standard turnover payout must be a valid non-negative amount.");
       }
 
-      const { error } = await supabase
-        .from("properties")
-        .update({
-          default_cleaner_units_needed: nextUnitsNeeded,
-          cleaner_units_required_strict: selectedPropertyUnitsStrict,
-          show_team_status_to_cleaners: selectedPropertyShowTeamStatus,
-          default_turnover_payout: normalizedTurnoverPayout,
-        })
-        .eq("id", selectedPropertyId)
-        .eq("organization_id", currentOrganizationId);
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
 
-      if (error) throw error;
+      if (sessionError || !session?.access_token) {
+        throw new Error("No active admin session was found.");
+      }
+
+      const response = await fetch("/api/admin/property-details", {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          organizationId: currentOrganizationId,
+          propertyId: selectedPropertyId,
+          defaultCleanerUnitsNeeded: nextUnitsNeeded,
+          cleanerUnitsRequiredStrict: selectedPropertyUnitsStrict,
+          showTeamStatusToCleaners: selectedPropertyShowTeamStatus,
+          defaultTurnoverPayout: normalizedTurnoverPayout,
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || !payload?.ok || !payload?.property) {
+        throw new Error(payload?.error || "Could not save property staffing defaults.");
+      }
+
+      const updatedProperty = payload.property as Property;
       setProperties((current) =>
         current.map((property) =>
-          property.id === selectedPropertyId
+          property.id === updatedProperty.id
             ? {
                 ...property,
-                default_cleaner_units_needed: nextUnitsNeeded,
-                cleaner_units_required_strict: selectedPropertyUnitsStrict,
-                show_team_status_to_cleaners: selectedPropertyShowTeamStatus,
-                default_turnover_payout: normalizedTurnoverPayout,
+                ...updatedProperty,
               }
             : property
         )
       );
-      setSelectedPropertyDefaultTurnoverPayout(String(normalizedTurnoverPayout));
+      setSelectedPropertyDefaultTurnoverPayout(String(updatedProperty.default_turnover_payout ?? normalizedTurnoverPayout));
       setPropertyDefaultsDirty(false);
       setActionMessage("Property defaults saved.");
       await loadData();
