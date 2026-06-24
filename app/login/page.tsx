@@ -586,6 +586,52 @@ export default function LoginPage() {
                   </Link>
                 </div>
               </div>
+
+              <div className="mt-8 rounded-[26px] border border-[#d8c7ab]/30 bg-[linear-gradient(180deg,rgba(255,248,232,0.14)_0%,rgba(255,255,255,0.04)_100%)] p-5 shadow-[0_18px_40px_rgba(0,0,0,0.18)]">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="rounded-full border border-[#f5deb3]/40 bg-[#f2d39a]/14 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-[#f7e5bf]">
+                    Launch Pricing
+                  </span>
+                  <span className="text-sm text-[#d8c7ab]">Built for small operators who need more than spreadsheets.</span>
+                </div>
+
+                <div className="mt-4 grid gap-3">
+                  <div className="rounded-[22px] border border-[#f1d7aa]/35 bg-[#fff8ea] px-5 py-5 text-[#241c15]">
+                    <div className="text-sm font-semibold uppercase tracking-[0.18em] text-[#8a6a35]">Starter</div>
+                    <div className="mt-3 flex items-end gap-2">
+                      <div className="text-4xl font-semibold tracking-tight">$20</div>
+                      <div className="pb-1 text-sm text-[#6f6255]">CAD / month</div>
+                    </div>
+                    <div className="mt-2 text-sm font-medium text-[#4d4033]">Up to 10 properties</div>
+                    <div className="mt-3 text-sm leading-6 text-[#5f5245]">
+                      Admin, owner, cleaner, and grounds portals in one operating system.
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2 text-xs text-[#6f6255]">
+                      <span className="rounded-full border border-[#ead8b5] bg-white px-3 py-1">30-day free trial</span>
+                      <span className="rounded-full border border-[#ead8b5] bg-white px-3 py-1">Bulletin Board + chat</span>
+                      <span className="rounded-full border border-[#ead8b5] bg-white px-3 py-1">Jobs, invoices, access, SOPs</span>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-[20px] border border-white/10 bg-white/5 px-4 py-4">
+                      <div className="text-sm font-semibold text-white">Growth</div>
+                      <div className="mt-2 text-2xl font-semibold text-[#f7e5bf]">$40 CAD</div>
+                      <div className="mt-1 text-sm text-[#d8c7ab]">Up to 25 properties</div>
+                    </div>
+
+                    <div className="rounded-[20px] border border-white/10 bg-white/5 px-4 py-4">
+                      <div className="text-sm font-semibold text-white">Custom</div>
+                      <div className="mt-2 text-2xl font-semibold text-[#f7e5bf]">26+ properties</div>
+                      <div className="mt-1 text-sm text-[#d8c7ab]">Contact us for larger portfolios</div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-[20px] border border-emerald-300/18 bg-emerald-400/10 px-4 py-4 text-sm leading-6 text-[#e8f6eb]">
+                    Founding annual option: <span className="font-semibold text-white">$200 CAD / year</span> for the Starter plan.
+                  </div>
+                </div>
+              </div>
             </div>
           </section>
 
@@ -717,6 +763,18 @@ export default function LoginPage() {
                     <p className="mt-1 text-sm text-[#7f7263]">
                       {t("login.createCompanySubheading")}
                     </p>
+                    <div className="mt-4 rounded-[20px] border border-[#ead8b5] bg-[#fff9ef] px-4 py-4 text-sm leading-6 text-[#5f5245]">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-full border border-[#efd29c] bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8a6a35]">
+                          Starter
+                        </span>
+                        <span className="text-base font-semibold text-[#241c15]">$20 CAD/month</span>
+                        <span className="text-[#8a7b68]">for up to 10 properties</span>
+                      </div>
+                      <div className="mt-2">
+                        Includes a {ORGANIZATION_TRIAL_DAYS}-day free trial. Growth is $40 CAD/month for up to 25 properties, with custom pricing for larger portfolios.
+                      </div>
+                    </div>
                     <div className="mt-4 rounded-[20px] border border-[#efd8a8] bg-[#fff8e8] px-4 py-3 text-sm leading-6 text-[#6f5525]">
                       {t("login.testingNotice")}
                     </div>

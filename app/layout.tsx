@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Estate of Mind Portal",
-  description: "Cleaner scheduling and STR operations portal",
+  title: "Estate of Mind | STR Operations Platform",
+  description: "STR operations software for property managers and cleaning companies, with launch pricing starting at $20 CAD per month.",
   appleWebApp: {
     capable: true,
     title: "Gulera OS",
