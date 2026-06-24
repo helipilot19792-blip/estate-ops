@@ -6,10 +6,12 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { trackFeatureUsage } from "@/lib/feature-usage";
 import PushNotificationControl from "@/components/cleaner/pushnotificationcontrol";
+import { useTeamBulletinSummary } from "@/lib/use-team-bulletin-summary";
 
 const PortalChat = dynamic(() => import("@/components/chat/portalchat"));
 const CleanerDesktopView = dynamic(() => import("@/components/cleaner/cleanerdesktopview"));
 const CleanerMobileView = dynamic(() => import("@/components/cleaner/cleanermobileview"));
+const TeamBulletinBoard = dynamic(() => import("@/components/team/team-bulletin"));
 
 type Profile = {
   id: string;
@@ -29,6 +31,7 @@ type CleanerAccountMember = {
 
 type CleanerAccount = {
   id: string;
+  organization_id?: string | null;
   display_name: string | null;
   email?: string | null;
   phone?: string | null;
@@ -749,12 +752,23 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
   const [jobsCollapsed, setJobsCollapsed] = useState(true);
   const [now, setNow] = useState(() => new Date());
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
+  const [bulletinOpen, setBulletinOpen] = useState(false);
   const [targetChatConversationId, setTargetChatConversationId] = useState("");
 
   const hasAutoSelectedInitialJob = useRef(false);
   const realtimeRefreshTimeoutRef = useRef<number | null>(null);
   const chatSectionRef = useRef<HTMLDivElement | null>(null);
+  const bulletinSectionRef = useRef<HTMLDivElement | null>(null);
   const jobsSectionRef = useRef<HTMLDivElement | null>(null);
+  const {
+    conversationId: bulletinConversationId,
+    unreadCount: bulletinUnreadCount,
+    setUnreadCount: setBulletinUnreadCount,
+  } = useTeamBulletinSummary({
+    portal: "cleaner",
+    organizationId: cleanerAccount?.organization_id || "",
+    enabled: Boolean(profile?.id && cleanerAccount?.organization_id),
+  });
   useEffect(() => {
     if (!cleanerAccount?.id) return;
 
@@ -1744,6 +1758,13 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     chatSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
+  function scrollToBulletinSection() {
+    setBulletinOpen(true);
+    window.setTimeout(() => {
+      bulletinSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
+  }
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
@@ -1753,6 +1774,10 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     }
     if (params.get("open") === "chat") {
       window.setTimeout(() => scrollToChatSection(), 250);
+    }
+    if (params.get("open") === "bulletin") {
+      setBulletinOpen(true);
+      window.setTimeout(() => scrollToBulletinSection(), 250);
     }
   }, []);
 
@@ -1846,6 +1871,15 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
           Chat {chatUnreadCount > 99 ? "99+" : chatUnreadCount}
         </button>
       ) : null}
+      {profile && bulletinUnreadCount > 0 ? (
+        <button
+          type="button"
+          onClick={scrollToBulletinSection}
+          className="fixed bottom-20 right-4 z-40 rounded-full border border-[#e3c177]/50 bg-[#d8a94b] px-4 py-3 text-sm font-bold text-[#2f230f] shadow-[0_18px_45px_rgba(0,0,0,0.24)] transition hover:brightness-105"
+        >
+          Bulletin {bulletinUnreadCount > 99 ? "99+" : bulletinUnreadCount}
+        </button>
+      ) : null}
       {profile ? (
         <div ref={chatSectionRef} className="bg-[#100d0a] px-3 pb-[35vh] sm:px-6">
           <div className="mx-auto max-w-7xl">
@@ -1862,6 +1896,45 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
               targetConversationId={targetChatConversationId}
               onUnreadCountChange={setChatUnreadCount}
             />
+          </div>
+        </div>
+      ) : null}
+      {profile && cleanerAccount?.organization_id ? (
+        <div ref={bulletinSectionRef} className="bg-[#100d0a] px-3 pb-[35vh] sm:px-6">
+          <div className="mx-auto max-w-7xl">
+            {bulletinOpen ? (
+              <TeamBulletinBoard
+                portal="cleaner"
+                organizationId={cleanerAccount.organization_id}
+                profileId={profile.id}
+                displayName={profile.full_name}
+                email={profile.email}
+                role={profile.role}
+                initialConversationId={bulletinConversationId}
+                onUnreadCountChange={setBulletinUnreadCount}
+                title="Cleaner Team Bulletin"
+                subtitle="Shared updates for admin, cleaners, and grounds without loading the board until you open it."
+              />
+            ) : (
+              <section className="rounded-[30px] border border-white/8 bg-[#15110d] p-5 text-[#f7f1e8] shadow-[0_24px_80px_rgba(0,0,0,0.18)] sm:p-6">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#e7c98a]">Team</div>
+                    <h2 className="mt-2 text-xl font-semibold tracking-tight">Cleaner Team Bulletin</h2>
+                    <p className="mt-2 max-w-3xl text-sm leading-6 text-[#d9cbb6]">
+                      Read updates shared with admin, cleaners, and grounds. The full board stays unloaded until you open it.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={scrollToBulletinSection}
+                    className="rounded-full border border-[#c59a43]/40 bg-[#d8a94b] px-4 py-2 text-sm font-semibold text-[#2f230f] transition hover:brightness-105"
+                  >
+                    Open bulletin{bulletinUnreadCount > 0 ? ` (${bulletinUnreadCount > 99 ? "99+" : bulletinUnreadCount})` : ""}
+                  </button>
+                </div>
+              </section>
+            )}
           </div>
         </div>
       ) : null}

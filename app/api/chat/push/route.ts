@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendStaffPushNotifications } from "@/lib/server/staff-push-notifications";
+import { TEAM_BULLETIN_CONTEXT_TYPE } from "@/lib/server/team-bulletin";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -81,6 +82,18 @@ export async function POST(request: NextRequest) {
     if (!message) {
       return NextResponse.json({ ok: false, error: "Message not found." }, { status: 404 });
     }
+
+    const { data: conversation, error: conversationError } = await service
+      .from("chat_conversations")
+      .select("id,context_type")
+      .eq("id", message.conversation_id)
+      .maybeSingle();
+
+    if (conversationError) {
+      return NextResponse.json({ ok: false, error: conversationError.message }, { status: 500 });
+    }
+
+    const isTeamBulletin = conversation?.context_type === TEAM_BULLETIN_CONTEXT_TYPE;
 
     const { data: participants, error: participantsError } = await service
       .from("chat_participants")
@@ -190,6 +203,7 @@ export async function POST(request: NextRequest) {
 
     for (const participant of participantRows as any[]) {
       if (participant.participant_type === "owner") {
+        if (isTeamBulletin) continue;
         addRecipient("owner", ownerProfileById.get(participant.participant_owner_account_id));
         continue;
       }
@@ -207,17 +221,17 @@ export async function POST(request: NextRequest) {
     const summary = trimBody(message.body);
     const chatTargetByPortal = {
       owner: `/owner?tab=chat&conversationId=${encodeURIComponent(message.conversation_id)}`,
-      admin: `/admin?open=chat&conversationId=${encodeURIComponent(message.conversation_id)}`,
-      cleaner: `/cleaner?open=chat&conversationId=${encodeURIComponent(message.conversation_id)}`,
-      grounds: `/grounds?open=chat&conversationId=${encodeURIComponent(message.conversation_id)}`,
+      admin: `/admin?open=${isTeamBulletin ? "bulletin" : "chat"}&conversationId=${encodeURIComponent(message.conversation_id)}`,
+      cleaner: `/cleaner?open=${isTeamBulletin ? "bulletin" : "chat"}&conversationId=${encodeURIComponent(message.conversation_id)}`,
+      grounds: `/grounds?open=${isTeamBulletin ? "bulletin" : "chat"}&conversationId=${encodeURIComponent(message.conversation_id)}`,
     } satisfies Record<PushPortal, string>;
 
     for (const [portal, profileIds] of recipientsByPortal.entries()) {
       const result = await sendStaffPushNotifications(portal, [...profileIds], {
-        title: `New chat from ${senderLabel}`,
-        body: summary || "Open Gulera OS to read the message.",
+        title: `${isTeamBulletin ? "New bulletin post" : "New chat"} from ${senderLabel}`,
+        body: summary || `Open Gulera OS to read the ${isTeamBulletin ? "bulletin post" : "message"}.`,
         url: chatTargetByPortal[portal],
-        tag: `chat-${message.conversation_id}-${message.id}`,
+        tag: `${isTeamBulletin ? "bulletin" : "chat"}-${message.conversation_id}-${message.id}`,
       });
 
       sent += result.sent;

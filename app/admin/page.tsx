@@ -8,12 +8,14 @@ import { Check, Copy, Eye, EyeOff, Mail, MapPin, Monitor, Navigation, Phone, Sea
 import AdminLoadingScene from "@/components/admin/admin-loading-scene";
 import { supabase } from "@/lib/supabase";
 import { trackFeatureUsage } from "@/lib/feature-usage";
+import { useTeamBulletinSummary } from "@/lib/use-team-bulletin-summary";
 import { useI18n } from "@/components/i18n-provider";
 
 import type { OnboardingStep } from "@/components/onboarding-checklist";
 
 const OnboardingChecklist = dynamic(() => import("@/components/onboarding-checklist"));
 const PortalInstallControl = dynamic(() => import("@/components/pwa/portalinstallcontrol"));
+const TeamBulletinBoard = dynamic(() => import("@/components/team/team-bulletin"));
 
 function getCityFromAddress(address?: string | null) {
   if (!address) return "";
@@ -665,6 +667,7 @@ type AdminSection =
   | "jobs"
   | "calendar"
   | "bookings"
+  | "bulletin"
   | "maintenance"
   | "inspections"
   | "invites"
@@ -734,6 +737,7 @@ const ADMIN_FEATURE_LABELS: Record<AdminSection, string> = {
   jobs: "Jobs",
   calendar: "Calendar",
   bookings: "Bookings",
+  bulletin: "Bulletin Board",
   maintenance: "Maintenance Flags",
   inspections: "Property Inspections",
   invites: "Invites",
@@ -1595,6 +1599,15 @@ export default function AdminPage() {
   ]);
   const [teamWorkflowTab, setTeamWorkflowTab] = useState<TeamWorkflowTab>("invites");
   const [teamInviteRole, setTeamInviteRole] = useState<TeamInviteRole>("admin");
+  const {
+    conversationId: bulletinConversationId,
+    unreadCount: bulletinUnreadCount,
+    setUnreadCount: setBulletinUnreadCount,
+  } = useTeamBulletinSummary({
+    portal: "admin",
+    organizationId: currentOrganizationId || "",
+    enabled: Boolean(currentOrganizationId && currentAdminUserId),
+  });
 
   const [propertyName, setPropertyName] = useState("");
   const [propertyEntryMode, setPropertyEntryMode] = useState<PropertyEntryMode>("manual");
@@ -2233,6 +2246,9 @@ export default function AdminPage() {
     if (open === "chat") {
       setActiveSection("chat");
       if (conversationId) setSelectedChatConversationId(conversationId);
+    }
+    if (open === "bulletin") {
+      setActiveSection("bulletin");
     }
     if (open === "jobs") {
       setActiveSection("jobs");
@@ -10579,6 +10595,13 @@ This removes its linked members and deletes the grounds account.`
           activeClass: "border-[#a5f3fc] bg-[#ecfeff] text-[#0e7490]",
         },
         {
+          key: "bulletin",
+          label: t("admin.navigation.items.bulletin.label"),
+          hint: t("admin.navigation.items.bulletin.hint"),
+          accent: "bg-[#d97706]",
+          activeClass: "border-[#fcd34d] bg-[#fffbeb] text-[#b45309]",
+        },
+        {
           key: "jobs",
           label: t("admin.navigation.items.jobs.label"),
           hint: t("admin.navigation.items.jobs.hint"),
@@ -10749,6 +10772,18 @@ This removes its linked members and deletes the grounds account.`
       });
     }
 
+    if (bulletinUnreadCount > 0) {
+      items.push({
+        key: "bulletin",
+        title: "Unread bulletin posts",
+        detail: "Team-wide updates are waiting on the bulletin board.",
+        count: bulletinUnreadCount,
+        tone: "amber",
+        actionLabel: "Open bulletin",
+        onClick: () => setActiveSection("bulletin"),
+      });
+    }
+
     if (openDeletionRequests.length > 0) {
       items.push({
         key: "account-deletion-requests",
@@ -10895,6 +10930,7 @@ This removes its linked members and deletes the grounds account.`
     });
   }, [
     unreadChatCount,
+    bulletinUnreadCount,
     failedNotificationStats.total,
     failedNotificationStats.overdue,
     strandedJobs.length,
@@ -10961,6 +10997,7 @@ This removes its linked members and deletes the grounds account.`
     activeSection,
     notificationCenterCount,
     unreadChatCount,
+    bulletinUnreadCount,
     strandedJobs.length,
     maintenanceFlagCounts.urgent,
     dueInspectionRules.length,
@@ -10971,6 +11008,7 @@ This removes its linked members and deletes the grounds account.`
   function getRawAdminMenuBadgeCount(section: AdminSection) {
     if (section === "notifications") return notificationCenterCount;
     if (section === "chat") return unreadChatCount;
+    if (section === "bulletin") return bulletinUnreadCount;
     if (section === "jobs") return strandedJobs.length;
     if (section === "maintenance") return maintenanceFlagCounts.urgent;
     if (section === "inspections") return dueInspectionRules.length;
@@ -10983,7 +11021,7 @@ This removes its linked members and deletes the grounds account.`
     if (section === activeSection) return "";
 
     const currentCount = getRawAdminMenuBadgeCount(section);
-    if (section === "chat") {
+    if (section === "chat" || section === "bulletin") {
       return currentCount > 0 ? (currentCount > 99 ? "99+" : String(currentCount)) : "";
     }
 
@@ -11049,6 +11087,9 @@ This removes its linked members and deletes the grounds account.`
       if (firstUnreadConversationId) {
         setSelectedChatConversationId(firstUnreadConversationId);
       }
+    }
+    if (section === "bulletin") {
+      setBulletinUnreadCount(0);
     }
     const currentCount = getRawAdminMenuBadgeCount(section);
     setAdminMenuSeenCounts((prev) =>
@@ -11255,7 +11296,8 @@ This removes its linked members and deletes the grounds account.`
                 className={`inline-flex min-h-10 items-center gap-2 rounded-full border px-3 py-2 text-sm font-semibold transition ${
                   active
                     ? `${item.activeClass} shadow-[0_10px_20px_rgba(36,28,21,0.08)]`
-                    : item.key === "chat" && unreadChatCount > 0
+                    : ((item.key === "chat" && unreadChatCount > 0) ||
+                        (item.key === "bulletin" && bulletinUnreadCount > 0))
                       ? "border-[#a5f3fc] bg-[#ecfeff] text-[#0e7490] hover:bg-white"
                       : "border-[#eadfce] bg-white text-[#5f5245] hover:border-[#d8c7ab] hover:bg-[#fcfaf7]"
                 } ${dragging ? "scale-95 opacity-60" : "cursor-grab active:cursor-grabbing"}`}
@@ -11344,7 +11386,8 @@ This removes its linked members and deletes the grounds account.`
                     className={`group flex w-full items-center gap-3 rounded-[18px] border px-3 py-3 text-left transition ${
                       active
                         ? `${item.activeClass} shadow-[0_12px_24px_rgba(36,28,21,0.08)]`
-                        : item.key === "chat" && unreadChatCount > 0
+                        : ((item.key === "chat" && unreadChatCount > 0) ||
+                            (item.key === "bulletin" && bulletinUnreadCount > 0))
                           ? "border-[#a5f3fc] bg-[#ecfeff] text-[#0e7490] hover:bg-white"
                           : "border-transparent bg-transparent text-[#5f5245] hover:border-[#eadfce] hover:bg-white"
                     } ${dragging ? "scale-[0.98] opacity-60" : "cursor-grab active:cursor-grabbing"}`}
@@ -11424,6 +11467,7 @@ This removes its linked members and deletes the grounds account.`
           <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {[
               { label: "Unread chat", value: unreadChatCount, tone: toneClasses.blue },
+              { label: "Bulletin", value: bulletinUnreadCount, tone: bulletinUnreadCount > 0 ? toneClasses.amber : toneClasses.green },
               { label: "Job issues", value: strandedJobs.length + failedNotificationStats.total, tone: strandedJobs.length + failedNotificationStats.total > 0 ? toneClasses.red : toneClasses.green },
               { label: "Maintenance", value: maintenanceFlagCounts.open, tone: maintenanceFlagCounts.urgent > 0 ? toneClasses.red : toneClasses.amber },
               { label: "Property health", value: propertyHealthStats.atRisk, tone: propertyHealthStats.atRisk > 0 ? toneClasses.amber : toneClasses.green },
@@ -23918,6 +23962,31 @@ This removes its linked members and deletes the grounds account.`
     );
   }
 
+  function renderBulletinSection() {
+    if (!currentOrganizationId || !currentAdminUserId || !currentAdminProfile) {
+      return (
+        <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <div className="text-sm text-[#6f6255]">Choose an organization to open the team bulletin board.</div>
+        </section>
+      );
+    }
+
+    return (
+      <TeamBulletinBoard
+        portal="admin"
+        organizationId={currentOrganizationId}
+        profileId={currentAdminUserId}
+        displayName={currentAdminProfile.full_name}
+        email={currentAdminProfile.email}
+        role="admin"
+        initialConversationId={bulletinConversationId}
+        onUnreadCountChange={setBulletinUnreadCount}
+        title="Team Bulletin Board"
+        subtitle="One shared place for updates that should be seen by admin, cleaners, and grounds."
+      />
+    );
+  }
+
   function renderActiveSection() {
     switch (activeSection) {
       case "home":
@@ -23946,6 +24015,8 @@ This removes its linked members and deletes the grounds account.`
         return renderTeamSection();
       case "chat":
         return renderChatSection();
+      case "bulletin":
+        return renderBulletinSection();
       case "assignments":
         return renderAssignmentsSection();
       case "jobs":
