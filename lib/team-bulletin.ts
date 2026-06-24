@@ -1,3 +1,6 @@
+export const TEAM_BULLETIN_CONTEXT_TYPE = "team_bulletin";
+export const TEAM_BULLETIN_RETENTION_DAYS = 30;
+
 export type TeamBulletinPortal = "admin" | "cleaner" | "grounds";
 
 export type TeamBulletinSummary = {

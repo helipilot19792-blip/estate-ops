@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { TEAM_BULLETIN_CONTEXT_TYPE } from "@/lib/team-bulletin";
 
 type ChatConversationRow = {
   id: string;
@@ -294,7 +295,9 @@ export default function PortalChat({
       if (participantResult.error) throw participantResult.error;
       if (messageResult.error) throw messageResult.error;
 
-      const loadedConversations = (conversationResult.data || []) as ChatConversationRow[];
+      const loadedConversations = ((conversationResult.data || []) as ChatConversationRow[]).filter(
+        (conversation) => conversation.context_type !== TEAM_BULLETIN_CONTEXT_TYPE
+      );
       setConversations(loadedConversations);
       setParticipants((participantResult.data || []) as ChatParticipantRow[]);
       setMessages((messageResult.data || []) as ChatMessageRow[]);

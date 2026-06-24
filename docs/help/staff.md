@@ -1,6 +1,6 @@
 # Cleaner And Grounds Portal Help
 
-Cleaner and grounds portals are focused on daily work, job response, property details, reporting issues, and chat.
+Cleaner and grounds portals are focused on daily work, job response, property details, reporting issues, chat, and the Bulletin Board.
 
 ## Cleaner Portal
 
@@ -11,6 +11,7 @@ Cleaner and grounds portals are focused on daily work, job response, property de
 - Report Issue is used for damage, missing supplies, access trouble, safety concerns, and other property problems.
 - Report Issue can include photos from the device camera or the camera roll/file picker when supported by the device and browser.
 - Chat is for quick questions with management.
+- Bulletin Board is for team-wide updates shared with admins, cleaners, and grounds.
 
 ## Grounds Portal
 
@@ -21,6 +22,7 @@ Cleaner and grounds portals are focused on daily work, job response, property de
 - Report Issue is used for exterior concerns, hazards, access trouble, damage, or other property problems.
 - Report Issue can include photos from the device camera or the camera roll/file picker when supported by the device and browser.
 - Chat is for quick questions with management.
+- Bulletin Board is for team-wide updates shared with admins, cleaners, and grounds.
 
 ## Alerts
 
@@ -41,6 +43,10 @@ Check that you are signed into the correct portal and account. Admins should con
 ### Should I use chat or report issue?
 
 Use Report Issue when something needs to be tracked as a property problem. Use Chat for a quick question, clarification, or conversation.
+
+### What is Bulletin Board for?
+
+Use Bulletin Board when you need to read updates shared with the full field team. It is not the same as Chat and should not create a normal chat conversation.
 
 ### I reported an issue and it kept saying Reporting.
 

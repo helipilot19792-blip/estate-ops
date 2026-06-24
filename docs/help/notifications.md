@@ -1,6 +1,6 @@
 # Notifications And Push Alerts Help
 
-Push notifications are used for chat and operational alerts when a user has enabled alerts on their device/browser.
+Push notifications are used for chat, Bulletin Board posts, and operational alerts when a user has enabled alerts on their device/browser.
 
 ## Required Production Environment
 
@@ -30,9 +30,12 @@ Each user must enable alerts from the portal on the device and browser they actu
 
 ### Does fixing chat push also fix other pushes?
 
-Yes, the same VAPID signing setup is used by the shared staff push sender. Once the production signing key is valid, chat and other staff push flows can use it. Individual users still need valid subscriptions.
+Yes, the same VAPID signing setup is used by the shared staff push sender. Once the production signing key is valid, chat, Bulletin Board, and other staff push flows can use it. Individual users still need valid subscriptions.
 
 ### Why did the message send but push failed?
 
 The chat message is saved separately from push delivery. Push can fail because the signing key is missing, the recipient has not enabled alerts, the subscription is stale, or the device/browser blocks notifications.
 
+### Do Bulletin Board posts use the same push setup?
+
+Yes. Bulletin Board posts use the same browser push setup as other staff notifications. A bulletin post can still exist in the portal even if push delivery fails.

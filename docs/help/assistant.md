@@ -14,3 +14,10 @@ The AI helper answers questions about how to use GuleraOS / EstateOS. It should 
 ## Maintenance Rule
 
 When app behavior changes, update the matching file in `docs/help/` in the same commit. No model training is needed. The assistant reads the deployed help context at request time.
+
+Current bulletin behavior that should stay reflected in the help files:
+
+- The menu name is `Bulletin Board`.
+- Bulletin Board is separate from normal Chat conversations.
+- Bulletin posts are shared across admins, cleaners, and grounds.
+- Admins can delete individual posts, clear the board, and old posts are auto-removed after 30 days.

@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { fetchTeamBulletinSummary, type TeamBulletinPortal } from "@/lib/team-bulletin";
+import {
+  fetchTeamBulletinSummary,
+  TEAM_BULLETIN_RETENTION_DAYS,
+  type TeamBulletinPortal,
+} from "@/lib/team-bulletin";
 
 type ChatConversationRow = {
   id: string;
@@ -100,6 +104,40 @@ async function notifyChatPush(messageId: string) {
   };
 }
 
+async function manageBulletin(params: {
+  organizationId: string;
+  action: "delete-message" | "clear-board" | "prune-old";
+  messageIds?: string[];
+}) {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session?.access_token) {
+    throw new Error("Missing auth token for bulletin management.");
+  }
+
+  const response = await fetch("/api/team-bulletin/manage", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({
+      organizationId: params.organizationId,
+      action: params.action,
+      messageIds: params.messageIds || [],
+    }),
+  });
+  const payload = await response.json().catch(() => null);
+
+  if (!response.ok || payload?.ok === false) {
+    throw new Error(payload?.error || "Could not manage the team bulletin board.");
+  }
+
+  return payload;
+}
+
 export default function TeamBulletin({
   portal,
   organizationId,
@@ -108,7 +146,7 @@ export default function TeamBulletin({
   email,
   role,
   title = "Team Bulletin Board",
-  subtitle = "Post once and everyone on the team can see it.",
+  subtitle = "A shared place for updates across admin, cleaners, and grounds.",
   className = "",
   initialConversationId = "",
   onUnreadCountChange,
@@ -122,7 +160,9 @@ export default function TeamBulletin({
   const [error, setError] = useState("");
   const [messageBody, setMessageBody] = useState("");
   const [realtimeReady, setRealtimeReady] = useState(false);
+  const [managingAction, setManagingAction] = useState<"" | "delete-message" | "clear-board" | "prune-old">("");
   const threadScrollRef = useRef<HTMLDivElement | null>(null);
+  const isAdmin = role === "admin";
 
   const loadBoard = useCallback(async () => {
     if (!organizationId || !profileId) return;
@@ -335,6 +375,69 @@ export default function TeamBulletin({
     return sender?.display_name || sender?.email || "Team member";
   }
 
+  async function deleteMessage(messageId: string) {
+    if (!isAdmin) return;
+    const confirmed = window.confirm("Delete this bulletin post for everyone?");
+    if (!confirmed) return;
+
+    setManagingAction("delete-message");
+    setError("");
+
+    try {
+      await manageBulletin({
+        organizationId,
+        action: "delete-message",
+        messageIds: [messageId],
+      });
+      await loadBoard();
+    } catch (err) {
+      setError(getErrorMessage(err, "Could not delete that bulletin post."));
+    } finally {
+      setManagingAction("");
+    }
+  }
+
+  async function clearBoard() {
+    if (!isAdmin) return;
+    const confirmed = window.confirm("Clear the entire bulletin board for everyone?");
+    if (!confirmed) return;
+
+    setManagingAction("clear-board");
+    setError("");
+
+    try {
+      await manageBulletin({
+        organizationId,
+        action: "clear-board",
+      });
+      await loadBoard();
+      onUnreadCountChange?.(0);
+    } catch (err) {
+      setError(getErrorMessage(err, "Could not clear the bulletin board."));
+    } finally {
+      setManagingAction("");
+    }
+  }
+
+  async function pruneOldPosts() {
+    if (!isAdmin) return;
+
+    setManagingAction("prune-old");
+    setError("");
+
+    try {
+      await manageBulletin({
+        organizationId,
+        action: "prune-old",
+      });
+      await loadBoard();
+    } catch (err) {
+      setError(getErrorMessage(err, "Could not remove older bulletin posts."));
+    } finally {
+      setManagingAction("");
+    }
+  }
+
   const teamLabel = role === "admin" ? "Admin" : role === "grounds" ? "Grounds" : "Cleaner";
 
   return (
@@ -367,6 +470,30 @@ export default function TeamBulletin({
         </div>
       </div>
 
+      {isAdmin ? (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-white/8 bg-black/10 px-4 py-3 text-sm text-[#d9cbb6]">
+          <div>Posts older than {TEAM_BULLETIN_RETENTION_DAYS} days are removed automatically.</div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void pruneOldPosts()}
+              disabled={managingAction !== ""}
+              className="rounded-full border border-white/12 bg-white/5 px-3 py-1.5 text-xs font-semibold text-[#f7f1e8] transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {managingAction === "prune-old" ? "Removing old posts..." : "Remove old posts"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void clearBoard()}
+              disabled={managingAction !== ""}
+              className="rounded-full border border-rose-300/30 bg-rose-950/20 px-3 py-1.5 text-xs font-semibold text-rose-100 transition hover:bg-rose-950/30 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {managingAction === "clear-board" ? "Clearing..." : "Clear board"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {error ? (
         <div className="mt-4 rounded-[20px] border border-rose-400/35 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
           {error}
@@ -384,7 +511,7 @@ export default function TeamBulletin({
             </div>
           ) : messages.length === 0 ? (
             <div className="rounded-[18px] border border-dashed border-white/10 bg-white/5 px-4 py-5 text-sm text-[#d9cbb6]">
-              No posts yet. The first note here becomes visible to admin, cleaners, and grounds.
+              No posts yet. The first update here becomes visible to admin, cleaners, and grounds.
             </div>
           ) : (
             messages.map((message) => {
@@ -400,8 +527,20 @@ export default function TeamBulletin({
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="text-sm font-semibold">{getSenderLabel(message)}</div>
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-[#cdb58c]">
-                      {formatBulletinDate(message.created_at)}
+                    <div className="flex items-center gap-2">
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-[#cdb58c]">
+                        {formatBulletinDate(message.created_at)}
+                      </div>
+                      {isAdmin ? (
+                        <button
+                          type="button"
+                          onClick={() => void deleteMessage(message.id)}
+                          disabled={managingAction !== ""}
+                          className="rounded-full border border-rose-300/30 bg-rose-950/20 px-2 py-1 text-[11px] font-semibold text-rose-100 transition hover:bg-rose-950/30 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          Delete
+                        </button>
+                      ) : null}
                     </div>
                   </div>
                   <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-inherit">{message.body}</div>

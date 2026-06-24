@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendStaffPushNotifications } from "@/lib/server/staff-push-notifications";
-import { TEAM_BULLETIN_CONTEXT_TYPE } from "@/lib/server/team-bulletin";
+import { TEAM_BULLETIN_CONTEXT_TYPE } from "@/lib/team-bulletin";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";

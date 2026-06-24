@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import {
   ensureTeamBulletinConversation,
+  pruneTeamBulletinMessages,
   syncTeamBulletinParticipants,
 } from "@/lib/server/team-bulletin";
 
@@ -89,6 +90,7 @@ export async function GET(request: NextRequest) {
 
     const conversation = await ensureTeamBulletinConversation(service, organizationId, user.id);
     await syncTeamBulletinParticipants(service, organizationId, conversation.id);
+    await pruneTeamBulletinMessages(service, conversation.id);
 
     const [{ data: participant, error: participantError }, { data: messages, error: messagesError }] = await Promise.all([
       service

@@ -9,6 +9,7 @@ The admin portal is the operations control center for GuleraOS / EstateOS.
 - Calendar: Month view of synced booking events and scheduled jobs.
 - Bookings: Full synced booking list across upcoming, current, and past reservations with property filters and search.
 - Chat: Conversations with owners, cleaners, grounds staff, and admins.
+- Bulletin Board: Team-wide updates shared across admins, cleaners, and grounds staff.
 - Jobs: Cleaning and grounds work, staffing status, offers, active work, and exceptions.
 - Maintenance Flags: Open property issues reported by staff, owners, or admins.
 - Inspections: Property inspection rules and logs.
@@ -84,3 +85,19 @@ Users enable alerts from their own portal. Admins should check the notification 
 ### How do chat notifications work?
 
 Chat messages are saved in the portal first. If the recipient has alerts enabled and a valid push subscription, the app attempts to send a push notification. If push fails, the chat message still exists in the portal.
+
+### What is the Bulletin Board for?
+
+Use Bulletin Board for team-wide updates that should be visible to admins, cleaners, and grounds staff at the same time. Use Chat for one conversation with specific people.
+
+### Does the Bulletin Board show up in Chat?
+
+No. Bulletin Board posts are separate from normal chat conversations and should not appear as a new chat thread.
+
+### How do Bulletin Board notifications work?
+
+New bulletin posts can trigger push alerts for eligible staff, similar to chat. The unread badge belongs to Bulletin Board itself and should clear when the board is opened.
+
+### How do I keep the Bulletin Board from getting too full?
+
+Admins can delete individual bulletin posts, clear the full board, or remove older posts. The system also removes bulletin posts automatically after 30 days.

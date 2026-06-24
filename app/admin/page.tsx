@@ -8,6 +8,7 @@ import { Check, Copy, Eye, EyeOff, Mail, MapPin, Monitor, Navigation, Phone, Sea
 import AdminLoadingScene from "@/components/admin/admin-loading-scene";
 import { supabase } from "@/lib/supabase";
 import { trackFeatureUsage } from "@/lib/feature-usage";
+import { TEAM_BULLETIN_CONTEXT_TYPE } from "@/lib/team-bulletin";
 import { useTeamBulletinSummary } from "@/lib/use-team-bulletin-summary";
 import { useI18n } from "@/components/i18n-provider";
 
@@ -3314,7 +3315,11 @@ export default function AdminPage() {
       return next;
     });
     setChatConversations(
-      chatConversationsRes.error ? [] : ((chatConversationsRes.data ?? []) as ChatConversationRow[])
+      chatConversationsRes.error
+        ? []
+        : ((chatConversationsRes.data ?? []) as ChatConversationRow[]).filter(
+            (conversation) => conversation.context_type !== TEAM_BULLETIN_CONTEXT_TYPE
+          )
     );
     setChatParticipants(
       chatParticipantsRes.error ? [] : ((chatParticipantsRes.data ?? []) as ChatParticipantRow[])
@@ -10207,6 +10212,7 @@ This removes its linked members and deletes the grounds account.`
     "calendar",
     "bookings",
     "chat",
+    "bulletin",
     "jobs",
     "maintenance",
     "invoices",
@@ -10713,6 +10719,7 @@ This removes its linked members and deletes the grounds account.`
     if (!currentAdminUserId) return 0;
 
     return chatConversations.reduce((total, conversation) => {
+      if (conversation.context_type === TEAM_BULLETIN_CONTEXT_TYPE) return total;
       if (chatHiddenItems.some((item) => item.conversation_id === conversation.id && !item.message_id)) return total;
 
       const myParticipant = chatParticipants.find(
@@ -11467,7 +11474,7 @@ This removes its linked members and deletes the grounds account.`
           <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {[
               { label: "Unread chat", value: unreadChatCount, tone: toneClasses.blue },
-              { label: "Bulletin", value: bulletinUnreadCount, tone: bulletinUnreadCount > 0 ? toneClasses.amber : toneClasses.green },
+              { label: "Bulletin Board", value: bulletinUnreadCount, tone: bulletinUnreadCount > 0 ? toneClasses.amber : toneClasses.green },
               { label: "Job issues", value: strandedJobs.length + failedNotificationStats.total, tone: strandedJobs.length + failedNotificationStats.total > 0 ? toneClasses.red : toneClasses.green },
               { label: "Maintenance", value: maintenanceFlagCounts.open, tone: maintenanceFlagCounts.urgent > 0 ? toneClasses.red : toneClasses.amber },
               { label: "Property health", value: propertyHealthStats.atRisk, tone: propertyHealthStats.atRisk > 0 ? toneClasses.amber : toneClasses.green },
@@ -12773,7 +12780,10 @@ This removes its linked members and deletes the grounds account.`
         detail: owner.email,
       })),
     ];
-    const visibleChatConversations = chatConversations.filter((conversation) => !isChatConversationHidden(conversation.id));
+    const visibleChatConversations = chatConversations.filter(
+      (conversation) =>
+        conversation.context_type !== TEAM_BULLETIN_CONTEXT_TYPE && !isChatConversationHidden(conversation.id)
+    );
     const selectedConversation =
       visibleChatConversations.find((conversation) => conversation.id === selectedChatConversationId) ||
       visibleChatConversations[0] ||
@@ -23982,7 +23992,7 @@ This removes its linked members and deletes the grounds account.`
         initialConversationId={bulletinConversationId}
         onUnreadCountChange={setBulletinUnreadCount}
         title="Team Bulletin Board"
-        subtitle="One shared place for updates that should be seen by admin, cleaners, and grounds."
+        subtitle="A shared place for updates across admin, cleaners, and grounds."
       />
     );
   }
