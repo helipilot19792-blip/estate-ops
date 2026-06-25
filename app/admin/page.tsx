@@ -5,7 +5,9 @@ import Image from "next/image";
 import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Copy, Eye, EyeOff, Mail, MapPin, Monitor, Navigation, Phone, Search } from "lucide-react";
+import AdminBillingBanner from "@/components/admin/admin-billing-banner";
 import AdminLoadingScene from "@/components/admin/admin-loading-scene";
+import AdminOperationsAlerts from "@/components/admin/admin-operations-alerts";
 import { supabase } from "@/lib/supabase";
 import { trackFeatureUsage } from "@/lib/feature-usage";
 import { TEAM_BULLETIN_CONTEXT_TYPE } from "@/lib/team-bulletin";
@@ -24883,15 +24885,23 @@ This removes its linked members and deletes the grounds account.`
         ) : null}
 
         {currentOrganizationBilling && !isInternalWorkspace ? (
-          <div
-            className={`mb-6 rounded-[24px] border px-4 py-4 shadow-sm ${
-              trialExpired
-                ? "border-[#f5c2c7] bg-[#fff1f2] text-[#8a2e22]"
-                : trialEndingSoon
-                  ? "border-[#ecd7a8] bg-[#fff8e8] text-[#8a6112]"
-                  : "border-[#d8c7ab] bg-[#fcfaf7] text-[#5f5245]"
-            }`}
-          >
+          <AdminBillingBanner
+            currentOrganizationBilling={currentOrganizationBilling}
+            currentTrialStatus={currentTrialStatus}
+            currentPlanName={currentPlanName}
+            trialExpired={trialExpired}
+            trialEndingSoon={trialEndingSoon}
+            trialDaysRemaining={trialDaysRemaining}
+            hasStripeManagedSubscription={hasStripeManagedSubscription}
+            hasStripeBillingProfile={hasStripeBillingProfile}
+            billingActionLoading={billingActionLoading}
+            billingPlanOptions={BILLING_PLAN_OPTIONS}
+            formatLongDate={formatLongDate}
+            onCheckout={(planKey) => void redirectToStripeCheckout(planKey)}
+            onOpenBillingPortal={() => void openStripeBillingPortal()}
+          />
+        ) : null}
+        {/* Legacy inline billing banner replaced by AdminBillingBanner component.
             <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div>
                 <div className="text-xs font-semibold uppercase tracking-[0.18em]">
@@ -24969,42 +24979,9 @@ This removes its linked members and deletes the grounds account.`
               </div>
             ) : null}
           </div>
-        ) : null}
+        */}
 
-        {operationsAlerts.length > 0 ? (
-          <div className="sticky top-3 z-40 mb-6 rounded-[30px] border border-[#e7ddd0] bg-[rgba(255,255,255,0.94)] p-4 shadow-[0_18px_45px_rgba(0,0,0,0.08)] backdrop-blur">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div>
-                <div className="text-sm font-semibold text-[#241c15]">Operations Alerts</div>
-                <div className="mt-1 text-sm text-[#7f7263]">
-                  Important items across jobs and maintenance.
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                {operationsAlerts.map((alert) => (
-                  <button
-                    key={alert.key}
-                    onClick={alert.onClick}
-                    className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${alert.key === "maintenance-urgent"
-                      ? "animate-pulse border-[#b91c1c] bg-[#dc2626] text-white shadow-[0_8px_22px_rgba(185,28,28,0.28)] hover:bg-[#b91c1c]"
-                      : alert.tone === "red"
-                        ? "border-[#fecaca] bg-[#fff1f2] text-[#991b1b] hover:bg-[#ffe4e6]"
-                        : alert.tone === "green"
-                          ? "border-[#bbdfc0] bg-[#f0fbf2] text-[#236b30] hover:bg-[#e4f7e8]"
-                        : "border-[#ecd7a8] bg-[#fff8e8] text-[#8a6112] hover:bg-[#fff2cf]"
-                      }`}
-                  >
-                    <span>{alert.label}</span>
-                    <span className="rounded-full border border-current/20 px-2 py-0.5 text-[11px]">
-                      View
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        ) : null}
+        <AdminOperationsAlerts operationsAlerts={operationsAlerts} />
 
         {adminMenuOrientation === "top" ? (
           <div className="mb-6 hidden origin-top rounded-[24px] border border-[#e7ddd0] bg-[#fbf8f4] p-3 shadow-[0_18px_45px_rgba(0,0,0,0.05)] transition-all duration-500 ease-out lg:block">
