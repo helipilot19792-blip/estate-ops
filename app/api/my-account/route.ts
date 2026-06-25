@@ -36,6 +36,16 @@ function getBearerToken(request: NextRequest) {
 
 type PortalKind = "admin" | "owner" | "cleaner" | "grounds" | "platform" | null;
 
+type AccountOrganizationBilling = {
+  organization_id: string;
+  name: string | null;
+  account_type: string | null;
+  subscription_status: string | null;
+  plan_name: string | null;
+  trial_ends_at: string | null;
+  stripe_customer_id: string | null;
+};
+
 function normalizePortal(value: string | null | undefined): PortalKind {
   if (value === "admin" || value === "owner" || value === "cleaner" || value === "grounds" || value === "platform") {
     return value;
@@ -194,6 +204,44 @@ async function syncPortalIdentity(userId: string, portal: PortalKind, fullName: 
   }
 }
 
+async function loadOrganizationBillingForAdmin(userId: string, role: string | null | undefined, organizationId: string) {
+  if (!organizationId) return null;
+
+  if (role !== "platform_admin") {
+    const { data: membership, error: membershipError } = await serviceClient
+      .from("organization_members")
+      .select("role")
+      .eq("organization_id", organizationId)
+      .eq("profile_id", userId)
+      .eq("role", "admin")
+      .maybeSingle();
+
+    if (membershipError || !membership) {
+      return null;
+    }
+  }
+
+  const { data: organization, error } = await serviceClient
+    .from("organizations")
+    .select("id,name,account_type,subscription_status,plan_name,trial_ends_at,stripe_customer_id")
+    .eq("id", organizationId)
+    .maybeSingle();
+
+  if (error || !organization) {
+    return null;
+  }
+
+  return {
+    organization_id: organization.id,
+    name: organization.name || null,
+    account_type: organization.account_type || null,
+    subscription_status: organization.subscription_status || null,
+    plan_name: organization.plan_name || null,
+    trial_ends_at: organization.trial_ends_at || null,
+    stripe_customer_id: organization.stripe_customer_id || null,
+  } as AccountOrganizationBilling;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const token = getBearerToken(request);
@@ -204,6 +252,7 @@ export async function GET(request: NextRequest) {
     const user = await getSignedInUser(token);
     const { searchParams } = new URL(request.url);
     const portal = normalizePortal(searchParams.get("portal"));
+    const organizationId = searchParams.get("organizationId")?.trim() || "";
     const { data: profile, error } = await serviceClient
       .from("profiles")
       .select("id,email,full_name,phone,role,created_at")
@@ -222,6 +271,10 @@ export async function GET(request: NextRequest) {
       },
       profile: profile || null,
       identity: await loadPortalIdentity(user.id, portal, profile),
+      organizationBilling:
+        portal === "admin" || portal === "platform"
+          ? await loadOrganizationBillingForAdmin(user.id, profile?.role, organizationId)
+          : null,
     });
   } catch (error) {
     return NextResponse.json(

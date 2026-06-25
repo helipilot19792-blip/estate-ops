@@ -24882,7 +24882,7 @@ This removes its linked members and deletes the grounds account.`
           </div>
         ) : null}
 
-        {currentOrganizationBilling ? (
+        {currentOrganizationBilling && !isInternalWorkspace ? (
           <div
             className={`mb-6 rounded-[24px] border px-4 py-4 shadow-sm ${
               trialExpired

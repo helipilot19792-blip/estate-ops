@@ -25,6 +25,7 @@ type AccountPayload = {
   };
   profile?: AccountProfile | null;
   identity?: AccountIdentity | null;
+  organizationBilling?: AccountOrganizationBilling | null;
 };
 
 type AccountIdentity = {
@@ -37,6 +38,18 @@ type AccountIdentity = {
   phone: string | null;
   organization_id?: string | null;
 };
+
+type AccountOrganizationBilling = {
+  organization_id: string;
+  name: string | null;
+  account_type: string | null;
+  subscription_status: string | null;
+  plan_name: string | null;
+  trial_ends_at: string | null;
+  stripe_customer_id: string | null;
+};
+
+const ADMIN_SELECTED_ORGANIZATION_KEY = "admin-current-organization-id-v2";
 
 function getPortalFromPath(pathname: string): string {
   if (pathname.startsWith("/owner")) return "owner";
@@ -57,6 +70,7 @@ export default function MyAccountControl() {
   const [savingPassword, setSavingPassword] = useState(false);
   const [profile, setProfile] = useState<AccountProfile | null>(null);
   const [identity, setIdentity] = useState<AccountIdentity | null>(null);
+  const [organizationBilling, setOrganizationBilling] = useState<AccountOrganizationBilling | null>(null);
   const [authEmail, setAuthEmail] = useState("");
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
@@ -74,6 +88,13 @@ export default function MyAccountControl() {
   );
   const portal = getPortalFromPath(pathname || "");
 
+  function getCurrentAdminOrganizationId() {
+    if (typeof window === "undefined") return "";
+    const fromUrl = new URLSearchParams(window.location.search).get("organizationId")?.trim() || "";
+    if (fromUrl) return fromUrl;
+    return window.localStorage.getItem(ADMIN_SELECTED_ORGANIZATION_KEY)?.trim() || "";
+  }
+
   useEffect(() => {
     let active = true;
 
@@ -89,6 +110,7 @@ export default function MyAccountControl() {
         setOpen(false);
         setProfile(null);
         setIdentity(null);
+        setOrganizationBilling(null);
         setAuthEmail("");
       }
     });
@@ -113,11 +135,18 @@ export default function MyAccountControl() {
         throw new Error(t("myAccount.errors.notSignedIn"));
       }
 
-      const response = await fetch(`/api/my-account?portal=${encodeURIComponent(portal)}`, {
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-      });
+      const organizationId =
+        portal === "admin" || portal === "platform" ? getCurrentAdminOrganizationId() : "";
+      const response = await fetch(
+        `/api/my-account?portal=${encodeURIComponent(portal)}${
+          organizationId ? `&organizationId=${encodeURIComponent(organizationId)}` : ""
+        }`,
+        {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        }
+      );
       const data = (await response.json().catch(() => null)) as AccountPayload | null;
 
       if (!response.ok || data?.ok === false) {
@@ -126,6 +155,7 @@ export default function MyAccountControl() {
 
       setProfile(data?.profile || null);
       setIdentity(data?.identity || null);
+      setOrganizationBilling(data?.organizationBilling || null);
       setAuthEmail(data?.identity?.email || data?.user?.email || data?.profile?.email || "");
       setFullName(data?.identity?.full_name || data?.profile?.full_name || "");
       setPhone(data?.identity?.phone || data?.profile?.phone || "");
@@ -139,6 +169,48 @@ export default function MyAccountControl() {
   async function openAccount() {
     setOpen(true);
     await loadAccount();
+  }
+
+  async function openBillingPortal() {
+    setSavingProfile(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const organizationId = organizationBilling?.organization_id || getCurrentAdminOrganizationId();
+
+      if (!organizationId) {
+        throw new Error("Select an admin workspace before opening billing.");
+      }
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error(t("myAccount.errors.notSignedIn"));
+      }
+
+      const response = await fetch("/api/stripe/portal", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ organizationId }),
+      });
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok || !data?.url) {
+        throw new Error(data?.error || "Could not open billing.");
+      }
+
+      window.location.href = data.url;
+    } catch (billingError) {
+      setError(billingError instanceof Error ? billingError.message : "Could not open billing.");
+    } finally {
+      setSavingProfile(false);
+    }
   }
 
   async function handleProfileSubmit(event: FormEvent<HTMLFormElement>) {
@@ -325,6 +397,75 @@ export default function MyAccountControl() {
                   <div className="mt-1 truncate text-sm font-semibold text-[#241c15]">{identity?.id || profile?.id || "-"}</div>
                 </div>
               </div>
+
+              {portal === "admin" || portal === "platform" ? (
+                <section className="rounded-[22px] border border-[#eadfce] p-4">
+                  <h3 className="text-base font-semibold text-[#241c15]">Billing</h3>
+                  <p className="mt-1 text-sm text-[#6f6255]">
+                    Manage your workspace subscription in Stripe. Cancellation, payment methods, and invoices live there.
+                  </p>
+                  {organizationBilling ? (
+                    <>
+                      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                        <div className="rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
+                            Workspace
+                          </div>
+                          <div className="mt-1 text-sm font-semibold text-[#241c15]">
+                            {organizationBilling.name || "Current workspace"}
+                          </div>
+                        </div>
+                        <div className="rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
+                            Status
+                          </div>
+                          <div className="mt-1 text-sm font-semibold capitalize text-[#241c15]">
+                            {organizationBilling.account_type === "internal"
+                              ? "Internal"
+                              : organizationBilling.subscription_status || "trialing"}
+                          </div>
+                        </div>
+                        <div className="rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
+                            Plan
+                          </div>
+                          <div className="mt-1 text-sm font-semibold text-[#241c15]">
+                            {organizationBilling.plan_name || "Beta trial"}
+                          </div>
+                        </div>
+                      </div>
+
+                      {organizationBilling.account_type === "internal" ? (
+                        <div className="mt-4 rounded-[18px] border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-3 text-sm text-[#5f5245]">
+                          This internal workspace does not use customer billing.
+                        </div>
+                      ) : organizationBilling.stripe_customer_id ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => void openBillingPortal()}
+                            disabled={savingProfile}
+                            className="mt-4 rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#352a21] disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {savingProfile ? "Opening billing..." : "Manage subscription in Stripe"}
+                          </button>
+                          <p className="mt-2 text-xs text-[#6f6255]">
+                            Customers can update cards or cancel from the Stripe billing portal.
+                          </p>
+                        </>
+                      ) : (
+                        <div className="mt-4 rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3 text-sm text-[#5f5245]">
+                          Billing setup starts from the admin workspace banner during trial or upgrade.
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="mt-4 rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3 text-sm text-[#5f5245]">
+                      Choose an admin workspace first to view billing details.
+                    </div>
+                  )}
+                </section>
+              ) : null}
 
               <section className="rounded-[22px] border border-[#eadfce] p-4">
                 <h3 className="text-base font-semibold text-[#241c15]">{t("myAccount.languageTitle")}</h3>

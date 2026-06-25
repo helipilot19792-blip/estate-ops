@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { assertWorkspaceBillingAccess } from "@/lib/server/workspace-billing-status";
 
 export const dynamic = "force-dynamic";
 
@@ -79,6 +80,20 @@ async function requireAdminAccess(token: string, organizationId: string) {
   return { user, profile };
 }
 
+async function requireWorkspaceBillingAccess(organizationId: string) {
+  const { data: organization, error } = await serviceClient
+    .from("organizations")
+    .select("subscription_status,trial_ends_at,account_type,plan_name")
+    .eq("id", organizationId)
+    .maybeSingle();
+
+  if (error || !organization) {
+    throw new Error(error?.message || "Organization not found.");
+  }
+
+  return assertWorkspaceBillingAccess(organization);
+}
+
 export async function GET(request: Request) {
   try {
     const authHeader = request.headers.get("authorization");
@@ -95,6 +110,7 @@ export async function GET(request: Request) {
     }
 
     const { user } = await requireAdminAccess(token, organizationId);
+    await requireWorkspaceBillingAccess(organizationId);
     const todayYmd = new Date().toISOString().slice(0, 10);
     const bookingLookaheadEndYmd = new Date(Date.now() + 540 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
