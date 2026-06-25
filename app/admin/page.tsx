@@ -24946,20 +24946,26 @@ This removes its linked members and deletes the grounds account.`
           </div>
         </div>
 
-        <div className="mb-4 rounded-[24px] border border-[#e7ddd0] bg-white p-3 shadow-[0_18px_45px_rgba(0,0,0,0.05)] lg:hidden">
+        <div className="mb-4 rounded-[24px] border border-[#d4b06d] bg-[linear-gradient(135deg,#241c15_0%,#3a2d21_52%,#5a452a_100%)] p-3 shadow-[0_20px_50px_rgba(36,28,21,0.24)] lg:hidden">
           <button
             type="button"
             onClick={() => setShowAdminNav(true)}
-            className="flex w-full items-center justify-between rounded-[18px] border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-3 text-left text-sm font-semibold text-[#241c15]"
+            className="flex w-full items-center justify-between rounded-[20px] border border-[#d4b06d] bg-[rgba(255,248,235,0.08)] px-4 py-3.5 text-left text-sm font-semibold text-[#fff7eb] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
           >
-            <span>
-              {t("admin.navigation.menu")}
-              <span className="ml-2 text-xs font-medium text-[#8a7b68]">
-                {orderedAdminMenuItems.find((item) => item.key === activeSection)?.label}
+            <span className="min-w-0">
+              <span className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.22em] text-[#f0c97a]">
+                <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#f0c97a] shadow-[0_0_14px_rgba(240,201,122,0.7)]" />
+                Admin menu
+              </span>
+              <span className="mt-1 block text-base font-semibold text-white">
+                {orderedAdminMenuItems.find((item) => item.key === activeSection)?.label || t("admin.navigation.menu")}
+              </span>
+              <span className="mt-1 block text-xs font-medium text-[#e7d7bf]">
+                Tap here to open navigation
               </span>
             </span>
-            <span className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs text-[#6f6255]">
-              {t("admin.navigation.open")}
+            <span className="rounded-full border border-[#f0c97a] bg-[#f0c97a] px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-[#241c15] shadow-[0_10px_24px_rgba(240,201,122,0.25)]">
+              Open
             </span>
           </button>
         </div>

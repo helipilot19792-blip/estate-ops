@@ -54,6 +54,23 @@ function isInstalledAppExperience() {
   return standaloneMedia || navigatorStandalone;
 }
 
+function detectMobileBrowser() {
+  const ua = navigator.userAgent || "";
+  const isIPhoneOrIPad = /iPad|iPhone|iPod/.test(ua);
+  const isAndroid = /Android/i.test(ua);
+  const isCriOS = /CriOS/i.test(ua);
+  const isFxiOS = /FxiOS/i.test(ua);
+  const isEdgiOS = /EdgiOS/i.test(ua);
+  const isSafari = /^((?!chrome|android).)*safari/i.test(ua) || (isIPhoneOrIPad && /Safari/i.test(ua) && !isCriOS && !isFxiOS && !isEdgiOS);
+
+  return {
+    isIPhoneOrIPad,
+    isAndroid,
+    isSafari,
+    label: isCriOS ? "Chrome" : isFxiOS ? "Firefox" : isEdgiOS ? "Edge" : isSafari ? "Safari" : "browser",
+  };
+}
+
 async function getAccessToken() {
   const {
     data: { session },
@@ -110,13 +127,18 @@ export default function PortalInstallControl({
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isStandalone, setIsStandalone] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
+  const [isSafari, setIsSafari] = useState(false);
+  const [browserLabel, setBrowserLabel] = useState("browser");
   const [showInstallHelp, setShowInstallHelp] = useState(false);
 
   useEffect(() => {
     let active = true;
 
     setIsStandalone(isInstalledAppExperience());
-    setIsIOS(/iPad|iPhone|iPod/.test(navigator.userAgent));
+    const browser = detectMobileBrowser();
+    setIsIOS(browser.isIPhoneOrIPad);
+    setIsSafari(browser.isSafari);
+    setBrowserLabel(browser.label);
 
     function handleBeforeInstallPrompt(event: Event) {
       event.preventDefault();
@@ -248,6 +270,17 @@ export default function PortalInstallControl({
     }
   }
 
+  async function copyCurrentLink() {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setMessage("Link copied. Open Safari, paste it, then add the app to your Home Screen.");
+      setShowInstallHelp(true);
+    } catch {
+      setMessage("Copy did not work here. Use the browser share menu and open this page in Safari.");
+      setShowInstallHelp(true);
+    }
+  }
+
   async function enablePushNotifications() {
     let publicKey = getBrowserVapidPublicKey(vapidPublicKey, process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY);
     if (!publicKey) {
@@ -364,71 +397,103 @@ export default function PortalInstallControl({
     : status === "error"
       ? "Alert issue"
       : status === "unsupported"
-        ? "Alerts unavailable"
+        ? showIOSInstallHint
+          ? "Get phone alerts"
+          : "Alerts unavailable"
         : status === "disabled"
           ? "Alerts setup needed"
-      : canOfferInstall
-        ? "Install + alerts"
-        : "Alerts off";
+          : canOfferInstall
+            ? showIOSInstallHint
+              ? "Get phone alerts"
+              : "Install + alerts"
+            : "Alerts off";
   const defaultMessage =
     enablePush && !isActive && (status === "ready" || status === "error")
       ? canOfferInstall
         ? showIOSInstallHint
-          ? "Install from Safari Share first, then reopen it from your Home Screen to enable alerts."
+          ? isSafari
+            ? "Add this app to your Home Screen, then open it from there to turn on alerts."
+            : `iPhone alerts only work in Safari. Open this page in Safari, then add it to your Home Screen.`
           : "Install the app, then enable alerts."
         : "Enable alerts for this device."
       : "";
 
+  const shouldShowInstallSteps = showIOSInstallHint && (showInstallHelp || !isSafari || status === "unsupported");
+  const showCopyLinkButton = showIOSInstallHint && !isSafari;
+
   return (
-    <div className="fixed bottom-4 left-4 z-[110] max-w-[calc(100vw-2rem)] rounded-2xl border border-[#7a5c2e]/35 bg-[#120f0b]/95 p-3 text-[#f5efe4] shadow-[0_18px_45px_rgba(0,0,0,0.28)] backdrop-blur sm:max-w-xs">
-      <div className="flex items-center gap-3">
+    <div className="fixed bottom-4 left-4 z-[110] max-w-[calc(100vw-2rem)] rounded-[24px] border border-[#7a5c2e]/40 bg-[#120f0b]/96 p-4 text-[#f5efe4] shadow-[0_20px_50px_rgba(0,0,0,0.32)] backdrop-blur sm:max-w-sm">
+      <div className="flex items-start gap-3">
         <div
-          className={`h-2.5 w-2.5 rounded-full ${
-            isActive ? "bg-emerald-400" : status === "error" ? "bg-red-400" : "bg-[#b08b47]"
+          className={`mt-1 h-3 w-3 rounded-full ${
+            isActive ? "bg-emerald-400" : status === "error" ? "bg-red-400" : "bg-[#c89a49]"
           }`}
         />
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold">{titleText}</div>
+          <div className="text-base font-semibold leading-5">{titleText}</div>
           {message || defaultMessage ? (
-            <div className="mt-0.5 text-xs text-[#cdbda0]">{message || defaultMessage}</div>
+            <div className="mt-1 text-sm leading-5 text-[#ddd0bc]">{message || defaultMessage}</div>
           ) : null}
-          {showIOSInstallHint ? (
-            <div className="mt-0.5 text-xs text-[#cdbda0]">Use Safari Share, then Add to Home Screen.</div>
+
+          {shouldShowInstallSteps ? (
+            <div className="mt-3 rounded-[20px] border border-[#7a5c2e]/45 bg-[#1a1510] p-3">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#c89a49]">
+                iPhone setup
+              </div>
+              <div className="mt-2 space-y-2 text-sm leading-5 text-[#f5efe4]">
+                {!isSafari ? <div>1. Open this page in Safari. Right now you are in {browserLabel}.</div> : null}
+                <div>{isSafari ? "1." : "2."} Tap the Share button in Safari.</div>
+                <div>{isSafari ? "2." : "3."} Tap <span className="font-semibold">Add to Home Screen</span>.</div>
+                <div>{isSafari ? "3." : "4."} Open the new app from your Home Screen.</div>
+                <div>{isSafari ? "4." : "5."} Come back here and tap <span className="font-semibold">Enable alerts</span>.</div>
+              </div>
+            </div>
           ) : null}
+
           {showInstallHelp && !showIOSInstallHint ? (
-            <div className="mt-0.5 text-xs text-[#cdbda0]">Use the browser menu, then Install app or Add to Home screen.</div>
+            <div className="mt-2 text-xs text-[#cdbda0]">Use the browser menu, then Install app or Add to Home screen.</div>
           ) : null}
-        </div>
-        <div className="flex shrink-0 flex-col gap-2">
-          {canOfferInstall ? (
-            <button
-              type="button"
-              onClick={() => void installApp()}
-              className="rounded-full border border-[#b08b47]/55 px-3 py-1.5 text-xs font-semibold text-[#f5efe4] transition hover:bg-[#b08b47] hover:text-[#120f0b]"
-            >
-              {canInstall ? "Install" : installRequiresManualSteps ? "Install guide" : "How"}
-            </button>
-          ) : null}
-          {canShowPush ? (
-            <button
-              type="button"
-              onClick={() => void (isActive ? disablePush() : enablePushNotifications())}
-              disabled={isBusy || !canTogglePush}
-              className="rounded-full border border-[#b08b47]/55 px-3 py-1.5 text-xs font-semibold text-[#f5efe4] transition hover:bg-[#b08b47] hover:text-[#120f0b] disabled:opacity-50"
-            >
-              {isBusy
-                ? "Saving"
-                : isActive
-                  ? "Turn off"
-                  : showIOSInstallHint && !isStandalone
-                    ? "Install first"
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            {canOfferInstall ? (
+              <button
+                type="button"
+                onClick={() => void installApp()}
+                className="rounded-full border border-[#b08b47]/55 px-3.5 py-2 text-sm font-semibold text-[#f5efe4] transition hover:bg-[#b08b47] hover:text-[#120f0b]"
+              >
+                {canInstall ? "Install app" : showIOSInstallHint ? (isSafari ? "Show iPhone steps" : "How to use Safari") : installRequiresManualSteps ? "Install guide" : "How"}
+              </button>
+            ) : null}
+
+            {showCopyLinkButton ? (
+              <button
+                type="button"
+                onClick={() => void copyCurrentLink()}
+                className="rounded-full border border-[#d8c7ab]/45 px-3.5 py-2 text-sm font-semibold text-[#f5efe4] transition hover:bg-white hover:text-[#120f0b]"
+              >
+                Copy link
+              </button>
+            ) : null}
+
+            {canShowPush && canTogglePush ? (
+              <button
+                type="button"
+                onClick={() => void (isActive ? disablePush() : enablePushNotifications())}
+                disabled={isBusy}
+                className="rounded-full border border-[#b08b47]/55 bg-[#f0c97a] px-3.5 py-2 text-sm font-semibold text-[#120f0b] transition hover:bg-[#f6d796] disabled:opacity-50"
+              >
+                {isBusy
+                  ? "Saving"
+                  : isActive
+                    ? "Turn off alerts"
                     : status === "disabled"
-                      ? "Needs setup"
+                      ? "Finish setup"
                       : status === "unsupported"
                         ? "Unavailable"
                         : "Enable alerts"}
-            </button>
-          ) : null}
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>
