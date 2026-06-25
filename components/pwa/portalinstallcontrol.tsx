@@ -486,11 +486,7 @@ export default function PortalInstallControl({
                   ? "Saving"
                   : isActive
                     ? "Turn off alerts"
-                    : status === "disabled"
-                      ? "Finish setup"
-                      : status === "unsupported"
-                        ? "Unavailable"
-                        : "Enable alerts"}
+                    : "Enable alerts"}
               </button>
             ) : null}
           </div>
