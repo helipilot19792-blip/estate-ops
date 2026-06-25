@@ -823,6 +823,29 @@ type ChatMessageRow = {
   created_at?: string | null;
   updated_at?: string | null;
 };
+type BillingPlanKey = "starter_monthly" | "growth_monthly" | "founding_annual";
+
+const BILLING_PLAN_OPTIONS: Array<{
+  key: BillingPlanKey;
+  label: string;
+  detail: string;
+}> = [
+  {
+    key: "starter_monthly",
+    label: "Starter",
+    detail: "$20 CAD / month",
+  },
+  {
+    key: "growth_monthly",
+    label: "Growth",
+    detail: "$40 CAD / month",
+  },
+  {
+    key: "founding_annual",
+    label: "Founding annual",
+    detail: "$200 CAD / year",
+  },
+];
 type ChatHiddenItemRow = {
   id: string;
   organization_id: string;
@@ -1490,6 +1513,7 @@ export default function AdminPage() {
   const [syncingCalendarsNow, setSyncingCalendarsNow] = useState(false);
   const [deletingPropertyId, setDeletingPropertyId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState("");
+  const [billingActionLoading, setBillingActionLoading] = useState<string | null>(null);
   const [sendingOwnerInviteId, setSendingOwnerInviteId] = useState<string | null>(null);
   const [deletingOrganizationInviteId, setDeletingOrganizationInviteId] = useState<string | null>(null);
   const [removingTeamInviteKey, setRemovingTeamInviteKey] = useState<string | null>(null);
@@ -2042,6 +2066,10 @@ export default function AdminPage() {
     trialDaysRemaining !== null &&
     trialDaysRemaining >= 0 &&
     trialDaysRemaining <= 7;
+  const hasStripeBillingProfile = !!currentOrganizationBilling?.stripe_customer_id;
+  const hasStripeManagedSubscription =
+    !!currentOrganizationBilling?.stripe_subscription_id &&
+    (currentTrialStatus === "active" || currentTrialStatus === "past_due");
   const propertyInvoiceRatesDirty = dirtyPropertyInvoiceRateIds.size > 0;
   const adminDraftDirty =
     selectedPropertyOwnerDirty ||
@@ -2239,6 +2267,7 @@ export default function AdminPage() {
 
     const params = new URLSearchParams(window.location.search);
     const open = params.get("open");
+    const billing = params.get("billing");
     const conversationId = params.get("conversationId")?.trim() || "";
 
     if (open === "add-property") {
@@ -2253,6 +2282,21 @@ export default function AdminPage() {
     }
     if (open === "jobs") {
       setActiveSection("jobs");
+    }
+
+    if (billing === "success") {
+      setActionMessage("Stripe checkout completed. Billing status may take a few seconds to refresh.");
+    } else if (billing === "cancelled") {
+      setActionMessage("Stripe checkout was canceled.");
+    } else if (billing === "portal") {
+      setActionMessage("Returned from the Stripe billing portal.");
+    }
+
+    if (billing) {
+      params.delete("billing");
+      const nextQuery = params.toString();
+      const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`;
+      window.history.replaceState({}, "", nextUrl);
     }
   }, []);
 
@@ -2812,6 +2856,97 @@ export default function AdminPage() {
 
     applyAdminHomePayload(payload.data || {});
     return true;
+  }
+
+  async function redirectToStripeCheckout(planKey: BillingPlanKey) {
+    if (!currentOrganizationId) {
+      setError("No organization selected.");
+      return;
+    }
+
+    setError("");
+    setActionMessage("");
+    setBillingActionLoading(`checkout:${planKey}`);
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        throw new Error("No active admin session was found.");
+      }
+
+      const response = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          organizationId: currentOrganizationId,
+          planKey,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || !payload?.url) {
+        throw new Error(payload?.error || "Could not start Stripe checkout.");
+      }
+
+      window.location.href = payload.url;
+    } catch (checkoutError) {
+      setError(checkoutError instanceof Error ? checkoutError.message : "Could not start Stripe checkout.");
+    } finally {
+      setBillingActionLoading(null);
+    }
+  }
+
+  async function openStripeBillingPortal() {
+    if (!currentOrganizationId) {
+      setError("No organization selected.");
+      return;
+    }
+
+    setError("");
+    setActionMessage("");
+    setBillingActionLoading("portal");
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        throw new Error("No active admin session was found.");
+      }
+
+      const response = await fetch("/api/stripe/portal", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          organizationId: currentOrganizationId,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || !payload?.url) {
+        throw new Error(payload?.error || "Could not open the Stripe billing portal.");
+      }
+
+      window.location.href = payload.url;
+    } catch (portalError) {
+      setError(portalError instanceof Error ? portalError.message : "Could not open the Stripe billing portal.");
+    } finally {
+      setBillingActionLoading(null);
+    }
   }
 
   async function loadData(options?: { background?: boolean }) {
@@ -24772,11 +24907,11 @@ This removes its linked members and deletes the grounds account.`
                   {isInternalWorkspace
                     ? "This is an internal GuleraOS workspace, so trial limits and billing prompts are hidden."
                     : currentTrialStatus === "active"
-                    ? "This organization is marked as active for future billing integration."
+                    ? "This workspace has Stripe billing connected."
                     : trialExpired
-                      ? "This organization’s free trial has ended. Billing enforcement is not turned on yet, but this workspace is now flagged for a future upgrade flow."
+                      ? "This organization’s free trial has ended. Choose a Stripe plan below to keep billing in one secure place."
                       : trialDaysRemaining === null
-                        ? "This organization is in trial mode while billing is being prepared."
+                        ? "This organization is in trial mode. When you are ready, you can start Stripe billing below."
                         : trialDaysRemaining === 0
                           ? "This organization’s free trial ends today."
                           : `${trialDaysRemaining} day${trialDaysRemaining === 1 ? "" : "s"} left in the free trial.`}
@@ -24793,6 +24928,46 @@ This removes its linked members and deletes the grounds account.`
                 {isInternalWorkspace ? "Internal" : currentPlanName}
               </div>
             </div>
+
+            {!isInternalWorkspace ? (
+              <div className="mt-4 flex flex-col gap-3 border-t border-current/10 pt-4">
+                <div className="text-xs uppercase tracking-[0.16em] opacity-75">Secure billing</div>
+                <div className="flex flex-wrap gap-2">
+                  {!hasStripeManagedSubscription
+                    ? BILLING_PLAN_OPTIONS.map((plan) => {
+                        const isLoading = billingActionLoading === `checkout:${plan.key}`;
+
+                        return (
+                          <button
+                            key={plan.key}
+                            type="button"
+                            onClick={() => void redirectToStripeCheckout(plan.key)}
+                            disabled={billingActionLoading !== null}
+                            className="inline-flex items-center gap-2 rounded-full border border-current/20 bg-white/70 px-4 py-2 text-sm font-semibold text-current transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <span>{isLoading ? "Opening Stripe..." : plan.label}</span>
+                            <span className="text-xs font-medium opacity-70">{plan.detail}</span>
+                          </button>
+                        );
+                      })
+                    : null}
+
+                  {hasStripeBillingProfile ? (
+                    <button
+                      type="button"
+                      onClick={() => void openStripeBillingPortal()}
+                      disabled={billingActionLoading !== null}
+                      className="inline-flex items-center gap-2 rounded-full border border-current/20 px-4 py-2 text-sm font-semibold text-current transition hover:bg-white/60 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {billingActionLoading === "portal" ? "Opening portal..." : "Manage billing"}
+                    </button>
+                  ) : null}
+                </div>
+                <div className="text-xs opacity-75">
+                  Payments stay inside Stripe, so card handling never lives in your admin portal.
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
