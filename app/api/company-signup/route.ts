@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 const ORGANIZATION_TRIAL_DAYS = 30;
 
@@ -32,7 +32,7 @@ function isMissingBetaSignupControlsError(error: { code?: string | null; message
   );
 }
 
-async function loadBetaSignupState(service: ReturnType<typeof createClient>) {
+async function loadBetaSignupState(service: SupabaseClient<any, "public", any>) {
   const { data: settings, error: settingsError } = await service
     .from("platform_settings")
     .select("id,beta_signup_enabled,beta_signup_limit")
@@ -247,8 +247,15 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (organizationResult.error?.code === "42703") {
-      const fallbackInsert = { ...organizationInsert };
-      delete fallbackInsert.organization_type;
+      const fallbackInsert = {
+        name: companyName,
+        slug: uniqueSlug,
+        created_by: user.id,
+        subscription_status: "trialing",
+        trial_started_at: trialStartedAt.toISOString(),
+        trial_ends_at: trialEndsAt.toISOString(),
+        billing_enabled: false,
+      };
       organizationResult = await service
         .from("organizations")
         .insert(fallbackInsert)
