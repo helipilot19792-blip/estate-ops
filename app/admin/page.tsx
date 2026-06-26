@@ -5017,6 +5017,33 @@ export default function AdminPage() {
     setActionMessage("");
   }
 
+  function openBookingNoteEditorFromHappening(item: {
+    bookingEventId: string | null;
+    title: string;
+    detail: string;
+    adminNote?: string;
+    adminNoteImportant?: boolean;
+  } & Partial<{
+    summary: string;
+    guestName: string | null;
+    guestCount: number | null;
+    propertyName: string;
+  }>) {
+    if (!item.bookingEventId) return;
+
+    openBookingNoteEditor({
+      bookingEventId: item.bookingEventId,
+      propertyName: item.propertyName || item.title,
+      title: item.title,
+      summary: item.summary,
+      detail: item.detail,
+      guestName: item.guestName,
+      guestCount: item.guestCount,
+      adminNote: item.adminNote,
+      adminNoteImportant: item.adminNoteImportant,
+    });
+  }
+
   async function saveBookingNote() {
     if (!editingBookingNote) return;
     if (!currentOrganizationId) {
@@ -12124,17 +12151,7 @@ This removes its linked members and deletes the grounds account.`
                                   type="button"
                                   onClick={(event) => {
                                     event.stopPropagation();
-                                    openBookingNoteEditor({
-                                      bookingEventId: item.bookingEventId!,
-                                      propertyName: item.propertyName,
-                                      title: item.title,
-                                      summary: item.summary,
-                                      detail: item.detail,
-                                      guestName: item.guestName,
-                                      guestCount: item.guestCount,
-                                      adminNote: item.adminNote,
-                                      adminNoteImportant: item.adminNoteImportant,
-                                    });
+                                    openBookingNoteEditorFromHappening(item);
                                   }}
                                   className="rounded-full border border-[#eab308] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#854d0e] transition hover:bg-[#fffbeb]"
                                 >
@@ -12157,17 +12174,7 @@ This removes its linked members and deletes the grounds account.`
                                   type="button"
                                   onClick={(event) => {
                                     event.stopPropagation();
-                                    openBookingNoteEditor({
-                                      bookingEventId: item.bookingEventId!,
-                                      propertyName: item.propertyName,
-                                      title: item.title,
-                                      summary: item.summary,
-                                      detail: item.detail,
-                                      guestName: item.guestName,
-                                      guestCount: item.guestCount,
-                                      adminNote: item.adminNote,
-                                      adminNoteImportant: item.adminNoteImportant,
-                                    });
+                                    openBookingNoteEditorFromHappening(item);
                                   }}
                                   className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-semibold text-[#5f5245] transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#d8c7ab]"
                                 >
@@ -12318,17 +12325,7 @@ This removes its linked members and deletes the grounds account.`
                                   type="button"
                                   onClick={(event) => {
                                     event.stopPropagation();
-                                    openBookingNoteEditor({
-                                      bookingEventId: item.bookingEventId!,
-                                      propertyName: item.propertyName,
-                                      title: item.title,
-                                      summary: item.summary,
-                                      detail: item.detail,
-                                      guestName: item.guestName,
-                                      guestCount: item.guestCount,
-                                      adminNote: item.adminNote,
-                                      adminNoteImportant: item.adminNoteImportant,
-                                    });
+                                    openBookingNoteEditorFromHappening(item);
                                   }}
                                   className="rounded-full border border-[#eab308] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#854d0e] transition hover:bg-[#fffbeb]"
                                 >
@@ -12351,17 +12348,7 @@ This removes its linked members and deletes the grounds account.`
                                   type="button"
                                   onClick={(event) => {
                                     event.stopPropagation();
-                                    openBookingNoteEditor({
-                                      bookingEventId: item.bookingEventId!,
-                                      propertyName: item.propertyName,
-                                      title: item.title,
-                                      summary: item.summary,
-                                      detail: item.detail,
-                                      guestName: item.guestName,
-                                      guestCount: item.guestCount,
-                                      adminNote: item.adminNote,
-                                      adminNoteImportant: item.adminNoteImportant,
-                                    });
+                                    openBookingNoteEditorFromHappening(item);
                                   }}
                                   className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1 text-xs font-semibold text-[#5f5245] transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#d8c7ab]"
                                 >
@@ -24629,17 +24616,7 @@ This removes its linked members and deletes the grounds account.`
                           <button
                             type="button"
                             onClick={() =>
-                              openBookingNoteEditor({
-                                bookingEventId: item.bookingEventId!,
-                                propertyName: item.propertyName,
-                                title: item.title,
-                                summary: item.summary,
-                                detail: item.detail,
-                                guestName: item.guestName,
-                                guestCount: item.guestCount,
-                                adminNote: item.adminNote,
-                                adminNoteImportant: item.adminNoteImportant,
-                              })
+                              openBookingNoteEditorFromHappening(item)
                             }
                             className="rounded-full border border-[#eab308] bg-white px-2 py-0.5 text-[10px] font-semibold text-[#854d0e] transition hover:bg-[#fffbeb]"
                           >
@@ -24662,17 +24639,7 @@ This removes its linked members and deletes the grounds account.`
                           <button
                             type="button"
                             onClick={() =>
-                              openBookingNoteEditor({
-                                bookingEventId: item.bookingEventId!,
-                                propertyName: item.propertyName,
-                                title: item.title,
-                                summary: item.summary,
-                                detail: item.detail,
-                                guestName: item.guestName,
-                                guestCount: item.guestCount,
-                                adminNote: item.adminNote,
-                                adminNoteImportant: item.adminNoteImportant,
-                              })
+                              openBookingNoteEditorFromHappening(item)
                             }
                             className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-2 py-0.5 text-[11px] font-semibold text-[#5f5245] transition hover:bg-white"
                           >
@@ -24698,17 +24665,7 @@ This removes its linked members and deletes the grounds account.`
                           <button
                             type="button"
                             onClick={() =>
-                              openBookingNoteEditor({
-                                bookingEventId: item.bookingEventId!,
-                                propertyName: item.propertyName,
-                                title: item.title,
-                                summary: item.summary,
-                                detail: item.detail,
-                                guestName: item.guestName,
-                                guestCount: item.guestCount,
-                                adminNote: item.adminNote,
-                                adminNoteImportant: item.adminNoteImportant,
-                              })
+                              openBookingNoteEditorFromHappening(item)
                             }
                             className="rounded-full border border-[#eab308] bg-white px-2 py-0.5 text-[10px] font-semibold text-[#854d0e] transition hover:bg-[#fffbeb]"
                           >
@@ -24728,17 +24685,7 @@ This removes its linked members and deletes the grounds account.`
                       <button
                         type="button"
                         onClick={() =>
-                          openBookingNoteEditor({
-                            bookingEventId: item.bookingEventId!,
-                            propertyName: item.propertyName,
-                            title: item.title,
-                            summary: item.summary,
-                            detail: item.detail,
-                            guestName: item.guestName,
-                            guestCount: item.guestCount,
-                            adminNote: item.adminNote,
-                            adminNoteImportant: item.adminNoteImportant,
-                          })
+                              openBookingNoteEditorFromHappening(item)
                         }
                         className="mt-1 rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-2 py-0.5 text-[11px] font-semibold text-[#5f5245] transition hover:bg-white"
                       >
