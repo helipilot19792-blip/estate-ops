@@ -1936,25 +1936,6 @@ export default function AdminPage() {
     () => pickDailyCopy(QUIRKY_SYNCING_COPY, `syncing-calendar-${todayYmd}`),
     [todayYmd]
   );
-  const todaysCleaningJobs = useMemo(() => {
-    return jobs
-      .filter((job) => (job.scheduled_for || extractCheckoutDate(job.notes)) === todayYmd)
-      .sort((a, b) => {
-        const aDate = a.scheduled_for || extractCheckoutDate(a.notes) || "";
-        const bDate = b.scheduled_for || extractCheckoutDate(b.notes) || "";
-        return aDate.localeCompare(bDate);
-      });
-  }, [jobs, todayYmd]);
-
-  const todaysGroundsJobs = useMemo(() => {
-    return groundsJobs
-      .filter((job) => job.scheduled_for === todayYmd)
-      .sort((a, b) => {
-        const aDate = a.scheduled_for || "";
-        const bDate = b.scheduled_for || "";
-        return aDate.localeCompare(bDate);
-      });
-  }, [groundsJobs, todayYmd]);
   const tomorrowYmd = useMemo(() => {
     return toYmd(addDays(now, 1));
   }, [now]);
@@ -2044,12 +2025,6 @@ export default function AdminPage() {
         .map(([email]) => email)
     );
   }, [pendingAdminInvites]);
-
-  const openMaintenanceFlagsCount = useMemo(() => {
-    return maintenanceFlags.filter((flag) => {
-      return !isMaintenanceFlagResolved(flag) && !isMaintenanceFlagSnoozed(flag);
-    }).length;
-  }, [maintenanceFlags, maintenanceFlagSnoozes, now]);
 
   const currentTrialStatus = (currentOrganizationBilling?.subscription_status || "trialing").toLowerCase();
   const currentAccountType = (currentOrganizationBilling?.account_type || "beta").toLowerCase();
@@ -12043,7 +12018,7 @@ This removes its linked members and deletes the grounds account.`
             </div>
           </div>
 
-          <div className="mt-5 grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.9fr)_minmax(210px,0.52fr)]">
+          <div className="mt-5 grid items-start gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(300px,0.95fr)]">
             <div>
               <div className="rounded-[24px] border border-[#cfe1ff] bg-[#f8fbff] p-4 shadow-[0_10px_30px_rgba(59,130,246,0.10)]">
                 <div className="rounded-[20px] border border-[#b9d1fb] bg-[#e8f1ff] p-3">
@@ -12553,50 +12528,6 @@ This removes its linked members and deletes the grounds account.`
               </div>
             </div>
 
-            <div className="space-y-4">
-              <div className="rounded-[24px] border border-[#eadfce] bg-[#fcfaf7] p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8a7b68]">
-                  Snapshot
-                </p>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
-                  <div className="rounded-[16px] border border-[#eadfce] bg-white px-4 py-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
-                      Cleaning today
-                    </p>
-                    <p className="mt-2 text-2xl font-semibold text-[#241c15]">
-                      {todaysCleaningJobs.length}
-                    </p>
-                  </div>
-
-                  <div className="rounded-[16px] border border-[#eadfce] bg-white px-4 py-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
-                      Grounds today
-                    </p>
-                    <p className="mt-2 text-2xl font-semibold text-[#241c15]">
-                      {todaysGroundsJobs.length}
-                    </p>
-                  </div>
-
-                  <div className="rounded-[16px] border border-[#eadfce] bg-white px-4 py-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
-                      Occupied today
-                    </p>
-                    <p className="mt-2 text-2xl font-semibold text-[#241c15]">
-                      {occupiedTodayProperties.length}
-                    </p>
-                  </div>
-
-                  <div className="rounded-[16px] border border-[#eadfce] bg-white px-4 py-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
-                      Open flags
-                    </p>
-                    <p className="mt-2 text-2xl font-semibold text-[#241c15]">
-                      {openMaintenanceFlagsCount}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </div>
