@@ -4993,6 +4993,7 @@ export default function AdminPage() {
 
   function openBookingNoteEditor(booking: {
     id?: string | null;
+    bookingId?: string | null;
     bookingEventId?: string | null;
     propertyName?: string;
     title?: string;
@@ -5003,7 +5004,7 @@ export default function AdminPage() {
     adminNote?: string;
     adminNoteImportant?: boolean;
   }) {
-    const bookingEventId = booking.bookingEventId || booking.id || "";
+    const bookingEventId = booking.bookingEventId || booking.bookingId || booking.id || "";
     if (!bookingEventId) return;
 
     setEditingBookingNote({
@@ -9523,6 +9524,7 @@ This removes its linked members and deletes the grounds account.`
         return {
           id: propertyId,
           bookingId: primaryEvent.id,
+          bookingEventId: primaryEvent.id,
           propertyName: property?.name || property?.address || "Unknown property",
           city: getCityFromAddress(property?.address),
           source: getBookingSourceLabel(primaryEvent.source),
