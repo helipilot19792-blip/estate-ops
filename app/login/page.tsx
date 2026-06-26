@@ -831,9 +831,13 @@ export default function LoginPage() {
                         {signupAvailability.signupOpen
                           ? signupAvailability.signupLimit === null
                             ? "Beta signup is open."
-                            : `Beta signup is open for ${signupAvailability.signupLimit} companies. ${signupAvailability.signupCount}/${signupAvailability.signupLimit} spots are used.`
+                            : typeof signupAvailability.signupRemaining === "number"
+                              ? signupAvailability.signupRemaining === 1
+                                ? "1 testing slot available."
+                                : `${signupAvailability.signupRemaining} testing slots available.`
+                              : "Beta signup is open."
                           : signupAvailability.signupEnabled
-                            ? `Beta signup is currently full${typeof signupAvailability.signupLimit === "number" ? ` at ${signupAvailability.signupLimit} companies` : ""}.`
+                            ? "No testing slots available right now."
                             : "Beta signup is currently paused."}
                       </div>
                     ) : null}
