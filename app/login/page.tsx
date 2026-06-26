@@ -6,7 +6,6 @@ import { Eye, EyeOff } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { PASSWORD_REQUIREMENTS, validatePassword } from "@/lib/password-policy";
 import { supabase } from "@/lib/supabase";
-import { useRouter } from "next/navigation";
 import { useI18n } from "@/components/i18n-provider";
 
 type ProfileRow = {
@@ -15,6 +14,14 @@ type ProfileRow = {
   full_name: string | null;
   phone: string | null;
   role: string;
+};
+
+type SignupAvailability = {
+  signupOpen: boolean;
+  signupEnabled: boolean;
+  signupLimit: number | null;
+  signupCount: number;
+  signupRemaining: number | null;
 };
 
 type AuthMode = "login" | "company";
@@ -136,14 +143,13 @@ async function finishCompanySignup(accessToken: string, details?: {
   const result = await response.json().catch(() => null);
 
   if (!response.ok) {
-    throw new Error(result?.error || "Failed to create company workspace.");
+    throw new Error(result?.error || "Failed to create your workspace.");
   }
 
   return result;
 }
 
 export default function LoginPage() {
-  const router = useRouter();
   const { t } = useI18n();
 
   const [authMode, setAuthMode] = useState<AuthMode>("login");
@@ -160,6 +166,7 @@ export default function LoginPage() {
   const [organizationType, setOrganizationType] = useState<"property_management" | "cleaning_company">("property_management");
   const [signupAcceptedTerms, setSignupAcceptedTerms] = useState(false);
   const [pendingSignupUserId, setPendingSignupUserId] = useState("");
+  const [signupAvailability, setSignupAvailability] = useState<SignupAvailability | null>(null);
 
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [showSignupPassword, setShowSignupPassword] = useState(false);
@@ -194,6 +201,35 @@ export default function LoginPage() {
     if (hasRecoveryQuery) {
       window.location.replace(`/auth/reset${url.search}`);
     }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadSignupAvailability() {
+      try {
+        const response = await fetch("/api/company-signup");
+        const result = await response.json().catch(() => null);
+
+        if (!response.ok || !result?.ok || !active) return;
+
+        setSignupAvailability({
+          signupOpen: Boolean(result.signupOpen),
+          signupEnabled: Boolean(result.signupEnabled),
+          signupLimit: typeof result.signupLimit === "number" ? result.signupLimit : null,
+          signupCount: Number(result.signupCount || 0),
+          signupRemaining: typeof result.signupRemaining === "number" ? Number(result.signupRemaining) : null,
+        });
+      } catch {
+        // Leave availability empty if the public status check is unavailable.
+      }
+    }
+
+    void loadSignupAvailability();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   async function handleLogin(e?: FormEvent) {
@@ -259,7 +295,7 @@ export default function LoginPage() {
           window.location.href = "/admin";
           return;
         } catch (signupError) {
-          const message = signupError instanceof Error ? signupError.message : "Could not finish company setup.";
+          const message = signupError instanceof Error ? signupError.message : "Could not finish account setup.";
           setError(message);
           return;
         }
@@ -280,7 +316,7 @@ export default function LoginPage() {
       if (destination === "/login") {
         setError(
           pendingInviteError ||
-            "This sign-in is not linked to a company, cleaner, grounds, or owner account yet. If you were invited, use the newest invite email. If you were creating a company, start the company signup again."
+            "This sign-in is not linked to a company, cleaner, grounds, or owner account yet. If you were invited, use the newest invite email. If you were creating a new account, start signup again."
         );
         return;
       }
@@ -331,8 +367,17 @@ export default function LoginPage() {
     setError("");
     setMessage("");
 
+    if (signupAvailability?.signupOpen === false) {
+      setError(
+        signupAvailability.signupEnabled
+          ? "Beta signup is currently full. Please contact support to join the waitlist."
+          : "New user signup is paused right now. Please contact support to join the beta."
+      );
+      return;
+    }
+
     if (!signupName.trim()) {
-      setError("Please enter your full name.");
+      setError("Please enter your name.");
       return;
     }
 
@@ -402,7 +447,7 @@ export default function LoginPage() {
       }
 
       if (!accessToken) {
-        setMessage("Account created. Check your email to confirm it, then log in here to finish creating the company workspace.");
+        setMessage("Account created. Check your email to confirm it, then log in here to finish creating your workspace.");
         setSignupPassword("");
         setSignupConfirmPassword("");
         return;
@@ -416,13 +461,13 @@ export default function LoginPage() {
           organizationType,
         });
       } catch (signupError) {
-        const message = signupError instanceof Error ? signupError.message : "Failed to create company workspace.";
+        const message = signupError instanceof Error ? signupError.message : "Failed to create your workspace.";
         setError(message);
         return;
       }
 
       setMessage(
-        `Company account created with a ${ORGANIZATION_TRIAL_DAYS}-day free trial. Check your email to confirm your account.`
+        `Account created with a ${ORGANIZATION_TRIAL_DAYS}-day free trial. Check your email to confirm your account.`
       );
 
       setSignupName("");
@@ -445,7 +490,7 @@ export default function LoginPage() {
     const email = signupEmail.trim().toLowerCase();
 
     if (!email) {
-      setMessage("Enter the correct email and continue creating the company account.");
+      setMessage("Enter the correct email and continue creating your account.");
       return;
     }
 
@@ -485,7 +530,7 @@ export default function LoginPage() {
       setSignupEmail("");
       setSignupPassword("");
       setSignupConfirmPassword("");
-      setMessage("Pending signup cleared. Enter the correct email and create the company account again.");
+      setMessage("Pending signup cleared. Enter the correct email and create your account again.");
     } finally {
       setLoadingCancelSignup(false);
     }
@@ -775,6 +820,23 @@ export default function LoginPage() {
                         Includes a {ORGANIZATION_TRIAL_DAYS}-day free trial. Growth is $40 CAD/month for up to 25 properties, with custom pricing for larger portfolios.
                       </div>
                     </div>
+                    {signupAvailability ? (
+                      <div
+                        className={`mt-4 rounded-[20px] border px-4 py-3 text-sm leading-6 ${
+                          signupAvailability.signupOpen
+                            ? "border-[#d8c7ab] bg-[#fcfaf7] text-[#5f5245]"
+                            : "border-[#efc6c6] bg-[#fff5f5] text-[#8a2e22]"
+                        }`}
+                      >
+                        {signupAvailability.signupOpen
+                          ? signupAvailability.signupLimit === null
+                            ? "Beta signup is open."
+                            : `Beta signup is open for ${signupAvailability.signupLimit} companies. ${signupAvailability.signupCount}/${signupAvailability.signupLimit} spots are used.`
+                          : signupAvailability.signupEnabled
+                            ? `Beta signup is currently full${typeof signupAvailability.signupLimit === "number" ? ` at ${signupAvailability.signupLimit} companies` : ""}.`
+                            : "Beta signup is currently paused."}
+                      </div>
+                    ) : null}
                     <div className="mt-4 rounded-[20px] border border-[#efd8a8] bg-[#fff8e8] px-4 py-3 text-sm leading-6 text-[#6f5525]">
                       {t("login.testingNotice")}
                     </div>
@@ -931,7 +993,7 @@ export default function LoginPage() {
                         <button
                           type="submit"
                           className="inline-flex items-center justify-center rounded-full bg-[#b48d4e] px-5 py-3 text-sm font-medium text-white shadow-[0_10px_24px_rgba(180,141,78,0.25)] transition hover:bg-[#a27d43] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
-                          disabled={loadingSignup}
+                          disabled={loadingSignup || signupAvailability?.signupOpen === false}
                         >
                           {loadingSignup ? t("login.creatingCompany") : t("login.createCompanyButton")}
                         </button>

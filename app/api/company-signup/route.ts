@@ -3,6 +3,12 @@ import { createClient } from "@supabase/supabase-js";
 
 const ORGANIZATION_TRIAL_DAYS = 30;
 
+type PlatformSignupSettingsRow = {
+  id: boolean;
+  beta_signup_enabled?: boolean | null;
+  beta_signup_limit?: number | null;
+};
+
 function slugifyCompanyName(value: string) {
   return value
     .toLowerCase()
@@ -13,6 +19,97 @@ function slugifyCompanyName(value: string) {
 
 function normalizeOrganizationType(value: unknown) {
   return value === "cleaning_company" ? "cleaning_company" : "property_management";
+}
+
+function isMissingBetaSignupControlsError(error: { code?: string | null; message?: string | null } | null | undefined) {
+  const message = error?.message || "";
+  return (
+    error?.code === "42P01" ||
+    error?.code === "42703" ||
+    message.includes("platform_settings") ||
+    message.includes("beta_signup_enabled") ||
+    message.includes("beta_signup_limit")
+  );
+}
+
+async function loadBetaSignupState(service: ReturnType<typeof createClient>) {
+  const { data: settings, error: settingsError } = await service
+    .from("platform_settings")
+    .select("id,beta_signup_enabled,beta_signup_limit")
+    .eq("id", true)
+    .maybeSingle();
+
+  if (settingsError && !isMissingBetaSignupControlsError(settingsError)) {
+    throw new Error(settingsError.message);
+  }
+
+  let signupCountResult = await service
+    .from("organizations")
+    .select("id", { count: "exact", head: true })
+    .or("account_type.is.null,account_type.neq.internal");
+
+  if (signupCountResult.error?.code === "42703") {
+    signupCountResult = await service
+      .from("organizations")
+      .select("id", { count: "exact", head: true });
+  }
+
+  if (signupCountResult.error) {
+    throw new Error(signupCountResult.error.message);
+  }
+
+  const row = settings as PlatformSignupSettingsRow | null;
+  const limit =
+    isMissingBetaSignupControlsError(settingsError) || row?.beta_signup_limit === undefined
+      ? null
+      : row?.beta_signup_limit === null
+        ? null
+        : Number.isFinite(Number(row.beta_signup_limit))
+          ? Number(row.beta_signup_limit)
+          : null;
+
+  return {
+    enabled: isMissingBetaSignupControlsError(settingsError) ? true : row?.beta_signup_enabled !== false,
+    limit,
+    count: signupCountResult.count ?? 0,
+  };
+}
+
+export async function GET() {
+  try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !serviceRoleKey) {
+      return NextResponse.json(
+        { error: "Missing server environment variables." },
+        { status: 500 }
+      );
+    }
+
+    const service = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const signupState = await loadBetaSignupState(service);
+    const signupOpen =
+      signupState.enabled &&
+      (signupState.limit === null || signupState.count < signupState.limit);
+
+    return NextResponse.json({
+      ok: true,
+      signupOpen,
+      signupEnabled: signupState.enabled,
+      signupLimit: signupState.limit,
+      signupCount: signupState.count,
+      signupRemaining:
+        typeof signupState.limit === "number"
+          ? Math.max(signupState.limit - signupState.count, 0)
+          : null,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Could not load signup availability.";
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -71,13 +168,30 @@ export async function POST(req: NextRequest) {
       typeof body?.organizationType === "string" ? body.organizationType : metadata.organization_type
     );
 
-    if (!fullName || !phone || !companyName) {
-      return NextResponse.json({ error: "Missing company signup details." }, { status: 400 });
-    }
-
     const service = createClient(supabaseUrl, serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
+    const signupState = await loadBetaSignupState(service);
+
+    if (!signupState.enabled) {
+      return NextResponse.json(
+        { error: "New user signup is paused right now. Please contact support to join the beta." },
+        { status: 403 }
+      );
+    }
+
+    if (typeof signupState.limit === "number" && signupState.count >= signupState.limit) {
+      return NextResponse.json(
+        {
+          error: `Beta signup is currently full (${signupState.count}/${signupState.limit}). Please contact support to be added to the waitlist.`,
+        },
+        { status: 403 }
+      );
+    }
+
+    if (!fullName || !phone || !companyName) {
+      return NextResponse.json({ error: "Missing new user signup details." }, { status: 400 });
+    }
 
     const { data: existingMembership, error: membershipLookupError } = await service
       .from("organization_members")
@@ -133,7 +247,8 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (organizationResult.error?.code === "42703") {
-      const { organization_type: _organizationType, ...fallbackInsert } = organizationInsert;
+      const fallbackInsert = { ...organizationInsert };
+      delete fallbackInsert.organization_type;
       organizationResult = await service
         .from("organizations")
         .insert(fallbackInsert)
@@ -167,7 +282,7 @@ export async function POST(req: NextRequest) {
       trialDays: ORGANIZATION_TRIAL_DAYS,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Company signup failed.";
+    const message = error instanceof Error ? error.message : "New user signup failed.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

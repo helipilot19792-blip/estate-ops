@@ -7,6 +7,7 @@ export const dynamic = "force-dynamic";
 type PlatformAction =
   | { type: "ensure_cleaning_demo" }
   | { type: "set_ai_master"; enabled: boolean }
+  | { type: "set_beta_signup"; enabled?: boolean; limit?: number | null }
   | { type: "set_ai_organization"; organizationId: string; enabled: boolean }
   | { type: "set_ai_member"; organizationId: string; memberId: string; enabled: boolean }
   | { type: "extend_trial"; organizationId: string; days?: number }
@@ -126,6 +127,8 @@ type FeatureUsageSummary = {
 type PlatformSettingsRow = {
   id: boolean;
   ai_copilot_enabled?: boolean | null;
+  beta_signup_enabled?: boolean | null;
+  beta_signup_limit?: number | null;
 };
 
 function getClients(token?: string | null) {
@@ -220,16 +223,16 @@ async function loadOrganizationOverview(serviceClient: ReturnType<typeof getClie
       .select("id,organization_id"),
   ]);
 
-  let organizationsRes: any = await serviceClient
+  let organizationsRes = await serviceClient
     .from("organizations")
     .select(organizationSelect)
     .order("created_at", { ascending: false });
 
   if (organizationsRes.error?.code === "42703") {
-    organizationsRes = await serviceClient
+    organizationsRes = (await serviceClient
       .from("organizations")
       .select("id,name,slug,created_at,created_by,subscription_status,trial_started_at,trial_ends_at,billing_enabled,stripe_customer_id,stripe_subscription_id")
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })) as typeof organizationsRes;
   }
 
   let safeMembersRes = membersRes;
@@ -446,28 +449,53 @@ async function loadFeatureUsageSummary(serviceClient: ReturnType<typeof getClien
   return summarizeFeatureUsage((data ?? []) as FeatureUsageEventRow[]);
 }
 
-function isMissingAiCopilotControlsError(error: { code?: string | null; message?: string | null } | null | undefined) {
+function isMissingPlatformSettingsError(error: { code?: string | null; message?: string | null } | null | undefined) {
   const message = error?.message || "";
   return (
     error?.code === "42P01" ||
     error?.code === "42703" ||
     message.includes("platform_settings") ||
-    message.includes("ai_copilot_enabled")
+    message.includes("ai_copilot_enabled") ||
+    message.includes("beta_signup_enabled") ||
+    message.includes("beta_signup_limit")
   );
 }
 
 async function loadPlatformSettings(serviceClient: ReturnType<typeof getClients>["serviceClient"]) {
+  const signupCountQuery = async () => {
+    let result = await serviceClient
+      .from("organizations")
+      .select("id", { count: "exact", head: true })
+      .or("account_type.is.null,account_type.neq.internal");
+
+    if (result.error?.code === "42703") {
+      result = await serviceClient
+        .from("organizations")
+        .select("id", { count: "exact", head: true });
+    }
+
+    if (result.error) {
+      throw new Error(result.error.message);
+    }
+
+    return result.count ?? 0;
+  };
+
   const { data, error } = await serviceClient
     .from("platform_settings")
-    .select("id,ai_copilot_enabled")
+    .select("id,ai_copilot_enabled,beta_signup_enabled,beta_signup_limit")
     .eq("id", true)
     .maybeSingle();
 
   if (error) {
-    if (isMissingAiCopilotControlsError(error)) {
+    if (isMissingPlatformSettingsError(error)) {
       return {
         available: false,
         ai_copilot_enabled: false,
+        beta_signup_enabled: true,
+        beta_signup_limit: null,
+        beta_signup_count: 0,
+        beta_signup_remaining: null,
       };
     }
 
@@ -475,9 +503,24 @@ async function loadPlatformSettings(serviceClient: ReturnType<typeof getClients>
   }
 
   const row = data as PlatformSettingsRow | null;
+  const betaSignupCount = await signupCountQuery();
+  const betaSignupLimit =
+    row?.beta_signup_limit === null || row?.beta_signup_limit === undefined
+      ? null
+      : Number.isFinite(Number(row.beta_signup_limit))
+        ? Number(row.beta_signup_limit)
+        : null;
+
   return {
     available: true,
     ai_copilot_enabled: Boolean(row?.ai_copilot_enabled),
+    beta_signup_enabled: row?.beta_signup_enabled !== false,
+    beta_signup_limit: betaSignupLimit,
+    beta_signup_count: betaSignupCount,
+    beta_signup_remaining:
+      typeof betaSignupLimit === "number"
+        ? Math.max(betaSignupLimit - betaSignupCount, 0)
+        : null,
   };
 }
 
@@ -1056,7 +1099,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(
           {
             ok: false,
-            error: isMissingAiCopilotControlsError(upsertError)
+            error: isMissingPlatformSettingsError(upsertError)
               ? "AI copilot controls are missing. Run supabase/add_ai_copilot_controls.sql in Supabase first."
               : upsertError.message,
           },
@@ -1076,6 +1119,48 @@ export async function POST(req: NextRequest) {
           ai_copilot_enabled: body.enabled,
         },
       });
+    } else if (body.type === "set_beta_signup") {
+      const updates: Record<string, unknown> = {
+        id: true,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (typeof body.enabled === "boolean") {
+        updates.beta_signup_enabled = body.enabled;
+      }
+
+      if (body.limit !== undefined) {
+        const nextLimit = body.limit === null ? null : Number(body.limit);
+        updates.beta_signup_limit =
+          nextLimit === null || (Number.isFinite(nextLimit) && nextLimit >= 0) ? nextLimit : 10;
+      }
+
+      const { error: upsertError } = await serviceClient
+        .from("platform_settings")
+        .upsert(updates);
+
+      if (upsertError) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: isMissingPlatformSettingsError(upsertError)
+              ? "Beta signup controls are missing. Run supabase/add_beta_signup_controls.sql in Supabase first."
+              : upsertError.message,
+          },
+          { status: 500 }
+        );
+      }
+
+      await writeAuditLog(serviceClient, {
+        actorProfileId: profile.id,
+        actorEmail: profile.email,
+        actorRole: profile.role,
+        organizationId: null,
+        actionType: "platform.set_beta_signup",
+        targetType: "platform_settings",
+        targetId: "platform_settings:true",
+        metadata: updates,
+      });
     } else if (!body.organizationId) {
       return NextResponse.json({ ok: false, error: "Missing organizationId." }, { status: 400 });
     } else if (body.type === "set_ai_organization") {
@@ -1090,7 +1175,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(
           {
             ok: false,
-            error: isMissingAiCopilotControlsError(updateError)
+            error: isMissingPlatformSettingsError(updateError)
               ? "AI copilot controls are missing. Run supabase/add_ai_copilot_controls.sql in Supabase first."
               : updateError.message,
           },
@@ -1142,7 +1227,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(
           {
             ok: false,
-            error: isMissingAiCopilotControlsError(updateError)
+            error: isMissingPlatformSettingsError(updateError)
               ? "AI copilot controls are missing. Run supabase/add_ai_copilot_controls.sql in Supabase first."
               : updateError.message,
           },

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
@@ -58,6 +58,10 @@ type PlatformAuditLog = {
 type PlatformSettings = {
   available: boolean;
   ai_copilot_enabled: boolean;
+  beta_signup_enabled: boolean;
+  beta_signup_limit: number | null;
+  beta_signup_count: number;
+  beta_signup_remaining: number | null;
 };
 
 type FeatureUsageSummary = {
@@ -191,11 +195,12 @@ export default function PlatformPage() {
   const [cleaningAdminPreviewOrganization, setCleaningAdminPreviewOrganization] =
     useState<PlatformOrganization | null>(null);
   const [openingCleaningAdminPreview, setOpeningCleaningAdminPreview] = useState(false);
+  const [customBetaSignupLimit, setCustomBetaSignupLimit] = useState("10");
   const [expandedOrganizationIds, setExpandedOrganizationIds] = useState<Set<string>>(() => new Set());
   const [deleteConfirmByOrg, setDeleteConfirmByOrg] = useState<Record<string, string>>({});
   const [auditLogExpanded, setAuditLogExpanded] = useState(false);
 
-  async function loadPlatformData() {
+  const loadPlatformData = useEffectEvent(async () => {
     setError("");
 
     const {
@@ -228,11 +233,20 @@ export default function PlatformPage() {
     setFeatureUsage((payload.featureUsage || null) as FeatureUsageSummary | null);
     setPlatformSettings((payload.platformSettings || null) as PlatformSettings | null);
     setLoading(false);
-  }
+  });
 
   useEffect(() => {
     void loadPlatformData();
   }, []);
+
+  useEffect(() => {
+    if (!platformSettings) return;
+    setCustomBetaSignupLimit(
+      platformSettings.beta_signup_limit === null
+        ? ""
+        : String(platformSettings.beta_signup_limit)
+    );
+  }, [platformSettings]);
 
   const totals = useMemo(() => {
     return organizations.reduce(
@@ -523,6 +537,129 @@ export default function PlatformPage() {
                 Run `supabase/add_ai_copilot_controls.sql` in Supabase to activate these controls.
               </div>
             ) : null}
+          </div>
+
+          <div className="mt-6 border-t border-[#d8deea] pt-6">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#7a5a23]">Beta Signup</div>
+                <h2 className="mt-2 text-xl font-semibold tracking-tight text-[#5a4016]">New user gate</h2>
+                <p className="mt-1 max-w-2xl text-sm leading-6 text-[#7b6a55]">
+                  Control whether new self-serve company signups are open, and cap the beta at a fixed number of accounts.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span
+                  className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                    platformSettings?.beta_signup_enabled
+                      ? "border-[#ead3a1] bg-[#fff7e8] text-[#8a6112]"
+                      : "border-[#eadfce] bg-white text-[#7f7263]"
+                  }`}
+                >
+                  {platformSettings?.beta_signup_enabled ? "Signup open" : "Signup paused"}
+                </span>
+                <span className="rounded-full border border-[#eadfce] bg-white px-3 py-1 text-xs font-semibold text-[#5f5245]">
+                  {platformSettings?.beta_signup_limit === null
+                    ? `${platformSettings?.beta_signup_count ?? 0} total signups`
+                    : `${platformSettings?.beta_signup_count ?? 0}/${platformSettings?.beta_signup_limit ?? 0} used`}
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button
+                type="button"
+                disabled={platformSettings?.available === false || platformSettings?.beta_signup_enabled === true}
+                onClick={() =>
+                  void handleAction(
+                    { type: "set_beta_signup", enabled: true },
+                    "New user signup is now open."
+                  )
+                }
+                className="rounded-full border border-[#ead3a1] bg-white px-4 py-2.5 text-sm font-medium text-[#8a6112] transition hover:bg-[#fff8e8] disabled:opacity-60"
+              >
+                Open signup
+              </button>
+              <button
+                type="button"
+                disabled={platformSettings?.available === false || platformSettings?.beta_signup_enabled === false}
+                onClick={() =>
+                  void handleAction(
+                    { type: "set_beta_signup", enabled: false },
+                    "New user signup is now paused."
+                  )
+                }
+                className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2.5 text-sm font-medium text-[#5f5245] transition hover:bg-[#fcfaf7] disabled:opacity-60"
+              >
+                Pause signup
+              </button>
+              <button
+                type="button"
+                disabled={platformSettings?.available === false}
+                onClick={() =>
+                  void handleAction(
+                    { type: "set_beta_signup", enabled: true, limit: 10 },
+                    "Beta signup is now capped at 10 accounts."
+                  )
+                }
+                className="rounded-full border border-[#ead3a1] bg-white px-4 py-2.5 text-sm font-medium text-[#8a6112] transition hover:bg-[#fff8e8] disabled:opacity-60"
+              >
+                Cap at 10
+              </button>
+              <button
+                type="button"
+                disabled={platformSettings?.available === false}
+                onClick={() =>
+                  void handleAction(
+                    { type: "set_beta_signup", limit: null },
+                    "Beta signup is now unlimited."
+                  )
+                }
+                className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2.5 text-sm font-medium text-[#5f5245] transition hover:bg-[#fcfaf7] disabled:opacity-60"
+              >
+                Unlimited
+              </button>
+              <div className="flex flex-wrap items-center gap-2 rounded-full border border-[#eadfce] bg-white px-3 py-2">
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  inputMode="numeric"
+                  value={customBetaSignupLimit}
+                  onChange={(event) => setCustomBetaSignupLimit(event.target.value)}
+                  disabled={platformSettings?.available === false}
+                  placeholder="Custom limit"
+                  className="w-28 rounded-full border border-[#eadfce] bg-[#fcfaf7] px-3 py-2 text-sm text-[#241c15] outline-none transition focus:border-[#b48d4e]"
+                />
+                <button
+                  type="button"
+                  disabled={
+                    platformSettings?.available === false ||
+                    customBetaSignupLimit.trim() === "" ||
+                    !Number.isFinite(Number(customBetaSignupLimit)) ||
+                    Number(customBetaSignupLimit) < 0
+                  }
+                  onClick={() =>
+                    void handleAction(
+                      {
+                        type: "set_beta_signup",
+                        enabled: true,
+                        limit: Number(customBetaSignupLimit),
+                      },
+                      `Beta signup is now capped at ${Number(customBetaSignupLimit)} accounts.`
+                    )
+                  }
+                  className="rounded-full border border-[#ead3a1] bg-[#fff8e8] px-4 py-2 text-sm font-medium text-[#8a6112] transition hover:bg-[#fff1d0] disabled:opacity-60"
+                >
+                  Apply limit
+                </button>
+              </div>
+              {platformSettings?.available === false ? (
+                <div className="rounded-full border border-[#efc6c6] bg-[#fff5f5] px-4 py-2.5 text-sm text-[#8a2e22]">
+                  Run `supabase/add_beta_signup_controls.sql` in Supabase to activate these controls.
+                </div>
+              ) : null}
+            </div>
           </div>
         </section>
 
