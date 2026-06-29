@@ -507,10 +507,19 @@ export default function LoginPage() {
     setLoadingCancelSignup(true);
 
     try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
       const response = await fetch("/api/company-signup/cancel", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...(session?.access_token
+            ? {
+                Authorization: `Bearer ${session.access_token}`,
+              }
+            : {}),
         },
         body: JSON.stringify({
           userId: pendingSignupUserId,
@@ -521,7 +530,10 @@ export default function LoginPage() {
       const result = await response.json().catch(() => null);
 
       if (!response.ok) {
-        setError(result?.error || "Could not clear the pending signup.");
+        setError(
+          result?.error ||
+            "Could not clear the pending signup. If the browser no longer has the original signup session, contact support."
+        );
         return;
       }
 

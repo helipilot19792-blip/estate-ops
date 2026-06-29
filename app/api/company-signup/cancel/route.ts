@@ -3,6 +3,11 @@ import { createClient } from "@supabase/supabase-js";
 
 const MAX_CANCEL_AGE_HOURS = 24;
 
+function getBearerToken(req: NextRequest) {
+  const authHeader = req.headers.get("authorization") || "";
+  return authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => null);
@@ -17,12 +22,53 @@ export async function POST(req: NextRequest) {
     }
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const publicKey =
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY ||
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const accessToken = getBearerToken(req);
 
-    if (!supabaseUrl || !serviceRoleKey) {
+    if (!supabaseUrl || !publicKey || !serviceRoleKey) {
       return NextResponse.json(
         { error: "Missing server environment variables." },
         { status: 500 }
+      );
+    }
+
+    if (!accessToken) {
+      return NextResponse.json(
+        { error: "Your pending signup session is required before this account can be cleared." },
+        { status: 401 }
+      );
+    }
+
+    const authClient = createClient(supabaseUrl, publicKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+      global: {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+    });
+
+    const {
+      data: { user: sessionUser },
+      error: sessionError,
+    } = await authClient.auth.getUser();
+
+    if (sessionError || !sessionUser) {
+      return NextResponse.json(
+        { error: "Your pending signup session could not be verified." },
+        { status: 401 }
+      );
+    }
+
+    const sessionEmail = sessionUser.email?.trim().toLowerCase() || "";
+    if (sessionUser.id !== userId || sessionEmail !== email) {
+      return NextResponse.json(
+        { error: "Pending signup details do not match the active signup session." },
+        { status: 403 }
       );
     }
 

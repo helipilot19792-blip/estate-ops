@@ -5,8 +5,11 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET() {
+  const diagnostics = getPushEnvironmentDiagnostics();
+  const healthy = diagnostics.publicKeyValid && Boolean(diagnostics.selectedPrivateKeyName);
+
   return NextResponse.json({
     ok: true,
-    diagnostics: getPushEnvironmentDiagnostics(),
+    healthy,
   });
 }

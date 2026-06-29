@@ -83,6 +83,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "Message not found." }, { status: 404 });
     }
 
+    if (message.sender_profile_id !== userId) {
+      return NextResponse.json(
+        { ok: false, error: "Only the sender of this message can trigger push delivery." },
+        { status: 403 }
+      );
+    }
+
     const { data: conversation, error: conversationError } = await service
       .from("chat_conversations")
       .select("id,context_type")
