@@ -10,7 +10,10 @@ const publicSupabaseKey =
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-type ServiceClient = ReturnType<typeof createClient>;
+type AdminProfileRow = {
+  id: string;
+  role: string | null;
+};
 
 function getBearerToken(request: NextRequest) {
   const authHeader = request.headers.get("authorization") || "";
@@ -35,7 +38,7 @@ function getClients(token: string) {
 }
 
 async function requireAdminAccess(
-  serviceClient: ServiceClient,
+  serviceClient: ReturnType<typeof getClients>["serviceClient"],
   token: string,
   organizationId: string,
   propertyId: string
@@ -50,11 +53,12 @@ async function requireAdminAccess(
     throw new Error("Unauthorized.");
   }
 
-  const { data: profile, error: profileError } = await serviceClient
+  const { data: profileData, error: profileError } = await serviceClient
     .from("profiles")
     .select("id, role")
     .eq("id", user.id)
     .maybeSingle();
+  const profile = (profileData as AdminProfileRow | null);
 
   if (profileError) {
     throw new Error(profileError.message);
