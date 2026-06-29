@@ -245,7 +245,7 @@ export async function sendStaffPushNotifications(
         statusCode: statusCode || null,
         error: error?.message || "Push notification failed.",
       });
-      if (statusCode === 404 || statusCode === 410) {
+      if (statusCode === 401 || statusCode === 403 || statusCode === 404 || statusCode === 410) {
         staleSubscriptionIds.push(row.id);
         skipped += 1;
         continue;

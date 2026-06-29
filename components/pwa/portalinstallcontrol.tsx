@@ -116,6 +116,32 @@ async function savePushSubscription(portal: AppPortal, token: string, pushSubscr
   return { response, payload };
 }
 
+function getPushKeyStorageKey(portal: AppPortal) {
+  return `portal-push-vapid:${portal}`;
+}
+
+function rememberPushKey(portal: AppPortal, publicKey: string) {
+  try {
+    if (publicKey) {
+      window.localStorage.setItem(getPushKeyStorageKey(portal), publicKey);
+    }
+  } catch {}
+}
+
+function readRememberedPushKey(portal: AppPortal) {
+  try {
+    return window.localStorage.getItem(getPushKeyStorageKey(portal)) || "";
+  } catch {
+    return "";
+  }
+}
+
+function clearRememberedPushKey(portal: AppPortal) {
+  try {
+    window.localStorage.removeItem(getPushKeyStorageKey(portal));
+  } catch {}
+}
+
 export default function PortalInstallControl({
   portal = "cleaner",
   enablePush = true,
@@ -199,13 +225,39 @@ export default function PortalInstallControl({
         }
 
         if (token) {
-          if (active && payload?.subscribed && existing) {
+          const rememberedKey = publicKey ? readRememberedPushKey(portal) : "";
+          const shouldRefreshExistingSubscription =
+            !!existing &&
+            !!publicKey &&
+            Notification.permission === "granted" &&
+            rememberedKey !== publicKey;
+
+          if (active && shouldRefreshExistingSubscription) {
+            await existing.unsubscribe().catch(() => undefined);
+            const refreshedSubscription = await registration.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: urlBase64ToUint8Array(publicKey),
+            });
+            const { response: saveResponse, payload: savePayload } = await savePushSubscription(
+              portal,
+              token,
+              refreshedSubscription
+            );
+            if (active && saveResponse.ok && savePayload?.ok) {
+              setSubscription(refreshedSubscription);
+              setStatus("active");
+              setMessage("Alerts are on for this device.");
+              rememberPushKey(portal, publicKey);
+            }
+          } else if (active && payload?.subscribed && existing) {
             setStatus("active");
+            if (publicKey) rememberPushKey(portal, publicKey);
           } else if (active && existing && response.ok) {
             const { response: saveResponse, payload: savePayload } = await savePushSubscription(portal, token, existing);
             if (active && saveResponse.ok && savePayload?.ok) {
               setStatus("active");
               setMessage("Alerts are on for this portal.");
+              if (publicKey) rememberPushKey(portal, publicKey);
             }
           } else if (
             active &&
@@ -227,6 +279,7 @@ export default function PortalInstallControl({
               setSubscription(restoredSubscription);
               setStatus("active");
               setMessage("Alerts are on for this device.");
+              rememberPushKey(portal, publicKey);
             }
           }
         }
@@ -336,6 +389,7 @@ export default function PortalInstallControl({
       setSubscription(sub);
       setStatus("active");
       setMessage("Push notifications are on.");
+      rememberPushKey(portal, publicKey);
     } catch (error) {
       setStatus("error");
       setMessage(error instanceof Error ? error.message : "Could not enable notifications.");
@@ -365,6 +419,7 @@ export default function PortalInstallControl({
       setSubscription(null);
       setStatus("ready");
       setMessage("Push notifications are off.");
+      clearRememberedPushKey(portal);
     } catch (error) {
       setStatus("error");
       setMessage(error instanceof Error ? error.message : "Could not disable notifications.");

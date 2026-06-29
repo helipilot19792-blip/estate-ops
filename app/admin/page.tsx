@@ -7609,6 +7609,11 @@ This removes its linked members and deletes the grounds account.`
       return;
     }
 
+    if (!currentOrganizationId) {
+      setError("Please select an organization first.");
+      return;
+    }
+
     const hasTitle = !!sopTitle.trim();
     const hasContent = !!sopContent.trim();
     const hasFiles = sopFiles.length > 0;
@@ -7622,18 +7627,36 @@ This removes its linked members and deletes the grounds account.`
     setUploadingSop(true);
 
     try {
-      const { data: sopInsert, error: sopError } = await supabase
-        .from("property_sops")
-        .insert({
-          property_id: selectedPropertyId,
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        setError("Please log in again before saving an SOP.");
+        return;
+      }
+
+      const sopResponse = await fetch("/api/admin/property-sop", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          action: "create",
+          organizationId: currentOrganizationId,
+          propertyId: selectedPropertyId,
           title: hasTitle ? sopTitle.trim() : null,
           content: hasContent ? sopContent.trim() : null,
-        })
-        .select()
-        .single();
+        }),
+      });
 
-      if (sopError || !sopInsert) {
-        setError("SOP save failed: " + (sopError?.message || "Unknown error"));
+      const sopPayload = await sopResponse.json().catch(() => null);
+      const sopInsert = sopPayload?.sop;
+
+      if (!sopResponse.ok || !sopPayload?.ok || !sopInsert) {
+        setError("SOP save failed: " + (sopPayload?.error || "Unknown error"));
         return;
       }
 
@@ -7657,15 +7680,25 @@ This removes its linked members and deletes the grounds account.`
           data: { publicUrl },
         } = supabase.storage.from("property-sop-images").getPublicUrl(filePath);
 
-        const { error: imageInsertError } = await supabase.from("property_sop_images").insert({
-          sop_id: newSopId,
-          image_url: publicUrl,
-          caption: null,
-          sort_order: i,
+        const imageResponse = await fetch("/api/admin/property-sop", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            action: "add-image",
+            organizationId: currentOrganizationId,
+            sopId: newSopId,
+            imageUrl: publicUrl,
+            caption: null,
+            sortOrder: i,
+          }),
         });
+        const imagePayload = await imageResponse.json().catch(() => null);
 
-        if (imageInsertError) {
-          setError("Image record save failed: " + imageInsertError.message);
+        if (!imageResponse.ok || !imagePayload?.ok) {
+          setError("Image record save failed: " + (imagePayload?.error || "Unknown error"));
           return;
         }
       }
