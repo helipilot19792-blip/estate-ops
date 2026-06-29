@@ -1823,8 +1823,6 @@ export default function AdminPage() {
   const [selectedPropertyDefaultTurnoverPayout, setSelectedPropertyDefaultTurnoverPayout] = useState("");
   const [selectedPropertyWifiNetwork, setSelectedPropertyWifiNetwork] = useState("");
   const [selectedPropertyWifiPassword, setSelectedPropertyWifiPassword] = useState("");
-  const [selectedPropertyGuestDeviceWelcomeMessage, setSelectedPropertyGuestDeviceWelcomeMessage] = useState("");
-  const [selectedPropertyGuestDeviceLocalInfo, setSelectedPropertyGuestDeviceLocalInfo] = useState("");
   const [selectedPropertyGarbageDay, setSelectedPropertyGarbageDay] = useState("");
   const [selectedPropertyGarbageNotes, setSelectedPropertyGarbageNotes] = useState("");
   const [selectedPropertyGarbagePickupWeekday, setSelectedPropertyGarbagePickupWeekday] = useState("");
@@ -2519,8 +2517,6 @@ export default function AdminPage() {
     if (!propertyManualDetailsDirty) {
       setSelectedPropertyWifiNetwork(selectedProperty?.wifi_network || "");
       setSelectedPropertyWifiPassword(selectedProperty?.wifi_password || "");
-      setSelectedPropertyGuestDeviceWelcomeMessage(selectedProperty?.guest_device_welcome_message || "");
-      setSelectedPropertyGuestDeviceLocalInfo(selectedProperty?.guest_device_local_info || "");
       setSelectedPropertyGarbageDay(selectedProperty?.garbage_day || "");
       setSelectedPropertyGarbageNotes(selectedProperty?.garbage_notes || "");
       setSelectedPropertyGarbagePickupWeekday(
@@ -6889,8 +6885,6 @@ This removes its linked members and deletes the grounds account.`
           propertyId: selectedPropertyId,
           wifiNetwork: selectedPropertyWifiNetwork,
           wifiPassword: selectedPropertyWifiPassword,
-          guestDeviceWelcomeMessage: selectedPropertyGuestDeviceWelcomeMessage,
-          guestDeviceLocalInfo: selectedPropertyGuestDeviceLocalInfo,
           garbageDay: savedGarbageDay,
           garbageNotes: selectedPropertyGarbageNotes,
           garbagePickupWeekday: selectedPropertyGarbagePickupWeekday,
@@ -22041,84 +22035,42 @@ This removes its linked members and deletes the grounds account.`
             ) : null}
 
             {propertySetupTab === "guestDevice" ? (
-              <div className="mt-6 grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+              <div className="mt-6 grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
                 <div className="space-y-6">
                   <div className="rounded-[24px] border border-[#d7e6df] bg-[#f6fbf8] p-5">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                       <div>
-                        <h3 className="text-base font-semibold text-[#17382d]">Guest-facing display content</h3>
+                        <h3 className="text-base font-semibold text-[#17382d]">Guest data feed</h3>
                         <p className="mt-1 text-sm text-[#5e7469]">
-                          This content is returned by Gulera to the in-unit Pi device for the selected property.
+                          Gulera only shares stay data with the device. The device software handles all guest-facing screens and UI.
                         </p>
                       </div>
                       <span className="rounded-full border border-[#cfe4d9] bg-white px-3 py-1 text-xs font-medium text-[#245444]">
-                        Read-only device API
+                        Read-only API
                       </span>
                     </div>
 
-                    <div className="mt-4 grid gap-4">
-                      <label className="block text-sm font-medium text-[#245444]">
-                        Welcome message
-                        <textarea
-                          value={selectedPropertyGuestDeviceWelcomeMessage}
-                          onChange={(e) => {
-                            setSelectedPropertyGuestDeviceWelcomeMessage(e.target.value);
-                            setPropertyManualDetailsDirty(true);
-                          }}
-                          className="mt-2 min-h-[110px] w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
-                          placeholder="Thanks for staying with us. We hope you have a great visit."
-                        />
-                      </label>
+                    <div className="mt-4 rounded-[18px] border border-[#cfe4d9] bg-white px-4 py-4 text-sm text-[#17382d]">
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#5e7469]">Endpoint</div>
+                      <div className="mt-1 font-mono text-xs break-all">/api/device/guest-display</div>
 
-                      <label className="block text-sm font-medium text-[#245444]">
-                        Local info
-                        <textarea
-                          value={selectedPropertyGuestDeviceLocalInfo}
-                          onChange={(e) => {
-                            setSelectedPropertyGuestDeviceLocalInfo(e.target.value);
-                            setPropertyManualDetailsDirty(true);
-                          }}
-                          className="mt-2 min-h-[140px] w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
-                          placeholder="Parking tips, favorite coffee shop, beach rules, quiet hours, or anything the guest display should show."
-                        />
-                      </label>
+                      <div className="mt-4 text-xs font-semibold uppercase tracking-[0.16em] text-[#5e7469]">Auth</div>
+                      <div className="mt-1 font-mono text-xs break-all">Authorization: Bearer &lt;device-token&gt;</div>
+
+                      <div className="mt-4 text-xs font-semibold uppercase tracking-[0.16em] text-[#5e7469]">Returns</div>
+                      <div className="mt-2 grid gap-2 text-xs leading-5 text-[#5e7469]">
+                        <div>`stay.status`</div>
+                        <div>`stay.guestFirstName`</div>
+                        <div>`stay.guestCount`</div>
+                        <div>`stay.checkinDate`</div>
+                        <div>`stay.checkoutDate`</div>
+                        <div>`stay.checkinTime`</div>
+                        <div>`stay.checkoutTime`</div>
+                      </div>
                     </div>
 
-                    <div className="mt-4 flex flex-wrap gap-3">
-                      <button
-                        type="button"
-                        onClick={() => void saveSelectedPropertyManualDetails()}
-                        disabled={savingSelectedPropertyManualDetails}
-                        className="rounded-full bg-[#17382d] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#245444] disabled:opacity-60"
-                      >
-                        {savingSelectedPropertyManualDetails ? "Saving..." : "Save device content"}
-                      </button>
-                      <div className="rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-xs leading-5 text-[#5e7469]">
-                        Gulera will also return the current manual guest first name, guest count, stay dates, checkout time, WiFi network, and WiFi password for this property.
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-[24px] border border-[#d7e6df] bg-[#f6fbf8] p-5">
-                    <h3 className="text-base font-semibold text-[#17382d]">Device API contract</h3>
-                    <p className="mt-1 text-sm text-[#5e7469]">
-                      The Pi should call this endpoint with its device token. If the device is stolen, revoke it here and the token stops working immediately.
-                    </p>
-                    <div className="mt-4 space-y-3 rounded-[18px] border border-[#cfe4d9] bg-white px-4 py-4 text-sm text-[#17382d]">
-                      <div>
-                        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#5e7469]">Endpoint</div>
-                        <div className="mt-1 font-mono text-xs break-all">/api/device/guest-display</div>
-                      </div>
-                      <div>
-                        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#5e7469]">Auth</div>
-                        <div className="mt-1 font-mono text-xs break-all">Authorization: Bearer &lt;device-token&gt;</div>
-                      </div>
-                      <div>
-                        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#5e7469]">Returns</div>
-                        <div className="mt-1 text-xs leading-5 text-[#5e7469]">
-                          `guestFirstName`, `guestCount`, `checkinDate`, `checkoutDate`, `checkoutTime`, `welcomeMessage`, `localInfo`, `wifiNetwork`, `wifiPassword`, plus property coordinates for external weather lookup.
-                        </div>
-                      </div>
+                    <div className="mt-4 rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-xs leading-5 text-[#5e7469]">
+                      Guest first name and guest count come from the current Gulera booking record, including your manual edits.
                     </div>
                   </div>
                 </div>

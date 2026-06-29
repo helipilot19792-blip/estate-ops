@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
     const [{ data: property, error: propertyError }, { data: bookings, error: bookingsError }] = await Promise.all([
       service
         .from("properties")
-        .select("id,name,address,wifi_network,wifi_password,latitude,longitude,default_checkin_time,default_checkout_time,guest_device_welcome_message,guest_device_local_info")
+        .select("id,default_checkin_time,default_checkout_time")
         .eq("id", device.property_id)
         .eq("organization_id", device.organization_id)
         .maybeSingle(),
@@ -114,13 +114,6 @@ export async function GET(request: NextRequest) {
         id: device.id,
         label: device.label,
       },
-      property: {
-        id: property.id,
-        name: property.name,
-        address: property.address,
-        latitude: property.latitude ?? null,
-        longitude: property.longitude ?? null,
-      },
       stay: {
         status: relevantStay.stayStatus,
         guestFirstName,
@@ -129,12 +122,6 @@ export async function GET(request: NextRequest) {
         checkoutDate: booking?.checkout_date || null,
         checkinTime: formatTimeLabel(property.default_checkin_time),
         checkoutTime: formatTimeLabel(property.default_checkout_time),
-      },
-      content: {
-        welcomeMessage: String(property.guest_device_welcome_message || "").trim() || null,
-        localInfo: String(property.guest_device_local_info || "").trim() || null,
-        wifiNetwork: String(property.wifi_network || "").trim() || null,
-        wifiPassword: String(property.wifi_password || "").trim() || null,
       },
       generatedAt: new Date().toISOString(),
     });
