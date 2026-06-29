@@ -16,6 +16,7 @@ type Recipient = {
 type SlotBundle = {
   slotId: string;
   organizationId: string;
+  organizationName: string | null;
   kind: JobNotificationKind;
   status: string | null;
   offeredAt: string | null;
@@ -39,6 +40,7 @@ type SlotBundle = {
 
 type JobCancellationBundle = {
   organizationId: string;
+  organizationName: string | null;
   kind: JobNotificationKind;
   jobId: string;
   propertyName: string;
@@ -360,6 +362,19 @@ async function loadSlotBundle(
   const recipients = await loadRecipients(service, kind, accountId, account.email || null, accountLabel);
   if (recipients.length === 0) return null;
 
+  async function loadOrganizationName(organizationId: string | null | undefined) {
+    if (!organizationId) return null;
+
+    const { data: organization, error: organizationError } = await service
+      .from("organizations")
+      .select("id,name")
+      .eq("id", organizationId)
+      .maybeSingle();
+
+    if (organizationError) throw new Error(organizationError.message);
+    return organization?.name || null;
+  }
+
   if (kind === "cleaner") {
     const { data: job, error: jobError } = await service
       .from("turnover_jobs")
@@ -380,10 +395,12 @@ async function loadSlotBundle(
     if (!property) return null;
     const jobDate = getCleanerJobDate(job);
     const sameDayTurnoverInfo = await loadSameDayTurnoverInfo(service, job.property_id, jobDate);
+    const organizationName = await loadOrganizationName(property.organization_id || null);
 
     return {
       slotId: slot.id,
       organizationId: property.organization_id || "",
+      organizationName,
       kind,
       status: slot.status || null,
       offeredAt: slot.offered_at || null,
@@ -422,10 +439,12 @@ async function loadSlotBundle(
 
   if (propertyError) throw new Error(propertyError.message);
   if (!property) return null;
+  const organizationName = await loadOrganizationName(property.organization_id || null);
 
   return {
     slotId: slot.id,
     organizationId: property.organization_id || "",
+    organizationName,
     kind,
     status: slot.status || null,
     offeredAt: slot.offered_at || null,
@@ -464,6 +483,7 @@ function buildDigestJobRow(bundle: SlotBundle, recipient: Recipient, origin: str
 
   return `
     <div style="border:1px solid #eadfce;border-radius:14px;padding:14px;margin:0 0 12px;background:#fffaf4;">
+      ${bundle.organizationName ? `<p style="margin:0 0 4px;font-size:12px;text-transform:uppercase;letter-spacing:0.14em;color:#8a7047;">${bundle.organizationName}</p>` : ""}
       <p style="margin:0 0 6px;font-weight:700;color:#241c15;">${propertyLine}</p>
       <p style="margin:0 0 6px;color:#5f5245;"><strong>Scheduled:</strong> ${formatDateLabel(bundle.jobDate)}</p>
       <p style="margin:0 0 12px;color:#5f5245;"><strong>Team / account:</strong> ${bundle.accountLabel}</p>
@@ -672,8 +692,21 @@ async function loadJobCancellationBundle(
     if (propertyError) throw new Error(propertyError.message);
     if (!property) return null;
 
+    let organizationName: string | null = null;
+    if (property.organization_id) {
+      const { data: organization, error: organizationError } = await service
+        .from("organizations")
+        .select("id,name")
+        .eq("id", property.organization_id)
+        .maybeSingle();
+
+      if (organizationError) throw new Error(organizationError.message);
+      organizationName = organization?.name || null;
+    }
+
     return {
       organizationId: property.organization_id || "",
+      organizationName,
       kind,
       jobId,
       propertyName: property.name || property.address || "Property",
@@ -703,8 +736,21 @@ async function loadJobCancellationBundle(
   if (propertyError) throw new Error(propertyError.message);
   if (!property) return null;
 
+  let organizationName: string | null = null;
+  if (property.organization_id) {
+    const { data: organization, error: organizationError } = await service
+      .from("organizations")
+      .select("id,name")
+      .eq("id", property.organization_id)
+      .maybeSingle();
+
+    if (organizationError) throw new Error(organizationError.message);
+    organizationName = organization?.name || null;
+  }
+
   return {
     organizationId: property.organization_id || "",
+    organizationName,
     kind,
     jobId,
     propertyName: property.name || property.address || "Property",
@@ -789,6 +835,7 @@ async function sendNotificationEmail(
         <p style="margin: 0 0 12px;">${greeting}</p>
         <h2 style="margin: 0 0 12px;">${emailCopy.intro}</h2>
         <p style="margin: 0 0 8px;"><strong>Property:</strong> ${emailCopy.propertyLine}</p>
+        ${bundle.organizationName ? `<p style="margin: 0 0 8px;"><strong>Organization:</strong> ${bundle.organizationName}</p>` : ""}
         <p style="margin: 0 0 8px;"><strong>Scheduled:</strong> ${emailCopy.dateLabel}</p>
         <p style="margin: 0 0 16px;"><strong>Team / account:</strong> ${bundle.accountLabel}</p>
         ${sameDayWarning}
@@ -855,8 +902,8 @@ async function sendNotificationPush(
   const result = await sendStaffPushNotifications(bundle.kind, profileIds, {
     title: emailCopy.subject,
     body: bundle.sameDayTurnover
-      ? `Same-day turnover - ${emailCopy.propertyLine} - ${emailCopy.dateLabel}`
-      : `${emailCopy.propertyLine} - ${emailCopy.dateLabel}`,
+      ? `Same-day turnover - ${bundle.organizationName ? `${bundle.organizationName}: ` : ""}${bundle.propertyName} - ${emailCopy.dateLabel}`
+      : `${bundle.organizationName ? `${bundle.organizationName}: ` : ""}${bundle.propertyName} - ${emailCopy.dateLabel}`,
     url: emailCopy.portalUrl,
     tag: `${bundle.kind}-${mode}-${bundle.slotId}`,
   });
@@ -890,6 +937,7 @@ async function sendCancellationEmail(bundle: JobCancellationBundle, origin: stri
         <p style="margin: 0 0 12px;">${greeting}</p>
         <h2 style="margin: 0 0 12px;">This ${bundle.detailLabel.toLowerCase()} was removed from the schedule.</h2>
         <p style="margin: 0 0 8px;"><strong>Property:</strong> ${propertyLine}</p>
+        ${bundle.organizationName ? `<p style="margin: 0 0 8px;"><strong>Organization:</strong> ${bundle.organizationName}</p>` : ""}
         <p style="margin: 0 0 8px;"><strong>Original scheduled date:</strong> ${dateLabel}</p>
         <p style="margin: 0 0 16px;"><strong>Team / account:</strong> ${accountLine}</p>
         <p style="margin: 0 0 16px;">This usually happens when a booking is cancelled, moved, or replaced by a new reservation.</p>
@@ -931,7 +979,7 @@ async function sendCancellationPush(bundle: JobCancellationBundle, origin: strin
 
   const result = await sendStaffPushNotifications(bundle.kind, profileIds, {
     title: `${bundle.detailLabel} removed`,
-    body: `${bundle.propertyName} - ${dateLabel}`,
+    body: `${bundle.organizationName ? `${bundle.organizationName}: ` : ""}${bundle.propertyName} - ${dateLabel}`,
     url: portalUrl,
     tag: `${bundle.kind}-canceled-${bundle.jobId}`,
   });

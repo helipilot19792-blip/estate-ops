@@ -42,6 +42,7 @@ type CleanerAccount = {
 type Property = {
   id: string;
   organization_id?: string | null;
+  organization_name?: string | null;
   name: string | null;
   address: string | null;
   notes: string | null;
@@ -248,6 +249,7 @@ function buildCleanerPreviewDashboard(profile: Profile): CleanerDashboardPayload
   const property: Property = {
     id: "preview-cleaner-property",
     organization_id: "preview-organization",
+    organization_name: "Preview Organization",
     name: "Preview Beach Cottage",
     address: "123 Shoreline Lane, Preview Bay",
     notes: "Preview property used by the SaaS Control Tower.",
@@ -1001,7 +1003,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
       let warning: string | null = null;
       if (memberships.length > 1) {
         warning =
-          "Your profile is linked to more than one cleaner account. This page is using the first linked account right now.";
+          "Your cleaner login is linked to more than one organization. All linked jobs appear here under one login.";
       }
 
       return {
@@ -1029,16 +1031,20 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     return (data ?? []) as Property[];
   }
 
-  async function loadCleanerJobs(cleanerAccountId: string): Promise<CleanerJob[]> {
+  async function loadCleanerJobs(cleanerAccountIds: string[]): Promise<CleanerJob[]> {
     setJobsWarning(null);
 
     try {
+      if (cleanerAccountIds.length === 0) {
+        return [];
+      }
+
       let slotResult: any = await supabase
         .from("turnover_job_slots")
         .select(
           "id, job_id, slot_number, cleaner_account_id, status, offered_at, accepted_at, declined_at, started_at, finished_at, expires_at, accepted_by_profile_id, declined_by_profile_id, started_by_profile_id, finished_by_profile_id, created_at, updated_at"
         )
-        .eq("cleaner_account_id", cleanerAccountId)
+        .in("cleaner_account_id", cleanerAccountIds)
         .order("created_at", { ascending: false });
 
       if (slotResult.error?.code === "42703") {
@@ -1047,7 +1053,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
           .select(
             "id, job_id, slot_number, cleaner_account_id, status, offered_at, accepted_at, declined_at, expires_at, accepted_by_profile_id, declined_by_profile_id, created_at, updated_at"
           )
-          .eq("cleaner_account_id", cleanerAccountId)
+          .in("cleaner_account_id", cleanerAccountIds)
           .order("created_at", { ascending: false });
       }
 

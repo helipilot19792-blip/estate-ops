@@ -684,6 +684,7 @@ export default function CleanerMobileView({
       const itemProperty = propertyById.get(item.job.property_id);
       const propertyName = itemProperty?.name || itemProperty?.address || "Property job";
       const propertyAddress = itemProperty?.address || "No property address";
+      const organizationName = itemProperty?.organization_name || null;
       const parsedNotes = getParsedNotes(item.job.notes);
 
       return (
@@ -703,6 +704,11 @@ export default function CleanerMobileView({
                 <div className="text-base font-semibold leading-tight text-[#f8f2e8]">
                   {propertyName}
                 </div>
+                {organizationName ? (
+                  <div className="mt-1 text-[11px] uppercase tracking-[0.18em] text-[#b08b47]">
+                    {organizationName}
+                  </div>
+                ) : null}
                 <div className="mt-1 text-sm text-[#d4c4a8]">
                   {formatDateLabel(normalizeJobDate(item.jobDate))}
                 </div>
@@ -733,6 +739,11 @@ export default function CleanerMobileView({
             <section className="border-t border-[#7a5c2e]/20 px-3 pb-4 pt-4 sm:px-4">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
+                  {organizationName ? (
+                    <p className="text-[11px] uppercase tracking-[0.18em] text-[#b08b47]">
+                      {organizationName}
+                    </p>
+                  ) : null}
                   <p className="text-sm text-[#d4c4a8]">{propertyAddress}</p>
                   <p className="mt-1 text-sm text-[#f0d59f]">
                     Cleaning date: {formatDateLabel(normalizeJobDate(selectedCleanerJob.jobDate))}

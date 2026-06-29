@@ -215,8 +215,34 @@ async function loadPropertySupport(propertyIds: string[]) {
     sopImages = data ?? [];
   }
 
+  const properties = propertiesRes.data ?? [];
+  const organizationIds = [
+    ...new Set(
+      properties
+        .map((property: { organization_id?: string | null }) => property.organization_id)
+        .filter(Boolean)
+    ),
+  ] as string[];
+  const organizationNameById = new Map<string, string | null>();
+
+  if (organizationIds.length > 0) {
+    const { data: organizations, error: organizationsError } = await serviceClient
+      .from("organizations")
+      .select("id,name")
+      .in("id", organizationIds);
+
+    if (organizationsError) throw new Error(organizationsError.message);
+
+    for (const organization of organizations ?? []) {
+      organizationNameById.set(organization.id, organization.name || null);
+    }
+  }
+
   return {
-    properties: propertiesRes.data ?? [],
+    properties: properties.map((property: any) => ({
+      ...property,
+      organization_name: property.organization_id ? organizationNameById.get(property.organization_id) || null : null,
+    })),
     accessRows: accessRes.data ?? [],
     sops,
     sopImages,
@@ -249,7 +275,7 @@ async function loadCleanerChecklistItems(slots: any[], jobsById: Map<string, any
   const missingSlots = slots.filter((slot) => !existingSlotIds.has(slot.id));
 
   if (missingSlots.length > 0) {
-    let propertyChecklistRes: any =
+    const propertyChecklistRes: any =
       propertyIds.length > 0
         ? await serviceClient
             .from("property_cleaning_checklist_items")
@@ -371,14 +397,14 @@ async function loadCleanerDashboard(profileId: string) {
   let accountSlotsRes: any = await serviceClient
     .from("turnover_job_slots")
     .select("id, job_id, slot_number, cleaner_account_id, status, offered_at, accepted_at, declined_at, started_at, finished_at, expires_at, accepted_by_profile_id, declined_by_profile_id, started_by_profile_id, finished_by_profile_id, created_at, updated_at")
-    .eq("cleaner_account_id", account.id)
+    .in("cleaner_account_id", accountIds)
     .order("created_at", { ascending: false });
 
   if (accountSlotsRes.error?.code === "42703") {
     accountSlotsRes = await serviceClient
       .from("turnover_job_slots")
       .select("id, job_id, slot_number, cleaner_account_id, status, offered_at, accepted_at, declined_at, expires_at, accepted_by_profile_id, declined_by_profile_id, created_at, updated_at")
-      .eq("cleaner_account_id", account.id)
+      .in("cleaner_account_id", accountIds)
       .order("created_at", { ascending: false });
   }
 
@@ -391,7 +417,10 @@ async function loadCleanerDashboard(profileId: string) {
   if (slots.length === 0) {
     return {
       account,
-      warning: memberRows.length > 1 ? "Your profile is linked to more than one cleaner account. This page is using the first linked account right now." : null,
+      warning:
+        memberRows.length > 1
+          ? "Your cleaner login is linked to more than one organization. All linked jobs appear here under one login."
+          : null,
       jobs: [],
       checklistItems: [],
       ...(await loadPropertySupport([])),
@@ -467,7 +496,10 @@ async function loadCleanerDashboard(profileId: string) {
 
   return {
     account,
-    warning: memberRows.length > 1 ? "Your profile is linked to more than one cleaner account. This page is using the first linked account right now." : null,
+    warning:
+      memberRows.length > 1
+        ? "Your cleaner login is linked to more than one organization. All linked jobs appear here under one login."
+        : null,
     jobs: merged,
     checklistItems,
     ...(await loadPropertySupport(propertyIds)),

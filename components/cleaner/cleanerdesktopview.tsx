@@ -308,6 +308,7 @@ function JobCard({
   isSelected,
   propertyName,
   propertyAddress,
+  organizationName,
   onClick,
   tone,
   waiting,
@@ -335,6 +336,7 @@ function JobCard({
   isSelected: boolean;
   propertyName: string;
   propertyAddress: string;
+  organizationName?: string | null;
   onClick: () => void;
   tone: ReturnType<CleanerViewProps["getStatusTone"]>;
   waiting: boolean;
@@ -391,6 +393,9 @@ function JobCard({
             </div>
 
             <h3 className="mt-3 text-lg font-semibold text-[#f8f2e8]">{propertyName}</h3>
+            {organizationName ? (
+              <p className="mt-1 text-xs uppercase tracking-[0.18em] text-[#b08b47]">{organizationName}</p>
+            ) : null}
             <p className="mt-1 text-sm text-[#d4c4a8]">{propertyAddress}</p>
 
             <p className="mt-2 text-sm font-medium text-[#f0d59f]">
@@ -440,6 +445,11 @@ function JobCard({
               <h3 className="mt-1 text-xl font-semibold text-[#f8f2e8]">
                 {selectedJobProperty?.name || propertyName}
               </h3>
+              {selectedJobProperty?.organization_name || organizationName ? (
+                <p className="mt-1 text-xs uppercase tracking-[0.18em] text-[#b08b47]">
+                  {selectedJobProperty?.organization_name || organizationName}
+                </p>
+              ) : null}
               <p className="mt-1 text-sm text-[#d4c4a8]">
                 {selectedJobProperty?.address || propertyAddress}
               </p>
@@ -825,6 +835,7 @@ export default function CleanerDesktopView({
               isSelected={selectedSlotId === item.slot.id}
               propertyName={property?.name || "Property job"}
               propertyAddress={property?.address || "No property address"}
+              organizationName={property?.organization_name || null}
               onClick={() => handleJobClick(item.slot.id)}
               tone={tone}
               waiting={waiting}
