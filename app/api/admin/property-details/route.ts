@@ -115,6 +115,8 @@ export async function POST(request: NextRequest) {
     const updatePayload = {
       wifi_network: String(body?.wifiNetwork || "").trim() || null,
       wifi_password: String(body?.wifiPassword || "").trim() || null,
+      guest_device_welcome_message: String(body?.guestDeviceWelcomeMessage || "").trim() || null,
+      guest_device_local_info: String(body?.guestDeviceLocalInfo || "").trim() || null,
       garbage_day: String(body?.garbageDay || "").trim() || null,
       garbage_notes: String(body?.garbageNotes || "").trim() || null,
       garbage_pickup_weekday:

@@ -156,6 +156,8 @@ type Property = {
   cover_photo_url?: string | null;
   wifi_network?: string | null;
   wifi_password?: string | null;
+  guest_device_welcome_message?: string | null;
+  guest_device_local_info?: string | null;
   garbage_day?: string | null;
   garbage_notes?: string | null;
   garbage_pickup_weekday?: number | null;
@@ -223,6 +225,17 @@ type PropertyBookingEvent = {
   checkout_date: string;
   admin_note?: string | null;
   admin_note_important?: boolean | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+type PropertyGuestDevice = {
+  id: string;
+  label: string;
+  token_last_four: string;
+  last_seen_at?: string | null;
+  revoked_at?: string | null;
+  revoke_reason?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -680,7 +693,7 @@ type AdminSection =
   | "invoices";
 type PropertyEntryMode = "manual" | "airbnb";
 type PropertyWorkflowTab = "add" | "setup" | "directory" | "health";
-type PropertySetupTab = "overview" | "access" | "calendars" | "knowledge" | "vendors" | "sops" | "checklists";
+type PropertySetupTab = "overview" | "guestDevice" | "access" | "calendars" | "knowledge" | "vendors" | "sops" | "checklists";
 type JobWorkflowTab = "cleaning" | "grounds" | "active" | "reliability" | "notifications" | "exceptions";
 type InvoiceWorkflowTab = "create" | "running" | "existing" | "defaults" | "history";
 type InvoiceDocumentKind = "invoice" | "statement";
@@ -1810,6 +1823,8 @@ export default function AdminPage() {
   const [selectedPropertyDefaultTurnoverPayout, setSelectedPropertyDefaultTurnoverPayout] = useState("");
   const [selectedPropertyWifiNetwork, setSelectedPropertyWifiNetwork] = useState("");
   const [selectedPropertyWifiPassword, setSelectedPropertyWifiPassword] = useState("");
+  const [selectedPropertyGuestDeviceWelcomeMessage, setSelectedPropertyGuestDeviceWelcomeMessage] = useState("");
+  const [selectedPropertyGuestDeviceLocalInfo, setSelectedPropertyGuestDeviceLocalInfo] = useState("");
   const [selectedPropertyGarbageDay, setSelectedPropertyGarbageDay] = useState("");
   const [selectedPropertyGarbageNotes, setSelectedPropertyGarbageNotes] = useState("");
   const [selectedPropertyGarbagePickupWeekday, setSelectedPropertyGarbagePickupWeekday] = useState("");
@@ -1822,6 +1837,12 @@ export default function AdminPage() {
   const [selectedPropertyDefaultCheckinTime, setSelectedPropertyDefaultCheckinTime] = useState("");
   const [selectedPropertyDefaultCheckoutTime, setSelectedPropertyDefaultCheckoutTime] = useState("");
   const [savingSelectedPropertyManualDetails, setSavingSelectedPropertyManualDetails] = useState(false);
+  const [loadingSelectedPropertyGuestDevices, setLoadingSelectedPropertyGuestDevices] = useState(false);
+  const [creatingSelectedPropertyGuestDevice, setCreatingSelectedPropertyGuestDevice] = useState(false);
+  const [revokingSelectedPropertyGuestDeviceId, setRevokingSelectedPropertyGuestDeviceId] = useState<string | null>(null);
+  const [selectedPropertyGuestDevices, setSelectedPropertyGuestDevices] = useState<PropertyGuestDevice[]>([]);
+  const [newGuestDeviceLabel, setNewGuestDeviceLabel] = useState("Guest Display");
+  const [createdGuestDeviceToken, setCreatedGuestDeviceToken] = useState("");
   const [settingSelectedPropertyGps, setSettingSelectedPropertyGps] = useState(false);
   const [propertyManualDetailsDirty, setPropertyManualDetailsDirty] = useState(false);
   const [savingSelectedPropertyDefaults, setSavingSelectedPropertyDefaults] = useState(false);
@@ -2498,6 +2519,8 @@ export default function AdminPage() {
     if (!propertyManualDetailsDirty) {
       setSelectedPropertyWifiNetwork(selectedProperty?.wifi_network || "");
       setSelectedPropertyWifiPassword(selectedProperty?.wifi_password || "");
+      setSelectedPropertyGuestDeviceWelcomeMessage(selectedProperty?.guest_device_welcome_message || "");
+      setSelectedPropertyGuestDeviceLocalInfo(selectedProperty?.guest_device_local_info || "");
       setSelectedPropertyGarbageDay(selectedProperty?.garbage_day || "");
       setSelectedPropertyGarbageNotes(selectedProperty?.garbage_notes || "");
       setSelectedPropertyGarbagePickupWeekday(
@@ -2540,6 +2563,70 @@ export default function AdminPage() {
     propertyKnowledgeDirty,
     selectedPropertyOwnerDirty,
   ]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSelectedPropertyGuestDevices() {
+      if (!selectedPropertyId || !currentOrganizationId) {
+        if (!cancelled) {
+          setSelectedPropertyGuestDevices([]);
+          setCreatedGuestDeviceToken("");
+        }
+        return;
+      }
+
+      if (!cancelled) {
+        setCreatedGuestDeviceToken("");
+      }
+
+      setLoadingSelectedPropertyGuestDevices(true);
+
+      try {
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+
+        if (sessionError || !session?.access_token) {
+          throw new Error("Could not verify your admin session.");
+        }
+
+        const response = await fetch(
+          `/api/admin/property-guest-device?organizationId=${encodeURIComponent(currentOrganizationId)}&propertyId=${encodeURIComponent(selectedPropertyId)}`,
+          {
+            cache: "no-store",
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+            },
+          }
+        );
+
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || !payload?.ok) {
+          throw new Error(payload?.error || "Could not load guest devices.");
+        }
+
+        if (!cancelled) {
+          setSelectedPropertyGuestDevices((payload.devices || []) as PropertyGuestDevice[]);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Could not load guest devices.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingSelectedPropertyGuestDevices(false);
+        }
+      }
+    }
+
+    void loadSelectedPropertyGuestDevices();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentOrganizationId, selectedPropertyId]);
 
   useEffect(() => {
     if (nearbyGpsEnabled || nearbyGpsStatus !== "idle") return;
@@ -6802,6 +6889,8 @@ This removes its linked members and deletes the grounds account.`
           propertyId: selectedPropertyId,
           wifiNetwork: selectedPropertyWifiNetwork,
           wifiPassword: selectedPropertyWifiPassword,
+          guestDeviceWelcomeMessage: selectedPropertyGuestDeviceWelcomeMessage,
+          guestDeviceLocalInfo: selectedPropertyGuestDeviceLocalInfo,
           garbageDay: savedGarbageDay,
           garbageNotes: selectedPropertyGarbageNotes,
           garbagePickupWeekday: selectedPropertyGarbagePickupWeekday,
@@ -6839,6 +6928,8 @@ This removes its linked members and deletes the grounds account.`
       setError(
         message.includes("wifi_network") || message.includes("garbage_")
           ? `${message} Run supabase/add_property_inspections.sql first.`
+          : message.includes("guest_device_")
+            ? `${message} Run supabase/add_property_guest_devices.sql first.`
           : message.includes("default_check")
             ? `${message} Run supabase/add_property_default_times.sql first.`
           : message.includes("latitude") || message.includes("longitude")
@@ -6847,6 +6938,118 @@ This removes its linked members and deletes the grounds account.`
       );
     } finally {
       setSavingSelectedPropertyManualDetails(false);
+    }
+  }
+
+  async function createSelectedPropertyGuestDevice() {
+    if (!selectedPropertyId || !currentOrganizationId) {
+      setError("Select a property before creating a guest device.");
+      return;
+    }
+
+    const label = newGuestDeviceLabel.trim();
+    if (!label) {
+      setError("Device label is required.");
+      return;
+    }
+
+    setCreatingSelectedPropertyGuestDevice(true);
+    setError("");
+    setActionMessage("");
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        throw new Error("Could not verify your admin session.");
+      }
+
+      const response = await fetch("/api/admin/property-guest-device", {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          organizationId: currentOrganizationId,
+          propertyId: selectedPropertyId,
+          label,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || "Could not create guest device.");
+      }
+
+      setSelectedPropertyGuestDevices((current) => [
+        payload.device as PropertyGuestDevice,
+        ...current,
+      ]);
+      setCreatedGuestDeviceToken(String(payload.deviceToken || ""));
+      setNewGuestDeviceLabel("Guest Display");
+      setActionMessage("Guest device created. Copy the token now and store it in the Pi config.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not create guest device.");
+    } finally {
+      setCreatingSelectedPropertyGuestDevice(false);
+    }
+  }
+
+  async function revokeSelectedPropertyGuestDevice(deviceId: string) {
+    if (!selectedPropertyId || !currentOrganizationId) {
+      setError("Select a property before revoking a guest device.");
+      return;
+    }
+
+    setRevokingSelectedPropertyGuestDeviceId(deviceId);
+    setError("");
+    setActionMessage("");
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        throw new Error("Could not verify your admin session.");
+      }
+
+      const response = await fetch("/api/admin/property-guest-device", {
+        method: "PATCH",
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          organizationId: currentOrganizationId,
+          propertyId: selectedPropertyId,
+          deviceId,
+          revokeReason: "Revoked from property setup.",
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || "Could not revoke guest device.");
+      }
+
+      setSelectedPropertyGuestDevices((current) =>
+        current.map((device) =>
+          device.id === deviceId ? { ...device, ...(payload.device as PropertyGuestDevice) } : device
+        )
+      );
+      setActionMessage("Guest device revoked. The Pi will stop receiving stay data immediately.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not revoke guest device.");
+    } finally {
+      setRevokingSelectedPropertyGuestDeviceId(null);
     }
   }
 
@@ -21078,6 +21281,7 @@ This removes its linked members and deletes the grounds account.`
     );
     const propertySetupTabs: Array<{ id: PropertySetupTab; label: string }> = [
       { id: "overview", label: "Overview" },
+      { id: "guestDevice", label: "Guest Device" },
       { id: "access", label: "Access" },
       { id: "calendars", label: "Calendars" },
       { id: "knowledge", label: "Knowledge" },
@@ -21090,6 +21294,11 @@ This removes its linked members and deletes the grounds account.`
         dot: "bg-[#2f6fed]",
         idle: "border-[#b9d0ff] bg-[#f4f8ff] text-[#2454a6] hover:bg-white",
         active: "border-[#2f6fed] bg-[#2f6fed] text-white shadow-[0_10px_22px_rgba(47,111,237,0.22)]",
+      },
+      guestDevice: {
+        dot: "bg-[#0f766e]",
+        idle: "border-[#9bd9cf] bg-[#effdfa] text-[#0f766e] hover:bg-white",
+        active: "border-[#0f766e] bg-[#0f766e] text-white shadow-[0_10px_22px_rgba(15,118,110,0.22)]",
       },
       access: {
         dot: "bg-[#f59e0b]",
@@ -21826,6 +22035,207 @@ This removes its linked members and deletes the grounds account.`
                         No cover photo added yet.
                       </div>
                     )}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {propertySetupTab === "guestDevice" ? (
+              <div className="mt-6 grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+                <div className="space-y-6">
+                  <div className="rounded-[24px] border border-[#d7e6df] bg-[#f6fbf8] p-5">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <h3 className="text-base font-semibold text-[#17382d]">Guest-facing display content</h3>
+                        <p className="mt-1 text-sm text-[#5e7469]">
+                          This content is returned by Gulera to the in-unit Pi device for the selected property.
+                        </p>
+                      </div>
+                      <span className="rounded-full border border-[#cfe4d9] bg-white px-3 py-1 text-xs font-medium text-[#245444]">
+                        Read-only device API
+                      </span>
+                    </div>
+
+                    <div className="mt-4 grid gap-4">
+                      <label className="block text-sm font-medium text-[#245444]">
+                        Welcome message
+                        <textarea
+                          value={selectedPropertyGuestDeviceWelcomeMessage}
+                          onChange={(e) => {
+                            setSelectedPropertyGuestDeviceWelcomeMessage(e.target.value);
+                            setPropertyManualDetailsDirty(true);
+                          }}
+                          className="mt-2 min-h-[110px] w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
+                          placeholder="Thanks for staying with us. We hope you have a great visit."
+                        />
+                      </label>
+
+                      <label className="block text-sm font-medium text-[#245444]">
+                        Local info
+                        <textarea
+                          value={selectedPropertyGuestDeviceLocalInfo}
+                          onChange={(e) => {
+                            setSelectedPropertyGuestDeviceLocalInfo(e.target.value);
+                            setPropertyManualDetailsDirty(true);
+                          }}
+                          className="mt-2 min-h-[140px] w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
+                          placeholder="Parking tips, favorite coffee shop, beach rules, quiet hours, or anything the guest display should show."
+                        />
+                      </label>
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      <button
+                        type="button"
+                        onClick={() => void saveSelectedPropertyManualDetails()}
+                        disabled={savingSelectedPropertyManualDetails}
+                        className="rounded-full bg-[#17382d] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#245444] disabled:opacity-60"
+                      >
+                        {savingSelectedPropertyManualDetails ? "Saving..." : "Save device content"}
+                      </button>
+                      <div className="rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-xs leading-5 text-[#5e7469]">
+                        Gulera will also return the current manual guest first name, guest count, stay dates, checkout time, WiFi network, and WiFi password for this property.
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-[24px] border border-[#d7e6df] bg-[#f6fbf8] p-5">
+                    <h3 className="text-base font-semibold text-[#17382d]">Device API contract</h3>
+                    <p className="mt-1 text-sm text-[#5e7469]">
+                      The Pi should call this endpoint with its device token. If the device is stolen, revoke it here and the token stops working immediately.
+                    </p>
+                    <div className="mt-4 space-y-3 rounded-[18px] border border-[#cfe4d9] bg-white px-4 py-4 text-sm text-[#17382d]">
+                      <div>
+                        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#5e7469]">Endpoint</div>
+                        <div className="mt-1 font-mono text-xs break-all">/api/device/guest-display</div>
+                      </div>
+                      <div>
+                        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#5e7469]">Auth</div>
+                        <div className="mt-1 font-mono text-xs break-all">Authorization: Bearer &lt;device-token&gt;</div>
+                      </div>
+                      <div>
+                        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#5e7469]">Returns</div>
+                        <div className="mt-1 text-xs leading-5 text-[#5e7469]">
+                          `guestFirstName`, `guestCount`, `checkinDate`, `checkoutDate`, `checkoutTime`, `welcomeMessage`, `localInfo`, `wifiNetwork`, `wifiPassword`, plus property coordinates for external weather lookup.
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-6">
+                  <div className="rounded-[24px] border border-[#d7e6df] bg-[#f6fbf8] p-5">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <h3 className="text-base font-semibold text-[#17382d]">Create guest device</h3>
+                        <p className="mt-1 text-sm text-[#5e7469]">
+                          Create a dedicated token for the in-unit Raspberry Pi. Each token is property-specific and read-only.
+                        </p>
+                      </div>
+                      <span className="rounded-full border border-[#cfe4d9] bg-white px-3 py-1 text-xs font-medium text-[#245444]">
+                        Revocable
+                      </span>
+                    </div>
+
+                    <div className="mt-4 grid gap-3">
+                      <input
+                        value={newGuestDeviceLabel}
+                        onChange={(e) => setNewGuestDeviceLabel(e.target.value)}
+                        placeholder="Guest Display"
+                        className="w-full rounded-[16px] border border-[#cfe4d9] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#8aa095] focus:border-[#4f7c6b]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void createSelectedPropertyGuestDevice()}
+                        disabled={creatingSelectedPropertyGuestDevice}
+                        className="rounded-full bg-[#17382d] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#245444] disabled:opacity-60"
+                      >
+                        {creatingSelectedPropertyGuestDevice ? "Creating..." : "Create device token"}
+                      </button>
+                    </div>
+
+                    {createdGuestDeviceToken ? (
+                      <div className="mt-4 rounded-[18px] border border-[#f3d28a] bg-[#fff9eb] px-4 py-4">
+                        <div className="text-sm font-semibold text-[#8a5700]">Copy this token now</div>
+                        <p className="mt-1 text-xs leading-5 text-[#8a5700]">
+                          Gulera will not be able to show this exact token again after you leave this screen.
+                        </p>
+                        <textarea
+                          readOnly
+                          value={createdGuestDeviceToken}
+                          className="mt-3 min-h-[96px] w-full rounded-[14px] border border-[#efd29c] bg-white px-3 py-3 font-mono text-xs text-[#241c15] outline-none"
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="rounded-[24px] border border-[#d7e6df] bg-[#f6fbf8] p-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h3 className="text-base font-semibold text-[#17382d]">Issued devices</h3>
+                        <p className="mt-1 text-sm text-[#5e7469]">
+                          Revoke any token here if a device is stolen, replaced, or reset.
+                        </p>
+                      </div>
+                      <span className="rounded-full border border-[#cfe4d9] bg-white px-3 py-1 text-xs font-medium text-[#245444]">
+                        {selectedPropertyGuestDevices.length} device{selectedPropertyGuestDevices.length === 1 ? "" : "s"}
+                      </span>
+                    </div>
+
+                    <div className="mt-4 space-y-3">
+                      {loadingSelectedPropertyGuestDevices ? (
+                        <div className="rounded-[18px] border border-[#cfe4d9] bg-white px-4 py-4 text-sm text-[#5e7469]">
+                          Loading devices...
+                        </div>
+                      ) : selectedPropertyGuestDevices.length === 0 ? (
+                        <div className="rounded-[18px] border border-dashed border-[#cfe4d9] bg-white px-4 py-4 text-sm text-[#5e7469]">
+                          No guest devices created for this property yet.
+                        </div>
+                      ) : (
+                        selectedPropertyGuestDevices.map((device) => (
+                          <div key={device.id} className="rounded-[18px] border border-[#cfe4d9] bg-white px-4 py-4">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <div className="text-sm font-semibold text-[#17382d]">{device.label}</div>
+                                  <span
+                                    className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${
+                                      device.revoked_at
+                                        ? "border border-[#efc6c6] bg-[#fff5f5] text-[#8a2e22]"
+                                        : "border border-[#cfe4d9] bg-[#f0fdf4] text-[#15803d]"
+                                    }`}
+                                  >
+                                    {device.revoked_at ? "Revoked" : "Active"}
+                                  </span>
+                                </div>
+                                <div className="mt-1 text-xs text-[#5e7469]">
+                                  Token ending in {device.token_last_four}
+                                </div>
+                                <div className="mt-2 text-xs text-[#5e7469]">
+                                  Last seen: {device.last_seen_at ? new Date(device.last_seen_at).toLocaleString() : "Never"}
+                                </div>
+                                {device.revoked_at ? (
+                                  <div className="mt-1 text-xs text-[#8a2e22]">
+                                    Revoked: {new Date(device.revoked_at).toLocaleString()}
+                                  </div>
+                                ) : null}
+                              </div>
+
+                              {!device.revoked_at ? (
+                                <button
+                                  type="button"
+                                  onClick={() => void revokeSelectedPropertyGuestDevice(device.id)}
+                                  disabled={revokingSelectedPropertyGuestDeviceId === device.id}
+                                  className="rounded-full border border-[#e7c6c1] bg-white px-4 py-2 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff4f2] disabled:opacity-60"
+                                >
+                                  {revokingSelectedPropertyGuestDeviceId === device.id ? "Revoking..." : "Revoke"}
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
