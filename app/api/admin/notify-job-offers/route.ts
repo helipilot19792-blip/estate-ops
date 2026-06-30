@@ -159,8 +159,10 @@ export async function POST(req: NextRequest) {
             kind,
             slot_count: slotIds.length,
             sent: result.sent,
+            push_sent: result.pushSent,
             skipped: result.skipped,
             error_count: result.errors.length,
+            errors: result.errors.slice(0, 10),
           },
         })
       )

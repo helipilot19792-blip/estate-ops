@@ -4809,7 +4809,9 @@ export default function AdminPage() {
     try {
       const result = await notifyJobOffers(kind, uniqueSlotIds);
       if (result.errors.length > 0) {
-        setError(result.errors.join(" "));
+        const retryError = result.errors.join(" ");
+        setError(retryError);
+        setActionMessage(`Notification retry issue: ${retryError}`);
       }
 
       const pushSent = Number(result.pushSent || 0);
