@@ -445,6 +445,8 @@ type SopImageRow = {
   created_at?: string | null;
 };
 
+type JobsListFilter = "all" | "waiting";
+
 type PropertyCleaningChecklistItemRow = {
   id: string;
   organization_id: string;
@@ -1530,6 +1532,7 @@ export default function AdminPage() {
   const [savingCalendars, setSavingCalendars] = useState(false);
   const [uploadingSop, setUploadingSop] = useState(false);
   const [jobsExpanded, setJobsExpanded] = useState(false);
+  const [jobsListFilter, setJobsListFilter] = useState<JobsListFilter>("all");
   const [expandedNotificationSlotIds, setExpandedNotificationSlotIds] = useState<Set<string>>(() => new Set());
   const [reassignSelections, setReassignSelections] = useState<Record<string, string>>({});
   const [reassigningJobId, setReassigningJobId] = useState<string | null>(null);
@@ -9155,6 +9158,7 @@ This removes its linked members and deletes the grounds account.`
     setJobWorkflowTab(type === "waiting" ? "active" : "exceptions");
     if (type === "waiting") {
       setSelectedJobsPropertyFilter("all");
+      setJobsListFilter("waiting");
       setJobsExpanded(true);
       setHighlightedJobId(waitingJobs[0]?.id || null);
     }
@@ -9181,7 +9185,12 @@ This removes its linked members and deletes the grounds account.`
           ? jobs
           : jobs.filter((job) => job.property_id === selectedJobsPropertyFilter);
 
-      return [...scopedJobs].sort((a, b) => {
+      const visibilityFilteredJobs =
+        jobsListFilter === "waiting"
+          ? scopedJobs.filter((job) => isJobWaitingForAcceptance(job, jobSlotsByJobId[job.id] ?? []))
+          : scopedJobs;
+
+      return [...visibilityFilteredJobs].sort((a, b) => {
         const aSlots = jobSlotsByJobId[a.id] ?? [];
         const bSlots = jobSlotsByJobId[b.id] ?? [];
         const aWaiting = aSlots.some((slot) => slot.status === "offered");
@@ -9197,7 +9206,7 @@ This removes its linked members and deletes the grounds account.`
         return aDate.localeCompare(bDate) || (b.created_at || "").localeCompare(a.created_at || "");
       });
     },
-    [jobs, selectedJobsPropertyFilter, jobSlotsByJobId]
+    [jobs, selectedJobsPropertyFilter, jobsListFilter, jobSlotsByJobId]
   );
 
   const visibleJobs = jobsExpanded ? filteredJobs : filteredJobs.slice(0, 3);
@@ -20267,6 +20276,37 @@ This removes its linked members and deletes the grounds account.`
                   </option>
                 ))}
               </select>
+
+              <div className="inline-flex rounded-full border border-[#d8c7ab] bg-[#fcfaf7] p-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setJobsListFilter("all");
+                    setJobsExpanded(false);
+                  }}
+                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                    jobsListFilter === "all"
+                      ? "bg-white text-[#241c15] shadow-sm"
+                      : "text-[#6f6255] hover:bg-white/70"
+                  }`}
+                >
+                  All jobs
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setJobsListFilter("waiting");
+                    setJobsExpanded(true);
+                  }}
+                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                    jobsListFilter === "waiting"
+                      ? "bg-white text-[#8a6112] shadow-sm"
+                      : "text-[#6f6255] hover:bg-white/70"
+                  }`}
+                >
+                  Waiting only
+                </button>
+              </div>
 
               {filteredJobs.length > 3 ? (
                 <button onClick={() => setJobsExpanded((prev) => !prev)} className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1.5 text-xs font-medium text-[#6f6255] transition hover:bg-white">
