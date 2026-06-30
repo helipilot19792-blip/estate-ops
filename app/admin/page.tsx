@@ -4812,10 +4812,15 @@ export default function AdminPage() {
         setError(result.errors.join(" "));
       }
 
-      if (result.sent > 0) {
-        setActionMessage(`${result.sent} ${kind} offer email${result.sent === 1 ? "" : "s"} sent.`);
+      const pushSent = Number(result.pushSent || 0);
+      if (result.sent > 0 || pushSent > 0) {
+        const parts = [
+          result.sent > 0 ? `${result.sent} ${kind} offer email${result.sent === 1 ? "" : "s"}` : "",
+          pushSent > 0 ? `${pushSent} push alert${pushSent === 1 ? "" : "s"}` : "",
+        ].filter(Boolean);
+        setActionMessage(`${parts.join(" and ")} sent.`);
       } else if (result.skipped > 0 && result.errors.length === 0) {
-        setActionMessage("No emails were sent because those slots are no longer pending.");
+        setActionMessage("No notifications were sent because those slots are no longer pending.");
       }
 
       await loadData();
@@ -10916,6 +10921,10 @@ This removes its linked members and deletes the grounds account.`
     }
 
     return "border-[#d8c7ab] bg-white text-[#6f6255]";
+  }
+
+  function slotNeedsOfferNotificationRetry(slot: JobSlot | GroundsJobSlot) {
+    return slot.status === "offered" && (!slot.offer_email_sent_at || !slot.offer_push_sent_at);
   }
 
   const rawMenuGroups: Array<{
@@ -19880,16 +19889,31 @@ This removes its linked members and deletes the grounds account.`
                             <div>Account: {getGroundsAccountName(slot.grounds_account_id)}</div>
                             <div>Status: {slot.status}</div>
                             <div>Offered: {formatDateTime(slot.offered_at)}</div>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleSlotNotificationDetails(slot.id);
-                              }}
-                              className={`mt-2 inline-flex rounded-full border px-2 py-1 text-left font-semibold transition hover:brightness-[0.98] ${getJobNotificationTone(slot)}`}
-                            >
-                              Notifications: {getSlotNotificationSummary(slot)}
-                            </button>
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleSlotNotificationDetails(slot.id);
+                                }}
+                                className={`inline-flex rounded-full border px-2 py-1 text-left font-semibold transition hover:brightness-[0.98] ${getJobNotificationTone(slot)}`}
+                              >
+                                Notifications: {getSlotNotificationSummary(slot)}
+                              </button>
+                              {slotNeedsOfferNotificationRetry(slot) ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void retryJobNotification("grounds", [slot.id], `grounds-${slot.id}`);
+                                  }}
+                                  disabled={retryingNotificationBatch || retryingNotificationSlotId === `grounds-${slot.id}`}
+                                  className="inline-flex rounded-full bg-[#241c15] px-3 py-1 font-semibold text-white transition hover:bg-[#4a3829] disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  {retryingNotificationSlotId === `grounds-${slot.id}` ? "Resending..." : "Resend notifications"}
+                                </button>
+                              ) : null}
+                            </div>
                             {expandedNotificationSlotIds.has(slot.id) ? renderSlotNotificationDetails(slot) : null}
                             <div>Accepted: {formatDateTime(slot.accepted_at)}</div>
                             <div>Declined: {formatDateTime(slot.declined_at)}</div>
@@ -20331,16 +20355,31 @@ This removes its linked members and deletes the grounds account.`
                           <div>Status: {slot.status}</div>
                           <div>Offered: {formatDateTime(slot.offered_at)}</div>
                           <div>Expires: {formatDateTime(slot.expires_at)}</div>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleSlotNotificationDetails(slot.id);
-                            }}
-                            className={`mt-2 inline-flex rounded-full border px-2 py-1 text-left font-semibold transition hover:brightness-[0.98] ${getJobNotificationTone(slot)}`}
-                          >
-                            Notifications: {getSlotNotificationSummary(slot)}
-                          </button>
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleSlotNotificationDetails(slot.id);
+                              }}
+                              className={`inline-flex rounded-full border px-2 py-1 text-left font-semibold transition hover:brightness-[0.98] ${getJobNotificationTone(slot)}`}
+                            >
+                              Notifications: {getSlotNotificationSummary(slot)}
+                            </button>
+                            {slotNeedsOfferNotificationRetry(slot) ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void retryJobNotification("cleaner", [slot.id], `cleaner-${slot.id}`);
+                                }}
+                                disabled={retryingNotificationBatch || retryingNotificationSlotId === `cleaner-${slot.id}`}
+                                className="inline-flex rounded-full bg-[#241c15] px-3 py-1 font-semibold text-white transition hover:bg-[#4a3829] disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {retryingNotificationSlotId === `cleaner-${slot.id}` ? "Resending..." : "Resend notifications"}
+                              </button>
+                            ) : null}
+                          </div>
                           {expandedNotificationSlotIds.has(slot.id) ? renderSlotNotificationDetails(slot) : null}
                           <div>Accepted: {formatDateTime(slot.accepted_at)}</div>
                           <div>Declined: {formatDateTime(slot.declined_at)}</div>
