@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import {
   sendJobCancellationNotificationsForJobs,
-  sendJobOfferDigestEmailForSlots,
+  sendJobOfferEmailsForSlots,
 } from "@/lib/server/job-notifications";
 import { applyCleanerTrainingRotationToJob as applyServerCleanerTrainingRotationToJob } from "@/lib/server/cleaner-training-rotation";
 
@@ -977,7 +977,7 @@ export async function POST(request: Request) {
             .not("cleaner_account_id", "is", null);
 
           if (!offerSlotsError && (offerSlots ?? []).length > 0) {
-            const notificationResult = await sendJobOfferDigestEmailForSlots(
+            const notificationResult = await sendJobOfferEmailsForSlots(
               "cleaner",
               (offerSlots ?? []).map((slot) => slot.id),
               new URL(request.url).origin

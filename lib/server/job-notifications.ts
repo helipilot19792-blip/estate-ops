@@ -508,7 +508,6 @@ export async function sendJobOfferDigestEmailForSlots(
   }
 ) {
   const service = getServiceClient();
-  const resend = getResendClient();
   const uniqueSlotIds = [...new Set(slotIds.filter(Boolean))];
   const recipientBundles = new Map<string, { recipient: Recipient; bundles: SlotBundle[] }>();
   const bundleBySlotId = new Map<string, SlotBundle>();
@@ -566,36 +565,44 @@ export async function sendJobOfferDigestEmailForSlots(
   const slotsWithSuccessfulEmail = new Set<string>();
   const kindLabel = kind === "cleaner" ? "cleaning" : "grounds";
 
-  for (const { recipient, bundles } of recipientBundles.values()) {
-    const greeting = recipient.name ? `Hi ${recipient.name},` : "Hello,";
-    const count = bundles.length;
-    const rows = bundles.map((bundle) => buildDigestJobRow(bundle, recipient, origin)).join("");
+  if (recipientBundles.size > 0) {
+    try {
+      const resend = getResendClient();
 
-    const result = await resend.emails.send({
-      from: process.env.INVITE_FROM_EMAIL!,
-      to: recipient.email,
-      subject: `${options?.subjectPrefix || "New"} ${kindLabel} job offers (${count})`,
-      html: `
-        <div style="font-family: Arial, sans-serif; padding: 20px; color: #241c15;">
-          <p style="margin: 0 0 12px;">${greeting}</p>
-          <h2 style="margin: 0 0 12px;">You have ${count} ${kindLabel} job offer${count === 1 ? "" : "s"} waiting for your response.</h2>
-          <p style="margin: 0 0 16px; color:#5f5245;">You can accept or decline each job below. These buttons work without installing the app or logging in.</p>
-          ${rows}
-          <a href="${getPortalUrl(kind, origin)}" style="display:inline-block;padding:10px 16px;background:#241c15;color:#ffffff;border-radius:999px;text-decoration:none;margin-top:8px;">
-            Open portal for full details
-          </a>
-        </div>
-      `,
-    });
+      for (const { recipient, bundles } of recipientBundles.values()) {
+        const greeting = recipient.name ? `Hi ${recipient.name},` : "Hello,";
+        const count = bundles.length;
+        const rows = bundles.map((bundle) => buildDigestJobRow(bundle, recipient, origin)).join("");
 
-    if (result.error) {
-      errors.push(`${recipient.email}: ${result.error.message || "Digest email send failed"}`);
-      continue;
-    }
+        const result = await resend.emails.send({
+          from: process.env.INVITE_FROM_EMAIL!,
+          to: recipient.email,
+          subject: `${options?.subjectPrefix || "New"} ${kindLabel} job offers (${count})`,
+          html: `
+            <div style="font-family: Arial, sans-serif; padding: 20px; color: #241c15;">
+              <p style="margin: 0 0 12px;">${greeting}</p>
+              <h2 style="margin: 0 0 12px;">You have ${count} ${kindLabel} job offer${count === 1 ? "" : "s"} waiting for your response.</h2>
+              <p style="margin: 0 0 16px; color:#5f5245;">You can accept or decline each job below. These buttons work without installing the app or logging in.</p>
+              ${rows}
+              <a href="${getPortalUrl(kind, origin)}" style="display:inline-block;padding:10px 16px;background:#241c15;color:#ffffff;border-radius:999px;text-decoration:none;margin-top:8px;">
+                Open portal for full details
+              </a>
+            </div>
+          `,
+        });
 
-    sent += 1;
-    for (const bundle of bundles) {
-      slotsWithSuccessfulEmail.add(bundle.slotId);
+        if (result.error) {
+          errors.push(`${recipient.email}: ${result.error.message || "Digest email send failed"}`);
+          continue;
+        }
+
+        sent += 1;
+        for (const bundle of bundles) {
+          slotsWithSuccessfulEmail.add(bundle.slotId);
+        }
+      }
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : "Unknown digest email notification error.");
     }
   }
 
