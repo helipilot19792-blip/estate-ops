@@ -384,14 +384,23 @@ export async function POST(request: NextRequest) {
       console.warn("[send-owner-invoice] invoice event could not be recorded", eventError);
     }
 
-    const pushResult = owner.profile_id
-      ? await sendStaffPushNotifications("owner", [owner.profile_id], {
+    let pushResult = { sent: 0, skipped: owner.profile_id ? 0 : 1, errors: [] as string[] };
+    if (owner.profile_id) {
+      try {
+        pushResult = await sendStaffPushNotifications("owner", [owner.profile_id], {
           title: `${documentLabel} ${invoice.invoice_number} is ready`,
           body: `${property?.name || property?.address || "Owner portal"} - ${formatCurrency(invoice.total)}`,
           url: `/owner?tab=invoices&invoiceId=${encodeURIComponent(invoice.id)}`,
           tag: `owner-invoice-${invoice.id}`,
-        })
-      : { sent: 0, skipped: 1, errors: [] as string[] };
+        });
+      } catch (pushError) {
+        pushResult = {
+          sent: 0,
+          skipped: 0,
+          errors: [pushError instanceof Error ? pushError.message : "Owner push notification failed."],
+        };
+      }
+    }
 
     return NextResponse.json({
       success: true,
