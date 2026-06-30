@@ -973,6 +973,15 @@ type StaffJobStatusEventRow = {
   metadata?: Record<string, unknown> | null;
   created_at?: string | null;
 };
+type JobOfferAuditLogRow = {
+  id: string;
+  organization_id: string;
+  action_type: "admin.reassign_cleaner_slot" | "admin.send_job_offer_notifications";
+  target_type?: string | null;
+  target_id?: string | null;
+  metadata?: Record<string, unknown> | null;
+  created_at?: string | null;
+};
 type AccountDeletionRequestRow = {
   id: string;
   requester_profile_id: string;
@@ -1504,6 +1513,7 @@ export default function AdminPage() {
   const [ownerInvoices, setOwnerInvoices] = useState<OwnerInvoiceRow[]>([]);
   const [ownerInvoiceEvents, setOwnerInvoiceEvents] = useState<OwnerInvoiceEventRow[]>([]);
   const [staffJobStatusEvents, setStaffJobStatusEvents] = useState<StaffJobStatusEventRow[]>([]);
+  const [jobOfferAuditLogs, setJobOfferAuditLogs] = useState<JobOfferAuditLogRow[]>([]);
   const [accountDeletionRequests, setAccountDeletionRequests] = useState<AccountDeletionRequestRow[]>([]);
   const [chatConversations, setChatConversations] = useState<ChatConversationRow[]>([]);
   const [chatParticipants, setChatParticipants] = useState<ChatParticipantRow[]>([]);
@@ -2769,6 +2779,7 @@ export default function AdminPage() {
     setOwnerInvoices((data.ownerInvoices ?? []) as OwnerInvoiceRow[]);
     setOwnerInvoiceEvents((data.ownerInvoiceEvents ?? []) as OwnerInvoiceEventRow[]);
     setStaffJobStatusEvents((data.staffJobStatusEvents ?? []) as StaffJobStatusEventRow[]);
+    setJobOfferAuditLogs((data.jobOfferAuditLogs ?? []) as JobOfferAuditLogRow[]);
     const loadedDeletionRequests = (data.accountDeletionRequests ?? []) as AccountDeletionRequestRow[];
     setAccountDeletionRequests(loadedDeletionRequests);
     setDeletionRequestDrafts((prev) => {
@@ -2815,6 +2826,7 @@ export default function AdminPage() {
     setMaintenanceFlags((data.maintenanceFlags ?? []) as MaintenanceFlagRow[]);
     setInspectionRules((data.inspectionRules ?? []) as PropertyInspectionRule[]);
     setStaffJobStatusEvents((data.staffJobStatusEvents ?? []) as StaffJobStatusEventRow[]);
+    setJobOfferAuditLogs((data.jobOfferAuditLogs ?? []) as JobOfferAuditLogRow[]);
     setTurnoverJobChecklistItems((data.turnoverJobChecklistItems ?? []) as TurnoverJobChecklistItemRow[]);
     setAdminHomeLoaded(true);
   }
@@ -5826,47 +5838,7 @@ export default function AdminPage() {
     return jobSlots
       .filter((x) => x.job_id === jobId)
       .sort((a, b) => a.slot_number - b.slot_number)
-      .find((x) => x.status !== "accepted");
-  }
-
-  async function refreshCleanerJobStaffing(jobId: string) {
-    const job = jobs.find((item) => item.id === jobId);
-    if (!job) return;
-
-    const { data: slots, error } = await supabase
-      .from("turnover_job_slots")
-      .select("id, status, cleaner_account_id")
-      .eq("job_id", jobId);
-
-    if (error) throw error;
-
-    const slotRows = slots ?? [];
-    const unitsNeeded = Math.max(1, Number(job.cleaner_units_needed || 1));
-    const accepted = slotRows.filter((slot) => slot.status === "accepted").length;
-    const offered = slotRows.filter((slot) => slot.status === "offered").length;
-    const stillStranded = slotRows.some(
-      (slot) => slot.status === "stranded" || !slot.cleaner_account_id
-    );
-
-    const staffingStatus = stillStranded
-      ? "stranded"
-      : accepted >= unitsNeeded
-        ? "fully_staffed"
-        : accepted > 0 || offered > 0
-          ? "partially_filled"
-          : "unassigned";
-    const status = accepted >= unitsNeeded ? "accepted" : offered > 0 ? "offered" : "open";
-
-    const { error: updateError } = await supabase
-      .from("turnover_jobs")
-      .update({
-        status,
-        staffing_status: staffingStatus,
-        offered_at: offered > 0 ? new Date().toISOString() : null,
-      })
-      .eq("id", jobId);
-
-    if (updateError) throw updateError;
+      .find((x) => !["accepted", "in_progress", "completed"].includes(String(x.status || "").toLowerCase()));
   }
 
   async function deleteJob(jobId: string) {
@@ -5953,54 +5925,54 @@ export default function AdminPage() {
     setActionMessage("");
     setReassigningJobId(jobId);
 
-    const responseHours = getResponseWindowHours(
-      jobs.find((j) => j.id === jobId)?.scheduled_for ||
-      extractCheckoutDate(jobs.find((j) => j.id === jobId)?.notes || null),
-      new Date()
-    );
-
-    const { error } = await supabase
-      .from("turnover_job_slots")
-      .update({
-        cleaner_account_id: cleanerAccountId,
-        status: "offered",
-        offered_at: new Date().toISOString(),
-        expires_at: new Date(Date.now() + responseHours * 60 * 60 * 1000).toISOString(),
-        accepted_at: null,
-        declined_at: null,
-        accepted_by_profile_id: null,
-        declined_by_profile_id: null,
-        offer_email_sent_at: null,
-        offer_reminder_sent_at: null,
-        day_of_reminder_sent_at: null,
-      })
-      .eq("id", slot.id);
-
-    if (error) {
-      setError(error.message);
-      setReassigningJobId(null);
-      return;
-    }
-
     try {
-      await refreshCleanerJobStaffing(jobId);
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("Could not verify your admin session.");
+      }
+
+      const response = await fetch("/api/admin/reassign-cleaner-slot", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          organizationId: currentOrganizationId,
+          jobId,
+          slotId: slot.id,
+          cleanerAccountId,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || "Could not reassign the job.");
+      }
+
+      const notifyResult = payload?.notificationResult || { sent: 0, pushSent: 0, errors: [] };
+      const notifyEmailSent = Number(notifyResult.sent || 0);
+      const notifyPushSent = Number(notifyResult.pushSent || 0);
+      const notifyErrors = Array.isArray(notifyResult.errors) ? notifyResult.errors : [];
+
+      setActionMessage(
+        notifyErrors.length > 0
+          ? `Job reassigned. Job notification needs attention: ${notifyErrors[0]}`
+          : notifyEmailSent > 0 || notifyPushSent > 0
+            ? `Job reassigned. ${notifyEmailSent} email${notifyEmailSent === 1 ? "" : "s"} and ${notifyPushSent} push alert${notifyPushSent === 1 ? "" : "s"} sent.`
+            : "Job reassigned."
+      );
+      await loadData();
     } catch (err: any) {
-      setError(err?.message || "Could not refresh the job staffing status.");
+      setError(err?.message || "Could not reassign the job.");
       setReassigningJobId(null);
       return;
     }
 
-    const notifyResult = await notifyJobOffers("cleaner", [slot.id]);
-    const notifyEmailSent = Number(notifyResult.sent || 0);
-    const notifyPushSent = Number(notifyResult.pushSent || 0);
-    setActionMessage(
-      notifyResult.errors.length > 0
-        ? `Job reassigned. Job notification needs attention: ${notifyResult.errors[0]}`
-        : notifyEmailSent > 0 || notifyPushSent > 0
-          ? `Job reassigned. ${notifyEmailSent} email${notifyEmailSent === 1 ? "" : "s"} and ${notifyPushSent} push alert${notifyPushSent === 1 ? "" : "s"} sent.`
-          : "Job reassigned."
-    );
-    await loadData();
     setReassigningJobId(null);
 
     setTimeout(() => {
@@ -8863,6 +8835,27 @@ This removes its linked members and deletes the grounds account.`
     return map;
   }, [staffJobStatusEvents]);
 
+  function getAuditLogTargetIds(log: JobOfferAuditLogRow) {
+    return String(log.target_id || "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+  }
+
+  const jobOfferAuditLogsBySlotId = useMemo(() => {
+    const map: Record<string, JobOfferAuditLogRow[]> = {};
+    for (const log of jobOfferAuditLogs) {
+      for (const targetId of getAuditLogTargetIds(log)) {
+        if (!map[targetId]) map[targetId] = [];
+        map[targetId].push(log);
+      }
+    }
+    for (const key of Object.keys(map)) {
+      map[key].sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+    }
+    return map;
+  }, [jobOfferAuditLogs]);
+
   const groundsJobSlotsByJobId = useMemo(() => {
     const map: Record<string, GroundsJobSlot[]> = {};
     for (const slot of groundsJobSlots) {
@@ -10805,6 +10798,39 @@ This removes its linked members and deletes the grounds account.`
         ))}
       </div>
     );
+  }
+
+  function getSlotOfferHistory(slot: JobSlot) {
+    const history: Array<{ id: string; tone: "current" | "previous"; text: string }> = [];
+    const cleanerName = getCleanerAccountName(slot.cleaner_account_id);
+
+    if (slot.status === "offered" && cleanerName !== "Unassigned") {
+      history.push({
+        id: `current-${slot.id}`,
+        tone: "current",
+        text: `Offered to ${cleanerName}${slot.offered_at ? ` on ${formatDateTime(slot.offered_at)}` : ""}`,
+      });
+    }
+
+    for (const log of jobOfferAuditLogsBySlotId[slot.id] ?? []) {
+      if (log.action_type !== "admin.reassign_cleaner_slot") continue;
+      const previousCleanerName = String(log.metadata?.previous_cleaner_name || "").trim();
+      if (!previousCleanerName) continue;
+      const previousStatus = String(log.metadata?.previous_status || "").trim().toLowerCase();
+      const suffix =
+        previousStatus === "offered"
+          ? "went stale before reassignment"
+          : previousStatus === "declined"
+            ? "declined before reassignment"
+            : "was reassigned";
+      history.push({
+        id: log.id,
+        tone: "previous",
+        text: `${previousCleanerName} ${suffix}${log.created_at ? ` on ${formatDateTime(log.created_at)}` : ""}`,
+      });
+    }
+
+    return history;
   }
 
   function getCleanerPayoutTypeLabel(value: string | null | undefined) {
@@ -20350,6 +20376,7 @@ This removes its linked members and deletes the grounds account.`
                   <div className="mt-3 space-y-2">
                     {slots.map((slot) => {
                       const draft = getSlotPaymentDraft(slot);
+                      const offerHistory = getSlotOfferHistory(slot);
 
                       return (
                         <div key={slot.id} className="rounded-[18px] border border-[#eadfce] bg-white px-3 py-3 text-xs text-[#6f6255]">
@@ -20357,6 +20384,23 @@ This removes its linked members and deletes the grounds account.`
                           <div>Status: {slot.status}</div>
                           <div>Offered: {formatDateTime(slot.offered_at)}</div>
                           <div>Expires: {formatDateTime(slot.expires_at)}</div>
+                          {offerHistory.length > 0 ? (
+                            <div className="mt-2 rounded-[14px] border border-[#eadfce] bg-[#fcfaf7] px-3 py-2">
+                              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
+                                Offer history
+                              </div>
+                              <div className="mt-1 space-y-1">
+                                {offerHistory.map((entry) => (
+                                  <div
+                                    key={entry.id}
+                                    className={entry.tone === "current" ? "text-[#236b30]" : "text-[#8a7b68]"}
+                                  >
+                                    {entry.text}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
                           <div className="mt-2 flex flex-wrap items-center gap-2">
                             <button
                               type="button"

@@ -133,6 +133,7 @@ export async function GET(request: Request) {
       ownerInvoicesRes,
       ownerInvoiceEventsRes,
       staffJobStatusEventsRes,
+      jobOfferAuditLogsRes,
       turnoverJobChecklistItemsRes,
       accountDeletionRequestsRes,
       chatConversationsRes,
@@ -181,6 +182,13 @@ export async function GET(request: Request) {
       serviceClient.from("owner_invoices").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
       serviceClient.from("owner_invoice_events").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }).limit(1000),
       serviceClient.from("staff_job_status_events").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }).limit(100),
+      serviceClient
+        .from("audit_logs")
+        .select("id, organization_id, action_type, target_type, target_id, metadata, created_at")
+        .eq("organization_id", organizationId)
+        .in("action_type", ["admin.reassign_cleaner_slot", "admin.send_job_offer_notifications"])
+        .order("created_at", { ascending: false })
+        .limit(500),
       serviceClient.from("turnover_job_checklist_items").select("*").eq("organization_id", organizationId).order("sort_order", { ascending: true }),
       serviceClient.from("account_deletion_requests").select("*").eq("organization_id", organizationId).order("requested_at", { ascending: false }).limit(100),
       serviceClient.from("chat_conversations").select("id,organization_id,subject,context_type,context_id,created_by_profile_id,last_message_at,created_at,updated_at").eq("organization_id", organizationId).order("updated_at", { ascending: false }),
@@ -373,6 +381,7 @@ export async function GET(request: Request) {
         ownerInvoices: ownerInvoicesRes.data ?? [],
         ownerInvoiceEvents: ownerInvoiceEventsRes.error && isOptionalTableError(ownerInvoiceEventsRes.error) ? [] : ownerInvoiceEventsRes.data ?? [],
         staffJobStatusEvents: staffJobStatusEventsRes.error && isOptionalTableError(staffJobStatusEventsRes.error) ? [] : staffJobStatusEventsRes.data ?? [],
+        jobOfferAuditLogs: jobOfferAuditLogsRes.error && isOptionalTableError(jobOfferAuditLogsRes.error) ? [] : jobOfferAuditLogsRes.data ?? [],
         turnoverJobChecklistItems: turnoverJobChecklistItemsRes.error && isOptionalTableError(turnoverJobChecklistItemsRes.error) ? [] : turnoverJobChecklistItemsRes.data ?? [],
         accountDeletionRequests: accountDeletionRequestsRes.error && isOptionalTableError(accountDeletionRequestsRes.error) ? [] : accountDeletionRequestsRes.data ?? [],
         chatConversations: chatConversationsRes.error && isOptionalTableError(chatConversationsRes.error) ? [] : chatConversationsRes.data ?? [],
