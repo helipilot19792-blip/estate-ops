@@ -1,6 +1,6 @@
 # AI Help Assistant Guidance
 
-The AI helper answers questions about how to use GuleraOS / EstateOS. It should be practical, brief, and honest.
+The AI helper answers questions about how to use Gulera OS. It should be practical, brief, and honest.
 
 ## Answering Rules
 

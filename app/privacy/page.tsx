@@ -6,7 +6,7 @@ export default function PrivacyPage() {
       <article className="mx-auto max-w-3xl rounded-[28px] border border-[#e7ddd0] bg-white p-6 shadow-[0_24px_70px_rgba(36,28,21,0.08)] sm:p-8">
         <div className="text-xs uppercase tracking-[0.24em] text-[#8a6a35]">Gulera OS</div>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight">Privacy Policy</h1>
-        <p className="mt-2 text-sm text-[#7f7263]">Testing-phase draft. Last updated May 4, 2026.</p>
+        <p className="mt-2 text-sm text-[#7f7263]">Testing-phase draft. Last updated July 1, 2026.</p>
 
         <div className="mt-8 space-y-6 text-sm leading-7 text-[#4f4338]">
           <section>
@@ -28,11 +28,22 @@ export default function PrivacyPage() {
           </section>
 
           <section>
+            <h2 className="text-lg font-semibold text-[#241c15]">SMS Notifications</h2>
+            <p className="mt-2">
+              If you provide a phone number and opt in, Gulera OS may send SMS messages for
+              operational purposes such as account access, team invites, job scheduling, property
+              updates, maintenance issues, owner invoices, reminders, and service alerts. Message
+              frequency varies by account activity. Message and data rates may apply. Reply HELP for
+              help or STOP to opt out of SMS messages.
+            </p>
+          </section>
+
+          <section>
             <h2 className="text-lg font-semibold text-[#241c15]">Service Providers</h2>
             <p className="mt-2">
               The system uses third-party infrastructure providers for hosting, database, file storage,
-              authentication, and email delivery. These providers process information only as needed to
-              run the service.
+              authentication, email delivery, and SMS delivery. These providers process information
+              only as needed to run the service.
             </p>
           </section>
 

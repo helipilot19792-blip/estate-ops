@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({
         model: process.env.OPENAI_HELP_MODEL || "gpt-5-mini",
         instructions:
-          "You are the GuleraOS / EstateOS in-app help assistant. Answer using only the provided help files and conversation context. Be concise, practical, and honest. If the help files do not cover the answer, say that and suggest the closest place to check in the app. Do not invent app features. Answer in the requested locale when possible.",
+          "You are the Gulera OS in-app help assistant. Answer using only the provided help files and conversation context. Be concise, practical, and honest. If the help files do not cover the answer, say that and suggest the closest place to check in the app. Do not invent app features. Answer in the requested locale when possible.",
         input: [
           {
             role: "developer",

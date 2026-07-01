@@ -215,7 +215,7 @@ export async function sendStaffPushNotifications(
         row.subscription as webpush.PushSubscription,
         JSON.stringify({
           ...payload,
-          icon: "/estateoslogo.png",
+          icon: "/guleraoslogo.png",
           badge: "/notification-badge.png",
         }),
         {

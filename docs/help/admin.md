@@ -1,6 +1,6 @@
 # Admin Portal Help
 
-The admin portal is the operations control center for GuleraOS / EstateOS.
+The admin portal is the operations control center for Gulera OS.
 
 ## Main Areas
 
@@ -26,7 +26,7 @@ Use the language selector to switch the portal between English, French, and Span
 
 ## AI Helper
 
-The AI Helper opens from the admin header and answers questions about how to use GuleraOS / EstateOS. It uses the help files as its source of truth and does not inspect live customer records. For current data, open the relevant admin area such as Properties, Jobs, Invoices, Chat, Maintenance, or Notifications.
+The AI Helper opens from the admin header and answers questions about how to use Gulera OS. It uses the help files as its source of truth and does not inspect live customer records. For current data, open the relevant admin area such as Properties, Jobs, Invoices, Chat, Maintenance, or Notifications.
 
 ## TV View
 

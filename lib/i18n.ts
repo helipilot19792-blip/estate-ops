@@ -226,7 +226,8 @@ export const dictionaries = {
       confirmPassword: "Confirm password",
       hide: "Hide",
       show: "Show",
-      testingAgreementPrefix: "I understand Gulera OS is in testing and agree to the",
+      testingAgreementPrefix:
+        "I understand Gulera OS is in testing and agree to receive operational SMS notifications about invites, account access, jobs, property updates, owner invoices, and maintenance. Message frequency varies. Msg & data rates may apply. Reply HELP for help or STOP to opt out. I also agree to the",
       privacyPolicy: "Privacy Policy",
       cookieNotice: "Cookie Notice",
       creatingCompany: "Creating account...",
@@ -281,7 +282,8 @@ export const dictionaries = {
       repeatPassword: "Repeat password",
       hide: "Hide",
       show: "Show",
-      consentPrefix: "I understand Gulera OS is in testing and agree to the",
+      consentPrefix:
+        "I understand Gulera OS is in testing and agree to receive operational SMS notifications about my owner access, property updates, invoices, and maintenance. Message frequency varies. Msg & data rates may apply. Reply HELP for help or STOP to opt out. I also agree to the",
       terms: "Terms",
       privacyPolicy: "Privacy Policy",
       cookieNotice: "Cookie Notice",
@@ -735,7 +737,8 @@ export const dictionaries = {
       confirmPassword: "Confirmer le mot de passe",
       hide: "Masquer",
       show: "Afficher",
-      testingAgreementPrefix: "Je comprends que Gulera OS est en test et j'accepte les",
+      testingAgreementPrefix:
+        "Je comprends que Gulera OS est en test et j'accepte de recevoir des notifications SMS operationnelles au sujet des invitations, de l'acces au compte, des travaux, des proprietes, des factures proprietaire et de la maintenance. La frequence des messages varie. Des frais de messages et de donnees peuvent s'appliquer. Repondez HELP pour obtenir de l'aide ou STOP pour vous desabonner. J'accepte aussi les",
       privacyPolicy: "Politique de confidentialite",
       cookieNotice: "Avis sur les témoins",
       creatingCompany: "Creation du compte...",
@@ -790,7 +793,8 @@ export const dictionaries = {
       repeatPassword: "Repeter le mot de passe",
       hide: "Masquer",
       show: "Afficher",
-      consentPrefix: "Je comprends que Gulera OS est en test et j'accepte les",
+      consentPrefix:
+        "Je comprends que Gulera OS est en test et j'accepte de recevoir des notifications SMS operationnelles au sujet de mon acces proprietaire, des proprietes, des factures et de la maintenance. La frequence des messages varie. Des frais de messages et de donnees peuvent s'appliquer. Repondez HELP pour obtenir de l'aide ou STOP pour vous desabonner. J'accepte aussi les",
       terms: "Conditions",
       privacyPolicy: "Politique de confidentialite",
       cookieNotice: "Avis sur les temoins",
@@ -1241,7 +1245,8 @@ export const dictionaries = {
       confirmPassword: "Confirmar contrasena",
       hide: "Ocultar",
       show: "Mostrar",
-      testingAgreementPrefix: "Entiendo que Gulera OS esta en pruebas y acepto los",
+      testingAgreementPrefix:
+        "Entiendo que Gulera OS esta en pruebas y acepto recibir notificaciones SMS operativas sobre invitaciones, acceso de cuenta, trabajos, propiedades, facturas de propietarios y mantenimiento. La frecuencia de mensajes varia. Pueden aplicar cargos por mensajes y datos. Responde HELP para ayuda o STOP para cancelar. Tambien acepto los",
       privacyPolicy: "Politica de privacidad",
       cookieNotice: "Aviso de cookies",
       creatingCompany: "Creando cuenta...",
@@ -1296,7 +1301,8 @@ export const dictionaries = {
       repeatPassword: "Repetir contrasena",
       hide: "Ocultar",
       show: "Mostrar",
-      consentPrefix: "Entiendo que Gulera OS esta en pruebas y acepto los",
+      consentPrefix:
+        "Entiendo que Gulera OS esta en pruebas y acepto recibir notificaciones SMS operativas sobre mi acceso de propietario, propiedades, facturas y mantenimiento. La frecuencia de mensajes varia. Pueden aplicar cargos por mensajes y datos. Responde HELP para ayuda o STOP para cancelar. Tambien acepto los",
       terms: "Terminos",
       privacyPolicy: "Politica de privacidad",
       cookieNotice: "Aviso de cookies",

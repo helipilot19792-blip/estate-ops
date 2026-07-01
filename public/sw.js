@@ -15,7 +15,7 @@ self.addEventListener("push", (event) => {
   const title = data.title || "Estate of Mind Portal";
   const options = {
     body: data.body || "You have a new portal update.",
-    icon: data.icon || "/estateoslogo.png",
+    icon: data.icon || "/guleraoslogo.png",
     badge: data.badge || "/notification-badge.png",
     tag: data.tag || "estate-ops-update",
     renotify: true,

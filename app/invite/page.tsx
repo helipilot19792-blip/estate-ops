@@ -617,7 +617,10 @@ function InvitePageContent() {
                         className="mt-1 h-4 w-4 accent-[#b48d4e]"
                       />
                       <span>
-                        I understand Gulera OS is in testing and agree to the{" "}
+                        I understand Gulera OS is in testing and agree to receive operational SMS
+                        notifications about invites, account access, jobs, property updates, owner
+                        invoices, and maintenance. Message frequency varies. Msg & data rates may
+                        apply. Reply HELP for help or STOP to opt out. I also agree to the{" "}
                         <Link href="/terms" className="font-semibold text-[#7d581b] underline">
                           Terms
                         </Link>
