@@ -1,3 +1,5 @@
+import { writeAuditLog } from "@/lib/server/audit-log";
+
 type ServiceClient = any;
 
 type TrainingRotationResult = {
@@ -159,6 +161,19 @@ async function updateNextCleanerPointer(
   if (error) throw new Error(error.message);
 }
 
+async function getCleanerDisplayName(service: ServiceClient, cleanerAccountId?: string | null) {
+  if (!cleanerAccountId) return null;
+
+  const { data, error } = await service
+    .from("cleaner_accounts")
+    .select("display_name")
+    .eq("id", cleanerAccountId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return data?.display_name || null;
+}
+
 export async function applyCleanerTrainingRotationToJob(
   service: ServiceClient,
   jobId: string
@@ -243,7 +258,7 @@ export async function reofferExpiredCleanerTrainingSlot(
 ): Promise<TrainingRotationResult> {
   const { data: slot, error: slotError } = await service
     .from("turnover_job_slots")
-    .select("id, job_id, slot_number, cleaner_account_id, status")
+    .select("id, job_id, slot_number, cleaner_account_id, status, offered_at, accepted_at, declined_at")
     .eq("id", slotId)
     .maybeSingle();
 
@@ -372,6 +387,37 @@ export async function reofferExpiredCleanerTrainingSlot(
     .maybeSingle();
 
   if (insertError) throw new Error(insertError.message);
+
+  if (newSlot?.id) {
+    const [previousCleanerName, newCleanerName] = await Promise.all([
+      getCleanerDisplayName(service, slot.cleaner_account_id),
+      getCleanerDisplayName(service, nextAssignment.cleaner_account_id),
+    ]);
+
+    await writeAuditLog(service, {
+      actorProfileId: null,
+      actorEmail: null,
+      actorRole: "system",
+      organizationId: job.organization_id,
+      actionType: "admin.reassign_cleaner_slot",
+      targetType: "turnover_job_slot",
+      targetId: newSlot.id,
+      metadata: {
+        reassign_source: "training_rotation_expired",
+        job_id: job.id,
+        slot_number: slot.slot_number,
+        previous_slot_id: slot.id,
+        previous_cleaner_account_id: slot.cleaner_account_id || null,
+        previous_cleaner_name: previousCleanerName,
+        previous_status: slot.status,
+        previous_offered_at: slot.offered_at,
+        previous_accepted_at: slot.accepted_at,
+        previous_declined_at: slot.declined_at,
+        new_cleaner_account_id: nextAssignment.cleaner_account_id,
+        new_cleaner_name: newCleanerName,
+      },
+    });
+  }
 
   const nextPointer = nextOrder.find(
     (assignment: any) => assignment.cleaner_account_id !== nextAssignment.cleaner_account_id

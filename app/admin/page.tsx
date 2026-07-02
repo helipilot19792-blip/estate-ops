@@ -10823,7 +10823,7 @@ This removes its linked members and deletes the grounds account.`
   }
 
   function getSlotOfferHistory(slot: JobSlot) {
-    const history: Array<{ id: string; tone: "current" | "previous"; text: string }> = [];
+    const history: Array<{ id: string; tone: "current" | "previous" | "notice"; text: string }> = [];
     const cleanerName = getCleanerAccountName(slot.cleaner_account_id);
 
     if (slot.status === "offered" && cleanerName !== "Unassigned") {
@@ -10835,12 +10835,27 @@ This removes its linked members and deletes the grounds account.`
     }
 
     for (const log of jobOfferAuditLogsBySlotId[slot.id] ?? []) {
+      if (log.action_type === "admin.send_job_offer_notifications") {
+        const sent = Number(log.metadata?.sent || 0);
+        const pushSent = Number(log.metadata?.push_sent || 0);
+        const skipped = Number(log.metadata?.skipped || 0);
+        history.push({
+          id: log.id,
+          tone: "notice",
+          text: `Notifications sent${log.created_at ? ` on ${formatDateTime(log.created_at)}` : ""}: ${sent} email, ${pushSent} push${skipped ? `, ${skipped} skipped` : ""}`,
+        });
+        continue;
+      }
+
       if (log.action_type !== "admin.reassign_cleaner_slot") continue;
       const previousCleanerName = String(log.metadata?.previous_cleaner_name || "").trim();
       if (!previousCleanerName) continue;
       const previousStatus = String(log.metadata?.previous_status || "").trim().toLowerCase();
+      const reassignSource = String(log.metadata?.reassign_source || "").trim().toLowerCase();
       const suffix =
-        previousStatus === "offered"
+        reassignSource === "training_rotation_expired"
+          ? "expired before this re-offer"
+          : previousStatus === "offered"
           ? "went stale before reassignment"
           : previousStatus === "declined"
             ? "declined before reassignment"

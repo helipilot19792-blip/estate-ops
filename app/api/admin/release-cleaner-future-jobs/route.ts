@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { writeAuditLog } from "@/lib/server/audit-log";
 import { sendJobOfferDigestEmailForSlots, sendJobOfferEmailsForSlots } from "@/lib/server/job-notifications";
 
 export const dynamic = "force-dynamic";
@@ -133,7 +134,7 @@ export async function POST(req: NextRequest) {
 
     const { data: cleanerAccount, error: cleanerAccountError } = await supabase
       .from("cleaner_accounts")
-      .select("id, organization_id")
+      .select("id, organization_id, display_name")
       .eq("id", cleanerAccountId)
       .maybeSingle();
 
@@ -144,7 +145,7 @@ export async function POST(req: NextRequest) {
 
     const { data: currentProfile, error: profileError } = await supabase
       .from("profiles")
-      .select("id, role")
+      .select("id, role, email")
       .eq("id", user.id)
       .maybeSingle();
 
@@ -175,6 +176,16 @@ export async function POST(req: NextRequest) {
       .select("*")
       .in("property_id", propertyIds)
       .order("priority", { ascending: true });
+
+    const assignmentCleanerIds = [
+      ...new Set((assignments || []).map((assignment) => assignment.cleaner_account_id).filter(Boolean)),
+    ];
+    const { data: assignmentCleanerAccounts } = assignmentCleanerIds.length
+      ? await supabase.from("cleaner_accounts").select("id, display_name").in("id", assignmentCleanerIds)
+      : { data: [] };
+    const cleanerNameById = new Map(
+      (assignmentCleanerAccounts || []).map((account) => [account.id, account.display_name || null])
+    );
 
     const assignmentMap = new Map<string, any[]>();
 
@@ -210,6 +221,8 @@ export async function POST(req: NextRequest) {
       }
 
       if (replacementCleanerId) {
+        const replacementCleanerName = cleanerNameById.get(replacementCleanerId) || null;
+
         await supabase
           .from("turnover_job_slots")
           .update({
@@ -229,6 +242,29 @@ export async function POST(req: NextRequest) {
             day_of_reminder_push_sent_at: null,
           })
           .eq("id", slot.id);
+
+        await writeAuditLog(supabase, {
+          actorProfileId: currentProfile.id,
+          actorEmail: currentProfile.email || user.email || null,
+          actorRole: currentProfile.role,
+          organizationId: cleanerAccount.organization_id,
+          actionType: "admin.reassign_cleaner_slot",
+          targetType: "turnover_job_slot",
+          targetId: slot.id,
+          metadata: {
+            reassign_source: "release_cleaner_future_jobs",
+            job_id: slot.job_id,
+            slot_number: slot.slot_number,
+            previous_cleaner_account_id: cleanerAccount.id,
+            previous_cleaner_name: cleanerAccount.display_name || null,
+            previous_status: slot.status,
+            previous_offered_at: slot.offered_at,
+            previous_accepted_at: slot.accepted_at,
+            previous_declined_at: slot.declined_at,
+            new_cleaner_account_id: replacementCleanerId,
+            new_cleaner_name: replacementCleanerName,
+          },
+        });
 
         reoffered++;
         reofferedSlotIds.push(slot.id);
