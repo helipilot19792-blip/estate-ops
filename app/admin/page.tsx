@@ -1534,6 +1534,7 @@ export default function AdminPage() {
   const [jobsExpanded, setJobsExpanded] = useState(false);
   const [jobsListFilter, setJobsListFilter] = useState<JobsListFilter>("all");
   const [expandedNotificationSlotIds, setExpandedNotificationSlotIds] = useState<Set<string>>(() => new Set());
+  const [expandedPaymentSlotIds, setExpandedPaymentSlotIds] = useState<Set<string>>(() => new Set());
   const [reassignSelections, setReassignSelections] = useState<Record<string, string>>({});
   const [reassigningJobId, setReassigningJobId] = useState<string | null>(null);
   const [assigningSelfJobId, setAssigningSelfJobId] = useState<string | null>(null);
@@ -10760,6 +10761,18 @@ This removes its linked members and deletes the grounds account.`
 
   function toggleSlotNotificationDetails(slotId: string) {
     setExpandedNotificationSlotIds((current) => {
+      const next = new Set(current);
+      if (next.has(slotId)) {
+        next.delete(slotId);
+      } else {
+        next.add(slotId);
+      }
+      return next;
+    });
+  }
+
+  function toggleSlotPaymentDetails(slotId: string) {
+    setExpandedPaymentSlotIds((current) => {
       const next = new Set(current);
       if (next.has(slotId)) {
         next.delete(slotId);
@@ -20357,11 +20370,19 @@ This removes its linked members and deletes the grounds account.`
                   <div className="mt-1 text-sm text-[#8a7b68]">
                     Slots: {slots.filter((slot) => slot.status === "offered").length} offered, {slots.filter((slot) => slot.status === "declined").length} declined, {slots.filter((slot) => slot.status === "stranded").length} stranded
                   </div>
-                  <div className="mt-1 text-sm text-[#8a7b68]">
-                    Cleaning date: {formatScheduledFor(job.scheduled_for || extractCheckoutDate(job.notes))}
-                  </div>
-                  <div className="mt-1 text-sm text-[#8a7b68]">
-                    Cleaner payout: {formatCurrency(expectedPayoutTotal)} expected, {formatCurrency(paidPayoutTotal)} marked paid
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <div className="inline-flex items-center gap-3 rounded-full border border-[#d79a2b] bg-[#fff3d7] px-4 py-2 text-[#6f4300] shadow-sm">
+                      <span className="text-[10px] font-bold uppercase tracking-[0.18em]">Cleaning date</span>
+                      <span className="text-sm font-bold text-[#241c15]">
+                        {formatScheduledFor(job.scheduled_for || extractCheckoutDate(job.notes))}
+                      </span>
+                    </div>
+                    <div className="inline-flex items-center gap-2 rounded-full border border-[#d8c7ab] bg-white px-3 py-1.5 text-xs font-semibold text-[#6f6255]">
+                      <span>Payment details</span>
+                      <span className="text-[#241c15]">
+                        {formatCurrency(expectedPayoutTotal)} expected - {formatCurrency(paidPayoutTotal)} paid
+                      </span>
+                    </div>
                   </div>
 
                   {isCleaningCompanyMode ? (
@@ -20417,6 +20438,7 @@ This removes its linked members and deletes the grounds account.`
                     {slots.map((slot) => {
                       const draft = getSlotPaymentDraft(slot);
                       const offerHistory = getSlotOfferHistory(slot);
+                      const isPaymentExpanded = expandedPaymentSlotIds.has(slot.id);
 
                       return (
                         <div key={slot.id} className="rounded-[18px] border border-[#eadfce] bg-white px-3 py-3 text-xs text-[#6f6255]">
@@ -20471,10 +20493,31 @@ This removes its linked members and deletes the grounds account.`
                           <div>Declined: {formatDateTime(slot.declined_at)}</div>
 
                           <div
-                            className="mt-3 rounded-[16px] border border-[#d9ccbb] bg-[#fcfaf7] p-3 text-[#5f5245]"
+                            className="mt-3 text-[#5f5245]"
                             onClick={(event) => event.stopPropagation()}
                           >
-                            <div className="flex flex-wrap items-center justify-between gap-2">
+                            <button
+                              type="button"
+                              onClick={() => toggleSlotPaymentDetails(slot.id)}
+                              className="inline-flex flex-wrap items-center gap-2 rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1.5 text-left text-[11px] font-semibold text-[#6f6255] transition hover:bg-white"
+                              aria-expanded={isPaymentExpanded}
+                            >
+                              <span>Payment details</span>
+                              <span className="rounded-full bg-white px-2 py-0.5 text-[#241c15]">
+                                {getCleanerPayoutTypeLabel(slot.payout_type)} - {formatCurrency(slot.expected_payout_amount)} expected
+                              </span>
+                              <span className="rounded-full bg-white px-2 py-0.5 text-[#241c15]">
+                                {getCleanerPaymentStatusLabel(slot.payment_status)}
+                                {slot.payment_status && slot.payment_status !== "unpaid"
+                                  ? ` - ${formatCurrency(slot.paid_amount)} paid`
+                                  : ""}
+                              </span>
+                              <span className="text-[#8a7b68]">{isPaymentExpanded ? "Hide" : "Edit"}</span>
+                            </button>
+
+                            {isPaymentExpanded ? (
+                              <div className="mt-2 rounded-[16px] border border-[#d9ccbb] bg-[#fcfaf7] p-3">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
                               <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8a7b68]">
                                 Cleaner payout
                               </div>
@@ -20610,6 +20653,8 @@ This removes its linked members and deletes the grounds account.`
                                   : ""}
                               </span>
                             </div>
+                              </div>
+                            ) : null}
                           </div>
                         </div>
                       );
