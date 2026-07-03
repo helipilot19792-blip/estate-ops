@@ -1217,11 +1217,39 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     setSelectedSlotId(null);
   }
 
+  function getSameDayAcceptedJobWarning(job: CleanerJob) {
+    if (!job.jobDate) return "";
+
+    const scheduledStatuses = new Set(["accepted", "in_progress", "completed"]);
+    const conflicts = cleanerJobs.filter((item) => {
+      if (item.slot.id === job.slot.id) return false;
+      if (item.jobDate !== job.jobDate) return false;
+      return scheduledStatuses.has(String(item.slot.status || "").toLowerCase().trim());
+    });
+
+    if (conflicts.length === 0) return "";
+
+    const propertyNames = [
+      ...new Set(
+        conflicts.map((item) => {
+          const property = properties.find((row) => row.id === item.job.property_id);
+          return property?.name || "another property";
+        })
+      ),
+    ];
+
+    return `You already have ${conflicts.length} cleaning${conflicts.length === 1 ? "" : "s"} accepted for ${formatDateLabel(job.jobDate)}: ${propertyNames.join(", ")}. Are you willing and able to accept this job too?`;
+  }
+
   async function handleAcceptJob() {
     if (!selectedCleanerJob || !profile?.id) return;
 
     const acceptedSlotId = selectedCleanerJob.slot.id;
     const acceptedJobDate = selectedCleanerJob.jobDate;
+    const sameDayWarning = getSameDayAcceptedJobWarning(selectedCleanerJob);
+    if (sameDayWarning && !window.confirm(sameDayWarning)) {
+      return;
+    }
 
     setJobsWarning(null);
     setJobsSuccess(null);

@@ -5925,6 +5925,12 @@ export default function AdminPage() {
       return;
     }
 
+    const jobDate = job?.scheduled_for || extractCheckoutDate(job?.notes || null);
+    const conflictLabel = getCleanerSameDayConflictLabel(cleanerAccountId, jobDate, jobId);
+    if (conflictLabel && !window.confirm(`${conflictLabel}\n\nOffer this job anyway?`)) {
+      return;
+    }
+
     setError("");
     setActionMessage("");
     setReassigningJobId(jobId);
@@ -8124,6 +8130,45 @@ This removes its linked members and deletes the grounds account.`
     return getCleanerAssignmentsForProperty(propertyId)
       .map((assignment) => cleanerAccounts.find((account) => account.id === assignment.cleaner_account_id) || null)
       .filter((account): account is CleanerAccount => !!account);
+  }
+
+  function getCleanerSameDayConflicts(
+    cleanerAccountId: string | null | undefined,
+    jobDate: string | null | undefined,
+    currentJobId?: string | null
+  ) {
+    if (!cleanerAccountId || !jobDate) return [];
+
+    const conflictStatuses = new Set(["offered", "accepted", "in_progress"]);
+    return jobSlots
+      .filter((slot) => {
+        if (slot.cleaner_account_id !== cleanerAccountId) return false;
+        if (!conflictStatuses.has(String(slot.status || "").toLowerCase())) return false;
+        if (slot.job_id === currentJobId) return false;
+        return true;
+      })
+      .map((slot) => {
+        const conflictJob = jobs.find((item) => item.id === slot.job_id);
+        if (!conflictJob) return null;
+        const conflictDate = conflictJob.scheduled_for || extractCheckoutDate(conflictJob.notes);
+        if (conflictDate !== jobDate) return null;
+        return { slot, job: conflictJob };
+      })
+      .filter((item): item is { slot: JobSlot; job: Job } => !!item);
+  }
+
+  function getCleanerSameDayConflictLabel(
+    cleanerAccountId: string | null | undefined,
+    jobDate: string | null | undefined,
+    currentJobId?: string | null
+  ) {
+    const conflicts = getCleanerSameDayConflicts(cleanerAccountId, jobDate, currentJobId);
+    if (conflicts.length === 0) return "";
+
+    const propertyNames = [
+      ...new Set(conflicts.map(({ job }) => getPropertyName(job.property_id))),
+    ];
+    return `Already has ${conflicts.length} cleaning${conflicts.length === 1 ? "" : "s"} on ${formatScheduledFor(jobDate || null)}: ${propertyNames.join(", ")}`;
   }
 
   function getTrainingRotationOrder(property: Property | null | undefined) {
@@ -20367,6 +20412,13 @@ This removes its linked members and deletes the grounds account.`
                 isCleaningCompanyMode &&
                 acceptedCount < job.cleaner_units_needed &&
                 !currentAdminAssignedSlot;
+              const cleaningJobDate = job.scheduled_for || extractCheckoutDate(job.notes);
+              const selectedReassignCleanerId = reassignSelections[job.id] || "";
+              const selectedReassignConflictLabel = getCleanerSameDayConflictLabel(
+                selectedReassignCleanerId,
+                cleaningJobDate,
+                job.id
+              );
 
               return (
                 <div
@@ -20389,7 +20441,7 @@ This removes its linked members and deletes the grounds account.`
                     <div className="inline-flex items-center gap-3 rounded-full border border-[#d79a2b] bg-[#fff3d7] px-4 py-2 text-[#6f4300] shadow-sm">
                       <span className="text-[10px] font-bold uppercase tracking-[0.18em]">Cleaning date</span>
                       <span className="text-sm font-bold text-[#241c15]">
-                        {formatScheduledFor(job.scheduled_for || extractCheckoutDate(job.notes))}
+                        {formatScheduledFor(cleaningJobDate)}
                       </span>
                     </div>
                     <div className="inline-flex items-center gap-2 rounded-full border border-[#d8c7ab] bg-white px-3 py-1.5 text-xs font-semibold text-[#6f6255]">
@@ -20699,6 +20751,9 @@ This removes its linked members and deletes the grounds account.`
                           {propertyCleanerAccounts.map((account) => (
                             <option key={account.id} value={account.id}>
                               {account.display_name || "Unnamed cleaner account"}
+                              {getCleanerSameDayConflicts(account.id, cleaningJobDate, job.id).length > 0
+                                ? " - already booked that day"
+                                : ""}
                             </option>
                           ))}
                         </select>
@@ -20714,6 +20769,11 @@ This removes its linked members and deletes the grounds account.`
                           {reassigningJobId === job.id ? "Reassigning..." : "Reassign next open slot"}
                         </button>
                       </div>
+                      {selectedReassignConflictLabel ? (
+                        <div className="mt-2 rounded-[14px] border border-[#f0c36d] bg-[#fff8e8] px-3 py-2 text-xs font-medium text-[#7a4a00]">
+                          {selectedReassignConflictLabel}
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
 
