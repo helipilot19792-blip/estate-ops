@@ -1102,6 +1102,7 @@ export async function sendJobOfferEmailsForSlots(
   origin: string,
   options?: {
     allowedOrganizationIds?: Set<string> | null;
+    forceResend?: boolean;
   }
 ) {
   const service = getServiceClient();
@@ -1134,8 +1135,8 @@ export async function sendJobOfferEmailsForSlots(
         continue;
       }
 
-      const needsEmail = !bundle.offerEmailSentAt;
-      const needsPush = !bundle.offerPushSentAt;
+      const needsEmail = options?.forceResend ? true : !bundle.offerEmailSentAt;
+      const needsPush = options?.forceResend ? true : !bundle.offerPushSentAt;
 
       if (!needsEmail && !needsPush) {
         skipped += 1;

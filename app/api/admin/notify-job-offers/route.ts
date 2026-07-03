@@ -143,6 +143,7 @@ export async function POST(req: NextRequest) {
 
     const result = await sendJobOfferEmailsForSlots(kind, slotIds, req.nextUrl.origin, {
       allowedOrganizationIds,
+      forceResend: true,
     });
 
     await Promise.all(
