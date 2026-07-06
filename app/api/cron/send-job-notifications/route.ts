@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
+import { sendScheduledGuestRegistrationReminders } from "@/lib/server/guest-registration-reminders";
 import { sendScheduledJobNotificationEmails } from "@/lib/server/job-notifications";
 
 export async function GET(request: Request) {
@@ -13,10 +14,16 @@ export async function GET(request: Request) {
   }
 
   const origin = new URL(request.url).origin;
-  const payload = await sendScheduledJobNotificationEmails(origin);
+  const [jobNotifications, guestRegistrationReminders] = await Promise.all([
+    sendScheduledJobNotificationEmails(origin),
+    sendScheduledGuestRegistrationReminders(origin),
+  ]);
 
   return Response.json({
     ok: true,
-    payload,
+    payload: {
+      jobNotifications,
+      guestRegistrationReminders,
+    },
   });
 }

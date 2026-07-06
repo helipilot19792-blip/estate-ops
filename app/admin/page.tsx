@@ -5,6 +5,7 @@ import Image from "next/image";
 import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Copy, Eye, EyeOff, Mail, MapPin, Monitor, Navigation, Phone, Search } from "lucide-react";
+import AdminAiActionsPanel from "@/components/admin/admin-ai-actions-panel";
 import AdminBillingBanner from "@/components/admin/admin-billing-banner";
 import AdminLoadingScene from "@/components/admin/admin-loading-scene";
 import AdminOperationsAlerts from "@/components/admin/admin-operations-alerts";
@@ -519,6 +520,9 @@ type PropertyKnowledgeRow = {
   maintenance_notes?: string | null;
   appliance_notes?: string | null;
   emergency_notes?: string | null;
+  guest_registration_required?: boolean | null;
+  guest_registration_lead_days?: number | null;
+  guest_registration_instructions?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -1737,6 +1741,9 @@ export default function AdminPage() {
   const [knowledgeMaintenanceNotes, setKnowledgeMaintenanceNotes] = useState("");
   const [knowledgeApplianceNotes, setKnowledgeApplianceNotes] = useState("");
   const [knowledgeEmergencyNotes, setKnowledgeEmergencyNotes] = useState("");
+  const [knowledgeGuestRegistrationRequired, setKnowledgeGuestRegistrationRequired] = useState(false);
+  const [knowledgeGuestRegistrationLeadDays, setKnowledgeGuestRegistrationLeadDays] = useState("3");
+  const [knowledgeGuestRegistrationInstructions, setKnowledgeGuestRegistrationInstructions] = useState("");
   const [knowledgeImageCategory, setKnowledgeImageCategory] = useState("appliance_label");
   const [knowledgeImageCaption, setKnowledgeImageCaption] = useState("");
   const [knowledgeImageKeepAfterProcessing, setKnowledgeImageKeepAfterProcessing] = useState(false);
@@ -1839,6 +1846,9 @@ export default function AdminPage() {
     setKnowledgeMaintenanceNotes(row?.maintenance_notes || "");
     setKnowledgeApplianceNotes(row?.appliance_notes || "");
     setKnowledgeEmergencyNotes(row?.emergency_notes || "");
+    setKnowledgeGuestRegistrationRequired(Boolean(row?.guest_registration_required));
+    setKnowledgeGuestRegistrationLeadDays(String(Math.max(0, Number(row?.guest_registration_lead_days ?? 3))));
+    setKnowledgeGuestRegistrationInstructions(row?.guest_registration_instructions || "");
   }
 
   function updatePropertyKnowledgeDraft(setter: (value: string) => void, value: string) {
@@ -7577,6 +7587,9 @@ This removes its linked members and deletes the grounds account.`
           maintenanceNotes: knowledgeMaintenanceNotes,
           applianceNotes: knowledgeApplianceNotes,
           emergencyNotes: knowledgeEmergencyNotes,
+          guestRegistrationRequired: knowledgeGuestRegistrationRequired,
+          guestRegistrationLeadDays: knowledgeGuestRegistrationLeadDays,
+          guestRegistrationInstructions: knowledgeGuestRegistrationInstructions,
         }),
       });
       const payload = await response.json().catch(() => null);
@@ -22970,6 +22983,52 @@ This removes its linked members and deletes the grounds account.`
                       </label>
                     </div>
                   </div>
+
+                  <div className="rounded-[22px] border border-[#bfdded] bg-white p-4 xl:col-span-2">
+                    <h4 className="text-sm font-semibold text-[#17345f]">Guest Registration Reminder</h4>
+                    <div className="mt-3 space-y-3">
+                      <label className="flex items-center gap-3 rounded-[16px] border border-[#bfdded] bg-[#f8fbff] px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={knowledgeGuestRegistrationRequired}
+                          onChange={(e) => {
+                            setKnowledgeGuestRegistrationRequired(e.target.checked);
+                            setPropertyKnowledgeDirty(true);
+                          }}
+                          className="h-4 w-4 accent-[#0ea5e9]"
+                        />
+                        <span className="text-sm font-medium text-[#17345f]">
+                          This property requires guest registration before arrival.
+                        </span>
+                      </label>
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-[#526777]">Push reminder lead time (days before check-in)</span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={30}
+                          value={knowledgeGuestRegistrationLeadDays}
+                          onChange={(e) => {
+                            setKnowledgeGuestRegistrationLeadDays(e.target.value);
+                            setPropertyKnowledgeDirty(true);
+                          }}
+                          className="w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-[#526777]">Registration instructions</span>
+                        <textarea
+                          value={knowledgeGuestRegistrationInstructions}
+                          onChange={(e) => {
+                            setKnowledgeGuestRegistrationInstructions(e.target.value);
+                            setPropertyKnowledgeDirty(true);
+                          }}
+                          placeholder="Resort portal steps, required guest details, confirmation notes..."
+                          className="min-h-[110px] w-full rounded-[16px] border border-[#bfdded] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#7f9aaa] focus:border-[#0ea5e9]"
+                        />
+                      </label>
+                    </div>
+                  </div>
                 </div>
               </div>
             ) : null}
@@ -25542,6 +25601,10 @@ This removes its linked members and deletes the grounds account.`
           <div className="mb-6 rounded-[24px] border border-[#cfe4cf] bg-[#f4fbf4] px-4 py-3 text-sm text-[#2f6b2f] shadow-sm">
             {actionMessage}
           </div>
+        ) : null}
+
+        {activeSection === "home" && currentOrganizationId ? (
+          <AdminAiActionsPanel organizationId={currentOrganizationId} />
         ) : null}
 
         {currentOrganizationBilling && !isInternalWorkspace ? (

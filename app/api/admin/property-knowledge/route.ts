@@ -20,6 +20,22 @@ function cleanText(value: unknown, maxLength = 4000) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
 }
 
+function cleanInteger(value: unknown, fallback: number, min = 0, max = 30) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, Math.round(parsed)));
+}
+
+function isMissingGuestRegistrationColumnsError(error: { code?: string | null; message?: string | null } | null | undefined) {
+  const message = String(error?.message || "").toLowerCase();
+  return (
+    error?.code === "42703" ||
+    message.includes("guest_registration_required") ||
+    message.includes("guest_registration_lead_days") ||
+    message.includes("guest_registration_instructions")
+  );
+}
+
 async function requireAdmin(serviceClient: any, userId: string, organizationId: string) {
   const { data: profile, error: profileError } = await serviceClient
     .from("profiles")
@@ -116,6 +132,9 @@ export async function POST(request: NextRequest) {
       maintenance_notes: cleanText(body?.maintenanceNotes) || null,
       appliance_notes: cleanText(body?.applianceNotes) || null,
       emergency_notes: cleanText(body?.emergencyNotes) || null,
+      guest_registration_required: Boolean(body?.guestRegistrationRequired),
+      guest_registration_lead_days: cleanInteger(body?.guestRegistrationLeadDays, 3),
+      guest_registration_instructions: cleanText(body?.guestRegistrationInstructions) || null,
       updated_at: new Date().toISOString(),
     };
 
@@ -125,7 +144,12 @@ export async function POST(request: NextRequest) {
       .select("*")
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) {
+      const message = isMissingGuestRegistrationColumnsError(error)
+        ? "Guest registration reminder fields are not live yet. Run supabase/add_guest_registration_reminders.sql first."
+        : error.message;
+      return NextResponse.json({ error: message }, { status: 500 });
+    }
     return NextResponse.json({ ok: true, knowledge: data });
   } catch (error) {
     return NextResponse.json(
