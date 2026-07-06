@@ -212,11 +212,11 @@ export default function PortalInstallControl({
         const existing = await registration.pushManager.getSubscription();
         const token = await getAccessToken();
         let publicKey = getBrowserVapidPublicKey(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY);
+        let resolvedStatus = false;
 
         if (!active) return;
 
         setSubscription(existing);
-        setStatus("ready");
 
         const { response, payload } = token
           ? await loadCurrentDevicePushStatus(portal, token, existing?.endpoint)
@@ -251,16 +251,19 @@ export default function PortalInstallControl({
               setStatus("active");
               setMessage("Alerts are on for this device.");
               rememberPushKey(portal, publicKey);
+              resolvedStatus = true;
             }
           } else if (active && payload?.subscribed && existing) {
             setStatus("active");
             if (publicKey) rememberPushKey(portal, publicKey);
+            resolvedStatus = true;
           } else if (active && existing && response.ok) {
             const { response: saveResponse, payload: savePayload } = await savePushSubscription(portal, token, existing);
             if (active && saveResponse.ok && savePayload?.ok) {
               setStatus("active");
               setMessage("Alerts are on for this portal.");
               if (publicKey) rememberPushKey(portal, publicKey);
+              resolvedStatus = true;
             }
           } else if (
             active &&
@@ -283,6 +286,7 @@ export default function PortalInstallControl({
               setStatus("active");
               setMessage("Alerts are on for this device.");
               rememberPushKey(portal, publicKey);
+              resolvedStatus = true;
             }
           }
         }
@@ -290,6 +294,11 @@ export default function PortalInstallControl({
         if (active && !publicKey) {
           setStatus("disabled");
           setMessage("Alerts need a VAPID_PUBLIC_KEY environment variable on the server.");
+          resolvedStatus = true;
+        }
+
+        if (active && !resolvedStatus) {
+          setStatus("ready");
         }
       } catch (error) {
         if (!active) return;
