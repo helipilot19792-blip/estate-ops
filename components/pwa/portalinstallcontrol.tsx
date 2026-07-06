@@ -147,6 +147,7 @@ export default function PortalInstallControl({
   enablePush = true,
 }: PortalInstallControlProps) {
   const [status, setStatus] = useState<PushStatus>(enablePush ? "checking" : "disabled");
+  const [installStateReady, setInstallStateReady] = useState(false);
   const [message, setMessage] = useState("");
   const [subscription, setSubscription] = useState<PushSubscription | null>(null);
   const [vapidPublicKey, setVapidPublicKey] = useState("");
@@ -160,11 +161,13 @@ export default function PortalInstallControl({
   useEffect(() => {
     let active = true;
 
+    setInstallStateReady(false);
     setIsStandalone(isInstalledAppExperience());
     const browser = detectMobileBrowser();
     setIsIOS(browser.isIPhoneOrIPad);
     setIsSafari(browser.isSafari);
     setBrowserLabel(browser.label);
+    setInstallStateReady(true);
 
     function handleBeforeInstallPrompt(event: Event) {
       event.preventDefault();
@@ -426,7 +429,7 @@ export default function PortalInstallControl({
     }
   }
 
-  const canOfferInstall = !isStandalone;
+  const canOfferInstall = installStateReady && !isStandalone;
   const canInstall = !!installPrompt && !isStandalone;
   const showIOSInstallHint = isIOS && !isStandalone;
   const installRequiresManualSteps = showIOSInstallHint || (canOfferInstall && !canInstall);
