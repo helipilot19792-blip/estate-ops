@@ -1261,6 +1261,15 @@ const WEEKDAY_OPTIONS = [
 
 const WASTE_PICKUP_TYPE_OPTIONS = ["Garbage", "Recycling", "Compost", "Yard waste", "Bulk items"];
 type WastePattern = "weekly" | "biweekly_same" | "alternating";
+const WEEKDAY_MATCHERS: Array<{ weekday: number; aliases: string[] }> = [
+  { weekday: 0, aliases: ["sunday", "sun"] },
+  { weekday: 1, aliases: ["monday", "mon"] },
+  { weekday: 2, aliases: ["tuesday", "tue", "tues"] },
+  { weekday: 3, aliases: ["wednesday", "wed"] },
+  { weekday: 4, aliases: ["thursday", "thu", "thur", "thurs"] },
+  { weekday: 5, aliases: ["friday", "fri"] },
+  { weekday: 6, aliases: ["saturday", "sat"] },
+];
 
 function getWastePickupTypes(value: string | null | undefined) {
   const normalized = (value || "").toLowerCase();
@@ -1290,6 +1299,27 @@ function inferWastePattern(property: Property | null | undefined): WastePattern 
   if (!property?.garbage_rotation_anchor_date) return "weekly";
   if (isNoWastePickupLabel(property.garbage_week_b_label)) return "biweekly_same";
   return "alternating";
+}
+
+function inferLegacyWastePickupWeekday(value: string | null | undefined) {
+  const normalized = (value || "").trim().toLowerCase();
+  if (!normalized) return null;
+
+  for (const matcher of WEEKDAY_MATCHERS) {
+    if (matcher.aliases.some((alias) => normalized.includes(alias))) {
+      return matcher.weekday;
+    }
+  }
+
+  return null;
+}
+
+function getWastePickupWeekday(property: Property) {
+  if (typeof property.garbage_pickup_weekday === "number") {
+    return property.garbage_pickup_weekday;
+  }
+
+  return inferLegacyWastePickupWeekday(property.garbage_day);
 }
 
 function getPropertyColor(propertyId: string | null) {
@@ -9959,10 +9989,7 @@ This removes its linked members and deletes the grounds account.`
     }> = [];
 
     for (const property of properties) {
-      const pickupWeekday =
-        typeof property.garbage_pickup_weekday === "number"
-          ? property.garbage_pickup_weekday
-          : null;
+      const pickupWeekday = getWastePickupWeekday(property);
 
       if (pickupWeekday === null) continue;
 
