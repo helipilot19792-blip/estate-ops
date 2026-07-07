@@ -44,6 +44,23 @@ type JobSlotRow = {
   offered_at?: string | null;
 };
 
+type PropertyKnowledgeRow = {
+  property_id: string;
+  guest_registration_required?: boolean | null;
+  guest_registration_lead_days?: number | null;
+  guest_registration_instructions?: string | null;
+};
+
+type BookingEventRow = {
+  id: string;
+  organization_id: string;
+  property_id: string;
+  summary: string | null;
+  checkin_date: string;
+  guest_registration_reminder_sent_at?: string | null;
+  admin_note?: string | null;
+};
+
 type CleanerAccountRow = {
   id: string;
   display_name: string | null;
@@ -66,6 +83,7 @@ type ProposedAction =
       id: string;
       kind: "invoice_reminder";
       priority: "high" | "medium";
+      category: "Billing";
       title: string;
       reason: string;
       recipientLabel: string;
@@ -81,6 +99,7 @@ type ProposedAction =
       id: string;
       kind: "cleaner_follow_up";
       priority: "high" | "medium";
+      category: "Staffing";
       title: string;
       reason: string;
       recipientLabel: string;
@@ -94,6 +113,25 @@ type ProposedAction =
         subject: string;
         jobId: string;
         slotId: string;
+      };
+    }
+  | {
+      id: string;
+      kind: "guest_registration_reminder";
+      priority: "high" | "medium";
+      category: "Guest";
+      title: string;
+      reason: string;
+      recipientLabel: string;
+      channelLabel: string;
+      previewLabel: string;
+      previewText: string;
+      canEditMessage: true;
+      payload: {
+        bookingEventId: string;
+        propertyId: string;
+        propertyName: string;
+        checkinDate: string;
       };
     };
 
@@ -188,6 +226,23 @@ async function buildCleanerDraft(params: {
   }
 }
 
+function buildGuestRegistrationDraft(params: {
+  propertyName: string;
+  guestLabel: string;
+  checkinDate: string;
+  leadDays: number;
+  instructions: string;
+}) {
+  const intro =
+    `${params.guestLabel} checks in at ${params.propertyName} on ${formatShortDate(params.checkinDate)}. ` +
+    `Guest registration is due ${params.leadDays} day${params.leadDays === 1 ? "" : "s"} before arrival.`;
+  const steps = params.instructions.trim()
+    ? ` ${params.instructions.trim()}`
+    : " Register the guest with the resort before arrival and confirm once complete.";
+
+  return `${intro}${steps}`.trim();
+}
+
 type OrganizationMemberProfileRow = {
   profile_id: string;
   role: string | null;
@@ -221,6 +276,7 @@ async function generateActions(organizationId: string, token: string) {
     cleanerAccountsRes,
     cleanerMembersRes,
     memberProfilesRes,
+    knowledgeRes,
   ] = await Promise.all([
     serviceClient
       .from("owner_invoices")
@@ -267,9 +323,14 @@ async function generateActions(organizationId: string, token: string) {
       `)
       .eq("organization_id", organizationId)
       .in("role", ["cleaner", "grounds", "admin"]),
+    serviceClient
+      .from("property_knowledge")
+      .select("property_id, guest_registration_required, guest_registration_lead_days, guest_registration_instructions")
+      .eq("organization_id", organizationId)
+      .eq("guest_registration_required", true),
   ]);
 
-  for (const result of [invoicesRes, ownersRes, propertiesRes, jobsRes, slotsRes, cleanerAccountsRes, cleanerMembersRes, memberProfilesRes]) {
+  for (const result of [invoicesRes, ownersRes, propertiesRes, jobsRes, slotsRes, cleanerAccountsRes, cleanerMembersRes, memberProfilesRes, knowledgeRes]) {
     if (result.error) throw new Error(result.error.message);
   }
 
@@ -322,6 +383,7 @@ async function generateActions(organizationId: string, token: string) {
       id: `invoice-${invoice.id}`,
       kind: "invoice_reminder",
       priority: overdueDays >= 7 ? "high" : "medium",
+      category: "Billing",
       title: `Chase overdue invoice ${invoice.invoice_number || ""}`.trim(),
       reason: `${owner?.full_name || owner?.email || "Owner"} is ${overdueDays === 0 ? "due today" : `${overdueDays} day${overdueDays === 1 ? "" : "s"} overdue`} for ${formatCurrency(invoice.total)}${property ? ` at ${property.name || property.address || "this property"}` : ""}.`,
       recipientLabel: owner?.full_name || owner?.email || "Owner",
@@ -385,6 +447,7 @@ async function generateActions(organizationId: string, token: string) {
       id: `cleaner-${candidate.slotId}`,
       kind: "cleaner_follow_up",
       priority: candidate.priority,
+      category: "Staffing",
       title: `Follow up with ${candidate.cleanerName}`,
       reason: candidate.reason,
       recipientLabel: candidate.cleanerName,
@@ -400,6 +463,73 @@ async function generateActions(organizationId: string, token: string) {
         slotId: candidate.slotId,
       },
     });
+  }
+
+  const guestRegistrationConfigs = (knowledgeRes.data ?? []) as PropertyKnowledgeRow[];
+  if (guestRegistrationConfigs.length > 0) {
+    const leadDaysByPropertyId = new Map(
+      guestRegistrationConfigs.map((row) => [
+        row.property_id,
+        Math.max(0, Math.min(30, Number(row.guest_registration_lead_days || 3))),
+      ])
+    );
+
+    const targetCheckinDates = Array.from(
+      new Set(Array.from(leadDaysByPropertyId.values()).map((leadDays) => addDaysYmd(todayYmd, leadDays)))
+    );
+
+    const propertyIds = Array.from(leadDaysByPropertyId.keys());
+    const bookingsRes = await serviceClient
+      .from("property_booking_events")
+      .select("id, organization_id, property_id, summary, checkin_date, guest_registration_reminder_sent_at, admin_note")
+      .eq("organization_id", organizationId)
+      .in("property_id", propertyIds)
+      .in("checkin_date", targetCheckinDates)
+      .order("checkin_date", { ascending: true })
+      .limit(20);
+
+    if (bookingsRes.error) throw new Error(bookingsRes.error.message);
+
+    for (const booking of (bookingsRes.data ?? []) as BookingEventRow[]) {
+      const config = guestRegistrationConfigs.find((item) => item.property_id === booking.property_id);
+      const property = properties.get(booking.property_id);
+      if (!config || !property) continue;
+
+      const leadDays = leadDaysByPropertyId.get(booking.property_id) ?? 3;
+      if (booking.checkin_date !== addDaysYmd(todayYmd, leadDays)) continue;
+      if (booking.guest_registration_reminder_sent_at) continue;
+
+      const propertyName = property.name || property.address || "Property";
+      const guestLabel = booking.summary?.trim() || "Upcoming guest";
+      const instructions = String(config.guest_registration_instructions || "").trim();
+      const previewText = buildGuestRegistrationDraft({
+        propertyName,
+        guestLabel,
+        checkinDate: booking.checkin_date,
+        leadDays,
+        instructions,
+      });
+
+      actions.push({
+        id: `guest-registration-${booking.id}`,
+        kind: "guest_registration_reminder",
+        priority: leadDays <= 1 ? "high" : "medium",
+        category: "Guest",
+        title: `Register guest for ${propertyName}`,
+        reason: `${guestLabel} checks in on ${formatShortDate(booking.checkin_date)} and this property requires resort registration ${leadDays} day${leadDays === 1 ? "" : "s"} ahead of arrival.`,
+        recipientLabel: "Admin team",
+        channelLabel: "Booking note",
+        previewLabel: "Approval will save this reminder",
+        previewText,
+        canEditMessage: true,
+        payload: {
+          bookingEventId: booking.id,
+          propertyId: booking.property_id,
+          propertyName,
+          checkinDate: booking.checkin_date,
+        },
+      });
+    }
   }
 
   return actions
@@ -485,6 +615,53 @@ export async function POST(request: NextRequest) {
         ok: true,
         message: `Chat follow-up sent to ${result.targetName}.`,
         conversationId: result.conversationId,
+      });
+    }
+
+    if (kind === "guest_registration_reminder") {
+      const bookingEventId = String(payload?.bookingEventId || "").trim();
+      if (!bookingEventId || !draftMessage) {
+        return NextResponse.json({ ok: false, error: "Booking and reminder note are required." }, { status: 400 });
+      }
+
+      const { data: booking, error: bookingError } = await serviceClient
+        .from("property_booking_events")
+        .select("id, summary, admin_note")
+        .eq("id", bookingEventId)
+        .eq("organization_id", organizationId)
+        .maybeSingle();
+
+      if (bookingError) {
+        return NextResponse.json({ ok: false, error: bookingError.message }, { status: 500 });
+      }
+
+      if (!booking) {
+        return NextResponse.json({ ok: false, error: "Booking not found for this organization." }, { status: 404 });
+      }
+
+      const existingNote = String(booking.admin_note || "").trim();
+      const nextNote = existingNote
+        ? `${existingNote}\n\nAI supervisor reminder:\n${draftMessage}`
+        : `AI supervisor reminder:\n${draftMessage}`;
+
+      const { error: updateError } = await serviceClient
+        .from("property_booking_events")
+        .update({
+          admin_note: nextNote,
+          admin_note_important: true,
+          guest_registration_reminder_sent_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", bookingEventId)
+        .eq("organization_id", organizationId);
+
+      if (updateError) {
+        return NextResponse.json({ ok: false, error: updateError.message }, { status: 500 });
+      }
+
+      return NextResponse.json({
+        ok: true,
+        message: `Guest registration reminder saved to the booking note for ${booking.summary?.trim() || "the upcoming guest"}.`,
       });
     }
 

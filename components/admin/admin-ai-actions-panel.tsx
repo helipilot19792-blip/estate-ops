@@ -8,6 +8,7 @@ type ProposedAction =
       id: string;
       kind: "invoice_reminder";
       priority: "high" | "medium";
+      category: "Billing";
       title: string;
       reason: string;
       recipientLabel: string;
@@ -23,6 +24,7 @@ type ProposedAction =
       id: string;
       kind: "cleaner_follow_up";
       priority: "high" | "medium";
+      category: "Staffing";
       title: string;
       reason: string;
       recipientLabel: string;
@@ -36,6 +38,25 @@ type ProposedAction =
         subject: string;
         jobId: string;
         slotId: string;
+      };
+    }
+  | {
+      id: string;
+      kind: "guest_registration_reminder";
+      priority: "high" | "medium";
+      category: "Guest";
+      title: string;
+      reason: string;
+      recipientLabel: string;
+      channelLabel: string;
+      previewLabel: string;
+      previewText: string;
+      canEditMessage: true;
+      payload: {
+        bookingEventId: string;
+        propertyId: string;
+        propertyName: string;
+        checkinDate: string;
       };
     };
 
@@ -172,7 +193,7 @@ export default function AdminAiActionsPanel({ organizationId, visible = true }: 
           <span className="min-w-0">
             <span className="block text-sm font-semibold text-[#241c15]">AI Copilot</span>
             <span className="block text-xs text-[#7f7263]">
-              {loading ? "Checking suggestions..." : pendingCount > 0 ? `${pendingCount} follow-up${pendingCount === 1 ? "" : "s"} waiting` : "Open assistant suggestions"}
+              {loading ? "Checking operations..." : pendingCount > 0 ? `${pendingCount} supervised action${pendingCount === 1 ? "" : "s"} waiting` : "Open supervised operator inbox"}
             </span>
           </span>
           {pendingCount > 0 ? (
@@ -190,9 +211,9 @@ export default function AdminAiActionsPanel({ organizationId, visible = true }: 
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
           <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#3563a8]">AI Actions</div>
-          <h2 className="mt-1 text-xl font-semibold text-[#17202a]">Supervised follow-ups</h2>
+          <h2 className="mt-1 text-xl font-semibold text-[#17202a]">Supervised operator inbox</h2>
           <p className="mt-1 text-sm text-[#5f6f86]">
-            Suggestions are generated from today&apos;s jobs and unpaid invoices. Nothing is sent until an admin approves it.
+            The AI watches staffing, billing, and property rules, then prepares actions for approval. Nothing is sent or logged until an admin approves it.
           </p>
         </div>
         <button
@@ -235,7 +256,7 @@ export default function AdminAiActionsPanel({ organizationId, visible = true }: 
       <div className="mt-4 space-y-3">
         {visibleActions.length === 0 && !loading ? (
           <div className="rounded-[20px] border border-dashed border-[#bfd4f6] bg-white px-4 py-4 text-sm text-[#5f6f86]">
-            No AI follow-ups are waiting for approval right now.
+            No supervised AI actions are waiting for approval right now.
           </div>
         ) : null}
 
@@ -244,6 +265,9 @@ export default function AdminAiActionsPanel({ organizationId, visible = true }: 
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-[#fcfaf7] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6f6255]">
+                    {action.category}
+                  </span>
                   <span
                     className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${
                       action.priority === "high"
@@ -251,9 +275,9 @@ export default function AdminAiActionsPanel({ organizationId, visible = true }: 
                         : "bg-[#eef5ff] text-[#2957a4]"
                     }`}
                   >
-                    {action.priority}
+                    {action.priority} priority
                   </span>
-                  <span className="rounded-full bg-[#fcfaf7] px-2.5 py-1 text-[11px] font-semibold text-[#6f6255]">
+                  <span className="rounded-full bg-[#f8fbff] px-2.5 py-1 text-[11px] font-semibold text-[#2957a4]">
                     {action.channelLabel}
                   </span>
                 </div>
