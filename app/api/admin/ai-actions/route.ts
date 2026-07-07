@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAiCopilotAccess, getAiCopilotBearerToken } from "@/lib/server/ai-copilot-access";
 import { sendOwnerInvoiceReminderEmail } from "@/lib/server/owner-invoice-reminders";
 import { sendDirectProfileChatMessage } from "@/lib/server/direct-profile-chat";
+import { sendStaffPushNotifications } from "@/lib/server/staff-push-notifications";
+import { isMissingAuditLogTableError, writeAuditLog } from "@/lib/server/audit-log";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -71,6 +73,10 @@ type CleanerAccountMemberRow = {
   profile_id: string;
 };
 
+type OrganizationMemberRow = {
+  profile_id: string | null;
+};
+
 type ProfileRow = {
   id: string;
   email: string | null;
@@ -137,6 +143,10 @@ type ProposedAction =
 
 function getTodayYmd() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function getStartOfDayIso(dateYmd: string) {
+  return new Date(`${dateYmd}T00:00:00`).toISOString();
 }
 
 function addDaysYmd(baseYmd: string, days: number) {
@@ -540,6 +550,87 @@ async function generateActions(organizationId: string, token: string) {
     .slice(0, 8);
 }
 
+async function notifyHighPriorityActions(options: {
+  organizationId: string;
+  origin: string;
+  actions: ProposedAction[];
+  token: string;
+}) {
+  const highPriorityActions = options.actions.filter((action) => action.priority === "high");
+  if (highPriorityActions.length === 0) return;
+
+  const { serviceClient, profile } = await requireAiCopilotAccess({
+    token: options.token,
+    organizationId: options.organizationId,
+  });
+
+  const todayYmd = getTodayYmd();
+  const actionIds = highPriorityActions.map((action) => action.id);
+  const { data: existingLogs, error: logsError } = await serviceClient
+    .from("audit_logs")
+    .select("target_id")
+    .eq("organization_id", options.organizationId)
+    .eq("action_type", "ai.supervisor.high_priority_push")
+    .gte("created_at", getStartOfDayIso(todayYmd))
+    .in("target_id", actionIds);
+
+  if (logsError) {
+    if (isMissingAuditLogTableError(logsError)) return;
+    throw new Error(logsError.message);
+  }
+
+  const alreadyNotified = new Set((existingLogs ?? []).map((row: { target_id?: string | null }) => String(row.target_id || "")));
+  const pendingActions = highPriorityActions.filter((action) => !alreadyNotified.has(action.id));
+  if (pendingActions.length === 0) return;
+
+  const { data: adminMembers, error: adminMembersError } = await serviceClient
+    .from("organization_members")
+    .select("profile_id")
+    .eq("organization_id", options.organizationId)
+    .eq("role", "admin");
+
+  if (adminMembersError) {
+    throw new Error(adminMembersError.message);
+  }
+
+  const adminProfileIds = Array.from(
+    new Set(((adminMembers ?? []) as OrganizationMemberRow[]).map((member) => String(member.profile_id || "")).filter(Boolean))
+  );
+  if (adminProfileIds.length === 0) return;
+
+  const topAction = pendingActions[0];
+  const body =
+    pendingActions.length === 1
+      ? `${topAction.title} is waiting for approval.`
+      : `${pendingActions.length} high-priority AI actions are waiting for approval. Top item: ${topAction.title}.`;
+
+  await sendStaffPushNotifications("admin", adminProfileIds, {
+    title: "AI supervisor approval needed",
+    body,
+    url: `${options.origin}/admin`,
+    tag: `ai-supervisor-high-${options.organizationId}-${todayYmd}`,
+  });
+
+  for (const action of pendingActions) {
+    await writeAuditLog(serviceClient, {
+      actorProfileId: profile.id,
+      actorEmail: profile.email,
+      actorRole: profile.role,
+      organizationId: options.organizationId,
+      actionType: "ai.supervisor.high_priority_push",
+      targetType: "ai_action",
+      targetId: action.id,
+      metadata: {
+        kind: action.kind,
+        priority: action.priority,
+        category: action.category,
+        title: action.title,
+        recipientLabel: action.recipientLabel,
+      },
+    });
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const organizationId = request.nextUrl.searchParams.get("organizationId")?.trim() || "";
@@ -550,6 +641,12 @@ export async function GET(request: NextRequest) {
     }
 
     const actions = await generateActions(organizationId, token);
+    await notifyHighPriorityActions({
+      organizationId,
+      origin: request.nextUrl.origin,
+      actions,
+      token,
+    });
     return NextResponse.json({ ok: true, actions });
   } catch (error) {
     return NextResponse.json(
