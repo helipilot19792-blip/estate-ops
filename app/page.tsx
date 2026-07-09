@@ -26,6 +26,12 @@ export default function Home() {
 
           <div className="flex flex-wrap items-center gap-2">
             <Link
+              href="/login"
+              className="rounded-full border border-[#dccfbf] px-4 py-2 text-sm font-medium text-[#5f5245] transition hover:bg-[#fbf6ef]"
+            >
+              Log in
+            </Link>
+            <Link
               href="/pricing"
               className="rounded-full border border-[#dccfbf] px-4 py-2 text-sm font-medium text-[#5f5245] transition hover:bg-[#fbf6ef]"
             >
@@ -41,7 +47,7 @@ export default function Home() {
               href="/login"
               className="rounded-full bg-[#241c15] px-5 py-2 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#382d23]"
             >
-              Start free trial
+              Create company
             </Link>
           </div>
         </div>
@@ -67,15 +73,19 @@ export default function Home() {
                   href="/login"
                   className="rounded-full bg-[#f3dfb2] px-6 py-3 text-sm font-semibold text-[#241c15] transition hover:bg-[#ead39d]"
                 >
-                  Start your 30-day free trial
+                  Log in to your portal
                 </Link>
                 <Link
-                  href="/pricing"
+                  href="/login"
                   className="rounded-full border border-white/20 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/8"
                 >
-                  View pricing
+                  Start your 30-day free trial
                 </Link>
               </div>
+
+              <p className="mt-4 max-w-2xl text-sm leading-7 text-[#dfd1bc]">
+                Cleaners, grounds, and owners should use <span className="font-semibold text-white">Log in</span>. Only company admins should start a free trial.
+              </p>
 
               <div className="mt-8 grid gap-3 md:grid-cols-3">
                 {marketingHeroStats.map((stat) => (
