@@ -173,8 +173,42 @@ export default function AdminAiActionsPanel({ organizationId, visible = true }: 
     }
   }
 
-  function dismissAction(actionId: string) {
-    setActions((current) => current.filter((item) => item.id !== actionId));
+  async function dismissAction(action: ProposedAction) {
+    setBusyId(action.id);
+    setError("");
+    setNotice("");
+
+    try {
+      const token = await getAccessToken();
+      if (!token) throw new Error("No active admin session was found.");
+
+      const response = await fetch("/api/admin/ai-actions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          mode: "dismiss",
+          organizationId,
+          actionId: action.id,
+          kind: action.kind,
+          payload: action.payload,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(payload?.error || "Could not dismiss that action.");
+      }
+
+      setNotice(payload?.message || "Action dismissed for now.");
+      setActions((current) => current.filter((item) => item.id !== action.id));
+    } catch (dismissError) {
+      setError(dismissError instanceof Error ? dismissError.message : "Could not dismiss that action.");
+    } finally {
+      setBusyId("");
+    }
   }
 
   if (!visible) return null;
@@ -299,11 +333,11 @@ export default function AdminAiActionsPanel({ organizationId, visible = true }: 
                 </button>
                 <button
                   type="button"
-                  onClick={() => dismissAction(action.id)}
+                  onClick={() => void dismissAction(action)}
                   disabled={busyId === action.id}
                   className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-semibold text-[#5f5245] transition hover:bg-[#fcfaf7] disabled:opacity-60"
                 >
-                  Dismiss
+                  {busyId === action.id ? "Working..." : "Dismiss for now"}
                 </button>
               </div>
             </div>

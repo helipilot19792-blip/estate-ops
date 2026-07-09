@@ -272,6 +272,56 @@ type OrganizationMemberProfileRow = {
     | null;
 };
 
+function getDismissalCooldownMs(kind: ProposedAction["kind"]) {
+  if (kind === "invoice_reminder") return 7 * 24 * 60 * 60 * 1000;
+  if (kind === "guest_registration_reminder") return 3 * 24 * 60 * 60 * 1000;
+  return 12 * 60 * 60 * 1000;
+}
+
+function getDismissalLabel(kind: ProposedAction["kind"]) {
+  if (kind === "invoice_reminder") return "7 days";
+  if (kind === "guest_registration_reminder") return "3 days";
+  return "12 hours";
+}
+
+async function getSnoozedActionIds(serviceClient: any, organizationId: string, actions: ProposedAction[]) {
+  if (actions.length === 0) return new Set<string>();
+
+  const actionsById = new Map(actions.map((action) => [action.id, action]));
+  const longestCooldownMs = Math.max(...actions.map((action) => getDismissalCooldownMs(action.kind)));
+  const oldestRelevantDismissalIso = new Date(Date.now() - longestCooldownMs).toISOString();
+
+  const { data, error } = await serviceClient
+    .from("audit_logs")
+    .select("target_id, created_at")
+    .eq("organization_id", organizationId)
+    .eq("action_type", "ai.supervisor.dismissed")
+    .gte("created_at", oldestRelevantDismissalIso)
+    .in("target_id", actions.map((action) => action.id));
+
+  if (error) {
+    if (isMissingAuditLogTableError(error)) return new Set<string>();
+    throw new Error(error.message);
+  }
+
+  const nowMs = Date.now();
+  const snoozedActionIds = new Set<string>();
+
+  for (const row of (data ?? []) as Array<{ target_id?: string | null; created_at?: string | null }>) {
+    const actionId = String(row.target_id || "");
+    const action = actionsById.get(actionId);
+    if (!action || !row.created_at) continue;
+
+    const dismissedAtMs = new Date(row.created_at).getTime();
+    if (Number.isNaN(dismissedAtMs)) continue;
+    if (nowMs - dismissedAtMs < getDismissalCooldownMs(action.kind)) {
+      snoozedActionIds.add(actionId);
+    }
+  }
+
+  return snoozedActionIds;
+}
+
 async function generateActions(organizationId: string, token: string) {
   const { serviceClient } = await requireAiCopilotAccess({ token, organizationId });
   const todayYmd = getTodayYmd();
@@ -542,7 +592,14 @@ async function generateActions(organizationId: string, token: string) {
     }
   }
 
+  const snoozedActionIds = await getSnoozedActionIds(
+    serviceClient,
+    organizationId,
+    actions
+  );
+
   return actions
+    .filter((action) => !snoozedActionIds.has(action.id))
     .sort((a, b) => {
       const priorityRank = { high: 0, medium: 1 };
       return priorityRank[a.priority] - priorityRank[b.priority] || a.title.localeCompare(b.title);
@@ -661,7 +718,9 @@ export async function POST(request: NextRequest) {
     const token = getAiCopilotBearerToken(request);
     const body = await request.json().catch(() => null);
     const organizationId = String(body?.organizationId || "").trim();
+    const mode = String(body?.mode || "approve").trim();
     const kind = String(body?.kind || "").trim();
+    const actionId = String(body?.actionId || "").trim();
     const draftMessage = String(body?.draftMessage || "").trim();
     const payload = body?.payload || {};
 
@@ -670,6 +729,32 @@ export async function POST(request: NextRequest) {
     }
 
     const { serviceClient, profile } = await requireAiCopilotAccess({ token, organizationId });
+
+    if (mode === "dismiss") {
+      if (!actionId || !kind) {
+        return NextResponse.json({ ok: false, error: "Action details are required." }, { status: 400 });
+      }
+
+      await writeAuditLog(serviceClient, {
+        actorProfileId: profile.id,
+        actorEmail: profile.email,
+        actorRole: profile.role,
+        organizationId,
+        actionType: "ai.supervisor.dismissed",
+        targetType: "ai_action",
+        targetId: actionId,
+        metadata: {
+          kind,
+          snooze_for: getDismissalLabel(kind as ProposedAction["kind"]),
+          payload,
+        },
+      });
+
+      return NextResponse.json({
+        ok: true,
+        message: `Action dismissed for ${getDismissalLabel(kind as ProposedAction["kind"])}.`,
+      });
+    }
 
     if (kind === "invoice_reminder") {
       const invoiceId = String(payload?.invoiceId || "").trim();

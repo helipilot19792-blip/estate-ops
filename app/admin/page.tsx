@@ -1572,6 +1572,7 @@ export default function AdminPage() {
   const [reassignSelections, setReassignSelections] = useState<Record<string, string>>({});
   const [reassigningJobId, setReassigningJobId] = useState<string | null>(null);
   const [assigningSelfJobId, setAssigningSelfJobId] = useState<string | null>(null);
+  const [acceptingOnBehalfSlotId, setAcceptingOnBehalfSlotId] = useState<string | null>(null);
   const [highlightedJobId, setHighlightedJobId] = useState<string | null>(null);
   const [syncingCalendarsNow, setSyncingCalendarsNow] = useState(false);
   const [deletingPropertyId, setDeletingPropertyId] = useState<string | null>(null);
@@ -6081,6 +6082,72 @@ export default function AdminPage() {
       setError(err instanceof Error ? err.message : "Could not assign you to this job.");
     } finally {
       setAssigningSelfJobId(null);
+    }
+  }
+
+  async function acceptCleanerJobOnBehalf(jobId: string, slot: JobSlot) {
+    if (!currentOrganizationId) {
+      setError("No organization is selected.");
+      return;
+    }
+
+    if (!slot.cleaner_account_id) {
+      setError("Assign a cleaner before accepting on their behalf.");
+      return;
+    }
+
+    const cleanerName = getCleanerAccountName(slot.cleaner_account_id);
+    const confirmed = window.confirm(
+      `Mark slot ${slot.slot_number} as accepted for ${cleanerName}?\n\nUse this only when the cleaner verbally confirmed the job outside the app.`
+    );
+    if (!confirmed) return;
+
+    setError("");
+    setActionMessage("");
+    setAcceptingOnBehalfSlotId(slot.id);
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("Could not verify your admin session.");
+      }
+
+      const response = await fetch("/api/admin/accept-cleaner-job-on-behalf", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          organizationId: currentOrganizationId,
+          jobId,
+          slotId: slot.id,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || "Could not accept the cleaner job.");
+      }
+
+      setActionMessage(
+        payload?.alreadyAccepted
+          ? `${cleanerName} was already accepted on this job.`
+          : `${cleanerName} accepted verbally. The job slot is now marked accepted.`
+      );
+      await loadData();
+      setHighlightedJobId(jobId);
+      setTimeout(() => {
+        document.getElementById(`job-${jobId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 50);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not accept the cleaner job.");
+    } finally {
+      setAcceptingOnBehalfSlotId(null);
     }
   }
 
@@ -20546,6 +20613,9 @@ This removes its linked members and deletes the grounds account.`
                       const draft = getSlotPaymentDraft(slot);
                       const offerHistory = getSlotOfferHistory(slot);
                       const isPaymentExpanded = expandedPaymentSlotIds.has(slot.id);
+                      const canAcceptOnBehalf =
+                        Boolean(slot.cleaner_account_id) &&
+                        ["offered", "stranded"].includes(String(slot.status || "").toLowerCase());
 
                       return (
                         <div key={slot.id} className="rounded-[18px] border border-[#eadfce] bg-white px-3 py-3 text-xs text-[#6f6255]">
@@ -20592,6 +20662,19 @@ This removes its linked members and deletes the grounds account.`
                                 className="inline-flex rounded-full bg-[#241c15] px-3 py-1 font-semibold text-white transition hover:bg-[#4a3829] disabled:cursor-not-allowed disabled:opacity-60"
                               >
                                 {retryingNotificationSlotId === `cleaner-${slot.id}` ? "Resending..." : "Resend notifications"}
+                              </button>
+                            ) : null}
+                            {canAcceptOnBehalf ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void acceptCleanerJobOnBehalf(job.id, slot);
+                                }}
+                                disabled={acceptingOnBehalfSlotId === slot.id}
+                                className="inline-flex rounded-full border border-[#2f6b55] bg-[#f4fbf4] px-3 py-1 font-semibold text-[#2f6b55] transition hover:bg-[#e9f7ed] disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {acceptingOnBehalfSlotId === slot.id ? "Accepting..." : "Accept for cleaner"}
                               </button>
                             ) : null}
                           </div>
