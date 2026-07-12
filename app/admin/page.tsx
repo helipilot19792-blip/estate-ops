@@ -702,10 +702,10 @@ type PropertyWorkflowTab = "add" | "setup" | "directory" | "health";
 type PropertySetupTab = "overview" | "guestDevice" | "access" | "calendars" | "knowledge" | "vendors" | "sops" | "checklists";
 type JobWorkflowTab = "cleaning" | "grounds" | "active" | "reliability" | "notifications" | "exceptions";
 type InvoiceWorkflowTab = "create" | "running" | "existing" | "defaults" | "history";
-type InvoiceDocumentKind = "invoice" | "statement";
+type InvoiceDocumentKind = "invoice" | "statement" | "quote";
 type TeamWorkflowTab = "invites" | "users" | "cleaners" | "grounds";
 type TeamInviteRole = "admin" | "cleaner" | "grounds";
-type InvoiceHistoryFilter = "all" | "unpaid" | "paid" | "draft" | "void";
+type InvoiceHistoryFilter = "all" | "unpaid" | "paid" | "draft" | "void" | "quotes";
 const DEFAULT_INVOICE_WORKFLOW_TAB: InvoiceWorkflowTab = "history";
 const DEFAULT_INVOICE_HISTORY_STATUS_FILTER: InvoiceHistoryFilter = "unpaid";
 type BookingsFilterStatus = "upcoming" | "current" | "past" | "all";
@@ -911,6 +911,19 @@ type PropertyInvoiceRateRow = {
   created_at?: string | null;
   updated_at?: string | null;
 };
+type QuotePricingMode = "flat_rate" | "hourly" | "percent_revenue";
+type QuotePropertySnapshot = {
+  property_name?: string | null;
+  address?: string | null;
+  property_type?: string | null;
+  square_footage?: string | null;
+  floors?: string | null;
+  bedrooms?: string | null;
+  bathrooms?: string | null;
+  owner_name?: string | null;
+  owner_email?: string | null;
+  owner_phone?: string | null;
+};
 type OwnerInvoiceLineItem = {
   id: string;
   description: string;
@@ -921,14 +934,23 @@ type OwnerInvoiceLineItem = {
   source_id?: string | null;
   receipt_urls?: string[];
   receipt_names?: string[];
+  pricing_mode?: QuotePricingMode;
+  service_name?: string;
+  service_scope?: string | null;
+  included?: boolean;
+  estimated_hours?: number | string | null;
+  revenue_percent?: number | string | null;
+  revenue_basis?: string | null;
+  revenue_estimate?: number | string | null;
 };
 type OwnerInvoiceRow = {
   id: string;
   organization_id: string;
-  owner_account_id: string;
+  owner_account_id: string | null;
   property_id: string | null;
   invoice_number: string;
-  status: "draft" | "sent" | "paid" | "void";
+  status: "draft" | "sent" | "paid" | "void" | "accepted" | "declined" | "expired";
+  document_kind?: InvoiceDocumentKind | null;
   issue_date: string;
   due_date: string | null;
   company_name: string | null;
@@ -940,6 +962,11 @@ type OwnerInvoiceRow = {
   payment_instructions: string | null;
   tax_lines?: OwnerInvoiceTaxLine[] | null;
   line_items: OwnerInvoiceLineItem[];
+  prospect_name?: string | null;
+  prospect_email?: string | null;
+  prospect_phone?: string | null;
+  property_snapshot?: QuotePropertySnapshot | null;
+  accepted_property_id?: string | null;
   invoice_source?: "generated" | "uploaded" | null;
   uploaded_invoice_url?: string | null;
   uploaded_invoice_name?: string | null;
@@ -1646,6 +1673,16 @@ export default function AdminPage() {
   const [invoiceReplyToEmail, setInvoiceReplyToEmail] = useState("");
   const [invoiceHeaderText, setInvoiceHeaderText] = useState("");
   const [invoicePaymentInstructions, setInvoicePaymentInstructions] = useState("");
+  const [quotePropertyName, setQuotePropertyName] = useState("");
+  const [quotePropertyAddress, setQuotePropertyAddress] = useState("");
+  const [quotePropertyType, setQuotePropertyType] = useState("");
+  const [quoteSquareFootage, setQuoteSquareFootage] = useState("");
+  const [quoteFloors, setQuoteFloors] = useState("");
+  const [quoteBedrooms, setQuoteBedrooms] = useState("");
+  const [quoteBathrooms, setQuoteBathrooms] = useState("");
+  const [quoteProspectName, setQuoteProspectName] = useState("");
+  const [quoteProspectEmail, setQuoteProspectEmail] = useState("");
+  const [quoteProspectPhone, setQuoteProspectPhone] = useState("");
   const [invoiceRemindersEnabled, setInvoiceRemindersEnabled] = useState(false);
   const [invoiceReminderDaysAfterSent, setInvoiceReminderDaysAfterSent] = useState("15");
   const [invoiceReminderRepeatDays, setInvoiceReminderRepeatDays] = useState("15");
@@ -1678,6 +1715,7 @@ export default function AdminPage() {
   const [invoiceHistoryOpenSections, setInvoiceHistoryOpenSections] = useState({
     drafts: true,
     active: true,
+    quotes: true,
     paid: false,
   });
   const [dirtyPropertyInvoiceRateIds, setDirtyPropertyInvoiceRateIds] = useState<Set<string>>(() => new Set());
@@ -1699,6 +1737,7 @@ export default function AdminPage() {
   });
 
   const [propertyName, setPropertyName] = useState("");
+  const [quoteToPropertyInvoiceId, setQuoteToPropertyInvoiceId] = useState<string | null>(null);
   const [propertyEntryMode, setPropertyEntryMode] = useState<PropertyEntryMode>("manual");
   const [propertyStreet, setPropertyStreet] = useState("");
   const [propertyCity, setPropertyCity] = useState("");
@@ -4034,6 +4073,7 @@ export default function AdminPage() {
   }
 
   function resetManualPropertyForm() {
+    setQuoteToPropertyInvoiceId(null);
     setPropertyName("");
     setPropertyStreet("");
     setPropertyCity("");
@@ -4215,6 +4255,18 @@ export default function AdminPage() {
       });
 
       const geocodeWarning = String(created?.geocodeWarning || "").trim();
+      if (quoteToPropertyInvoiceId && created?.property?.id) {
+        const { error: linkError } = await supabase
+          .from("owner_invoices")
+          .update({
+            accepted_property_id: created.property.id,
+            property_id: created.property.id,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", quoteToPropertyInvoiceId)
+          .eq("organization_id", currentOrganizationId);
+        if (linkError) throw linkError;
+      }
       if (geocodeWarning) {
         setError(geocodeWarning);
       }
@@ -4229,7 +4281,15 @@ export default function AdminPage() {
     }
 
     resetManualPropertyForm();
-    setActionMessage(ownerWasProvided ? "Property added and owner linked." : "Property added.");
+    setActionMessage(
+      quoteToPropertyInvoiceId
+        ? ownerWasProvided
+          ? "Property added from accepted quote and owner linked."
+          : "Property added from accepted quote."
+        : ownerWasProvided
+          ? "Property added and owner linked."
+          : "Property added."
+    );
     await loadData();
   }
 
@@ -11721,6 +11781,37 @@ This removes its linked members and deletes the grounds account.`
     setShowAdminNav(false);
   }
 
+  function startPropertySetupFromQuote(invoice: OwnerInvoiceRow) {
+    const snapshot = invoice.property_snapshot || {
+      property_name: null,
+      address: null,
+      owner_name: invoice.prospect_name || null,
+      owner_email: invoice.prospect_email || null,
+      owner_phone: invoice.prospect_phone || null,
+    };
+    const parsedAddress = parseAddressLine(String(snapshot.address || ""));
+    resetManualPropertyForm();
+    setQuoteToPropertyInvoiceId(invoice.id);
+    setPropertyEntryMode("manual");
+    setPropertyName(String(snapshot.property_name || ""));
+    setPropertyStreet(parsedAddress.street);
+    setPropertyCity(parsedAddress.city);
+    setPropertyProvince(parsedAddress.province);
+    setPropertyPostal(parsedAddress.postal);
+    setPropertyOwnerName(String(snapshot.owner_name || ""));
+    setPropertyOwnerEmail(String(snapshot.owner_email || ""));
+    setPropertyNotes(
+      [
+        `Created from accepted quote ${invoice.invoice_number}.`,
+        invoice.notes || "",
+      ]
+        .filter(Boolean)
+        .join("\n\n")
+    );
+    openAddPropertySection();
+    setActionMessage(`Property setup prefilled from quote ${invoice.invoice_number}.`);
+  }
+
   function openPropertyOwnerSetup(propertyId?: string) {
     if (propertyId) {
       setSelectedPropertyId(propertyId);
@@ -14179,6 +14270,15 @@ This removes its linked members and deletes the grounds account.`
   }
 
   function getLineItemTotal(item: OwnerInvoiceLineItem) {
+    if (item.included === false) return 0;
+    if (item.pricing_mode === "hourly") {
+      const hours = Number(item.estimated_hours || item.quantity || 0);
+      return hours * Number(item.rate || 0);
+    }
+    if (item.pricing_mode === "percent_revenue") {
+      const estimate = Number(item.revenue_estimate || 0);
+      if (estimate > 0) return estimate;
+    }
     return Number(item.quantity || 0) * Number(item.rate || 0);
   }
 
@@ -14775,11 +14875,63 @@ This removes its linked members and deletes the grounds account.`
   }
 
   function getEmptyInvoiceLineItem(): OwnerInvoiceLineItem {
-    return { id: `custom-${Date.now()}`, description: "", category: "expense", quantity: 1, rate: "", taxable: true };
+    return {
+      id: `custom-${Date.now()}`,
+      description: "",
+      category: "expense",
+      quantity: 1,
+      rate: "",
+      taxable: true,
+      pricing_mode: "flat_rate",
+      included: true,
+      estimated_hours: "",
+      revenue_percent: "",
+      revenue_basis: "",
+      revenue_estimate: "",
+    };
   }
 
-  function getInvoiceDocumentKind(invoice: Pick<OwnerInvoiceRow, "invoice_number"> | null | undefined): InvoiceDocumentKind {
-    return String(invoice?.invoice_number || "").toUpperCase().startsWith("STMT-") ? "statement" : "invoice";
+  function getInvoiceDocumentKind(invoice: Pick<OwnerInvoiceRow, "invoice_number" | "document_kind"> | null | undefined): InvoiceDocumentKind {
+    if (invoice?.document_kind === "invoice" || invoice?.document_kind === "statement" || invoice?.document_kind === "quote") {
+      return invoice.document_kind;
+    }
+    if (String(invoice?.invoice_number || "").toUpperCase().startsWith("STMT-")) return "statement";
+    if (String(invoice?.invoice_number || "").toUpperCase().startsWith("QUO-")) return "quote";
+    return "invoice";
+  }
+
+  function getDocumentLabel(documentKind: InvoiceDocumentKind) {
+    if (documentKind === "statement") return "Statement";
+    if (documentKind === "quote") return "Quote";
+    return "Invoice";
+  }
+
+  function buildQuotePropertySnapshot(): QuotePropertySnapshot {
+    return {
+      property_name: quotePropertyName.trim() || null,
+      address: quotePropertyAddress.trim() || null,
+      property_type: quotePropertyType.trim() || null,
+      square_footage: quoteSquareFootage.trim() || null,
+      floors: quoteFloors.trim() || null,
+      bedrooms: quoteBedrooms.trim() || null,
+      bathrooms: quoteBathrooms.trim() || null,
+      owner_name: quoteProspectName.trim() || null,
+      owner_email: quoteProspectEmail.trim().toLowerCase() || null,
+      owner_phone: quoteProspectPhone.trim() || null,
+    };
+  }
+
+  function applyQuotePropertySnapshot(snapshot?: QuotePropertySnapshot | null) {
+    setQuotePropertyName(String(snapshot?.property_name || ""));
+    setQuotePropertyAddress(String(snapshot?.address || ""));
+    setQuotePropertyType(String(snapshot?.property_type || ""));
+    setQuoteSquareFootage(String(snapshot?.square_footage || ""));
+    setQuoteFloors(String(snapshot?.floors || ""));
+    setQuoteBedrooms(String(snapshot?.bedrooms || ""));
+    setQuoteBathrooms(String(snapshot?.bathrooms || ""));
+    setQuoteProspectName(String(snapshot?.owner_name || ""));
+    setQuoteProspectEmail(String(snapshot?.owner_email || ""));
+    setQuoteProspectPhone(String(snapshot?.owner_phone || ""));
   }
 
   function resetInvoiceComposer() {
@@ -14795,6 +14947,7 @@ This removes its linked members and deletes the grounds account.`
     setInvoiceDocumentKind("invoice");
     setInvoiceApplyTax(true);
     setInvoiceLineItems([getEmptyInvoiceLineItem()]);
+    applyQuotePropertySnapshot(null);
     setInvoiceDraftDirty(false);
   }
 
@@ -14812,12 +14965,17 @@ This removes its linked members and deletes the grounds account.`
     }
 
     setEditingOwnerInvoiceId(invoice.id);
-    setInvoiceOwnerId(invoice.owner_account_id);
+    setInvoiceOwnerId(invoice.owner_account_id || "");
     setInvoicePropertyId(invoice.property_id || "");
     setInvoiceIssueDate(invoice.issue_date || getTodayYmd());
     setInvoiceDueDate(invoice.due_date || "");
     setInvoiceNotes(invoice.notes || "");
     setInvoiceDocumentKind(getInvoiceDocumentKind(invoice));
+    applyQuotePropertySnapshot(invoice.property_snapshot || {
+      owner_name: invoice.prospect_name || null,
+      owner_email: invoice.prospect_email || null,
+      owner_phone: invoice.prospect_phone || null,
+    });
     setInvoiceHeaderText(invoice.header_text || invoiceSettings?.header_text || "");
     setInvoicePaymentInstructions(invoice.payment_instructions || invoiceSettings?.payment_instructions || "");
     setInvoiceCompanyName(invoice.company_name || invoiceSettings?.company_name || "");
@@ -14873,6 +15031,20 @@ This removes its linked members and deletes the grounds account.`
         taxable: item.taxable !== false,
         receipt_urls: item.receipt_urls || [],
         receipt_names: item.receipt_names || [],
+        pricing_mode: item.pricing_mode || "flat_rate",
+        service_name: item.service_name?.trim() || item.description.trim(),
+        service_scope: item.service_scope?.trim() || null,
+        included: item.included !== false,
+        estimated_hours: item.estimated_hours === "" || item.estimated_hours === null || item.estimated_hours === undefined
+          ? null
+          : Number(item.estimated_hours),
+        revenue_percent: item.revenue_percent === "" || item.revenue_percent === null || item.revenue_percent === undefined
+          ? null
+          : Number(item.revenue_percent),
+        revenue_basis: item.revenue_basis?.trim() || null,
+        revenue_estimate: item.revenue_estimate === "" || item.revenue_estimate === null || item.revenue_estimate === undefined
+          ? null
+          : Number(item.revenue_estimate),
       }))
       .filter((item) => item.description && item.quantity > 0);
   }
@@ -14882,17 +15054,28 @@ This removes its linked members and deletes the grounds account.`
     const owner = ownerAccounts.find((account) => account.id === ownerId) || null;
     const property = properties.find((item) => item.id === invoicePropertyId) || null;
     const ownerLinkedProperties = ownerId ? getPropertiesForOwner(ownerId) : [];
+    const snapshot = buildQuotePropertySnapshot();
     const propertyName =
       invoiceDocumentKind === "statement"
         ? property?.name || property?.address || "Property statement"
-        : property?.name || property?.address || "All linked properties";
+        : invoiceDocumentKind === "quote"
+          ? snapshot.property_name || property?.name || snapshot.address || property?.address || "Property details pending confirmation"
+          : property?.name || property?.address || "All linked properties";
 
     return {
       owner,
       property,
-      ownerName: owner?.full_name || owner?.email || "Owner",
-      ownerEmail: owner?.email || "",
+      ownerName:
+        owner?.full_name ||
+        owner?.email ||
+        snapshot.owner_name ||
+        snapshot.owner_email ||
+        "Owner",
+      ownerEmail: owner?.email || snapshot.owner_email || "",
+      ownerPhone: snapshot.owner_phone || "",
       propertyName,
+      propertySnapshot: snapshot,
+      ownerLinkedProperties,
     };
   }
 
@@ -15248,11 +15431,13 @@ This removes its linked members and deletes the grounds account.`
           ? statementData.owner.id
           : ""
         : getInvoiceOwnerId();
+    const isQuoteComposer = invoiceDocumentKind === "quote";
+    const propertySnapshot = buildQuotePropertySnapshot();
     const editingInvoice = editingOwnerInvoiceId
       ? ownerInvoices.find((invoice) => invoice.id === editingOwnerInvoiceId)
       : null;
 
-    if (!effectiveOwnerId) {
+    if (!effectiveOwnerId && !isQuoteComposer) {
       setError(
         invoiceDocumentKind === "statement"
           ? statementData && !statementData.ok
@@ -15260,6 +15445,19 @@ This removes its linked members and deletes the grounds account.`
             : "Choose a property with a linked owner for this statement."
           : "Choose an owner for this invoice."
       );
+      return;
+    }
+
+    if (
+      isQuoteComposer &&
+      status === "sent" &&
+      !(
+        effectiveOwnerId ||
+        propertySnapshot.owner_email ||
+        propertySnapshot.owner_name
+      )
+    ) {
+      setError("Add an owner or prospect name before sending the quote.");
       return;
     }
 
@@ -15297,11 +15495,11 @@ This removes its linked members and deletes the grounds account.`
       invoiceDocumentKind === "statement" && statementData?.ok
         ? statementData.total
         : subtotal + taxTotal;
-    const documentLabel = invoiceDocumentKind === "statement" ? "Statement" : "Invoice";
+    const documentLabel = getDocumentLabel(invoiceDocumentKind);
     const documentLabelLower = documentLabel.toLowerCase();
     const invoiceNumber =
       editingInvoice?.invoice_number ||
-      `${invoiceDocumentKind === "statement" ? "STMT" : "INV"}-${Date.now().toString().slice(-8)}`;
+      `${invoiceDocumentKind === "statement" ? "STMT" : invoiceDocumentKind === "quote" ? "QUO" : "INV"}-${Date.now().toString().slice(-8)}`;
 
     setCreatingInvoice(true);
     setError("");
@@ -15310,8 +15508,9 @@ This removes its linked members and deletes the grounds account.`
     try {
       const timestamp = new Date().toISOString();
       const invoicePayload = {
-        owner_account_id: effectiveOwnerId,
+        owner_account_id: effectiveOwnerId || null,
         property_id: invoicePropertyId || null,
+        document_kind: invoiceDocumentKind,
         invoice_number: invoiceNumber,
         status,
         issue_date: invoiceIssueDate || getTodayYmd(),
@@ -15321,13 +15520,17 @@ This removes its linked members and deletes the grounds account.`
         from_email: invoiceFromEmail.trim().toLowerCase() || null,
         reply_to_email: invoiceReplyToEmail.trim().toLowerCase() || null,
         header_text: invoiceHeaderText.trim() || null,
+        prospect_name: isQuoteComposer ? propertySnapshot.owner_name : null,
+        prospect_email: isQuoteComposer ? propertySnapshot.owner_email : null,
+        prospect_phone: isQuoteComposer ? propertySnapshot.owner_phone : null,
+        property_snapshot: isQuoteComposer ? propertySnapshot : {},
         tax_lines: taxLines,
         notes:
           invoiceDocumentKind === "statement" && statementData?.ok
             ? statementData.notes || null
             : invoiceNotes.trim() || null,
         payment_instructions:
-          invoiceDocumentKind === "statement"
+          invoiceDocumentKind === "statement" || invoiceDocumentKind === "quote"
             ? null
             : invoicePaymentInstructions.trim() || null,
         line_items: validLineItems,
@@ -15541,7 +15744,7 @@ This removes its linked members and deletes the grounds account.`
           ? statementData.lineItems
           : []
         : getValidInvoiceLineItems();
-    const documentLabelLower = invoiceDocumentKind === "statement" ? "statement" : "invoice";
+    const documentLabelLower = getDocumentLabel(invoiceDocumentKind).toLowerCase();
 
     if (validLineItems.length === 0) {
       setError(
@@ -15593,7 +15796,9 @@ This removes its linked members and deletes the grounds account.`
           logoUrl: invoiceLogoUrl.trim() || null,
           ownerName: context.ownerName,
           ownerEmail: context.ownerEmail,
+          ownerPhone: context.ownerPhone,
           propertyName: context.propertyName,
+          propertySnapshot: context.propertySnapshot,
           issueDate: invoiceIssueDate || getTodayYmd(),
           dueDate: invoiceDocumentKind === "statement" ? null : invoiceDueDate || null,
           headerText: invoiceHeaderText.trim() || null,
@@ -15602,7 +15807,7 @@ This removes its linked members and deletes the grounds account.`
               ? statementData.notes || null
               : invoiceNotes.trim() || null,
           paymentInstructions:
-            invoiceDocumentKind === "statement"
+            invoiceDocumentKind === "statement" || invoiceDocumentKind === "quote"
               ? null
               : invoicePaymentInstructions.trim() || null,
           subtotal,
@@ -15641,6 +15846,11 @@ This removes its linked members and deletes the grounds account.`
     const owner = ownerAccounts.find((item) => item.id === invoice.owner_account_id);
     const property = properties.find((item) => item.id === invoice.property_id);
     const documentKind = getInvoiceDocumentKind(invoice);
+    const propertySnapshot = invoice.property_snapshot || {
+      owner_name: invoice.prospect_name || null,
+      owner_email: invoice.prospect_email || null,
+      owner_phone: invoice.prospect_phone || null,
+    };
 
     setViewingInvoicePdfId(invoice.id);
     setError("");
@@ -15666,14 +15876,19 @@ This removes its linked members and deletes the grounds account.`
           documentKind,
           companyName: invoice.company_name || "Property invoice",
           logoUrl: invoice.logo_url || null,
-          ownerName: owner?.full_name || owner?.email || "Owner",
-          ownerEmail: owner?.email || "",
-          propertyName: property?.name || property?.address || "All linked properties",
+          ownerName: owner?.full_name || owner?.email || propertySnapshot.owner_name || propertySnapshot.owner_email || "Owner",
+          ownerEmail: owner?.email || propertySnapshot.owner_email || "",
+          ownerPhone: propertySnapshot.owner_phone || "",
+          propertyName:
+            documentKind === "quote"
+              ? propertySnapshot.property_name || propertySnapshot.address || property?.name || property?.address || "Property details pending confirmation"
+              : property?.name || property?.address || "All linked properties",
+          propertySnapshot,
           issueDate: invoice.issue_date || getTodayYmd(),
           dueDate: invoice.due_date || null,
           headerText: invoice.header_text || null,
           notes: invoice.notes || null,
-          paymentInstructions: invoice.payment_instructions || null,
+          paymentInstructions: documentKind === "quote" ? null : invoice.payment_instructions || null,
           subtotal: Number(invoice.subtotal || 0),
           taxLines: Array.isArray(invoice.tax_lines) ? invoice.tax_lines : [],
           taxTotal: Number(invoice.tax_total || 0),
@@ -15699,16 +15914,18 @@ This removes its linked members and deletes the grounds account.`
   }
 
   async function sendExistingOwnerInvoice(invoiceId: string) {
+    const targetInvoice = ownerInvoices.find((invoice) => invoice.id === invoiceId);
+    const documentLabel = targetInvoice ? getDocumentLabel(getInvoiceDocumentKind(targetInvoice)) : "Invoice";
     setSendingInvoiceId(invoiceId);
     setError("");
     setActionMessage("");
 
     try {
       await sendOwnerInvoiceEmail(invoiceId, invoiceCcEmails);
-      setActionMessage("Invoice sent to owner.");
+      setActionMessage(`${documentLabel} sent.`);
       await loadData();
     } catch (err: unknown) {
-      setError(getErrorMessage(err, "Could not send invoice."));
+      setError(getErrorMessage(err, `Could not send ${documentLabel.toLowerCase()}.`));
     } finally {
       setSendingInvoiceId(null);
     }
@@ -15839,6 +16056,7 @@ This removes its linked members and deletes the grounds account.`
     setActionMessage("");
 
     try {
+      const documentKind = getInvoiceDocumentKind(invoice);
       const updates: Record<string, unknown> = {
         status,
         updated_at: new Date().toISOString(),
@@ -15856,22 +16074,32 @@ This removes its linked members and deletes the grounds account.`
 
       if (error) throw error;
 
-      const { error: eventError } = await supabase.from("owner_invoice_events").insert({
-        organization_id: currentOrganizationId,
-        invoice_id: invoice.id,
-        event_type: status === "paid" ? "marked_paid" : "marked_unpaid",
-        actor_profile_id: currentAdminUserId,
-        metadata: {
-          invoice_number: invoice.invoice_number,
-          total: Number(invoice.total || 0),
-        },
-      });
-      if (eventError && !isOptionalTableError(eventError)) throw eventError;
+      if (documentKind !== "quote") {
+        const { error: eventError } = await supabase.from("owner_invoice_events").insert({
+          organization_id: currentOrganizationId,
+          invoice_id: invoice.id,
+          event_type: status === "paid" ? "marked_paid" : "marked_unpaid",
+          actor_profile_id: currentAdminUserId,
+          metadata: {
+            invoice_number: invoice.invoice_number,
+            total: Number(invoice.total || 0),
+          },
+        });
+        if (eventError && !isOptionalTableError(eventError)) throw eventError;
+      }
 
       setOwnerInvoices((invoices) =>
         invoices.map((item) => (item.id === invoice.id ? { ...item, status } : item))
       );
-      setActionMessage(status === "paid" ? "Invoice marked as paid." : "Invoice marked as unpaid.");
+      setActionMessage(
+        documentKind === "quote"
+          ? status === "accepted"
+            ? "Quote marked as accepted."
+            : `Quote marked as ${status}.`
+          : status === "paid"
+            ? "Invoice marked as paid."
+            : "Invoice marked as unpaid."
+      );
     } catch (err: unknown) {
       setError(getErrorMessage(err, "Could not update invoice status."));
     } finally {
@@ -15913,6 +16141,7 @@ This removes its linked members and deletes the grounds account.`
   function renderInvoicesSection() {
     const ownerProperties = invoiceOwnerId ? getPropertiesForOwner(invoiceOwnerId) : properties;
     const isStatementComposer = invoiceDocumentKind === "statement";
+    const isQuoteComposer = invoiceDocumentKind === "quote";
     const statementSourceData = isStatementComposer ? getStatementSourceData() : null;
     const statementPreviewItems = statementSourceData?.ok ? statementSourceData.lineItems : [];
     const displayedInvoiceLineItems = isStatementComposer ? statementPreviewItems : invoiceLineItems;
@@ -15948,19 +16177,22 @@ This removes its linked members and deletes the grounds account.`
       ? ownerInvoices.find((invoice) => invoice.id === editingOwnerInvoiceId)
       : null;
     const allDraftInvoices = ownerInvoices.filter((invoice) => invoice.status === "draft");
-    const allActiveInvoices = ownerInvoices.filter((invoice) => invoice.status === "sent");
+    const allActiveInvoices = ownerInvoices.filter((invoice) => invoice.status === "sent" && getInvoiceDocumentKind(invoice) !== "quote");
+    const allQuoteInvoices = ownerInvoices.filter((invoice) => getInvoiceDocumentKind(invoice) === "quote");
     const allPaidInvoices = ownerInvoices.filter((invoice) => invoice.status === "paid" || invoice.status === "void");
     const normalizedInvoiceSearch = invoiceHistorySearch.trim().toLowerCase();
     const invoiceMatchesSearch = (invoice: OwnerInvoiceRow) => {
       if (!normalizedInvoiceSearch) return true;
       const owner = ownerAccounts.find((item) => item.id === invoice.owner_account_id);
       const property = properties.find((item) => item.id === invoice.property_id);
+      const propertySnapshot = invoice.property_snapshot || {};
       const lineItemText = Array.isArray(invoice.line_items)
         ? invoice.line_items.map((item) => `${item.description || ""} ${item.category || ""}`).join(" ")
         : "";
       return [
         invoice.invoice_number,
         invoice.status,
+        invoice.document_kind,
         invoice.issue_date,
         invoice.due_date,
         invoice.notes,
@@ -15969,8 +16201,14 @@ This removes its linked members and deletes the grounds account.`
         String(invoice.total || ""),
         owner?.full_name,
         owner?.email,
+        invoice.prospect_name,
+        invoice.prospect_email,
+        invoice.prospect_phone,
         property?.name,
         property?.address,
+        propertySnapshot.property_name,
+        propertySnapshot.address,
+        propertySnapshot.property_type,
         lineItemText,
       ]
         .filter(Boolean)
@@ -16000,7 +16238,8 @@ This removes its linked members and deletes the grounds account.`
       })
     );
     const draftInvoices = scopedOwnerInvoices.filter((invoice) => invoice.status === "draft");
-    const activeInvoices = scopedOwnerInvoices.filter((invoice) => invoice.status === "sent");
+    const quoteInvoices = scopedOwnerInvoices.filter((invoice) => getInvoiceDocumentKind(invoice) === "quote");
+    const activeInvoices = scopedOwnerInvoices.filter((invoice) => invoice.status === "sent" && getInvoiceDocumentKind(invoice) !== "quote");
     const paidOnlyInvoices = scopedOwnerInvoices.filter((invoice) => invoice.status === "paid");
     const voidInvoices = scopedOwnerInvoices.filter((invoice) => invoice.status === "void");
     const paidInvoices =
@@ -16011,10 +16250,11 @@ This removes its linked members and deletes the grounds account.`
     const selectedCombineOwnerIds = Array.from(new Set(selectedInvoicesToCombine.map((invoice) => invoice.owner_account_id)));
     const canCombineSelectedInvoices = selectedInvoicesToCombine.length >= 2 && selectedCombineOwnerIds.length === 1;
     const selectedCombineTotal = selectedInvoicesToCombine.reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
-    const filteredUnpaidTotal = activeInvoices.reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
     const visibleInvoiceCount =
       invoiceHistoryStatusFilter === "unpaid"
         ? activeInvoices.length
+        : invoiceHistoryStatusFilter === "quotes"
+          ? quoteInvoices.length
         : invoiceHistoryStatusFilter === "paid"
           ? paidOnlyInvoices.length
           : invoiceHistoryStatusFilter === "draft"
@@ -16024,6 +16264,7 @@ This removes its linked members and deletes the grounds account.`
               : scopedOwnerInvoices.length;
     const showDraftSection = invoiceHistoryStatusFilter === "all" || invoiceHistoryStatusFilter === "draft";
     const showUnpaidSection = invoiceHistoryStatusFilter === "all" || invoiceHistoryStatusFilter === "unpaid";
+    const showQuoteSection = invoiceHistoryStatusFilter === "all" || invoiceHistoryStatusFilter === "quotes";
     const showPaidSection = invoiceHistoryStatusFilter === "all" || invoiceHistoryStatusFilter === "paid" || invoiceHistoryStatusFilter === "void";
     const invoiceFilterActive =
       !!normalizedInvoiceSearch ||
@@ -16043,7 +16284,7 @@ This removes its linked members and deletes the grounds account.`
       {
         key: "create",
         title: "Create invoice or statement",
-        description: "Build a regular invoice or owner statement, preview the PDF, then send it.",
+        description: "Build an invoice, quote, or owner statement, preview the PDF, then send it.",
         meta: `${allActiveInvoices.length} unpaid`,
         accent: "bg-[#3b82f6]",
         activeClass: "border-[#3b82f6] bg-[#eff6ff] text-[#12305d] shadow-[0_18px_36px_rgba(59,130,246,0.18)]",
@@ -16086,8 +16327,8 @@ This removes its linked members and deletes the grounds account.`
       },
       {
         key: "history",
-        title: "Invoices",
-        description: "Review unpaid invoices first, then filter into drafts, paid, void, downloads, and resend actions.",
+        title: "Invoices and quotes",
+        description: "Review unpaid invoices, quotes, drafts, paid items, downloads, and resend actions.",
         meta: `${ownerInvoices.length} total`,
         accent: "bg-[#ef4444]",
         activeClass: "border-[#241c15] bg-[#241c15] text-[#f8f2e8] shadow-[0_18px_36px_rgba(36,28,21,0.18)]",
@@ -16152,11 +16393,28 @@ This removes its linked members and deletes the grounds account.`
     const renderInvoiceHistoryCard = (invoice: OwnerInvoiceRow) => {
       const owner = ownerAccounts.find((item) => item.id === invoice.owner_account_id);
       const property = properties.find((item) => item.id === invoice.property_id);
+      const propertySnapshot = invoice.property_snapshot || null;
       const isPaidInvoice = invoice.status === "paid";
       const isDraftInvoice = invoice.status === "draft";
-      const isSentUnpaidInvoice = invoice.status === "sent";
+      const isQuote = getInvoiceDocumentKind(invoice) === "quote";
+      const isAcceptedQuote = invoice.status === "accepted";
+      const isSentUnpaidInvoice = invoice.status === "sent" && !isQuote;
       const isSelectedForCombine = selectedInvoiceIdsToCombine.includes(invoice.id);
       const documentKind = getInvoiceDocumentKind(invoice);
+      const historyOwnerLabel =
+        owner?.full_name ||
+        owner?.email ||
+        invoice.prospect_name ||
+        invoice.prospect_email ||
+        propertySnapshot?.owner_name ||
+        propertySnapshot?.owner_email ||
+        "Prospect";
+      const historyPropertyLabel =
+        property?.name ||
+        property?.address ||
+        propertySnapshot?.property_name ||
+        propertySnapshot?.address ||
+        "Property details pending confirmation";
 
       return (
         <div
@@ -16207,11 +16465,16 @@ This removes its linked members and deletes the grounds account.`
                     statement
                   </span>
                 ) : null}
+                {documentKind === "quote" ? (
+                  <span className="rounded-full border border-[#c7d2fe] bg-white px-2.5 py-0.5 text-xs font-semibold text-[#4338ca]">
+                    quote
+                  </span>
+                ) : null}
               </div>
               <div className={`mt-1 text-sm ${
                 isDraftInvoice ? "text-[#6f4b9a]" : isPaidInvoice ? "text-[#2f5f36]" : "text-[#7f4242]"
               }`}>
-                {owner?.full_name || owner?.email || "Owner"} | {property?.name || property?.address || "All properties"}
+                {historyOwnerLabel} | {historyPropertyLabel}
               </div>
               {getInvoiceHistorySummary(invoice) ? (
                 <div className={`mt-1 text-xs ${
@@ -16253,19 +16516,25 @@ This removes its linked members and deletes the grounds account.`
               </button>
               <button
                 type="button"
-                onClick={() => void updateOwnerInvoiceStatus(invoice, invoice.status === "paid" ? "sent" : "paid")}
+                onClick={() => void updateOwnerInvoiceStatus(invoice, isQuote ? (isAcceptedQuote ? "sent" : "accepted") : invoice.status === "paid" ? "sent" : "paid")}
                 disabled={updatingInvoiceStatusId === invoice.id}
                 className={`rounded-full border px-4 py-2 text-sm font-medium disabled:opacity-60 ${
-                  invoice.status === "paid"
+                  isQuote
+                    ? "border-[#c7d2fe] bg-[#eef2ff] text-[#4338ca] hover:bg-[#e0e7ff]"
+                    : invoice.status === "paid"
                     ? "border-[#d8c7ab] bg-white text-[#5f4c3b] hover:bg-[#f7f1e8]"
                     : "border-[#bbdfc0] bg-[#f0fbf2] text-[#236b30] hover:bg-[#e4f7e8]"
                 }`}
               >
                 {updatingInvoiceStatusId === invoice.id
                   ? "Updating..."
-                  : invoice.status === "paid"
-                    ? "Mark unpaid"
-                    : "Mark paid"}
+                  : isQuote
+                    ? isAcceptedQuote
+                      ? "Mark sent"
+                      : "Mark accepted"
+                    : invoice.status === "paid"
+                      ? "Mark unpaid"
+                      : "Mark paid"}
               </button>
               <button
                 type="button"
@@ -16280,10 +16549,12 @@ This removes its linked members and deletes the grounds account.`
                       ? "Send file"
                       : "Resend file"
                     : invoice.status === "draft"
-                      ? "Send PDF"
+                      ? isQuote
+                        ? "Send quote"
+                        : "Send PDF"
                       : "Resend PDF"}
               </button>
-              {!isDraftInvoice && !isPaidInvoice ? (
+              {!isDraftInvoice && !isPaidInvoice && !isQuote ? (
                 <button
                   type="button"
                   onClick={() => void sendExistingOwnerInvoiceReminder(invoice.id)}
@@ -16291,6 +16562,15 @@ This removes its linked members and deletes the grounds account.`
                   className="rounded-full border border-[#f1cf8f] bg-[#fff8e8] px-4 py-2 text-sm font-medium text-[#8a6112] transition hover:bg-[#fff4d8] disabled:opacity-60"
                 >
                   {sendingInvoiceReminderId === invoice.id ? "Sending..." : "Send reminder"}
+                </button>
+              ) : null}
+              {isQuote && isAcceptedQuote && !invoice.accepted_property_id ? (
+                <button
+                  type="button"
+                  onClick={() => startPropertySetupFromQuote(invoice)}
+                  className="rounded-full border border-[#bbf7d0] bg-[#f0fdf4] px-4 py-2 text-sm font-medium text-[#166534] transition hover:bg-[#dcfce7]"
+                >
+                  Bring into property setup
                 </button>
               ) : null}
               <button
@@ -16916,6 +17196,8 @@ This removes its linked members and deletes the grounds account.`
                         ? `${editingInvoice.invoice_number} is being edited`
                         : invoiceWorkflowTab === "running"
                           ? "Create a running invoice"
+                          : invoiceDocumentKind === "quote"
+                            ? "Create service quote"
                           : invoiceDocumentKind === "statement"
                             ? "Create owner statement"
                             : "Create owner invoice"}
@@ -16923,6 +17205,8 @@ This removes its linked members and deletes the grounds account.`
                     <p className="mt-1 text-sm leading-6 text-[#6f6255]">
                       {invoiceWorkflowTab === "running"
                         ? "Save as draft to keep adding cleaning, grounds, supplies, and receipts until you are ready to send it."
+                        : invoiceDocumentKind === "quote"
+                          ? "Draft a service quote with optional property intake details, preview the PDF, and send it when ready."
                         : invoiceDocumentKind === "statement"
                           ? "Build a statement, preview the PDF, and send it to the owner when it is ready."
                           : "Build an invoice, preview the PDF, and send it to the owner when it is ready."}
@@ -16941,6 +17225,7 @@ This removes its linked members and deletes the grounds account.`
               <div className="mb-4 inline-flex rounded-full border border-[#d8c7ab] bg-[#fcfaf7] p-1">
                 {[
                   { value: "invoice", label: "Invoice" },
+                  { value: "quote", label: "Quote" },
                   { value: "statement", label: "Statement" },
                 ].map((option) => {
                   const selected = invoiceDocumentKind === option.value;
@@ -16995,7 +17280,7 @@ This removes its linked members and deletes the grounds account.`
                   }}
                   disabled={isStatementComposer}
                 >
-                  <option value="">Owner auto-selected</option>
+                  <option value="">{isQuoteComposer ? "Optional linked owner" : "Owner auto-selected"}</option>
                   {ownerAccounts.map((owner) => (
                     <option key={owner.id} value={owner.id}>
                       {owner.full_name || owner.email}
@@ -17005,6 +17290,108 @@ This removes its linked members and deletes the grounds account.`
                 {invoiceDocumentKind === "statement" ? (
                   <div className="rounded-[18px] border border-[#d8c7ab] bg-[#fffaf0] px-4 py-3 text-sm text-[#5f4c3b] md:col-span-2">
                     Statements now summarize saved invoice history for the selected property only. Draft and void invoices are excluded so the statement stays accurate for bookkeeping and tax use.
+                  </div>
+                ) : null}
+                {isQuoteComposer ? (
+                  <div className="rounded-[22px] border border-[#c7d2fe] bg-[#f8faff] p-4 md:col-span-2">
+                    <div className="text-sm font-semibold text-[#312e81]">Quote property intake</div>
+                    <p className="mt-1 text-xs leading-5 text-[#5b5aa6]">
+                      Fill in whatever you know now. Empty fields stay hidden on the quote so partial information still looks clean.
+                    </p>
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                      <input
+                        className="rounded-[16px] border border-[#c7d2fe] bg-white px-4 py-3 text-sm outline-none focus:border-[#818cf8]"
+                        placeholder="Property or listing name"
+                        value={quotePropertyName}
+                        onChange={(e) => {
+                          setInvoiceDraftDirty(true);
+                          setQuotePropertyName(e.target.value);
+                        }}
+                      />
+                      <input
+                        className="rounded-[16px] border border-[#c7d2fe] bg-white px-4 py-3 text-sm outline-none focus:border-[#818cf8]"
+                        placeholder="Street address"
+                        value={quotePropertyAddress}
+                        onChange={(e) => {
+                          setInvoiceDraftDirty(true);
+                          setQuotePropertyAddress(e.target.value);
+                        }}
+                      />
+                      <input
+                        className="rounded-[16px] border border-[#c7d2fe] bg-white px-4 py-3 text-sm outline-none focus:border-[#818cf8]"
+                        placeholder="Property type"
+                        value={quotePropertyType}
+                        onChange={(e) => {
+                          setInvoiceDraftDirty(true);
+                          setQuotePropertyType(e.target.value);
+                        }}
+                      />
+                      <input
+                        className="rounded-[16px] border border-[#c7d2fe] bg-white px-4 py-3 text-sm outline-none focus:border-[#818cf8]"
+                        placeholder="Square footage"
+                        value={quoteSquareFootage}
+                        onChange={(e) => {
+                          setInvoiceDraftDirty(true);
+                          setQuoteSquareFootage(e.target.value);
+                        }}
+                      />
+                      <input
+                        className="rounded-[16px] border border-[#c7d2fe] bg-white px-4 py-3 text-sm outline-none focus:border-[#818cf8]"
+                        placeholder="Floors"
+                        value={quoteFloors}
+                        onChange={(e) => {
+                          setInvoiceDraftDirty(true);
+                          setQuoteFloors(e.target.value);
+                        }}
+                      />
+                      <div className="grid grid-cols-2 gap-3">
+                        <input
+                          className="rounded-[16px] border border-[#c7d2fe] bg-white px-4 py-3 text-sm outline-none focus:border-[#818cf8]"
+                          placeholder="Bedrooms"
+                          value={quoteBedrooms}
+                          onChange={(e) => {
+                            setInvoiceDraftDirty(true);
+                            setQuoteBedrooms(e.target.value);
+                          }}
+                        />
+                        <input
+                          className="rounded-[16px] border border-[#c7d2fe] bg-white px-4 py-3 text-sm outline-none focus:border-[#818cf8]"
+                          placeholder="Bathrooms"
+                          value={quoteBathrooms}
+                          onChange={(e) => {
+                            setInvoiceDraftDirty(true);
+                            setQuoteBathrooms(e.target.value);
+                          }}
+                        />
+                      </div>
+                      <input
+                        className="rounded-[16px] border border-[#c7d2fe] bg-white px-4 py-3 text-sm outline-none focus:border-[#818cf8]"
+                        placeholder="Owner or prospect name"
+                        value={quoteProspectName}
+                        onChange={(e) => {
+                          setInvoiceDraftDirty(true);
+                          setQuoteProspectName(e.target.value);
+                        }}
+                      />
+                      <input
+                        className="rounded-[16px] border border-[#c7d2fe] bg-white px-4 py-3 text-sm outline-none focus:border-[#818cf8]"
+                        placeholder="Owner or prospect email"
+                        value={quoteProspectEmail}
+                        onChange={(e) => {
+                          setInvoiceDraftDirty(true);
+                          setQuoteProspectEmail(e.target.value);
+                        }}
+                      />
+                      <input
+                        className="rounded-[16px] border border-[#c7d2fe] bg-white px-4 py-3 text-sm outline-none focus:border-[#818cf8] md:col-span-2"
+                        placeholder="Owner or prospect phone"
+                        value={quoteProspectPhone}
+                        onChange={(e) => {
+                          setInvoiceDraftDirty(true);
+                          setQuoteProspectPhone(e.target.value);
+                        }}
+                      />
+                    </div>
                   </div>
                 ) : null}
                 <div className="flex flex-wrap gap-2 rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] p-3 md:col-span-2">
@@ -17050,7 +17437,7 @@ This removes its linked members and deletes the grounds account.`
                   </label>
                 ) : (
                   <label className="text-xs font-medium text-[#5f5245]">
-                    Due date
+                    {isQuoteComposer ? "Valid through" : "Due date"}
                     <input
                       type="date"
                       className="mt-1 w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
@@ -17105,16 +17492,18 @@ This removes its linked members and deletes the grounds account.`
                 </div>
               ) : (
                 <label className="mt-4 flex cursor-pointer flex-wrap items-center justify-between gap-3 rounded-[18px] border border-[#d8c7ab] bg-[#fffaf0] px-4 py-3 text-sm text-[#5f4c3b]">
-                  <span className="flex items-center gap-3">
-                    <input
-                      type="checkbox"
-                      checked={invoiceApplyTax}
+                    <span className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={invoiceApplyTax}
                       onChange={(e) => {
                         setInvoiceDraftDirty(true);
                         setInvoiceApplyTax(e.target.checked);
-                      }}
-                    />
-                    <span className="font-semibold text-[#241c15]">Apply {invoiceTaxModeLabel} to this invoice</span>
+                        }}
+                      />
+                    <span className="font-semibold text-[#241c15]">
+                      Apply {invoiceTaxModeLabel} to this {isQuoteComposer ? "quote" : "invoice"}
+                    </span>
                   </span>
                   <span className="text-xs font-medium text-[#8a7b68]">{invoiceTaxLabel}</span>
                 </label>
@@ -17189,77 +17578,198 @@ This removes its linked members and deletes the grounds account.`
                           </div>
                         ) : (
                           <>
-                            <div className="grid gap-2 md:grid-cols-[1fr_130px_110px_120px_auto] md:items-end">
-                              <label className="text-xs font-medium text-[#5f5245]">
-                                Description
-                                <input
-                                  className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
-                                  placeholder="Line item description"
-                                  value={item.description}
-                                  onChange={(e) => updateInvoiceLineItem(item.id, { description: e.target.value })}
-                                />
-                              </label>
-                              <label className="text-xs font-medium text-[#5f5245]">
-                                Category
-                                <select
-                                  className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
-                                  value={item.category}
-                                  onChange={(e) => updateInvoiceLineItem(item.id, { category: e.target.value as OwnerInvoiceLineItem["category"] })}
-                                >
-                                  <option value="turnover">Turnover</option>
-                                  <option value="grounds">Grounds</option>
-                                  <option value="expense">Expense</option>
-                                  <option value="other">Other</option>
-                                </select>
-                              </label>
-                              <label className="text-xs font-medium text-[#5f5245]">
-                                Quantity
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="1"
-                                  className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
-                                  value={item.quantity}
-                                  onChange={(e) => updateInvoiceLineItem(item.id, { quantity: e.target.value })}
-                                  onBlur={(e) => {
-                                    const roundedQuantity = Math.max(1, Math.round(Number(e.target.value || 1)));
-                                    updateInvoiceLineItem(item.id, { quantity: roundedQuantity });
-                                  }}
-                                />
-                              </label>
-                              <label className="text-xs font-medium text-[#5f5245]">
-                                Rate
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="0.01"
-                                  className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
-                                  value={item.rate}
-                                  onFocus={() => {
-                                    if (Number(item.rate || 0) === 0) {
-                                      updateInvoiceLineItem(item.id, { rate: "" });
-                                    }
-                                  }}
-                                  onChange={(e) => updateInvoiceLineItem(item.id, { rate: e.target.value })}
-                                />
-                              </label>
-                              <button
-                                type="button"
-                                onClick={() => removeInvoiceLineItem(item.id)}
-                                className="rounded-full border border-[#efc6c6] bg-[#fff5f5] px-3 py-2 text-sm text-[#8a2e22]"
-                              >
-                                Remove
-                              </button>
-                            </div>
+                            {isQuoteComposer ? (
+                              <>
+                                <div className="mb-3">
+                                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-[#c7d2fe] bg-[#f8faff] px-3 py-1.5 text-xs font-semibold text-[#4338ca]">
+                                    <input
+                                      type="checkbox"
+                                      checked={item.included !== false}
+                                      onChange={(e) => updateInvoiceLineItem(item.id, { included: e.target.checked })}
+                                    />
+                                    Include service
+                                  </label>
+                                </div>
+                                <div className="grid gap-2 md:grid-cols-[1fr_150px_110px_120px_auto] md:items-end">
+                                  <label className="text-xs font-medium text-[#5f5245]">
+                                    Service
+                                    <input
+                                      className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                                      placeholder="Service name"
+                                      value={item.description}
+                                      onChange={(e) => updateInvoiceLineItem(item.id, { description: e.target.value, service_name: e.target.value })}
+                                    />
+                                  </label>
+                                  <label className="text-xs font-medium text-[#5f5245]">
+                                    Pricing
+                                    <select
+                                      className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                                      value={item.pricing_mode || "flat_rate"}
+                                      onChange={(e) => updateInvoiceLineItem(item.id, { pricing_mode: e.target.value as QuotePricingMode })}
+                                    >
+                                      <option value="flat_rate">Flat rate</option>
+                                      <option value="hourly">Hourly</option>
+                                      <option value="percent_revenue">% of revenue</option>
+                                    </select>
+                                  </label>
+                                  <label className="text-xs font-medium text-[#5f5245]">
+                                    Qty
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="1"
+                                      className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                                      value={item.quantity}
+                                      onChange={(e) => updateInvoiceLineItem(item.id, { quantity: e.target.value })}
+                                      onBlur={(e) => {
+                                        const roundedQuantity = Math.max(1, Math.round(Number(e.target.value || 1)));
+                                        updateInvoiceLineItem(item.id, { quantity: roundedQuantity });
+                                      }}
+                                    />
+                                  </label>
+                                  <label className="text-xs font-medium text-[#5f5245]">
+                                    Rate
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                                      value={item.rate}
+                                      onFocus={() => {
+                                        if (Number(item.rate || 0) === 0) {
+                                          updateInvoiceLineItem(item.id, { rate: "" });
+                                        }
+                                      }}
+                                      onChange={(e) => updateInvoiceLineItem(item.id, { rate: e.target.value })}
+                                    />
+                                  </label>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeInvoiceLineItem(item.id)}
+                                    className="rounded-full border border-[#efc6c6] bg-[#fff5f5] px-3 py-2 text-sm text-[#8a2e22]"
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+                                <div className="mt-3 grid gap-2 md:grid-cols-2">
+                                  <input
+                                    className="rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                                    placeholder="Service scope or assumptions"
+                                    value={item.service_scope || ""}
+                                    onChange={(e) => updateInvoiceLineItem(item.id, { service_scope: e.target.value })}
+                                  />
+                                  {(item.pricing_mode || "flat_rate") === "hourly" ? (
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="0.25"
+                                      className="rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                                      placeholder="Estimated hours"
+                                      value={item.estimated_hours || ""}
+                                      onChange={(e) => updateInvoiceLineItem(item.id, { estimated_hours: e.target.value })}
+                                    />
+                                  ) : (item.pricing_mode || "flat_rate") === "percent_revenue" ? (
+                                    <div className="grid grid-cols-2 gap-2">
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        className="rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                                        placeholder="Revenue %"
+                                        value={item.revenue_percent || ""}
+                                        onChange={(e) => updateInvoiceLineItem(item.id, { revenue_percent: e.target.value })}
+                                      />
+                                      <input
+                                        className="rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                                        placeholder="Revenue basis"
+                                        value={item.revenue_basis || ""}
+                                        onChange={(e) => updateInvoiceLineItem(item.id, { revenue_basis: e.target.value })}
+                                      />
+                                    </div>
+                                  ) : (
+                                    <div className="rounded-[14px] border border-dashed border-[#d9ccbb] bg-[#fcfaf7] px-3 py-2 text-sm text-[#7f7263]">
+                                      Flat rate service
+                                    </div>
+                                  )}
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <div className="grid gap-2 md:grid-cols-[1fr_130px_110px_120px_auto] md:items-end">
+                                  <label className="text-xs font-medium text-[#5f5245]">
+                                    Description
+                                    <input
+                                      className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                                      placeholder="Line item description"
+                                      value={item.description}
+                                      onChange={(e) => updateInvoiceLineItem(item.id, { description: e.target.value })}
+                                    />
+                                  </label>
+                                  <label className="text-xs font-medium text-[#5f5245]">
+                                    Category
+                                    <select
+                                      className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                                      value={item.category}
+                                      onChange={(e) => updateInvoiceLineItem(item.id, { category: e.target.value as OwnerInvoiceLineItem["category"] })}
+                                    >
+                                      <option value="turnover">Turnover</option>
+                                      <option value="grounds">Grounds</option>
+                                      <option value="expense">Expense</option>
+                                      <option value="other">Other</option>
+                                    </select>
+                                  </label>
+                                  <label className="text-xs font-medium text-[#5f5245]">
+                                    Quantity
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="1"
+                                      className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                                      value={item.quantity}
+                                      onChange={(e) => updateInvoiceLineItem(item.id, { quantity: e.target.value })}
+                                      onBlur={(e) => {
+                                        const roundedQuantity = Math.max(1, Math.round(Number(e.target.value || 1)));
+                                        updateInvoiceLineItem(item.id, { quantity: roundedQuantity });
+                                      }}
+                                    />
+                                  </label>
+                                  <label className="text-xs font-medium text-[#5f5245]">
+                                    Rate
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                                      value={item.rate}
+                                      onFocus={() => {
+                                        if (Number(item.rate || 0) === 0) {
+                                          updateInvoiceLineItem(item.id, { rate: "" });
+                                        }
+                                      }}
+                                      onChange={(e) => updateInvoiceLineItem(item.id, { rate: e.target.value })}
+                                    />
+                                  </label>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeInvoiceLineItem(item.id)}
+                                    className="rounded-full border border-[#efc6c6] bg-[#fff5f5] px-3 py-2 text-sm text-[#8a2e22]"
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+                              </>
+                            )}
                             <div className="mt-3 flex flex-wrap items-center gap-2">
-                              <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-[#d8c7ab] bg-[#fffdf8] px-3 py-1.5 text-xs font-medium text-[#5f4c3b] hover:bg-[#fff7e8]">
-                                <input
-                                  type="checkbox"
-                                  checked={item.taxable !== false}
-                                  onChange={(e) => updateInvoiceLineItem(item.id, { taxable: e.target.checked })}
-                                />
-                                Taxable / subject to configured tax
-                              </label>
+                              {!isQuoteComposer ? (
+                                <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-[#d8c7ab] bg-[#fffdf8] px-3 py-1.5 text-xs font-medium text-[#5f4c3b] hover:bg-[#fff7e8]">
+                                  <input
+                                    type="checkbox"
+                                    checked={item.taxable !== false}
+                                    onChange={(e) => updateInvoiceLineItem(item.id, { taxable: e.target.checked })}
+                                  />
+                                  Taxable / subject to configured tax
+                                </label>
+                              ) : null}
                               <label className="inline-flex cursor-pointer items-center rounded-full border border-[#d8c7ab] bg-[#fffdf8] px-3 py-1.5 text-xs font-medium text-[#5f4c3b] hover:bg-[#fff7e8]">
                                 {uploadingReceiptLineItemId === item.id ? "Uploading..." : "Attach receipt"}
                                 <input
@@ -17318,7 +17828,7 @@ This removes its linked members and deletes the grounds account.`
                       onClick={addInvoiceLineItem}
                       className="w-full rounded-full border border-[#b9822b] bg-white px-4 py-2 text-sm font-semibold text-[#5f3e12] transition hover:bg-[#fffaf0] sm:w-auto"
                     >
-                      + Add custom expense
+                      {isQuoteComposer ? "+ Add service" : "+ Add custom expense"}
                     </button>
                   )}
                 </div>
@@ -17326,7 +17836,7 @@ This removes its linked members and deletes the grounds account.`
 
               <textarea
                 className="mt-4 min-h-[90px] w-full rounded-[20px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
-                placeholder="Invoice notes"
+                placeholder={isQuoteComposer ? "Quote notes, assumptions, exclusions, and schedule details" : "Invoice notes"}
                 value={invoiceNotes}
                 onChange={(e) => {
                   setInvoiceDraftDirty(true);
@@ -17431,6 +17941,7 @@ This removes its linked members and deletes the grounds account.`
               {([
                 { key: "all" as const, label: "All" },
                 { key: "unpaid" as const, label: "Unpaid" },
+                { key: "quotes" as const, label: "Quotes" },
                 { key: "paid" as const, label: "Paid" },
                 { key: "draft" as const, label: "Drafts" },
                 { key: "void" as const, label: "Void" },
@@ -17456,16 +17967,16 @@ This removes its linked members and deletes the grounds account.`
               <div className="mt-1 text-xl font-semibold text-[#7f1d1d]">{allActiveInvoices.length}</div>
             </div>
             <div className="rounded-[16px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">Paid</div>
-              <div className="mt-1 text-xl font-semibold text-[#236b30]">{allPaidInvoices.filter((invoice) => invoice.status === "paid").length}</div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">Quotes</div>
+              <div className="mt-1 text-xl font-semibold text-[#4338ca]">{allQuoteInvoices.length}</div>
             </div>
             <div className="rounded-[16px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3">
               <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">Drafts</div>
               <div className="mt-1 text-xl font-semibold text-[#6f4b9a]">{allDraftInvoices.length}</div>
             </div>
             <div className="rounded-[16px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">Visible unpaid</div>
-              <div className="mt-1 text-xl font-semibold text-[#7f1d1d]">{formatCurrency(filteredUnpaidTotal)}</div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">Paid</div>
+              <div className="mt-1 text-xl font-semibold text-[#236b30]">{allPaidInvoices.filter((invoice) => invoice.status === "paid").length}</div>
             </div>
           </div>
           {invoiceFilterActive ? (
@@ -17532,6 +18043,9 @@ This removes its linked members and deletes the grounds account.`
               : null}
             {showUnpaidSection
               ? renderInvoiceHistoryGroup("active", "Sent and unpaid", activeInvoices, "No sent unpaid invoices.")
+              : null}
+            {showQuoteSection
+              ? renderInvoiceHistoryGroup("quotes", "Quotes", quoteInvoices, "No quotes yet.")
               : null}
             {showPaidSection
               ? renderInvoiceHistoryGroup(

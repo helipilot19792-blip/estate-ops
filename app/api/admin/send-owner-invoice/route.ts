@@ -52,8 +52,28 @@ type InvoiceLineItem = {
   category?: string | null;
   quantity?: number | string | null;
   rate?: number | string | null;
+  pricing_mode?: "flat_rate" | "hourly" | "percent_revenue";
+  service_scope?: string | null;
+  included?: boolean;
+  estimated_hours?: number | string | null;
+  revenue_percent?: number | string | null;
+  revenue_basis?: string | null;
+  revenue_estimate?: number | string | null;
   receipt_urls?: string[] | null;
   receipt_names?: string[] | null;
+};
+
+type QuotePropertySnapshot = {
+  property_name?: string | null;
+  address?: string | null;
+  property_type?: string | null;
+  square_footage?: string | null;
+  floors?: string | null;
+  bedrooms?: string | null;
+  bathrooms?: string | null;
+  owner_name?: string | null;
+  owner_email?: string | null;
+  owner_phone?: string | null;
 };
 
 type InvoiceTaxLine = {
@@ -86,6 +106,21 @@ function normalizeTaxLines(invoice: any): InvoiceTaxLine[] {
   if (normalized.length > 0) return normalized;
 
   return [];
+}
+
+function getDocumentKind(invoice: any): "invoice" | "statement" | "quote" {
+  if (invoice?.document_kind === "invoice" || invoice?.document_kind === "statement" || invoice?.document_kind === "quote") {
+    return invoice.document_kind;
+  }
+  if (String(invoice?.invoice_number || "").toUpperCase().startsWith("STMT-")) return "statement";
+  if (String(invoice?.invoice_number || "").toUpperCase().startsWith("QUO-")) return "quote";
+  return "invoice";
+}
+
+function getDocumentLabel(documentKind: "invoice" | "statement" | "quote") {
+  if (documentKind === "statement") return "Statement";
+  if (documentKind === "quote") return "Quote";
+  return "Invoice";
 }
 
 export async function POST(request: NextRequest) {
@@ -173,14 +208,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const { data: owner, error: ownerError } = await service
-      .from("owner_accounts")
-      .select("id, email, full_name, profile_id")
-      .eq("id", invoice.owner_account_id)
-      .maybeSingle();
+    const { data: owner, error: ownerError } = invoice.owner_account_id
+      ? await service
+          .from("owner_accounts")
+          .select("id, email, full_name, profile_id")
+          .eq("id", invoice.owner_account_id)
+          .maybeSingle()
+      : { data: null, error: null };
 
-    if (ownerError || !owner?.email) {
-      return NextResponse.json({ error: ownerError?.message || "Owner email not found." }, { status: 500 });
+    if (ownerError) {
+      return NextResponse.json({ error: ownerError.message }, { status: 500 });
     }
 
     const { data: property } = invoice.property_id
@@ -207,18 +244,63 @@ export async function POST(request: NextRequest) {
     }
 
     const lineItems = Array.isArray(invoice.line_items)
-      ? (invoice.line_items as InvoiceLineItem[])
+      ? (invoice.line_items as InvoiceLineItem[]).filter((item) => !(getDocumentKind(invoice) === "quote" && item.included === false))
       : [];
+    const propertySnapshot =
+      invoice.property_snapshot && typeof invoice.property_snapshot === "object"
+        ? (invoice.property_snapshot as QuotePropertySnapshot)
+        : null;
     const taxLines = normalizeTaxLines(invoice);
     const isUploadedInvoice = invoice.invoice_source === "uploaded" && !!invoice.uploaded_invoice_url;
-    const documentKind = String(invoice.invoice_number || "").toUpperCase().startsWith("STMT-") ? "statement" : "invoice";
-    const documentLabel = documentKind === "statement" ? "Statement" : "Invoice";
+    const documentKind = getDocumentKind(invoice);
+    const documentLabel = getDocumentLabel(documentKind);
     const documentLabelLower = documentLabel.toLowerCase();
+    const recipientName =
+      owner?.full_name ||
+      owner?.email ||
+      invoice.prospect_name ||
+      invoice.prospect_email ||
+      propertySnapshot?.owner_name ||
+      propertySnapshot?.owner_email ||
+      "Owner";
+    const recipientEmail =
+      owner?.email ||
+      invoice.prospect_email ||
+      propertySnapshot?.owner_email ||
+      "";
+    const recipientPhone = invoice.prospect_phone || propertySnapshot?.owner_phone || "";
+    const propertyLabel =
+      documentKind === "quote"
+        ? propertySnapshot?.property_name || propertySnapshot?.address || property?.name || property?.address || "Property details pending confirmation"
+        : property?.name || property?.address || "All linked properties";
     const ownerPortalUrl = `${request.nextUrl.origin}/owner?tab=invoices&invoiceId=${encodeURIComponent(invoice.id)}`;
+
+    if (!recipientEmail && !owner?.profile_id) {
+      return NextResponse.json({ error: `${documentLabel} recipient email is not configured.` }, { status: 400 });
+    }
     const rows = lineItems
       .map((item) => {
         const quantity = Number(item.quantity || 0);
         const rate = Number(item.rate || 0);
+        const pricingMode = item.pricing_mode || "flat_rate";
+        const rateLabel =
+          documentKind === "quote"
+            ? pricingMode === "hourly"
+              ? `${formatCurrency(rate)}/hr`
+              : pricingMode === "percent_revenue"
+                ? `${Number(item.revenue_percent || 0)}%`
+                : formatCurrency(rate)
+            : formatCurrency(rate);
+        const amountLabel =
+          documentKind === "quote"
+            ? pricingMode === "hourly"
+              ? `${formatCurrency(rate * Number(item.estimated_hours || quantity || 0))} est.`
+              : pricingMode === "percent_revenue"
+                ? Number(item.revenue_estimate || 0) > 0
+                  ? `${formatCurrency(Number(item.revenue_estimate || 0))} est.`
+                  : escapeHtml(String(item.revenue_basis || "Variable"))
+                : formatCurrency(quantity * rate)
+            : formatCurrency(quantity * rate);
         const receiptLinks = (item.receipt_urls || [])
           .map((url, index) => {
             const label = item.receipt_names?.[index] || `Receipt ${index + 1}`;
@@ -229,15 +311,26 @@ export async function POST(request: NextRequest) {
           <tr>
             <td style="padding:10px;border-bottom:1px solid #eadfce;">
               ${escapeHtml(item.description)}
+              ${documentKind === "quote" && item.service_scope ? `<div style="margin-top:6px;font-size:12px;color:#6f6255;">${escapeHtml(item.service_scope)}</div>` : ""}
               ${receiptLinks ? `<div style="margin-top:6px;font-size:12px;">${receiptLinks}</div>` : ""}
             </td>
             <td style="padding:10px;border-bottom:1px solid #eadfce;text-align:right;">${quantity}</td>
-            <td style="padding:10px;border-bottom:1px solid #eadfce;text-align:right;">${formatCurrency(rate)}</td>
-            <td style="padding:10px;border-bottom:1px solid #eadfce;text-align:right;">${formatCurrency(quantity * rate)}</td>
+            <td style="padding:10px;border-bottom:1px solid #eadfce;text-align:right;">${rateLabel}</td>
+            <td style="padding:10px;border-bottom:1px solid #eadfce;text-align:right;">${amountLabel}</td>
           </tr>
         `;
       })
       .join("");
+
+    const quoteDetailRows = [
+      propertySnapshot?.address ? `<div><strong>Address:</strong> ${escapeHtml(propertySnapshot.address)}</div>` : "",
+      propertySnapshot?.property_type ? `<div><strong>Type:</strong> ${escapeHtml(propertySnapshot.property_type)}</div>` : "",
+      propertySnapshot?.square_footage ? `<div><strong>Size:</strong> ${escapeHtml(propertySnapshot.square_footage)}</div>` : "",
+      propertySnapshot?.floors ? `<div><strong>Floors:</strong> ${escapeHtml(propertySnapshot.floors)}</div>` : "",
+      propertySnapshot?.bedrooms ? `<div><strong>Bedrooms:</strong> ${escapeHtml(propertySnapshot.bedrooms)}</div>` : "",
+      propertySnapshot?.bathrooms ? `<div><strong>Bathrooms:</strong> ${escapeHtml(propertySnapshot.bathrooms)}</div>` : "",
+      recipientPhone ? `<div><strong>Phone:</strong> ${escapeHtml(recipientPhone)}</div>` : "",
+    ].filter(Boolean);
 
     const html = `
       <div style="font-family:Arial,sans-serif;color:#241c15;line-height:1.5;padding:20px;">
@@ -246,16 +339,18 @@ export async function POST(request: NextRequest) {
         <p style="margin:0 0 16px;color:#6f6255;">${documentLabel} ${escapeHtml(invoice.invoice_number)}</p>
         ${invoice.header_text ? `<p style="margin:0 0 18px;">${escapeHtml(invoice.header_text)}</p>` : ""}
         <div style="margin-bottom:18px;padding:14px;border:1px solid #eadfce;border-radius:14px;background:#fcfaf7;">
-          <div><strong>Owner:</strong> ${escapeHtml(owner.full_name || owner.email)}</div>
-          <div><strong>Property:</strong> ${escapeHtml(property?.name || property?.address || "All linked properties")}</div>
+          <div><strong>${documentKind === "quote" ? "Contact" : "Owner"}:</strong> ${escapeHtml(recipientName)}</div>
+          ${recipientEmail ? `<div><strong>Email:</strong> ${escapeHtml(recipientEmail)}</div>` : ""}
+          <div><strong>Property:</strong> ${escapeHtml(propertyLabel)}</div>
           <div><strong>Issue date:</strong> ${escapeHtml(invoice.issue_date)}</div>
-          ${invoice.due_date ? `<div><strong>Due date:</strong> ${escapeHtml(invoice.due_date)}</div>` : ""}
+          ${invoice.due_date ? `<div><strong>${documentKind === "quote" ? "Valid through" : "Due date"}:</strong> ${escapeHtml(invoice.due_date)}</div>` : ""}
+          ${documentKind === "quote" ? quoteDetailRows.join("") : ""}
         </div>
         ${isUploadedInvoice ? `<p style="margin:0 0 18px;color:#5f5245;">The original uploaded ${documentLabelLower} is attached to this email.</p>` : ""}
         ${lineItems.length > 0 ? `<table style="width:100%;border-collapse:collapse;margin:0 0 18px;">
           <thead>
             <tr style="background:#f7f3ee;">
-              <th style="padding:10px;text-align:left;">Description</th>
+              <th style="padding:10px;text-align:left;">${documentKind === "quote" ? "Service" : "Description"}</th>
               <th style="padding:10px;text-align:right;">Qty</th>
               <th style="padding:10px;text-align:right;">Rate</th>
               <th style="padding:10px;text-align:right;">Amount</th>
@@ -277,8 +372,8 @@ export async function POST(request: NextRequest) {
           </div>
         </div>
         ${invoice.notes ? `<p style="margin-top:18px;color:#5f5245;">${escapeHtml(invoice.notes)}</p>` : ""}
-        ${documentKind !== "statement" && invoice.payment_instructions ? `<p style="margin-top:18px;"><strong>Payment:</strong> ${escapeHtml(invoice.payment_instructions)}</p>` : ""}
-        <div style="margin-top:22px;padding:16px;border:1px solid #eadfce;border-radius:14px;background:#fcfaf7;">
+        ${documentKind === "invoice" && invoice.payment_instructions ? `<p style="margin-top:18px;"><strong>Payment:</strong> ${escapeHtml(invoice.payment_instructions)}</p>` : ""}
+        ${owner?.profile_id ? `<div style="margin-top:22px;padding:16px;border:1px solid #eadfce;border-radius:14px;background:#fcfaf7;">
           <p style="margin:0 0 12px;color:#5f5245;">
             Log in to your owner portal to view billing history and download files, including PDF, CSV, and JSON exports.
           </p>
@@ -288,7 +383,7 @@ export async function POST(request: NextRequest) {
           <p style="margin:12px 0 0;font-size:12px;color:#8a7b68;word-break:break-all;">
             ${escapeHtml(ownerPortalUrl)}
           </p>
-        </div>
+        </div>` : ""}
       </div>
     `;
 
@@ -299,14 +394,16 @@ export async function POST(request: NextRequest) {
           documentKind,
           companyName: invoice.company_name || "Property invoice",
           logoUrl: invoice.logo_url || null,
-          ownerName: owner.full_name || owner.email,
-          ownerEmail: owner.email,
-          propertyName: property?.name || property?.address || "All linked properties",
+          ownerName: recipientName,
+          ownerEmail: recipientEmail,
+          ownerPhone: recipientPhone,
+          propertyName: propertyLabel,
+          propertySnapshot,
           issueDate: invoice.issue_date,
           dueDate: invoice.due_date || null,
           headerText: invoice.header_text || null,
           notes: invoice.notes || null,
-          paymentInstructions: documentKind === "statement" ? null : invoice.payment_instructions || null,
+          paymentInstructions: documentKind === "invoice" ? invoice.payment_instructions || null : null,
           subtotal: Number(invoice.subtotal || 0),
           taxLines,
           taxTotal: Number(invoice.tax_total || 0),
@@ -325,7 +422,7 @@ export async function POST(request: NextRequest) {
     const resend = new Resend(process.env.RESEND_API_KEY);
     const result = await resend.emails.send({
       from: formatSender(fromEmail, invoice.company_name),
-      to: owner.email,
+      to: recipientEmail,
       cc: ccEmails.length > 0 ? ccEmails : undefined,
       replyTo: replyToEmail || undefined,
       subject: `${documentLabel} ${invoice.invoice_number} from ${invoice.company_name || "your property manager"}`,
@@ -371,7 +468,7 @@ export async function POST(request: NextRequest) {
         organization_id: invoice.organization_id,
         invoice_id: invoice.id,
         event_type: invoiceWasDraft ? "invoice_sent" : "invoice_resent",
-        recipient_email: owner.email,
+        recipient_email: recipientEmail,
         cc_emails: ccEmails,
         resend_email_id: result.data?.id ?? null,
         actor_profile_id: profile.id,
@@ -384,8 +481,8 @@ export async function POST(request: NextRequest) {
       console.warn("[send-owner-invoice] invoice event could not be recorded", eventError);
     }
 
-    let pushResult = { sent: 0, skipped: owner.profile_id ? 0 : 1, errors: [] as string[] };
-    if (owner.profile_id) {
+    let pushResult = { sent: 0, skipped: owner?.profile_id ? 0 : 1, errors: [] as string[] };
+    if (owner?.profile_id) {
       try {
         pushResult = await sendStaffPushNotifications("owner", [owner.profile_id], {
           title: `${documentLabel} ${invoice.invoice_number} is ready`,

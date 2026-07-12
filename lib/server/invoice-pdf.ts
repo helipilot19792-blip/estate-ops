@@ -5,18 +5,40 @@ export type InvoicePdfLineItem = {
   category?: string | null;
   quantity?: number | string | null;
   rate?: number | string | null;
+  pricing_mode?: "flat_rate" | "hourly" | "percent_revenue";
+  service_scope?: string | null;
+  included?: boolean;
+  estimated_hours?: number | string | null;
+  revenue_percent?: number | string | null;
+  revenue_basis?: string | null;
+  revenue_estimate?: number | string | null;
   receipt_urls?: string[] | null;
   receipt_names?: string[] | null;
 };
 
+export type InvoicePdfPropertySnapshot = {
+  property_name?: string | null;
+  address?: string | null;
+  property_type?: string | null;
+  square_footage?: string | null;
+  floors?: string | null;
+  bedrooms?: string | null;
+  bathrooms?: string | null;
+  owner_name?: string | null;
+  owner_email?: string | null;
+  owner_phone?: string | null;
+};
+
 export type InvoicePdfInput = {
   invoiceNumber: string;
-  documentKind?: "invoice" | "statement";
+  documentKind?: "invoice" | "statement" | "quote";
   companyName: string;
   logoUrl: string | null;
   ownerName: string;
   ownerEmail: string;
+  ownerPhone?: string | null;
   propertyName: string;
+  propertySnapshot?: InvoicePdfPropertySnapshot | null;
   issueDate: string;
   dueDate: string | null;
   headerText: string | null;
@@ -90,6 +112,39 @@ async function fetchLogoBytes(logoUrl: string | null) {
   }
 }
 
+function getDocumentLabel(documentKind: InvoicePdfInput["documentKind"]) {
+  if (documentKind === "statement") return "Statement";
+  if (documentKind === "quote") return "Quote";
+  return "Invoice";
+}
+
+function getQuoteRateLabel(item: InvoicePdfLineItem) {
+  const pricingMode = item.pricing_mode || "flat_rate";
+  if (pricingMode === "hourly") {
+    return `${formatCurrency(Number(item.rate || 0))}/hr`;
+  }
+  if (pricingMode === "percent_revenue") {
+    const percent = Number(item.revenue_percent || 0);
+    return percent > 0 ? `${percent}%` : "Variable";
+  }
+  return formatCurrency(Number(item.rate || 0));
+}
+
+function getQuoteAmountLabel(item: InvoicePdfLineItem) {
+  const pricingMode = item.pricing_mode || "flat_rate";
+  if (pricingMode === "hourly") {
+    const hours = Number(item.estimated_hours || item.quantity || 0);
+    const amount = Number(item.rate || 0) * hours;
+    return hours > 0 ? `${formatCurrency(amount)} est.` : "Estimate";
+  }
+  if (pricingMode === "percent_revenue") {
+    const basis = String(item.revenue_basis || "of revenue").trim();
+    const estimate = Number(item.revenue_estimate || 0);
+    return estimate > 0 ? `${formatCurrency(estimate)} est.` : basis;
+  }
+  return formatCurrency(Number(item.quantity || 0) * Number(item.rate || 0));
+}
+
 export async function createInvoicePdfBuffer(input: InvoicePdfInput) {
   const pdfDoc = await PDFDocument.create();
   const regularFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -105,7 +160,7 @@ export async function createInvoicePdfBuffer(input: InvoicePdfInput) {
   const columnQty = 370;
   const columnRate = 420;
   const columnAmount = 500;
-  const documentLabel = input.documentKind === "statement" ? "Statement" : "Invoice";
+  const documentLabel = getDocumentLabel(input.documentKind);
 
   function addPageIfNeeded(gap = 24) {
     if (y > 56 + gap) return;
@@ -157,10 +212,30 @@ export async function createInvoicePdfBuffer(input: InvoicePdfInput) {
 
   drawText(input.companyName, pageLeft, 22, { bold: true, gap: 28 });
   drawText(`${documentLabel} ${input.invoiceNumber}`, pageLeft, 16, { bold: true, gap: 24 });
-  drawText(`Owner: ${input.ownerName} <${input.ownerEmail}>`, pageLeft, 10.5, { color: muted, gap: 15 });
+  const contactLine = [input.ownerName, input.ownerEmail ? `<${input.ownerEmail}>` : "", input.ownerPhone || ""]
+    .filter(Boolean)
+    .join(" ");
+  drawText(`${input.documentKind === "quote" ? "Contact" : "Owner"}: ${contactLine || input.ownerName}`, pageLeft, 10.5, { color: muted, gap: 15 });
   drawText(`Property: ${input.propertyName}`, pageLeft, 10.5, { color: muted, gap: 15 });
   drawText(`Issue date: ${input.issueDate}`, pageLeft, 10.5, { color: muted, gap: 15 });
-  if (input.dueDate) drawText(`Due date: ${input.dueDate}`, pageLeft, 10.5, { color: muted, gap: 15 });
+  if (input.dueDate) drawText(`${input.documentKind === "quote" ? "Valid through" : "Due date"}: ${input.dueDate}`, pageLeft, 10.5, { color: muted, gap: 15 });
+
+  if (input.documentKind === "quote" && input.propertySnapshot) {
+    const detailLines = [
+      input.propertySnapshot.address ? `Address: ${input.propertySnapshot.address}` : "",
+      input.propertySnapshot.property_type ? `Type: ${input.propertySnapshot.property_type}` : "",
+      input.propertySnapshot.square_footage ? `Size: ${input.propertySnapshot.square_footage}` : "",
+      input.propertySnapshot.floors ? `Floors: ${input.propertySnapshot.floors}` : "",
+      input.propertySnapshot.bedrooms ? `Bedrooms: ${input.propertySnapshot.bedrooms}` : "",
+      input.propertySnapshot.bathrooms ? `Bathrooms: ${input.propertySnapshot.bathrooms}` : "",
+    ].filter(Boolean);
+
+    if (detailLines.length > 0) {
+      y -= 4;
+      drawText("Property details", pageLeft, 11.5, { bold: true, gap: 17 });
+      for (const line of detailLines) drawText(line, pageLeft, 10.5, { color: muted, gap: 15 });
+    }
+  }
 
   if (input.headerText) {
     y -= 8;
@@ -169,13 +244,14 @@ export async function createInvoicePdfBuffer(input: InvoicePdfInput) {
 
   y -= 12;
   drawRule(16);
-  drawText("Description", pageLeft, 11.5, { bold: true, gap: 0 });
+  drawText(input.documentKind === "quote" ? "Service" : "Description", pageLeft, 11.5, { bold: true, gap: 0 });
   page.drawText("Qty", { x: columnQty, y, size: 11.5, font: boldFont, color: ink });
   page.drawText("Rate", { x: columnRate, y, size: 11.5, font: boldFont, color: ink });
   page.drawText("Amount", { x: columnAmount, y, size: 11.5, font: boldFont, color: ink });
   y -= 22;
 
   for (const item of input.lineItems) {
+    if (input.documentKind === "quote" && item.included === false) continue;
     addPageIfNeeded(64);
     const quantity = Number(item.quantity || 0);
     const rate = Number(item.rate || 0);
@@ -185,11 +261,21 @@ export async function createInvoicePdfBuffer(input: InvoicePdfInput) {
 
     page.drawText(descriptionLines[0] || description, { x: pageLeft, y, size: 10.5, font: regularFont, color: ink });
     page.drawText(String(quantity), { x: columnQty, y, size: 10.5, font: regularFont, color: ink });
-    page.drawText(formatCurrency(rate), { x: columnRate, y, size: 10.5, font: regularFont, color: ink });
-    page.drawText(formatCurrency(amount), { x: columnAmount, y, size: 10.5, font: regularFont, color: ink });
+    page.drawText(input.documentKind === "quote" ? getQuoteRateLabel(item) : formatCurrency(rate), { x: columnRate, y, size: 10.5, font: regularFont, color: ink });
+    page.drawText(input.documentKind === "quote" ? getQuoteAmountLabel(item) : formatCurrency(amount), { x: columnAmount, y, size: 10.5, font: regularFont, color: ink });
     y -= 17;
 
     for (const extraLine of descriptionLines.slice(1)) drawText(extraLine, 62, 9.5, { color: muted, gap: 14 });
+    if (input.documentKind === "quote" && item.service_scope) {
+      for (const scopeLine of wrapPdfText(`Scope: ${item.service_scope}`, 74)) {
+        drawText(scopeLine, 62, 8.5, { color: muted, gap: 12 });
+      }
+    }
+    if (input.documentKind === "quote" && item.pricing_mode === "percent_revenue" && item.revenue_basis) {
+      for (const basisLine of wrapPdfText(`Basis: ${item.revenue_basis}`, 74)) {
+        drawText(basisLine, 62, 8.5, { color: muted, gap: 12 });
+      }
+    }
 
     (item.receipt_urls || []).forEach((_url, index) => {
       const label = getReceiptLabel(item, index);
@@ -214,7 +300,7 @@ export async function createInvoicePdfBuffer(input: InvoicePdfInput) {
     for (const line of wrapPdfText(input.notes, 82)) drawText(line, pageLeft, 10.5, { color: muted, gap: 15 });
   }
 
-  if (input.documentKind !== "statement" && input.paymentInstructions) {
+  if (input.documentKind === "invoice" && input.paymentInstructions) {
     drawText("Payment", pageLeft, 12, { bold: true, gap: 17 });
     for (const line of wrapPdfText(input.paymentInstructions, 82)) drawText(line, pageLeft, 10.5, { color: muted, gap: 15 });
   }

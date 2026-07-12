@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { createInvoicePdfBuffer, type InvoicePdfLineItem } from "@/lib/server/invoice-pdf";
+import {
+  createInvoicePdfBuffer,
+  type InvoicePdfLineItem,
+  type InvoicePdfPropertySnapshot,
+} from "@/lib/server/invoice-pdf";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const publicSupabaseKey =
@@ -97,7 +101,12 @@ export async function POST(request: NextRequest) {
       typeof body?.total === "number"
         ? Number(body.total)
         : subtotal + taxTotal;
-    const documentKind = body?.documentKind === "statement" ? "statement" : "invoice";
+    const documentKind =
+      body?.documentKind === "statement"
+        ? "statement"
+        : body?.documentKind === "quote"
+          ? "quote"
+          : "invoice";
 
     const pdfBuffer = await createInvoicePdfBuffer({
       invoiceNumber: String(body?.invoiceNumber || "PREVIEW"),
@@ -106,7 +115,12 @@ export async function POST(request: NextRequest) {
       logoUrl: body?.logoUrl ? String(body.logoUrl) : null,
       ownerName: String(body?.ownerName || "Owner"),
       ownerEmail: String(body?.ownerEmail || ""),
+      ownerPhone: body?.ownerPhone ? String(body.ownerPhone) : null,
       propertyName: String(body?.propertyName || "All linked properties"),
+      propertySnapshot:
+        body?.propertySnapshot && typeof body.propertySnapshot === "object"
+          ? (body.propertySnapshot as InvoicePdfPropertySnapshot)
+          : null,
       issueDate: String(body?.issueDate || new Date().toISOString().slice(0, 10)),
       dueDate: body?.dueDate ? String(body.dueDate) : null,
       headerText: body?.headerText ? String(body.headerText) : null,
