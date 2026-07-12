@@ -924,6 +924,26 @@ type QuotePropertySnapshot = {
   owner_email?: string | null;
   owner_phone?: string | null;
 };
+type QuoteAiSuggestedLine = {
+  description: string;
+  category: "other";
+  quantity: number;
+  rate: number;
+  pricing_mode: QuotePricingMode;
+  estimated_hours?: number | null;
+  revenue_percent?: number | null;
+  revenue_basis?: string | null;
+  service_scope?: string | null;
+  taxable: boolean;
+  included: boolean;
+};
+type QuoteAiSuggestions = {
+  services: QuoteAiSuggestedLine[];
+  notesDraft: string;
+  missingDetails: string[];
+  pricingAdvice: string[];
+  readinessSummary: string;
+};
 type OwnerInvoiceLineItem = {
   id: string;
   description: string;
@@ -1683,6 +1703,9 @@ export default function AdminPage() {
   const [quoteProspectName, setQuoteProspectName] = useState("");
   const [quoteProspectEmail, setQuoteProspectEmail] = useState("");
   const [quoteProspectPhone, setQuoteProspectPhone] = useState("");
+  const [quoteAiLoading, setQuoteAiLoading] = useState<"services" | "notes" | "completeness" | null>(null);
+  const [quoteAiConfigured, setQuoteAiConfigured] = useState(true);
+  const [quoteAiSuggestions, setQuoteAiSuggestions] = useState<QuoteAiSuggestions | null>(null);
   const [invoiceRemindersEnabled, setInvoiceRemindersEnabled] = useState(false);
   const [invoiceReminderDaysAfterSent, setInvoiceReminderDaysAfterSent] = useState("15");
   const [invoiceReminderRepeatDays, setInvoiceReminderRepeatDays] = useState("15");
@@ -14921,6 +14944,106 @@ This removes its linked members and deletes the grounds account.`
     };
   }
 
+  function buildQuoteAiRequest() {
+    return {
+      propertyName: quotePropertyName.trim() || null,
+      address: quotePropertyAddress.trim() || null,
+      propertyType: quotePropertyType.trim() || null,
+      squareFootage: quoteSquareFootage.trim() || null,
+      floors: quoteFloors.trim() || null,
+      bedrooms: quoteBedrooms.trim() || null,
+      bathrooms: quoteBathrooms.trim() || null,
+      ownerName: quoteProspectName.trim() || null,
+      ownerEmail: quoteProspectEmail.trim().toLowerCase() || null,
+      ownerPhone: quoteProspectPhone.trim() || null,
+      notes: invoiceNotes.trim() || null,
+      services: getValidInvoiceLineItems(),
+    };
+  }
+
+  function applyQuoteAiServices(lines: QuoteAiSuggestedLine[]) {
+    const nextItems: OwnerInvoiceLineItem[] = lines.map((line, index) => ({
+      id: `quote-ai-${Date.now()}-${index}`,
+      description: line.description,
+      category: "other",
+      quantity: line.quantity,
+      rate: line.rate,
+      taxable: line.taxable,
+      pricing_mode: line.pricing_mode,
+      included: line.included,
+      estimated_hours: line.estimated_hours ?? "",
+      revenue_percent: line.revenue_percent ?? "",
+      revenue_basis: line.revenue_basis ?? "",
+      revenue_estimate: "",
+      service_scope: line.service_scope ?? "",
+      service_name: line.description,
+      receipt_urls: [],
+      receipt_names: [],
+    }));
+    setInvoiceLineItems(nextItems.length > 0 ? nextItems : [getEmptyInvoiceLineItem()]);
+    setInvoiceDraftDirty(true);
+    setActionMessage(`${nextItems.length} AI-suggested service${nextItems.length === 1 ? "" : "s"} applied to the quote.`);
+  }
+
+  function applyQuoteAiNotes(notesDraft: string) {
+    setInvoiceNotes(notesDraft);
+    setInvoiceDraftDirty(true);
+    setActionMessage("AI-drafted quote notes applied.");
+  }
+
+  async function runQuoteAiHelper(mode: "services" | "notes" | "completeness") {
+    if (!currentOrganizationId) {
+      setError("Choose an organization before using the quote AI helper.");
+      return;
+    }
+
+    setQuoteAiLoading(mode);
+    setError("");
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        throw new Error("Could not verify your admin session.");
+      }
+
+      const response = await fetch("/api/admin/quote-ai", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          organizationId: currentOrganizationId,
+          mode,
+          quote: buildQuoteAiRequest(),
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || "The quote AI helper could not respond right now.");
+      }
+
+      setQuoteAiConfigured(payload?.configured !== false);
+      setQuoteAiSuggestions(payload.suggestions as QuoteAiSuggestions);
+      setActionMessage(
+        mode === "services"
+          ? "AI service suggestions are ready."
+          : mode === "notes"
+            ? "AI quote notes are ready."
+            : "AI completeness review is ready."
+      );
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "The quote AI helper could not respond right now."));
+    } finally {
+      setQuoteAiLoading(null);
+    }
+  }
+
   function applyQuotePropertySnapshot(snapshot?: QuotePropertySnapshot | null) {
     setQuotePropertyName(String(snapshot?.property_name || ""));
     setQuotePropertyAddress(String(snapshot?.address || ""));
@@ -14948,6 +15071,8 @@ This removes its linked members and deletes the grounds account.`
     setInvoiceApplyTax(true);
     setInvoiceLineItems([getEmptyInvoiceLineItem()]);
     applyQuotePropertySnapshot(null);
+    setQuoteAiSuggestions(null);
+    setQuoteAiConfigured(true);
     setInvoiceDraftDirty(false);
   }
 
@@ -17485,6 +17610,150 @@ This removes its linked members and deletes the grounds account.`
                     : "Auto-populate from jobs"}
                 </button>
               </div>
+
+              {isQuoteComposer ? (
+                <div className="mt-4 rounded-[24px] border border-[#bfd7f5] bg-[#f8fbff] p-4 shadow-[0_14px_30px_rgba(29,78,216,0.08)]">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#2b6cb0]">AI Helper</div>
+                      <h4 className="mt-1 text-lg font-semibold text-[#172554]">Quote drafting assist</h4>
+                      <p className="mt-1 max-w-2xl text-sm leading-6 text-[#52627a]">
+                        Generate service suggestions, draft professional quote notes, and flag missing details before you send anything.
+                      </p>
+                      {quoteAiConfigured ? null : (
+                        <p className="mt-2 text-xs text-[#6b7280]">
+                          Using the local fallback helper because a live OpenAI key is not configured.
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void runQuoteAiHelper("services")}
+                        disabled={quoteAiLoading !== null}
+                        className="rounded-full border border-[#bfdbfe] bg-white px-4 py-2 text-sm font-semibold text-[#1d4ed8] transition hover:bg-[#eff6ff] disabled:opacity-60"
+                      >
+                        {quoteAiLoading === "services" ? "Thinking..." : "Suggest services"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void runQuoteAiHelper("notes")}
+                        disabled={quoteAiLoading !== null}
+                        className="rounded-full border border-[#bfdbfe] bg-white px-4 py-2 text-sm font-semibold text-[#1d4ed8] transition hover:bg-[#eff6ff] disabled:opacity-60"
+                      >
+                        {quoteAiLoading === "notes" ? "Thinking..." : "Draft notes"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void runQuoteAiHelper("completeness")}
+                        disabled={quoteAiLoading !== null}
+                        className="rounded-full border border-[#bfdbfe] bg-white px-4 py-2 text-sm font-semibold text-[#1d4ed8] transition hover:bg-[#eff6ff] disabled:opacity-60"
+                      >
+                        {quoteAiLoading === "completeness" ? "Thinking..." : "Check completeness"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {quoteAiSuggestions ? (
+                    <div className="mt-4 grid gap-3 xl:grid-cols-[1.1fr_0.9fr]">
+                      <div className="space-y-3">
+                        <div className="rounded-[18px] border border-[#dbeafe] bg-white p-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="text-sm font-semibold text-[#172554]">Suggested services</div>
+                            {quoteAiSuggestions.services.length > 0 ? (
+                              <button
+                                type="button"
+                                onClick={() => applyQuoteAiServices(quoteAiSuggestions.services)}
+                                className="rounded-full bg-[#1d4ed8] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#1e40af]"
+                              >
+                                Apply services
+                              </button>
+                            ) : null}
+                          </div>
+                          {quoteAiSuggestions.services.length > 0 ? (
+                            <div className="mt-3 space-y-2">
+                              {quoteAiSuggestions.services.map((service, index) => (
+                                <div key={`${service.description}-${index}`} className="rounded-[14px] border border-[#dbeafe] bg-[#f8fbff] px-3 py-3 text-sm text-[#334155]">
+                                  <div className="font-semibold text-[#172554]">{service.description}</div>
+                                  <div className="mt-1 text-xs text-[#64748b]">
+                                    {service.pricing_mode === "hourly"
+                                      ? `${formatCurrency(service.rate)}/hr · ${service.estimated_hours || 0} estimated hours`
+                                      : service.pricing_mode === "percent_revenue"
+                                        ? `${service.revenue_percent || 0}% ${service.revenue_basis || "of revenue"}`
+                                        : `${formatCurrency(service.rate)} flat`}
+                                  </div>
+                                  {service.service_scope ? (
+                                    <div className="mt-2 text-xs leading-5 text-[#52627a]">{service.service_scope}</div>
+                                  ) : null}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="mt-3 rounded-[14px] border border-dashed border-[#dbeafe] bg-[#f8fbff] px-3 py-3 text-sm text-[#64748b]">
+                              No AI service suggestions yet.
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="rounded-[18px] border border-[#dbeafe] bg-white p-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="text-sm font-semibold text-[#172554]">Drafted quote notes</div>
+                            {quoteAiSuggestions.notesDraft ? (
+                              <button
+                                type="button"
+                                onClick={() => applyQuoteAiNotes(quoteAiSuggestions.notesDraft)}
+                                className="rounded-full bg-[#1d4ed8] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#1e40af]"
+                              >
+                                Apply notes
+                              </button>
+                            ) : null}
+                          </div>
+                          <div className="mt-3 whitespace-pre-wrap rounded-[14px] border border-[#dbeafe] bg-[#f8fbff] px-3 py-3 text-sm leading-6 text-[#334155]">
+                            {quoteAiSuggestions.notesDraft || "No drafted notes yet."}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <div className="rounded-[18px] border border-[#dbeafe] bg-white p-4">
+                          <div className="text-sm font-semibold text-[#172554]">Readiness</div>
+                          <div className="mt-3 rounded-[14px] bg-[#eff6ff] px-3 py-3 text-sm font-medium text-[#1e3a8a]">
+                            {quoteAiSuggestions.readinessSummary}
+                          </div>
+                        </div>
+
+                        <div className="rounded-[18px] border border-[#dbeafe] bg-white p-4">
+                          <div className="text-sm font-semibold text-[#172554]">Missing details</div>
+                          {quoteAiSuggestions.missingDetails.length > 0 ? (
+                            <div className="mt-3 space-y-2">
+                              {quoteAiSuggestions.missingDetails.map((item, index) => (
+                                <div key={`${item}-${index}`} className="rounded-[14px] border border-[#fde68a] bg-[#fffbeb] px-3 py-3 text-sm text-[#854d0e]">
+                                  {item}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="mt-3 rounded-[14px] border border-[#bbf7d0] bg-[#f0fdf4] px-3 py-3 text-sm text-[#166534]">
+                              No major gaps were flagged.
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="rounded-[18px] border border-[#dbeafe] bg-white p-4">
+                          <div className="text-sm font-semibold text-[#172554]">Pricing advice</div>
+                          <div className="mt-3 space-y-2">
+                            {quoteAiSuggestions.pricingAdvice.map((item, index) => (
+                              <div key={`${item}-${index}`} className="rounded-[14px] border border-[#dbeafe] bg-[#f8fbff] px-3 py-3 text-sm text-[#334155]">
+                                {item}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
 
               {isStatementComposer ? (
                 <div className="mt-4 rounded-[18px] border border-[#d8c7ab] bg-[#fffaf0] px-4 py-3 text-sm text-[#5f4c3b]">
