@@ -14305,6 +14305,33 @@ This removes its linked members and deletes the grounds account.`
     return Number(item.quantity || 0) * Number(item.rate || 0);
   }
 
+  function getQuotePricingModeLabel(pricingMode?: QuotePricingMode | null) {
+    if (pricingMode === "hourly") return "Hourly";
+    if (pricingMode === "percent_revenue") return "% of revenue";
+    return "Flat rate";
+  }
+
+  function getQuotePricingSummary(item: OwnerInvoiceLineItem) {
+    const pricingMode = item.pricing_mode || "flat_rate";
+
+    if (pricingMode === "hourly") {
+      const hours = Number(item.estimated_hours || item.quantity || 0);
+      return `${formatCurrency(Number(item.rate || 0))}/hr${hours > 0 ? ` • ${hours} hrs` : ""}`;
+    }
+
+    if (pricingMode === "percent_revenue") {
+      const percent = Number(item.revenue_percent || 0);
+      const estimate = Number(item.revenue_estimate || 0);
+      if (estimate > 0) {
+        return `${percent}% • est. ${formatCurrency(estimate)}`;
+      }
+      return `${percent}%${item.revenue_basis ? ` • ${item.revenue_basis}` : ""}`;
+    }
+
+    const quantity = Number(item.quantity || 0);
+    return `${formatCurrency(Number(item.rate || 0))}${quantity > 1 ? ` • qty ${quantity}` : ""}`;
+  }
+
   function getInvoiceLineItemsTotal(items: OwnerInvoiceLineItem[]) {
     return items.reduce((sum, item) => sum + getLineItemTotal(item), 0);
   }
@@ -15074,6 +15101,12 @@ This removes its linked members and deletes the grounds account.`
     setQuoteAiSuggestions(null);
     setQuoteAiConfigured(true);
     setInvoiceDraftDirty(false);
+  }
+
+  function openInvoiceComposer(documentKind: InvoiceDocumentKind, workflowTab: "create" | "running" = "create") {
+    resetInvoiceComposer();
+    setInvoiceDocumentKind(documentKind);
+    setInvoiceWorkflowTab(workflowTab);
   }
 
   function selectInvoiceWorkflowTab(tab: InvoiceWorkflowTab) {
@@ -16408,8 +16441,8 @@ This removes its linked members and deletes the grounds account.`
     }> = [
       {
         key: "create",
-        title: "Create invoice or statement",
-        description: "Build an invoice, quote, or owner statement, preview the PDF, then send it.",
+        title: "Create invoice, quote, or statement",
+        description: "Open a fresh invoice, quote, or owner statement, preview the PDF, then send it.",
         meta: `${allActiveInvoices.length} unpaid`,
         accent: "bg-[#3b82f6]",
         activeClass: "border-[#3b82f6] bg-[#eff6ff] text-[#12305d] shadow-[0_18px_36px_rgba(59,130,246,0.18)]",
@@ -16745,12 +16778,30 @@ This removes its linked members and deletes the grounds account.`
     return (
       <div className="space-y-6">
         <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8a7b68]">Owner billing</p>
-            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#241c15]">Invoices</h2>
-            <p className="mt-1 max-w-2xl text-sm leading-6 text-[#7f7263]">
-              Choose the invoice task you want to work on. Each area stays focused so you do not have to scroll through every invoice tool at once.
-            </p>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8a7b68]">Owner billing</p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#241c15]">Invoices / Quotes</h2>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-[#7f7263]">
+                Choose the billing task you want to work on. Quotes now start directly from here, so you do not have to begin with an invoice and switch modes after.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => openInvoiceComposer("invoice")}
+                className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#f7f1e8]"
+              >
+                Create invoice
+              </button>
+              <button
+                type="button"
+                onClick={() => openInvoiceComposer("quote")}
+                className="rounded-full bg-[#241c15] px-4 py-2 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]"
+              >
+                Create quote
+              </button>
+            </div>
           </div>
           <div className="mt-5 grid gap-3 lg:grid-cols-5">
             {invoiceWorkflowOptions.map((option) => {
@@ -17342,7 +17393,11 @@ This removes its linked members and deletes the grounds account.`
                     onClick={resetInvoiceComposer}
                     className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#f7f1e8]"
                   >
-                    Start new invoice
+                    {invoiceDocumentKind === "quote"
+                      ? "Start new quote"
+                      : invoiceDocumentKind === "statement"
+                        ? "Start new statement"
+                        : "Start new invoice"}
                   </button>
                 </div>
               </div>
@@ -17849,117 +17904,181 @@ This removes its linked members and deletes the grounds account.`
                           <>
                             {isQuoteComposer ? (
                               <>
-                                <div className="mb-3">
-                                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-[#c7d2fe] bg-[#f8faff] px-3 py-1.5 text-xs font-semibold text-[#4338ca]">
-                                    <input
-                                      type="checkbox"
-                                      checked={item.included !== false}
-                                      onChange={(e) => updateInvoiceLineItem(item.id, { included: e.target.checked })}
-                                    />
-                                    Include service
-                                  </label>
-                                </div>
-                                <div className="grid gap-2 md:grid-cols-[1fr_150px_110px_120px_auto] md:items-end">
-                                  <label className="text-xs font-medium text-[#5f5245]">
-                                    Service
-                                    <input
-                                      className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
-                                      placeholder="Service name"
-                                      value={item.description}
-                                      onChange={(e) => updateInvoiceLineItem(item.id, { description: e.target.value, service_name: e.target.value })}
-                                    />
-                                  </label>
-                                  <label className="text-xs font-medium text-[#5f5245]">
-                                    Pricing
-                                    <select
-                                      className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
-                                      value={item.pricing_mode || "flat_rate"}
-                                      onChange={(e) => updateInvoiceLineItem(item.id, { pricing_mode: e.target.value as QuotePricingMode })}
+                                <div className="flex flex-col gap-3">
+                                  <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-[#c7d2fe] bg-[#f8faff] px-3 py-1.5 text-xs font-semibold text-[#4338ca]">
+                                        <input
+                                          type="checkbox"
+                                          checked={item.included !== false}
+                                          onChange={(e) => updateInvoiceLineItem(item.id, { included: e.target.checked })}
+                                        />
+                                        Include service
+                                      </label>
+                                      <span className="rounded-full border border-[#dbeafe] bg-[#eff6ff] px-3 py-1.5 text-xs font-semibold text-[#1d4ed8]">
+                                        {getQuotePricingModeLabel(item.pricing_mode)}
+                                      </span>
+                                      <span className="rounded-full border border-[#e7dccb] bg-[#fcfaf7] px-3 py-1.5 text-xs font-medium text-[#6f6255]">
+                                        {getQuotePricingSummary(item)}
+                                      </span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => removeInvoiceLineItem(item.id)}
+                                      className="rounded-full border border-[#efc6c6] bg-[#fff5f5] px-3 py-2 text-sm text-[#8a2e22]"
                                     >
-                                      <option value="flat_rate">Flat rate</option>
-                                      <option value="hourly">Hourly</option>
-                                      <option value="percent_revenue">% of revenue</option>
-                                    </select>
-                                  </label>
-                                  <label className="text-xs font-medium text-[#5f5245]">
-                                    Qty
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      step="1"
-                                      className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
-                                      value={item.quantity}
-                                      onChange={(e) => updateInvoiceLineItem(item.id, { quantity: e.target.value })}
-                                      onBlur={(e) => {
-                                        const roundedQuantity = Math.max(1, Math.round(Number(e.target.value || 1)));
-                                        updateInvoiceLineItem(item.id, { quantity: roundedQuantity });
-                                      }}
-                                    />
-                                  </label>
-                                  <label className="text-xs font-medium text-[#5f5245]">
-                                    Rate
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      step="0.01"
-                                      className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
-                                      value={item.rate}
-                                      onFocus={() => {
-                                        if (Number(item.rate || 0) === 0) {
-                                          updateInvoiceLineItem(item.id, { rate: "" });
-                                        }
-                                      }}
-                                      onChange={(e) => updateInvoiceLineItem(item.id, { rate: e.target.value })}
-                                    />
-                                  </label>
-                                  <button
-                                    type="button"
-                                    onClick={() => removeInvoiceLineItem(item.id)}
-                                    className="rounded-full border border-[#efc6c6] bg-[#fff5f5] px-3 py-2 text-sm text-[#8a2e22]"
-                                  >
-                                    Remove
-                                  </button>
-                                </div>
-                                <div className="mt-3 grid gap-2 md:grid-cols-2">
-                                  <input
-                                    className="rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
-                                    placeholder="Service scope or assumptions"
-                                    value={item.service_scope || ""}
-                                    onChange={(e) => updateInvoiceLineItem(item.id, { service_scope: e.target.value })}
-                                  />
-                                  {(item.pricing_mode || "flat_rate") === "hourly" ? (
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      step="0.25"
-                                      className="rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
-                                      placeholder="Estimated hours"
-                                      value={item.estimated_hours || ""}
-                                      onChange={(e) => updateInvoiceLineItem(item.id, { estimated_hours: e.target.value })}
-                                    />
-                                  ) : (item.pricing_mode || "flat_rate") === "percent_revenue" ? (
-                                    <div className="grid grid-cols-2 gap-2">
+                                      Remove
+                                    </button>
+                                  </div>
+
+                                  <div className="grid gap-3 lg:grid-cols-[1.1fr_0.9fr]">
+                                    <label className="text-xs font-medium text-[#5f5245]">
+                                      Service
                                       <input
-                                        type="number"
-                                        min="0"
-                                        step="0.01"
-                                        className="rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
-                                        placeholder="Revenue %"
-                                        value={item.revenue_percent || ""}
-                                        onChange={(e) => updateInvoiceLineItem(item.id, { revenue_percent: e.target.value })}
+                                        className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#b48d4e]"
+                                        placeholder="Co-hosting, turnover clean, inspection, lawn care..."
+                                        value={item.description}
+                                        onChange={(e) => updateInvoiceLineItem(item.id, { description: e.target.value, service_name: e.target.value })}
                                       />
+                                    </label>
+                                    <label className="text-xs font-medium text-[#5f5245]">
+                                      Scope or assumptions
                                       <input
-                                        className="rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
-                                        placeholder="Revenue basis"
-                                        value={item.revenue_basis || ""}
-                                        onChange={(e) => updateInvoiceLineItem(item.id, { revenue_basis: e.target.value })}
+                                        className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#b48d4e]"
+                                        placeholder="What is included, exclusions, timing, or inspection notes"
+                                        value={item.service_scope || ""}
+                                        onChange={(e) => updateInvoiceLineItem(item.id, { service_scope: e.target.value })}
                                       />
+                                    </label>
+                                  </div>
+
+                                  <div className="rounded-[18px] border border-[#e7dccb] bg-[#fcfaf7] p-3">
+                                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">Pricing setup</div>
+                                    <div className="mt-3 grid gap-3 md:grid-cols-3">
+                                      <label className="text-xs font-medium text-[#5f5245]">
+                                        Pricing model
+                                        <select
+                                          className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#b48d4e]"
+                                          value={item.pricing_mode || "flat_rate"}
+                                          onChange={(e) => updateInvoiceLineItem(item.id, { pricing_mode: e.target.value as QuotePricingMode })}
+                                        >
+                                          <option value="flat_rate">Flat rate</option>
+                                          <option value="hourly">Hourly</option>
+                                          <option value="percent_revenue">% of revenue</option>
+                                        </select>
+                                      </label>
+
+                                      {(item.pricing_mode || "flat_rate") === "hourly" ? (
+                                        <>
+                                          <label className="text-xs font-medium text-[#5f5245]">
+                                            Hourly rate
+                                            <input
+                                              type="number"
+                                              min="0"
+                                              step="0.01"
+                                              className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#b48d4e]"
+                                              value={item.rate}
+                                              onFocus={() => {
+                                                if (Number(item.rate || 0) === 0) {
+                                                  updateInvoiceLineItem(item.id, { rate: "" });
+                                                }
+                                              }}
+                                              onChange={(e) => updateInvoiceLineItem(item.id, { rate: e.target.value })}
+                                            />
+                                          </label>
+                                          <label className="text-xs font-medium text-[#5f5245]">
+                                            Estimated hours
+                                            <input
+                                              type="number"
+                                              min="0"
+                                              step="0.25"
+                                              className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#b48d4e]"
+                                              value={item.estimated_hours || ""}
+                                              onChange={(e) => updateInvoiceLineItem(item.id, { estimated_hours: e.target.value, quantity: e.target.value || item.quantity })}
+                                            />
+                                          </label>
+                                        </>
+                                      ) : (item.pricing_mode || "flat_rate") === "percent_revenue" ? (
+                                        <>
+                                          <label className="text-xs font-medium text-[#5f5245]">
+                                            Revenue %
+                                            <input
+                                              type="number"
+                                              min="0"
+                                              step="0.01"
+                                              className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#b48d4e]"
+                                              value={item.revenue_percent || ""}
+                                              onChange={(e) => updateInvoiceLineItem(item.id, { revenue_percent: e.target.value })}
+                                            />
+                                          </label>
+                                          <label className="text-xs font-medium text-[#5f5245]">
+                                            Estimated revenue
+                                            <input
+                                              type="number"
+                                              min="0"
+                                              step="0.01"
+                                              className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#b48d4e]"
+                                              placeholder="Optional estimate for preview"
+                                              value={item.revenue_estimate || ""}
+                                              onChange={(e) => updateInvoiceLineItem(item.id, { revenue_estimate: e.target.value })}
+                                            />
+                                          </label>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <label className="text-xs font-medium text-[#5f5245]">
+                                            Units
+                                            <input
+                                              type="number"
+                                              min="0"
+                                              step="1"
+                                              className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#b48d4e]"
+                                              value={item.quantity}
+                                              onChange={(e) => updateInvoiceLineItem(item.id, { quantity: e.target.value })}
+                                              onBlur={(e) => {
+                                                const roundedQuantity = Math.max(1, Math.round(Number(e.target.value || 1)));
+                                                updateInvoiceLineItem(item.id, { quantity: roundedQuantity });
+                                              }}
+                                            />
+                                          </label>
+                                          <label className="text-xs font-medium text-[#5f5245]">
+                                            Flat rate
+                                            <input
+                                              type="number"
+                                              min="0"
+                                              step="0.01"
+                                              className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#b48d4e]"
+                                              value={item.rate}
+                                              onFocus={() => {
+                                                if (Number(item.rate || 0) === 0) {
+                                                  updateInvoiceLineItem(item.id, { rate: "" });
+                                                }
+                                              }}
+                                              onChange={(e) => updateInvoiceLineItem(item.id, { rate: e.target.value })}
+                                            />
+                                          </label>
+                                        </>
+                                      )}
                                     </div>
-                                  ) : (
-                                    <div className="rounded-[14px] border border-dashed border-[#d9ccbb] bg-[#fcfaf7] px-3 py-2 text-sm text-[#7f7263]">
-                                      Flat rate service
-                                    </div>
-                                  )}
+
+                                    {(item.pricing_mode || "flat_rate") === "percent_revenue" ? (
+                                      <label className="mt-3 block text-xs font-medium text-[#5f5245]">
+                                        Revenue basis
+                                        <input
+                                          className="mt-1 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#b48d4e]"
+                                          placeholder="Gross rent, booking revenue before fees, monthly revenue..."
+                                          value={item.revenue_basis || ""}
+                                          onChange={(e) => updateInvoiceLineItem(item.id, { revenue_basis: e.target.value })}
+                                        />
+                                      </label>
+                                    ) : (
+                                      <div className="mt-3 rounded-[14px] border border-dashed border-[#e7dccb] bg-white px-3 py-2 text-xs text-[#7f7263]">
+                                        {(item.pricing_mode || "flat_rate") === "hourly"
+                                          ? "Hourly total uses rate × estimated hours."
+                                          : "Flat-rate total uses units × flat rate."}
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                               </>
                             ) : (
