@@ -15,6 +15,7 @@ type Recipient = {
 
 type SlotBundle = {
   slotId: string;
+  jobId: string;
   organizationId: string;
   organizationName: string | null;
   kind: JobNotificationKind;
@@ -399,6 +400,7 @@ async function loadSlotBundle(
 
     return {
       slotId: slot.id,
+      jobId: job.id,
       organizationId: property.organization_id || "",
       organizationName,
       kind,
@@ -443,6 +445,7 @@ async function loadSlotBundle(
 
   return {
     slotId: slot.id,
+    jobId: job.id,
     organizationId: property.organization_id || "",
     organizationName,
     kind,
@@ -771,6 +774,10 @@ async function loadJobCancellationBundle(
 
 function buildEmailCopy(bundle: SlotBundle, mode: JobNotificationMode, origin: string) {
   const portalUrl = getPortalUrl(bundle.kind, origin, bundle.slotId);
+  const calendarUrl =
+    bundle.kind === "cleaner"
+      ? `${origin}/api/cleaner-calendar-event?jobId=${encodeURIComponent(bundle.jobId)}`
+      : null;
   const dateLabel = formatDateLabel(bundle.jobDate);
   const deadlineLabel = formatDateTimeLabel(bundle.expiresAt);
   const kindLabel = bundle.kind === "cleaner" ? "cleaning" : "grounds";
@@ -785,6 +792,7 @@ function buildEmailCopy(bundle: SlotBundle, mode: JobNotificationMode, origin: s
       actionText: "Open portal for full details",
       footer: `Please respond by ${deadlineLabel} if possible.`,
       portalUrl,
+      calendarUrl,
       propertyLine,
       dateLabel,
     };
@@ -797,6 +805,7 @@ function buildEmailCopy(bundle: SlotBundle, mode: JobNotificationMode, origin: s
       actionText: "Open portal for full details",
       footer: `Current response deadline: ${deadlineLabel}.`,
       portalUrl,
+      calendarUrl,
       propertyLine,
       dateLabel,
     };
@@ -808,6 +817,7 @@ function buildEmailCopy(bundle: SlotBundle, mode: JobNotificationMode, origin: s
     actionText: "Open portal for details",
     footer: `Scheduled for ${dateLabel}.`,
     portalUrl,
+    calendarUrl,
     propertyLine,
     dateLabel,
   };
@@ -861,9 +871,20 @@ async function sendNotificationEmail(
             `
             : ""
         }
-        <a href="${emailCopy.portalUrl}" style="display:inline-block;padding:10px 16px;background:#241c15;color:#ffffff;border-radius:999px;text-decoration:none;margin-top:8px;">
-          ${emailCopy.actionText}
-        </a>
+        <div style="margin-top:8px;">
+          <a href="${emailCopy.portalUrl}" style="display:inline-block;padding:10px 16px;background:#241c15;color:#ffffff;border-radius:999px;text-decoration:none;margin:0 8px 8px 0;">
+            ${emailCopy.actionText}
+          </a>
+          ${
+            emailCopy.calendarUrl && mode === "day_of"
+              ? `
+                <a href="${emailCopy.calendarUrl}" style="display:inline-block;padding:10px 16px;background:#b08b47;color:#120f0b;border-radius:999px;text-decoration:none;margin:0 8px 8px 0;font-weight:700;">
+                  Add to Calendar
+                </a>
+              `
+              : ""
+          }
+        </div>
         <p style="margin-top:20px; font-size:14px; color:#5f5245;">${emailCopy.footer}</p>
       </div>
     `;
