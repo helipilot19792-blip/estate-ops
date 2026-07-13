@@ -10,6 +10,14 @@ import AdminBillingBanner from "@/components/admin/admin-billing-banner";
 import AdminLoadingScene from "@/components/admin/admin-loading-scene";
 import AdminOperationsAlerts from "@/components/admin/admin-operations-alerts";
 import { supabase } from "@/lib/supabase";
+import {
+  DEFAULT_CURRENCY_CODE,
+  SUPPORTED_CURRENCY_CODES,
+  formatCurrency as formatDocumentCurrency,
+  getCurrencyLabel,
+  normalizeCurrencyCode,
+  type CurrencyCode,
+} from "@/lib/currency";
 import { trackFeatureUsage } from "@/lib/feature-usage";
 import { TEAM_BULLETIN_CONTEXT_TYPE } from "@/lib/team-bulletin";
 import { useTeamBulletinSummary } from "@/lib/use-team-bulletin-summary";
@@ -883,6 +891,7 @@ type InvoiceSettingsRow = {
   from_email: string | null;
   reply_to_email: string | null;
   header_text: string | null;
+  billing_currency_code?: CurrencyCode | null;
   default_turnover_rate: number | null;
   default_grounds_rate: number | null;
   tax_lines?: OwnerInvoiceTaxLine[] | null;
@@ -980,6 +989,7 @@ type OwnerInvoiceRow = {
   header_text: string | null;
   notes: string | null;
   payment_instructions: string | null;
+  currency_code?: CurrencyCode | null;
   tax_lines?: OwnerInvoiceTaxLine[] | null;
   line_items: OwnerInvoiceLineItem[];
   prospect_name?: string | null;
@@ -1124,6 +1134,10 @@ function formatCurrency(value: number | null | undefined) {
     style: "currency",
     currency: "USD",
   }).format(Number(value || 0));
+}
+
+function formatInvoiceCurrency(value: number | null | undefined, currencyCode: CurrencyCode = DEFAULT_CURRENCY_CODE) {
+  return formatDocumentCurrency(value, currencyCode);
 }
 
 function normalizeTaxLines(lines: OwnerInvoiceTaxLine[] | null | undefined) {
@@ -1693,6 +1707,8 @@ export default function AdminPage() {
   const [invoiceReplyToEmail, setInvoiceReplyToEmail] = useState("");
   const [invoiceHeaderText, setInvoiceHeaderText] = useState("");
   const [invoicePaymentInstructions, setInvoicePaymentInstructions] = useState("");
+  const [invoiceDefaultCurrencyCode, setInvoiceDefaultCurrencyCode] = useState<CurrencyCode>(DEFAULT_CURRENCY_CODE);
+  const [invoiceCurrencyCode, setInvoiceCurrencyCode] = useState<CurrencyCode>(DEFAULT_CURRENCY_CODE);
   const [quotePropertyName, setQuotePropertyName] = useState("");
   const [quotePropertyAddress, setQuotePropertyAddress] = useState("");
   const [quotePropertyType, setQuotePropertyType] = useState("");
@@ -2533,6 +2549,11 @@ export default function AdminPage() {
         "Thank you for trusting us with your property operations."
     );
     setInvoicePaymentInstructions(invoiceSettings?.payment_instructions || "");
+    const defaultCurrencyCode = normalizeCurrencyCode(invoiceSettings?.billing_currency_code, DEFAULT_CURRENCY_CODE);
+    setInvoiceDefaultCurrencyCode(defaultCurrencyCode);
+    setInvoiceCurrencyCode((current) =>
+      editingOwnerInvoiceId ? current : defaultCurrencyCode
+    );
     setInvoiceTaxLines(normalizeTaxLines(invoiceSettings?.tax_lines));
     setInvoiceAutoTurnover(invoiceSettings?.auto_add_turnover ?? true);
     setInvoiceAutoGrounds(invoiceSettings?.auto_add_grounds ?? true);
@@ -2540,7 +2561,7 @@ export default function AdminPage() {
     setInvoiceReminderDaysAfterSent(String(invoiceSettings?.invoice_reminder_days_after_sent ?? 15));
     setInvoiceReminderRepeatDays(String(invoiceSettings?.invoice_reminder_repeat_days ?? 15));
     setInvoiceReminderMaxCount(String(invoiceSettings?.invoice_reminder_max_count ?? 3));
-  }, [invoiceSettings, currentOrganizationBilling, invoiceSettingsDirty]);
+  }, [invoiceSettings, currentOrganizationBilling, invoiceSettingsDirty, editingOwnerInvoiceId]);
 
   useEffect(() => {
     const ratesByPropertyId = new Map(propertyInvoiceRates.map((rate) => [rate.property_id, rate]));
@@ -11420,7 +11441,9 @@ This removes its linked members and deletes the grounds account.`
 
   const notificationCenterItems = useMemo(() => {
     const sentUnpaidInvoices = ownerInvoices.filter((invoice) => invoice.status === "sent");
-    const runningDraftInvoices = ownerInvoices.filter((invoice) => invoice.status === "draft");
+    const runningDraftInvoices = ownerInvoices.filter(
+      (invoice) => invoice.status === "draft" && getInvoiceDocumentKind(invoice) !== "quote"
+    );
     const lowHealthProperties = propertyHealthRows.filter((row) => row.score < 65);
     const openDeletionRequests = accountDeletionRequests.filter((request) =>
       request.status === "pending" || request.status === "reviewing"
@@ -14316,20 +14339,20 @@ This removes its linked members and deletes the grounds account.`
 
     if (pricingMode === "hourly") {
       const hours = Number(item.estimated_hours || item.quantity || 0);
-      return `${formatCurrency(Number(item.rate || 0))}/hr${hours > 0 ? ` • ${hours} hrs` : ""}`;
+      return `${formatInvoiceCurrency(Number(item.rate || 0), invoiceCurrencyCode)}/hr${hours > 0 ? ` • ${hours} hrs` : ""}`;
     }
 
     if (pricingMode === "percent_revenue") {
       const percent = Number(item.revenue_percent || 0);
       const estimate = Number(item.revenue_estimate || 0);
       if (estimate > 0) {
-        return `${percent}% • est. ${formatCurrency(estimate)}`;
+        return `${percent}% • est. ${formatInvoiceCurrency(estimate, invoiceCurrencyCode)}`;
       }
       return `${percent}%${item.revenue_basis ? ` • ${item.revenue_basis}` : ""}`;
     }
 
     const quantity = Number(item.quantity || 0);
-    return `${formatCurrency(Number(item.rate || 0))}${quantity > 1 ? ` • qty ${quantity}` : ""}`;
+    return `${formatInvoiceCurrency(Number(item.rate || 0), invoiceCurrencyCode)}${quantity > 1 ? ` • qty ${quantity}` : ""}`;
   }
 
   function getInvoiceLineItemsTotal(items: OwnerInvoiceLineItem[]) {
@@ -14611,7 +14634,7 @@ This removes its linked members and deletes the grounds account.`
 
     if (kind === "invoices") {
       downloadCsvFile(`${getBackupBaseName("invoices")}.csv`, [
-        ["Invoice", "Owner", "Property", "Status", "Issue date", "Due date", "Subtotal", "Tax", "Total", "Sent"],
+        ["Invoice", "Owner", "Property", "Status", "Issue date", "Due date", "Currency", "Subtotal", "Tax", "Total", "Sent"],
         ...ownerInvoices.map((invoice) => {
           const owner = ownerAccounts.find((account) => account.id === invoice.owner_account_id);
           const property = properties.find((entry) => entry.id === invoice.property_id);
@@ -14622,6 +14645,7 @@ This removes its linked members and deletes the grounds account.`
             invoice.status,
             invoice.issue_date,
             invoice.due_date,
+            normalizeCurrencyCode(invoice.currency_code, invoiceDefaultCurrencyCode),
             Number(invoice.subtotal || 0).toFixed(2),
             Number(invoice.tax_total || 0).toFixed(2),
             Number(invoice.total || 0).toFixed(2),
@@ -14674,6 +14698,7 @@ This removes its linked members and deletes the grounds account.`
     owner: OwnerAccountRow | null | undefined,
     property: Property | null | undefined
   ) {
+    const invoiceCurrency = normalizeCurrencyCode(invoice.currency_code, invoiceDefaultCurrencyCode);
     const rows = [
       [
         "InvoiceNo",
@@ -14683,6 +14708,7 @@ This removes its linked members and deletes the grounds account.`
         "DueDate",
         "Status",
         "Property",
+        "Currency",
         "Category",
         "ProductService",
         "Description",
@@ -14707,6 +14733,7 @@ This removes its linked members and deletes the grounds account.`
           invoice.due_date || "",
           invoice.status,
           property?.name || property?.address || "All properties",
+          invoiceCurrency,
           item.category || "other",
           item.category === "turnover"
             ? "Turnover Cleaning"
@@ -15084,7 +15111,7 @@ This removes its linked members and deletes the grounds account.`
     setQuoteProspectPhone(String(snapshot?.owner_phone || ""));
   }
 
-  function resetInvoiceComposer() {
+  function resetInvoiceComposer(documentKind: InvoiceDocumentKind = "invoice") {
     setEditingOwnerInvoiceId(null);
     setInvoiceOwnerId("");
     setInvoicePropertyId("");
@@ -15094,7 +15121,8 @@ This removes its linked members and deletes the grounds account.`
     setStatementEndDate(getCalendarYearEndYmd());
     setInvoiceNotes("");
     setInvoiceCcEmails("");
-    setInvoiceDocumentKind("invoice");
+    setInvoiceDocumentKind(documentKind);
+    setInvoiceCurrencyCode(invoiceDefaultCurrencyCode);
     setInvoiceApplyTax(true);
     setInvoiceLineItems([getEmptyInvoiceLineItem()]);
     applyQuotePropertySnapshot(null);
@@ -15104,8 +15132,7 @@ This removes its linked members and deletes the grounds account.`
   }
 
   function openInvoiceComposer(documentKind: InvoiceDocumentKind, workflowTab: "create" | "running" = "create") {
-    resetInvoiceComposer();
-    setInvoiceDocumentKind(documentKind);
+    resetInvoiceComposer(documentKind);
     setInvoiceWorkflowTab(workflowTab);
   }
 
@@ -15136,6 +15163,7 @@ This removes its linked members and deletes the grounds account.`
     });
     setInvoiceHeaderText(invoice.header_text || invoiceSettings?.header_text || "");
     setInvoicePaymentInstructions(invoice.payment_instructions || invoiceSettings?.payment_instructions || "");
+    setInvoiceCurrencyCode(normalizeCurrencyCode(invoice.currency_code, invoiceDefaultCurrencyCode));
     setInvoiceCompanyName(invoice.company_name || invoiceSettings?.company_name || "");
     setInvoiceLogoUrl(invoice.logo_url || invoiceSettings?.logo_url || "");
     setInvoiceFromEmail(invoice.from_email || invoiceSettings?.from_email || "");
@@ -15306,10 +15334,10 @@ This removes its linked members and deletes the grounds account.`
     const summaryLines = [
       `Statement range: ${statementStartDate} to ${statementEndDate}`,
       `Included invoices: ${includedInvoices.length}`,
-      `Total invoiced: ${formatCurrency(subtotal)}`,
-      `Total tax: ${formatCurrency(totalTax)}`,
-      `Total paid: ${formatCurrency(totalPaid)}`,
-      `Total unpaid: ${formatCurrency(totalUnpaid)}`,
+      `Total invoiced: ${formatInvoiceCurrency(subtotal, invoiceCurrencyCode)}`,
+      `Total tax: ${formatInvoiceCurrency(totalTax, invoiceCurrencyCode)}`,
+      `Total paid: ${formatInvoiceCurrency(totalPaid, invoiceCurrencyCode)}`,
+      `Total unpaid: ${formatInvoiceCurrency(totalUnpaid, invoiceCurrencyCode)}`,
     ];
     const notes = [summaryLines.join("\n"), invoiceNotes.trim()].filter(Boolean).join("\n\n");
 
@@ -15481,6 +15509,7 @@ This removes its linked members and deletes the grounds account.`
         from_email: invoiceFromEmail.trim().toLowerCase() || null,
         reply_to_email: invoiceReplyToEmail.trim().toLowerCase() || null,
         header_text: invoiceHeaderText.trim() || null,
+        billing_currency_code: invoiceDefaultCurrencyCode,
         tax_lines: savedTaxLines,
         auto_add_turnover: invoiceAutoTurnover,
         auto_add_grounds: invoiceAutoGrounds,
@@ -15678,6 +15707,7 @@ This removes its linked members and deletes the grounds account.`
         from_email: invoiceFromEmail.trim().toLowerCase() || null,
         reply_to_email: invoiceReplyToEmail.trim().toLowerCase() || null,
         header_text: invoiceHeaderText.trim() || null,
+        currency_code: invoiceCurrencyCode,
         prospect_name: isQuoteComposer ? propertySnapshot.owner_name : null,
         prospect_email: isQuoteComposer ? propertySnapshot.owner_email : null,
         prospect_phone: isQuoteComposer ? propertySnapshot.owner_phone : null,
@@ -15804,6 +15834,7 @@ This removes its linked members and deletes the grounds account.`
           from_email: invoiceFromEmail.trim().toLowerCase() || null,
           reply_to_email: invoiceReplyToEmail.trim().toLowerCase() || null,
           header_text: invoiceHeaderText.trim() || null,
+          currency_code: invoiceCurrencyCode,
           notes: invoiceNotes.trim() || null,
           payment_instructions: invoicePaymentInstructions.trim() || null,
           line_items: uploadedLineItems,
@@ -15950,6 +15981,7 @@ This removes its linked members and deletes the grounds account.`
         body: JSON.stringify({
           invoiceNumber: "PREVIEW",
           documentKind: invoiceDocumentKind,
+          currencyCode: invoiceCurrencyCode,
           companyName: invoiceCompanyName.trim() || "Property invoice",
           logoUrl: invoiceLogoUrl.trim() || null,
           ownerName: context.ownerName,
@@ -16032,6 +16064,7 @@ This removes its linked members and deletes the grounds account.`
         body: JSON.stringify({
           invoiceNumber: invoice.invoice_number,
           documentKind,
+          currencyCode: normalizeCurrencyCode(invoice.currency_code, invoiceDefaultCurrencyCode),
           companyName: invoice.company_name || "Property invoice",
           logoUrl: invoice.logo_url || null,
           ownerName: owner?.full_name || owner?.email || propertySnapshot.owner_name || propertySnapshot.owner_email || "Owner",
@@ -16118,10 +16151,18 @@ This removes its linked members and deletes the grounds account.`
     const owner = ownerAccounts.find((account) => account.id === ownerIds[0]);
     const propertyIds = Array.from(new Set(unpaidInvoices.map((invoice) => invoice.property_id || "")));
     const combinedPropertyId = propertyIds.length === 1 ? propertyIds[0] || null : null;
+    const currencyCodes = Array.from(
+      new Set(unpaidInvoices.map((invoice) => normalizeCurrencyCode(invoice.currency_code, invoiceDefaultCurrencyCode)))
+    );
+    if (currencyCodes.length > 1) {
+      setError("Choose invoices with the same currency before combining them into one draft.");
+      return;
+    }
+    const combinedCurrencyCode = currencyCodes[0] || invoiceCurrencyCode;
     const total = unpaidInvoices.reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
     const invoiceNumbers = unpaidInvoices.map((invoice) => invoice.invoice_number).join(", ");
     const confirmed = window.confirm(
-      `Create one combined draft for ${owner?.full_name || owner?.email || "this owner"}?\n\nIncluded invoices: ${invoiceNumbers}\nTotal: ${formatCurrency(total)}${
+      `Create one combined draft for ${owner?.full_name || owner?.email || "this owner"}?\n\nIncluded invoices: ${invoiceNumbers}\nTotal: ${formatInvoiceCurrency(total, combinedCurrencyCode)}${
         voidCombinedOriginalInvoices ? "\n\nThe original invoices will be marked void so they stop showing as outstanding." : ""
       }`
     );
@@ -16169,6 +16210,7 @@ This removes its linked members and deletes the grounds account.`
           from_email: invoiceFromEmail.trim().toLowerCase() || invoiceSettings?.from_email || null,
           reply_to_email: invoiceReplyToEmail.trim().toLowerCase() || invoiceSettings?.reply_to_email || null,
           header_text: invoiceHeaderText.trim() || invoiceSettings?.header_text || null,
+          currency_code: combinedCurrencyCode,
           notes: combinedNotes,
           payment_instructions: invoicePaymentInstructions.trim() || invoiceSettings?.payment_instructions || null,
           line_items: combinedLineItems,
@@ -16334,7 +16376,9 @@ This removes its linked members and deletes the grounds account.`
     const editingInvoice = editingOwnerInvoiceId
       ? ownerInvoices.find((invoice) => invoice.id === editingOwnerInvoiceId)
       : null;
-    const allDraftInvoices = ownerInvoices.filter((invoice) => invoice.status === "draft");
+    const allDraftInvoices = ownerInvoices.filter(
+      (invoice) => invoice.status === "draft" && getInvoiceDocumentKind(invoice) !== "quote"
+    );
     const allActiveInvoices = ownerInvoices.filter((invoice) => invoice.status === "sent" && getInvoiceDocumentKind(invoice) !== "quote");
     const allQuoteInvoices = ownerInvoices.filter((invoice) => getInvoiceDocumentKind(invoice) === "quote");
     const allPaidInvoices = ownerInvoices.filter((invoice) => invoice.status === "paid" || invoice.status === "void");
@@ -16395,7 +16439,9 @@ This removes its linked members and deletes the grounds account.`
         return matchesProperty && invoiceMatchesSearch(invoice);
       })
     );
-    const draftInvoices = scopedOwnerInvoices.filter((invoice) => invoice.status === "draft");
+    const draftInvoices = scopedOwnerInvoices.filter(
+      (invoice) => invoice.status === "draft" && getInvoiceDocumentKind(invoice) !== "quote"
+    );
     const quoteInvoices = scopedOwnerInvoices.filter((invoice) => getInvoiceDocumentKind(invoice) === "quote");
     const activeInvoices = scopedOwnerInvoices.filter((invoice) => invoice.status === "sent" && getInvoiceDocumentKind(invoice) !== "quote");
     const paidOnlyInvoices = scopedOwnerInvoices.filter((invoice) => invoice.status === "paid");
@@ -16408,6 +16454,9 @@ This removes its linked members and deletes the grounds account.`
     const selectedCombineOwnerIds = Array.from(new Set(selectedInvoicesToCombine.map((invoice) => invoice.owner_account_id)));
     const canCombineSelectedInvoices = selectedInvoicesToCombine.length >= 2 && selectedCombineOwnerIds.length === 1;
     const selectedCombineTotal = selectedInvoicesToCombine.reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
+    const selectedCombineCurrencyCode = selectedInvoicesToCombine[0]
+      ? normalizeCurrencyCode(selectedInvoicesToCombine[0].currency_code, invoiceDefaultCurrencyCode)
+      : invoiceDefaultCurrencyCode;
     const visibleInvoiceCount =
       invoiceHistoryStatusFilter === "unpaid"
         ? activeInvoices.length
@@ -16499,6 +16548,8 @@ This removes its linked members and deletes the grounds account.`
     const showExistingInvoiceUpload = invoiceWorkflowTab === "existing";
     const showInvoiceBuilder = invoiceWorkflowTab === "create" || invoiceWorkflowTab === "running";
     const showInvoiceHistory = invoiceWorkflowTab === "history" || invoiceWorkflowTab === "running";
+    const getSavedInvoiceCurrencyCode = (invoice?: Pick<OwnerInvoiceRow, "currency_code"> | null) =>
+      normalizeCurrencyCode(invoice?.currency_code, invoiceDefaultCurrencyCode);
     const getInvoiceEventLabel = (event: OwnerInvoiceEventRow) => {
       const date = formatDateTime(event.created_at);
       switch (event.event_type) {
@@ -16559,6 +16610,7 @@ This removes its linked members and deletes the grounds account.`
       const isSentUnpaidInvoice = invoice.status === "sent" && !isQuote;
       const isSelectedForCombine = selectedInvoiceIdsToCombine.includes(invoice.id);
       const documentKind = getInvoiceDocumentKind(invoice);
+      const invoiceCurrency = getSavedInvoiceCurrencyCode(invoice);
       const historyOwnerLabel =
         owner?.full_name ||
         owner?.email ||
@@ -16646,7 +16698,7 @@ This removes its linked members and deletes the grounds account.`
               <div className={`text-lg font-semibold ${
                 isDraftInvoice ? "text-[#5f3f86]" : isPaidInvoice ? "text-[#123f1b]" : "text-[#7f1d1d]"
               }`}>
-                {formatCurrency(invoice.total)}
+                {formatInvoiceCurrency(invoice.total, invoiceCurrency)}
               </div>
               {isDraftInvoice && invoice.invoice_source !== "uploaded" ? (
                 <button
@@ -16961,6 +17013,27 @@ This removes its linked members and deletes the grounds account.`
                     setInvoiceReplyToEmail(e.target.value);
                   }}
                 />
+                <label className="text-xs font-medium text-[#5f5245]">
+                  Default billing currency
+                  <select
+                    className="mt-1 w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                    value={invoiceDefaultCurrencyCode}
+                    onChange={(e) => {
+                      setInvoiceSettingsDirty(true);
+                      const nextCurrency = normalizeCurrencyCode(e.target.value, DEFAULT_CURRENCY_CODE);
+                      setInvoiceDefaultCurrencyCode(nextCurrency);
+                      if (!editingOwnerInvoiceId) {
+                        setInvoiceCurrencyCode(nextCurrency);
+                      }
+                    }}
+                  >
+                    {SUPPORTED_CURRENCY_CODES.map((currencyCode) => (
+                      <option key={currencyCode} value={currencyCode}>
+                        {currencyCode} - {getCurrencyLabel(currencyCode)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <textarea
                   className="min-h-[96px] rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
                   placeholder="Custom invoice header"
@@ -17306,6 +17379,23 @@ This removes its linked members and deletes the grounds account.`
                 value={externalInvoiceAmount}
                 onChange={(e) => setExternalInvoiceAmount(e.target.value)}
               />
+              <label className="md:col-span-2 text-xs font-medium text-[#5f5245]">
+                Invoice currency
+                <select
+                  className="mt-1 w-full rounded-[18px] border border-[#d4c2ea] bg-white px-4 py-3 text-sm outline-none focus:border-[#6f4b9a]"
+                  value={invoiceCurrencyCode}
+                  onChange={(e) => {
+                    setInvoiceDraftDirty(true);
+                    setInvoiceCurrencyCode(normalizeCurrencyCode(e.target.value, invoiceDefaultCurrencyCode));
+                  }}
+                >
+                  {SUPPORTED_CURRENCY_CODES.map((currencyCode) => (
+                    <option key={currencyCode} value={currencyCode}>
+                      {currencyCode} - {getCurrencyLabel(currencyCode)}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
               {externalInvoiceUrl ? (
                 <div className="md:col-span-2 flex flex-wrap items-center gap-2 rounded-[18px] border border-[#d4c2ea] bg-white px-4 py-3 text-sm text-[#5f5245]">
@@ -17390,7 +17480,7 @@ This removes its linked members and deletes the grounds account.`
                   </div>
                   <button
                     type="button"
-                    onClick={resetInvoiceComposer}
+                    onClick={() => resetInvoiceComposer(invoiceDocumentKind)}
                     className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-medium text-[#5f4c3b] transition hover:bg-[#f7f1e8]"
                   >
                     {invoiceDocumentKind === "quote"
@@ -17429,6 +17519,29 @@ This removes its linked members and deletes the grounds account.`
                     </button>
                   );
                 })}
+              </div>
+
+              <div className="mb-4 flex flex-col gap-2 rounded-[18px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <div className="text-sm font-semibold text-[#241c15]">Document currency</div>
+                  <div className="mt-1 text-xs text-[#7f7263]">
+                    This invoice or quote will save, preview, email, and export in the selected currency.
+                  </div>
+                </div>
+                <select
+                  className="rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none focus:border-[#b48d4e]"
+                  value={invoiceCurrencyCode}
+                  onChange={(e) => {
+                    setInvoiceDraftDirty(true);
+                    setInvoiceCurrencyCode(normalizeCurrencyCode(e.target.value, invoiceDefaultCurrencyCode));
+                  }}
+                >
+                  {SUPPORTED_CURRENCY_CODES.map((currencyCode) => (
+                    <option key={currencyCode} value={currencyCode}>
+                      {currencyCode} - {getCurrencyLabel(currencyCode)}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="grid gap-3 md:grid-cols-2">
@@ -17732,10 +17845,10 @@ This removes its linked members and deletes the grounds account.`
                                   <div className="font-semibold text-[#172554]">{service.description}</div>
                                   <div className="mt-1 text-xs text-[#64748b]">
                                     {service.pricing_mode === "hourly"
-                                      ? `${formatCurrency(service.rate)}/hr · ${service.estimated_hours || 0} estimated hours`
+                                      ? `${formatInvoiceCurrency(service.rate, invoiceCurrencyCode)}/hr · ${service.estimated_hours || 0} estimated hours`
                                       : service.pricing_mode === "percent_revenue"
                                         ? `${service.revenue_percent || 0}% ${service.revenue_basis || "of revenue"}`
-                                        : `${formatCurrency(service.rate)} flat`}
+                                        : `${formatInvoiceCurrency(service.rate, invoiceCurrencyCode)} flat`}
                                   </div>
                                   {service.service_scope ? (
                                     <div className="mt-2 text-xs leading-5 text-[#52627a]">{service.service_scope}</div>
@@ -17841,15 +17954,15 @@ This removes its linked members and deletes the grounds account.`
                   </div>
                   <div className="rounded-[18px] border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-3">
                     <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">Total invoiced</div>
-                    <div className="mt-1 text-xl font-semibold text-[#241c15]">{formatCurrency(statementSourceData.subtotal)}</div>
+                    <div className="mt-1 text-xl font-semibold text-[#241c15]">{formatInvoiceCurrency(statementSourceData.subtotal, invoiceCurrencyCode)}</div>
                   </div>
                   <div className="rounded-[18px] border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-3">
                     <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">Total paid</div>
-                    <div className="mt-1 text-xl font-semibold text-[#236b30]">{formatCurrency(statementSourceData.totalPaid)}</div>
+                    <div className="mt-1 text-xl font-semibold text-[#236b30]">{formatInvoiceCurrency(statementSourceData.totalPaid, invoiceCurrencyCode)}</div>
                   </div>
                   <div className="rounded-[18px] border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-3">
                     <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">Total unpaid</div>
-                    <div className="mt-1 text-xl font-semibold text-[#7f1d1d]">{formatCurrency(statementSourceData.totalUnpaid)}</div>
+                    <div className="mt-1 text-xl font-semibold text-[#7f1d1d]">{formatInvoiceCurrency(statementSourceData.totalUnpaid, invoiceCurrencyCode)}</div>
                   </div>
                 </div>
               ) : null}
@@ -17865,7 +17978,7 @@ This removes its linked members and deletes the grounds account.`
                       {displayedInvoiceLineItems.length} item{displayedInvoiceLineItems.length === 1 ? "" : "s"}
                     </span>
                     <span className="rounded-full border border-[#d5ad67] bg-white px-3 py-1.5">
-                      Working subtotal: {formatCurrency(invoiceSubtotal)}
+                      Working subtotal: {formatInvoiceCurrency(invoiceSubtotal, invoiceCurrencyCode)}
                     </span>
                   </div>
                 </div>
@@ -17889,7 +18002,7 @@ This removes its linked members and deletes the grounds account.`
                           </span>
                         </div>
                         <span className="shrink-0 rounded-full border border-[#d5ad67] bg-[#fff7e8] px-3 py-1.5 text-sm font-semibold text-[#5f3e12]">
-                          {formatCurrency(getLineItemTotal(item))}
+                          {formatInvoiceCurrency(getLineItemTotal(item), invoiceCurrencyCode)}
                         </span>
                       </div>
                       <div className="border-l-4 border-[#c8892c] p-3">
@@ -17897,7 +18010,7 @@ This removes its linked members and deletes the grounds account.`
                           <div className="grid gap-2 md:grid-cols-[1fr_160px] md:items-end">
                             <div className="text-sm text-[#5f5245]">{item.description}</div>
                             <div className="rounded-[14px] border border-[#d9ccbb] bg-[#fcfaf7] px-3 py-2 text-right text-sm font-semibold text-[#241c15]">
-                              {formatCurrency(Number(item.rate || 0))}
+                              {formatInvoiceCurrency(Number(item.rate || 0), invoiceCurrencyCode)}
                             </div>
                           </div>
                         ) : (
@@ -18204,7 +18317,7 @@ This removes its linked members and deletes the grounds account.`
 
                 <div className="flex flex-col gap-3 border-t border-[#e4c78f] bg-[#fff2d4] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="text-sm font-semibold text-[#5f3e12]">
-                    Line items subtotal: {formatCurrency(invoiceSubtotal)}
+                    Line items subtotal: {formatInvoiceCurrency(invoiceSubtotal, invoiceCurrencyCode)}
                   </div>
                   {isStatementComposer ? (
                     <div className="text-xs font-medium text-[#8a5b18]">
@@ -18242,16 +18355,16 @@ This removes its linked members and deletes the grounds account.`
                 <div className="text-lg font-semibold text-[#241c15]">{invoiceCompanyName || "Company name"}</div>
                 <p className="mt-2 text-sm leading-6 text-[#6f6255]">{invoiceHeaderText || "Invoice header"}</p>
                 <div className="mt-4 border-t border-[#eadfce] pt-3 text-sm text-[#5f5245]">
-                  <div className="flex justify-between"><span>Subtotal</span><span>{formatCurrency(invoiceSubtotal)}</span></div>
+                  <div className="flex justify-between"><span>Subtotal</span><span>{formatInvoiceCurrency(invoiceSubtotal, invoiceCurrencyCode)}</span></div>
                   {invoiceTaxLinesWithAmounts.map((taxLine) =>
                     taxLine.rate > 0 || taxLine.amount > 0 ? (
                       <div key={taxLine.id} className="mt-2 flex justify-between">
                         <span>{taxLine.label} ({taxLine.rate}%)</span>
-                        <span>{formatCurrency(taxLine.amount)}</span>
+                        <span>{formatInvoiceCurrency(taxLine.amount, invoiceCurrencyCode)}</span>
                       </div>
                     ) : null
                   )}
-                  <div className="mt-2 flex justify-between text-lg font-semibold text-[#241c15]"><span>Total</span><span>{formatCurrency(invoiceTotal)}</span></div>
+                  <div className="mt-2 flex justify-between text-lg font-semibold text-[#241c15]"><span>Total</span><span>{formatInvoiceCurrency(invoiceTotal, invoiceCurrencyCode)}</span></div>
                 </div>
               </div>
               <div className="mt-4 grid gap-2">
@@ -18385,7 +18498,7 @@ This removes its linked members and deletes the grounds account.`
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <div className="text-sm font-semibold text-[#7f1d1d]">
-                    {selectedInvoicesToCombine.length} selected for combining | {formatCurrency(selectedCombineTotal)}
+                    {selectedInvoicesToCombine.length} selected for combining | {formatInvoiceCurrency(selectedCombineTotal, selectedCombineCurrencyCode)}
                   </div>
                   <p className="mt-1 text-xs leading-5 text-[#9b4b4b]">
                     Select unpaid invoices for the same owner. The combined draft keeps a note showing which invoice numbers were included.

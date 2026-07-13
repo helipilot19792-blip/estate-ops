@@ -1,16 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
+import { formatCurrency, normalizeCurrencyCode } from "@/lib/currency";
 
 // Supabase generated types are not available for this project's new optional tables yet.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ServiceClient = any;
-
-function formatCurrency(value: number | null | undefined) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(Number(value || 0));
-}
 
 function escapeHtml(value: string | null | undefined) {
   return String(value || "")
@@ -153,6 +147,7 @@ export async function sendOwnerInvoiceReminderEmail(options: {
     : "";
   const propertyLine = property?.name || property?.address || "All linked properties";
   const companyName = invoice.company_name || "your property manager";
+  const currencyCode = normalizeCurrencyCode(invoice.currency_code);
   const html = `
     <div style="font-family:Arial,sans-serif;color:#241c15;line-height:1.5;padding:20px;">
       ${invoice.logo_url ? `<img src="${escapeHtml(invoice.logo_url)}" alt="" style="max-height:72px;margin-bottom:16px;" />` : ""}
@@ -163,7 +158,7 @@ export async function sendOwnerInvoiceReminderEmail(options: {
         <div><strong>Property:</strong> ${escapeHtml(propertyLine)}</div>
         <div><strong>Invoice:</strong> ${escapeHtml(invoice.invoice_number)}</div>
         ${dueLine}
-        <div><strong>Amount due:</strong> ${formatCurrency(invoice.total)}</div>
+        <div><strong>Amount due:</strong> ${formatCurrency(invoice.total, currencyCode)}</div>
       </div>
       ${invoice.payment_instructions ? `<p style="margin:0 0 18px;"><strong>Payment:</strong> ${escapeHtml(invoice.payment_instructions)}</p>` : ""}
       <p style="margin:0 0 18px;color:#5f5245;">Please log in to your owner portal to view or download the invoice.</p>

@@ -5,6 +5,7 @@ import {
   type InvoicePdfLineItem,
   type InvoicePdfPropertySnapshot,
 } from "@/lib/server/invoice-pdf";
+import { normalizeCurrencyCode } from "@/lib/currency";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const publicSupabaseKey =
@@ -111,6 +112,7 @@ export async function POST(request: NextRequest) {
     const pdfBuffer = await createInvoicePdfBuffer({
       invoiceNumber: String(body?.invoiceNumber || "PREVIEW"),
       documentKind,
+      currencyCode: normalizeCurrencyCode(body?.currencyCode),
       companyName: String(body?.companyName || "Property invoice"),
       logoUrl: body?.logoUrl ? String(body.logoUrl) : null,
       ownerName: String(body?.ownerName || "Owner"),

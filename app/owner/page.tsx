@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { DEFAULT_CURRENCY_CODE, formatCurrency as formatDocumentCurrency, normalizeCurrencyCode, type CurrencyCode } from "@/lib/currency";
 import PortalInstallControl from "@/components/pwa/portalinstallcontrol";
 import { trackFeatureUsage } from "@/lib/feature-usage";
 import { useI18n } from "@/components/i18n-provider";
@@ -108,6 +109,7 @@ type OwnerInvoice = {
   header_text: string | null;
   notes: string | null;
   payment_instructions: string | null;
+  currency_code?: CurrencyCode | null;
   tax_lines?: Array<{ id?: string; label: string; rate: number; amount?: number }> | null;
   line_items: OwnerInvoiceLineItem[];
   invoice_source?: "generated" | "uploaded" | null;
@@ -407,11 +409,8 @@ function getMonthLabel(monthKey: string, locale?: string) {
   });
 }
 
-function formatCurrency(value: number | null | undefined, locale?: string) {
-  return new Intl.NumberFormat(locale, {
-    style: "currency",
-    currency: "USD",
-  }).format(Number(value || 0));
+function formatCurrency(value: number | null | undefined, currencyCode: CurrencyCode = DEFAULT_CURRENCY_CODE) {
+  return formatDocumentCurrency(value, currencyCode);
 }
 
 function getOwnerInvoiceTaxLines(invoice: OwnerInvoice) {
@@ -1004,7 +1003,10 @@ export default function OwnerPage() {
 
   const formatOwnerDateLabel = (dateString: string | null | undefined) =>
     formatDateLabel(dateString, locale, t("ownerPortal.overview.notScheduled"));
-  const formatOwnerCurrency = (value: number | null | undefined) => formatCurrency(value, locale);
+  const formatOwnerCurrency = (
+    value: number | null | undefined,
+    currencyCode: CurrencyCode = DEFAULT_CURRENCY_CODE
+  ) => formatCurrency(value, currencyCode);
   const getOwnerGroundsLabel = (jobType?: string | null) => getGroundsLabel(jobType, t);
   const formatOwnerRecurringGroundsLabel = (rule: GroundsRecurringRule) => formatRecurringGroundsLabel(rule, t);
   const getOwnerUrgencyLabel = (urgency?: string | null) => {
@@ -1222,6 +1224,7 @@ export default function OwnerPage() {
   }
 
   function downloadOwnerInvoiceCsv(invoice: OwnerInvoice, property: Property | null | undefined) {
+    const invoiceCurrencyCode = normalizeCurrencyCode(invoice.currency_code, DEFAULT_CURRENCY_CODE);
     const rows = [
       [
         "InvoiceNo",
@@ -1229,6 +1232,7 @@ export default function OwnerPage() {
         "DueDate",
         "Status",
         "Property",
+        "Currency",
         "Description",
         "Qty",
         "Rate",
@@ -1247,11 +1251,12 @@ export default function OwnerPage() {
           invoice.due_date || "",
           invoice.status,
           property?.name || property?.address || t("ownerPortal.invoices.allLinkedProperties"),
+          invoiceCurrencyCode,
           item.description,
           quantity,
           rate.toFixed(2),
           (quantity * rate).toFixed(2),
-          getOwnerInvoiceTaxLines(invoice).map((line) => `${line.label} ${line.rate}% ${formatOwnerCurrency(line.amount)}`).join("; "),
+          getOwnerInvoiceTaxLines(invoice).map((line) => `${line.label} ${line.rate}% ${formatOwnerCurrency(line.amount, invoiceCurrencyCode)}`).join("; "),
           Number(invoice.tax_total || 0).toFixed(2),
           Number(invoice.total || 0).toFixed(2),
           (item.receipt_urls || []).join(" "),
@@ -1440,7 +1445,7 @@ export default function OwnerPage() {
         .order("created_at", { ascending: false }),
       supabase
         .from("owner_invoices")
-        .select("id,owner_account_id,property_id,invoice_number,status,issue_date,due_date,company_name,logo_url,header_text,notes,payment_instructions,tax_lines,line_items,subtotal,tax_total,total,sent_at,owner_viewed_at")
+        .select("id,owner_account_id,property_id,invoice_number,status,issue_date,due_date,company_name,logo_url,header_text,notes,payment_instructions,currency_code,tax_lines,line_items,subtotal,tax_total,total,sent_at,owner_viewed_at")
         .eq("owner_account_id", ownerRes.id)
         .in("status", ["sent", "paid"])
         .order("issue_date", { ascending: false }),
@@ -3074,6 +3079,7 @@ export default function OwnerPage() {
               {displayedPropertyOwnerInvoices.length > 0 ? (
                 displayedPropertyOwnerInvoices.map((invoice) => {
                   const invoiceProperty = properties.find((property) => property.id === invoice.property_id);
+                  const invoiceCurrencyCode = normalizeCurrencyCode(invoice.currency_code, DEFAULT_CURRENCY_CODE);
                   const lineItems = Array.isArray(invoice.line_items) ? invoice.line_items : [];
                   const taxLines = getOwnerInvoiceTaxLines(invoice);
                   const isPaidInvoice = invoice.status === "paid";
@@ -3112,7 +3118,7 @@ export default function OwnerPage() {
                             </div>
                           </div>
                           <div className="text-left md:text-right">
-                            <div className="text-2xl font-semibold text-[#f7f1e8]">{formatOwnerCurrency(invoice.total)}</div>
+                            <div className="text-2xl font-semibold text-[#f7f1e8]">{formatOwnerCurrency(invoice.total, invoiceCurrencyCode)}</div>
                             <div className="mt-1 text-sm text-[#e6d8bf]">
                               {invoice.status === "paid" ? t("ownerPortal.invoices.paid") : t("ownerPortal.invoices.due")} {invoice.due_date ? formatOwnerDateLabel(invoice.due_date) : t("ownerPortal.invoices.onReceipt")}
                             </div>
@@ -3196,8 +3202,8 @@ export default function OwnerPage() {
                                 ) : null}
                               </div>
                               <div className="text-[#ccb99a] md:text-right">{t("ownerPortal.invoices.qty").replace("{count}", String(quantity))}</div>
-                              <div className="text-[#ccb99a] md:text-right">{formatOwnerCurrency(rate)}</div>
-                              <div className="font-semibold text-[#f7f1e8] md:text-right">{formatOwnerCurrency(quantity * rate)}</div>
+                              <div className="text-[#ccb99a] md:text-right">{formatOwnerCurrency(rate, invoiceCurrencyCode)}</div>
+                              <div className="font-semibold text-[#f7f1e8] md:text-right">{formatOwnerCurrency(quantity * rate, invoiceCurrencyCode)}</div>
                             </div>
                           );
                         })}
@@ -3208,17 +3214,17 @@ export default function OwnerPage() {
                         <div className="ml-auto max-w-xs space-y-2">
                           <div className="flex justify-between">
                             <span>{t("ownerPortal.invoices.subtotal")}</span>
-                            <span>{formatOwnerCurrency(invoice.subtotal)}</span>
+                            <span>{formatOwnerCurrency(invoice.subtotal, invoiceCurrencyCode)}</span>
                           </div>
                           {taxLines.map((taxLine) => (
                             <div key={taxLine.id || taxLine.label} className="flex justify-between">
                               <span>{taxLine.label} ({taxLine.rate}%)</span>
-                              <span>{formatOwnerCurrency(taxLine.amount)}</span>
+                              <span>{formatOwnerCurrency(taxLine.amount, invoiceCurrencyCode)}</span>
                             </div>
                           ))}
                           <div className="flex justify-between border-t border-white/8 pt-2 text-base font-semibold text-[#f7f1e8]">
                             <span>{t("ownerPortal.invoices.total")}</span>
-                            <span>{formatOwnerCurrency(invoice.total)}</span>
+                            <span>{formatOwnerCurrency(invoice.total, invoiceCurrencyCode)}</span>
                           </div>
                         </div>
                       </div>

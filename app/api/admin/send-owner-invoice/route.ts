@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 import { createInvoicePdfBuffer } from "@/lib/server/invoice-pdf";
+import { formatCurrency, normalizeCurrencyCode } from "@/lib/currency";
 import { sendStaffPushNotifications } from "@/lib/server/staff-push-notifications";
 import { recordOwnerInvoiceEvent } from "@/lib/server/owner-invoice-reminders";
 
@@ -11,13 +12,6 @@ const publicSupabaseKey =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
   "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-function formatCurrency(value: number | null | undefined) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(Number(value || 0));
-}
 
 function escapeHtml(value: string | null | undefined) {
   return String(value || "")
@@ -253,6 +247,7 @@ export async function POST(request: NextRequest) {
     const taxLines = normalizeTaxLines(invoice);
     const isUploadedInvoice = invoice.invoice_source === "uploaded" && !!invoice.uploaded_invoice_url;
     const documentKind = getDocumentKind(invoice);
+    const currencyCode = normalizeCurrencyCode(invoice.currency_code);
     const documentLabel = getDocumentLabel(documentKind);
     const documentLabelLower = documentLabel.toLowerCase();
     const recipientName =
@@ -286,21 +281,21 @@ export async function POST(request: NextRequest) {
         const rateLabel =
           documentKind === "quote"
             ? pricingMode === "hourly"
-              ? `${formatCurrency(rate)}/hr`
+              ? `${formatCurrency(rate, currencyCode)}/hr`
               : pricingMode === "percent_revenue"
                 ? `${Number(item.revenue_percent || 0)}%`
-                : formatCurrency(rate)
-            : formatCurrency(rate);
+                : formatCurrency(rate, currencyCode)
+            : formatCurrency(rate, currencyCode);
         const amountLabel =
           documentKind === "quote"
             ? pricingMode === "hourly"
-              ? `${formatCurrency(rate * Number(item.estimated_hours || quantity || 0))} est.`
+              ? `${formatCurrency(rate * Number(item.estimated_hours || quantity || 0), currencyCode)} est.`
               : pricingMode === "percent_revenue"
                 ? Number(item.revenue_estimate || 0) > 0
-                  ? `${formatCurrency(Number(item.revenue_estimate || 0))} est.`
+                  ? `${formatCurrency(Number(item.revenue_estimate || 0), currencyCode)} est.`
                   : escapeHtml(String(item.revenue_basis || "Variable"))
-                : formatCurrency(quantity * rate)
-            : formatCurrency(quantity * rate);
+                : formatCurrency(quantity * rate, currencyCode)
+            : formatCurrency(quantity * rate, currencyCode);
         const receiptLinks = (item.receipt_urls || [])
           .map((url, index) => {
             const label = item.receipt_names?.[index] || `Receipt ${index + 1}`;
@@ -360,15 +355,15 @@ export async function POST(request: NextRequest) {
         </table>` : ""}
         <div style="margin-left:auto;width:280px;font-size:14px;">
           <div style="display:flex;justify-content:space-between;padding:4px 0;">
-            <span>Subtotal</span><span>${formatCurrency(invoice.subtotal)}</span>
+            <span>Subtotal</span><span>${formatCurrency(invoice.subtotal, currencyCode)}</span>
           </div>
           ${taxLines
             .map((line: InvoiceTaxLine) => `<div style="display:flex;justify-content:space-between;padding:4px 0;">
-              <span>${escapeHtml(line.label)} (${line.rate}%)</span><span>${formatCurrency(line.amount)}</span>
+              <span>${escapeHtml(line.label)} (${line.rate}%)</span><span>${formatCurrency(line.amount, currencyCode)}</span>
             </div>`)
             .join("")}
           <div style="display:flex;justify-content:space-between;padding:8px 0 0;font-size:20px;font-weight:700;">
-            <span>Total</span><span>${formatCurrency(invoice.total)}</span>
+            <span>Total</span><span>${formatCurrency(invoice.total, currencyCode)}</span>
           </div>
         </div>
         ${invoice.notes ? `<p style="margin-top:18px;color:#5f5245;">${escapeHtml(invoice.notes)}</p>` : ""}
@@ -392,6 +387,7 @@ export async function POST(request: NextRequest) {
       : await createInvoicePdfBuffer({
           invoiceNumber: invoice.invoice_number,
           documentKind,
+          currencyCode,
           companyName: invoice.company_name || "Property invoice",
           logoUrl: invoice.logo_url || null,
           ownerName: recipientName,
@@ -486,7 +482,7 @@ export async function POST(request: NextRequest) {
       try {
         pushResult = await sendStaffPushNotifications("owner", [owner.profile_id], {
           title: `${documentLabel} ${invoice.invoice_number} is ready`,
-          body: `${property?.name || property?.address || "Owner portal"} - ${formatCurrency(invoice.total)}`,
+          body: `${property?.name || property?.address || "Owner portal"} - ${formatCurrency(invoice.total, currencyCode)}`,
           url: `/owner?tab=invoices&invoiceId=${encodeURIComponent(invoice.id)}`,
           tag: `owner-invoice-${invoice.id}`,
         });

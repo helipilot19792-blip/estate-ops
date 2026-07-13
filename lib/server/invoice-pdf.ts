@@ -1,4 +1,5 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { DEFAULT_CURRENCY_CODE, formatCurrency as formatDocumentCurrency, normalizeCurrencyCode, type CurrencyCode } from "@/lib/currency";
 
 export type InvoicePdfLineItem = {
   description?: string | null;
@@ -32,6 +33,7 @@ export type InvoicePdfPropertySnapshot = {
 export type InvoicePdfInput = {
   invoiceNumber: string;
   documentKind?: "invoice" | "statement" | "quote";
+  currencyCode?: CurrencyCode;
   companyName: string;
   logoUrl: string | null;
   ownerName: string;
@@ -51,11 +53,8 @@ export type InvoicePdfInput = {
   lineItems: InvoicePdfLineItem[];
 };
 
-function formatCurrency(value: number | null | undefined) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(Number(value || 0));
+function formatCurrency(value: number | null | undefined, currencyCode: CurrencyCode = DEFAULT_CURRENCY_CODE) {
+  return formatDocumentCurrency(value, currencyCode);
 }
 
 function wrapPdfText(value: string, maxLength = 86) {
@@ -118,34 +117,35 @@ function getDocumentLabel(documentKind: InvoicePdfInput["documentKind"]) {
   return "Invoice";
 }
 
-function getQuoteRateLabel(item: InvoicePdfLineItem) {
+function getQuoteRateLabel(item: InvoicePdfLineItem, currencyCode: CurrencyCode) {
   const pricingMode = item.pricing_mode || "flat_rate";
   if (pricingMode === "hourly") {
-    return `${formatCurrency(Number(item.rate || 0))}/hr`;
+    return `${formatCurrency(Number(item.rate || 0), currencyCode)}/hr`;
   }
   if (pricingMode === "percent_revenue") {
     const percent = Number(item.revenue_percent || 0);
     return percent > 0 ? `${percent}%` : "Variable";
   }
-  return formatCurrency(Number(item.rate || 0));
+  return formatCurrency(Number(item.rate || 0), currencyCode);
 }
 
-function getQuoteAmountLabel(item: InvoicePdfLineItem) {
+function getQuoteAmountLabel(item: InvoicePdfLineItem, currencyCode: CurrencyCode) {
   const pricingMode = item.pricing_mode || "flat_rate";
   if (pricingMode === "hourly") {
     const hours = Number(item.estimated_hours || item.quantity || 0);
     const amount = Number(item.rate || 0) * hours;
-    return hours > 0 ? `${formatCurrency(amount)} est.` : "Estimate";
+    return hours > 0 ? `${formatCurrency(amount, currencyCode)} est.` : "Estimate";
   }
   if (pricingMode === "percent_revenue") {
     const basis = String(item.revenue_basis || "of revenue").trim();
     const estimate = Number(item.revenue_estimate || 0);
-    return estimate > 0 ? `${formatCurrency(estimate)} est.` : basis;
+    return estimate > 0 ? `${formatCurrency(estimate, currencyCode)} est.` : basis;
   }
-  return formatCurrency(Number(item.quantity || 0) * Number(item.rate || 0));
+  return formatCurrency(Number(item.quantity || 0) * Number(item.rate || 0), currencyCode);
 }
 
 export async function createInvoicePdfBuffer(input: InvoicePdfInput) {
+  const currencyCode = normalizeCurrencyCode(input.currencyCode, DEFAULT_CURRENCY_CODE);
   const pdfDoc = await PDFDocument.create();
   const regularFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
@@ -261,8 +261,8 @@ export async function createInvoicePdfBuffer(input: InvoicePdfInput) {
 
     page.drawText(descriptionLines[0] || description, { x: pageLeft, y, size: 10.5, font: regularFont, color: ink });
     page.drawText(String(quantity), { x: columnQty, y, size: 10.5, font: regularFont, color: ink });
-    page.drawText(input.documentKind === "quote" ? getQuoteRateLabel(item) : formatCurrency(rate), { x: columnRate, y, size: 10.5, font: regularFont, color: ink });
-    page.drawText(input.documentKind === "quote" ? getQuoteAmountLabel(item) : formatCurrency(amount), { x: columnAmount, y, size: 10.5, font: regularFont, color: ink });
+    page.drawText(input.documentKind === "quote" ? getQuoteRateLabel(item, currencyCode) : formatCurrency(rate, currencyCode), { x: columnRate, y, size: 10.5, font: regularFont, color: ink });
+    page.drawText(input.documentKind === "quote" ? getQuoteAmountLabel(item, currencyCode) : formatCurrency(amount, currencyCode), { x: columnAmount, y, size: 10.5, font: regularFont, color: ink });
     y -= 17;
 
     for (const extraLine of descriptionLines.slice(1)) drawText(extraLine, 62, 9.5, { color: muted, gap: 14 });
@@ -287,13 +287,13 @@ export async function createInvoicePdfBuffer(input: InvoicePdfInput) {
 
   y -= 10;
   drawRule(16);
-  drawText(`Subtotal: ${formatCurrency(input.subtotal)}`, 382, 11.5, { gap: 18 });
+  drawText(`Subtotal: ${formatCurrency(input.subtotal, currencyCode)}`, 382, 11.5, { gap: 18 });
   for (const taxLine of input.taxLines) {
     if (taxLine.amount > 0 || taxLine.rate > 0) {
-      drawText(`${taxLine.label || "Tax"} (${taxLine.rate}%): ${formatCurrency(taxLine.amount)}`, 382, 11.5, { gap: 18 });
+      drawText(`${taxLine.label || "Tax"} (${taxLine.rate}%): ${formatCurrency(taxLine.amount, currencyCode)}`, 382, 11.5, { gap: 18 });
     }
   }
-  drawText(`Total: ${formatCurrency(input.total)}`, 382, 16, { bold: true, gap: 28 });
+  drawText(`Total: ${formatCurrency(input.total, currencyCode)}`, 382, 16, { bold: true, gap: 28 });
 
   if (input.notes) {
     drawText("Notes", pageLeft, 12, { bold: true, gap: 17 });

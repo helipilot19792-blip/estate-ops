@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createInvoicePdfBuffer, type InvoicePdfLineItem } from "@/lib/server/invoice-pdf";
+import { normalizeCurrencyCode } from "@/lib/currency";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const publicSupabaseKey =
@@ -136,6 +137,7 @@ export async function POST(request: NextRequest) {
     const pdfBuffer = await createInvoicePdfBuffer({
       invoiceNumber: invoice.invoice_number,
       documentKind,
+      currencyCode: normalizeCurrencyCode(invoice.currency_code),
       companyName: invoice.company_name || "Property invoice",
       logoUrl: invoice.logo_url || null,
       ownerName: owner.full_name || owner.email,

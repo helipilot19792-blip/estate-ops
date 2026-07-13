@@ -4,6 +4,7 @@ import { sendOwnerInvoiceReminderEmail } from "@/lib/server/owner-invoice-remind
 import { sendDirectProfileChatMessage } from "@/lib/server/direct-profile-chat";
 import { sendStaffPushNotifications } from "@/lib/server/staff-push-notifications";
 import { isMissingAuditLogTableError, writeAuditLog } from "@/lib/server/audit-log";
+import { formatCurrency, normalizeCurrencyCode } from "@/lib/currency";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -16,6 +17,7 @@ type InvoiceRow = {
   status: string | null;
   due_date: string | null;
   total: number | null;
+  currency_code?: string | null;
   last_reminder_sent_at?: string | null;
   reminder_count?: number | null;
 };
@@ -159,13 +161,6 @@ function daysBetween(startYmd: string, endYmd: string) {
   const start = new Date(`${startYmd}T00:00:00`).getTime();
   const end = new Date(`${endYmd}T00:00:00`).getTime();
   return Math.round((end - start) / (1000 * 60 * 60 * 24));
-}
-
-function formatCurrency(value: number | null | undefined) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(Number(value || 0));
 }
 
 function formatShortDate(dateYmd: string) {
@@ -445,7 +440,7 @@ async function generateActions(organizationId: string, token: string) {
       priority: overdueDays >= 7 ? "high" : "medium",
       category: "Billing",
       title: `Chase overdue invoice ${invoice.invoice_number || ""}`.trim(),
-      reason: `${owner?.full_name || owner?.email || "Owner"} is ${overdueDays === 0 ? "due today" : `${overdueDays} day${overdueDays === 1 ? "" : "s"} overdue`} for ${formatCurrency(invoice.total)}${property ? ` at ${property.name || property.address || "this property"}` : ""}.`,
+      reason: `${owner?.full_name || owner?.email || "Owner"} is ${overdueDays === 0 ? "due today" : `${overdueDays} day${overdueDays === 1 ? "" : "s"} overdue`} for ${formatCurrency(invoice.total, normalizeCurrencyCode(invoice.currency_code))}${property ? ` at ${property.name || property.address || "this property"}` : ""}.`,
       recipientLabel: owner?.full_name || owner?.email || "Owner",
       channelLabel: "Owner email",
       previewLabel: "Approval will send",
