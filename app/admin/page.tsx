@@ -718,6 +718,7 @@ const DEFAULT_INVOICE_WORKFLOW_TAB: InvoiceWorkflowTab = "history";
 const DEFAULT_INVOICE_HISTORY_STATUS_FILTER: InvoiceHistoryFilter = "unpaid";
 type BookingsFilterStatus = "upcoming" | "current" | "past" | "all";
 type AdminCalendarItemKind = "cleaning" | "checkin" | "grounds";
+type AdminCalendarFilterMode = "all" | AdminCalendarItemKind;
 type AdminMenuOrientation = "side" | "top";
 type OrganizationType = "property_management" | "cleaning_company";
 type PushDiagnosticsDevice = {
@@ -1652,13 +1653,15 @@ export default function AdminPage() {
   const [bookingsSearchQuery, setBookingsSearchQuery] = useState("");
   const [adminCalendarPropertyFilter, setAdminCalendarPropertyFilter] = useState("all");
   const [adminCalendarCleanerFilter, setAdminCalendarCleanerFilter] = useState("all");
-  const [adminCalendarVisibleKinds, setAdminCalendarVisibleKinds] = useState<Record<AdminCalendarItemKind, boolean>>({
-    cleaning: true,
-    checkin: true,
-    grounds: true,
-  });
+  const [adminCalendarFilterMode, setAdminCalendarFilterMode] = useState<AdminCalendarFilterMode>("all");
   const [adminCalendarAttentionOnly, setAdminCalendarAttentionOnly] = useState(false);
   const [adminCalendarSameDayOnly, setAdminCalendarSameDayOnly] = useState(false);
+  const [adminCalendarDetail, setAdminCalendarDetail] = useState<
+    | { kind: "cleaning"; jobId: string; date: string }
+    | { kind: "grounds"; jobId: string; date: string }
+    | { kind: "checkin"; bookingId: string; date: string }
+    | null
+  >(null);
   const [maintenanceModalOpen, setMaintenanceModalOpen] = useState(false);
   const [maintenanceFormPropertyId, setMaintenanceFormPropertyId] = useState("");
   const [maintenanceFormCategory, setMaintenanceFormCategory] = useState("");
@@ -9778,6 +9781,42 @@ This removes its linked members and deletes the grounds account.`
 
   const adminCalendarDays = useMemo(() => getMonthGrid(adminCalendarMonth), [adminCalendarMonth]);
 
+  function isAdminCalendarKindVisible(kind: AdminCalendarItemKind) {
+    return adminCalendarFilterMode === "all" || adminCalendarFilterMode === kind;
+  }
+
+  function getCalendarCleanerNames(job: Job) {
+    const slots = jobSlotsByJobId[job.id] ?? [];
+    const orderedIds = [
+      ...slots
+        .filter((slot) => ["accepted", "in_progress", "completed"].includes(String(slot.status || "").toLowerCase()))
+        .map((slot) => slot.cleaner_account_id),
+      ...slots.filter((slot) => slot.status === "offered").map((slot) => slot.cleaner_account_id),
+      ...slots.map((slot) => slot.cleaner_account_id),
+    ].filter((value): value is string => Boolean(value));
+    const uniqueNames = Array.from(new Set(orderedIds.map((id) => getCleanerAccountName(id)).filter(Boolean)));
+    return uniqueNames;
+  }
+
+  function getCalendarGroundsNames(job: GroundsJob) {
+    const slots = groundsJobSlotsByJobId[job.id] ?? [];
+    const orderedIds = [
+      ...slots
+        .filter((slot) => ["accepted", "in_progress", "completed"].includes(String(slot.status || "").toLowerCase()))
+        .map((slot) => slot.grounds_account_id),
+      ...slots.filter((slot) => slot.status === "offered").map((slot) => slot.grounds_account_id),
+      ...slots.map((slot) => slot.grounds_account_id),
+    ].filter((value): value is string => Boolean(value));
+    const uniqueNames = Array.from(new Set(orderedIds.map((id) => getGroundsAccountName(id)).filter(Boolean)));
+    return uniqueNames;
+  }
+
+  function formatCalendarAssigneeSummary(names: string[], emptyLabel: string) {
+    if (names.length === 0) return emptyLabel;
+    if (names.length === 1) return names[0];
+    return `${names[0]} +${names.length - 1}`;
+  }
+
   function adminCalendarCleaningJobMatches(job: Job) {
     if (adminCalendarPropertyFilter !== "all" && job.property_id !== adminCalendarPropertyFilter) return false;
     if (
@@ -9799,11 +9838,11 @@ This removes its linked members and deletes the grounds account.`
       }
     }
 
-    return adminCalendarVisibleKinds.cleaning;
+    return isAdminCalendarKindVisible("cleaning");
   }
 
   function adminCalendarGroundsJobMatches(job: GroundsJob) {
-    if (!adminCalendarVisibleKinds.grounds) return false;
+    if (!isAdminCalendarKindVisible("grounds")) return false;
     if (adminCalendarPropertyFilter !== "all" && job.property_id !== adminCalendarPropertyFilter) return false;
     if (adminCalendarAttentionOnly) {
       const slots = groundsJobSlotsByJobId[job.id] ?? [];
@@ -9815,7 +9854,7 @@ This removes its linked members and deletes the grounds account.`
   }
 
   function adminCalendarBookingMatches(booking: PropertyBookingEvent) {
-    if (!adminCalendarVisibleKinds.checkin) return false;
+    if (!isAdminCalendarKindVisible("checkin")) return false;
     if (adminCalendarPropertyFilter !== "all" && booking.property_id !== adminCalendarPropertyFilter) return false;
     if (adminCalendarCleanerFilter !== "all") {
       const assignedPropertyIds = cleanerAssignedPropertyIdsByAccountId[adminCalendarCleanerFilter];
@@ -9838,7 +9877,7 @@ This removes its linked members and deletes the grounds account.`
     adminCalendarCleanerFilter,
     adminCalendarAttentionOnly,
     adminCalendarSameDayOnly,
-    adminCalendarVisibleKinds,
+    adminCalendarFilterMode,
     jobSlotsByJobId,
     sameDayTurnoverKeySet,
   ]);
@@ -9851,7 +9890,7 @@ This removes its linked members and deletes the grounds account.`
     adminSelectedDate,
     adminCalendarPropertyFilter,
     adminCalendarAttentionOnly,
-    adminCalendarVisibleKinds,
+    adminCalendarFilterMode,
     groundsJobSlotsByJobId,
   ]);
 
@@ -9865,7 +9904,7 @@ This removes its linked members and deletes the grounds account.`
     adminCalendarCleanerFilter,
     adminCalendarAttentionOnly,
     adminCalendarSameDayOnly,
-    adminCalendarVisibleKinds,
+    adminCalendarFilterMode,
     cleanerAssignedPropertyIdsByAccountId,
     sameDayTurnoverKeySet,
   ]);
@@ -22421,14 +22460,8 @@ This removes its linked members and deletes the grounds account.`
     );
   }
   function renderCalendarSection() {
-    const toggleCalendarKind = (kind: AdminCalendarItemKind) => {
-      setAdminCalendarVisibleKinds((current) => ({
-        ...current,
-        [kind]: !current[kind],
-      }));
-    };
-
     return (
+      <>
       <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
@@ -22510,6 +22543,7 @@ This removes its linked members and deletes the grounds account.`
             Show
             <div className="mt-1 flex flex-wrap gap-2">
               {[
+                { key: "all" as const, label: "All" },
                 { key: "cleaning" as const, label: "Cleaning" },
                 { key: "checkin" as const, label: "Check-ins" },
                 { key: "grounds" as const, label: "Grounds" },
@@ -22517,9 +22551,9 @@ This removes its linked members and deletes the grounds account.`
                 <button
                   key={item.key}
                   type="button"
-                  onClick={() => toggleCalendarKind(item.key)}
+                  onClick={() => setAdminCalendarFilterMode(item.key)}
                   className={`rounded-full border px-3 py-2 text-sm font-semibold normal-case tracking-normal transition ${
-                    adminCalendarVisibleKinds[item.key]
+                    adminCalendarFilterMode === item.key
                       ? "border-[#241c15] bg-[#241c15] text-[#f8f2e8]"
                       : "border-[#d8c7ab] bg-[#fcfaf7] text-[#6f6255] hover:bg-white"
                   }`}
@@ -22613,16 +22647,8 @@ This removes its linked members and deletes the grounds account.`
                             type="button"
                             onClick={(event) => {
                               event.stopPropagation();
-                              const property = properties.find((entry) => entry.id === booking.property_id) || null;
-                              openBookingNoteEditor({
-                                bookingEventId: booking.id,
-                                propertyName: property?.name || property?.address || "Booking",
-                                summary: booking.summary || getBookingSourceLabel(booking.source),
-                                guestName: booking.summary?.trim() || "",
-                                guestCount: Number.isFinite(Number(booking.guest_count)) ? Number(booking.guest_count) : null,
-                                adminNote: booking.admin_note?.trim() || "",
-                                adminNoteImportant: Boolean(booking.admin_note_important),
-                              });
+                              setAdminSelectedDate(dateYmd);
+                              setAdminCalendarDetail({ kind: "checkin", bookingId: booking.id, date: dateYmd });
                             }}
                             className="block w-full truncate rounded-full border border-[#d8b4fe] bg-[#faf5ff] px-2 py-1 text-left text-[11px] font-medium text-[#6d28d9] transition hover:bg-[#f3e8ff] focus:outline-none focus:ring-2 focus:ring-[#c084fc]"
                           >
@@ -22633,23 +22659,39 @@ This removes its linked members and deletes the grounds account.`
 
                       const job = item.job;
                       const propertyColor = getPropertyColor(job.property_id);
+                      const groundsJob = item.kind === "grounds" ? (job as GroundsJob) : null;
+                      const cleaningJob = item.kind === "cleaning" ? (job as Job) : null;
+                      const assigneeSummary =
+                        groundsJob
+                          ? formatCalendarAssigneeSummary(getCalendarGroundsNames(groundsJob), "Unassigned")
+                          : formatCalendarAssigneeSummary(getCalendarCleanerNames(cleaningJob as Job), "Unassigned");
                       const slots =
                         item.kind === "grounds" ? groundsJobSlotsByJobId[job.id] ?? [] : jobSlotsByJobId[job.id] ?? [];
                       const isStranded = slots.some((slot) => slot.status === "stranded");
                       const isOffered = slots.some((slot) => slot.status === "offered");
 
                       return (
-                        <div
+                        <button
                           key={`${item.kind}-${job.id}`}
-                          className="truncate rounded-full border px-2 py-1 text-[11px] font-medium"
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setAdminSelectedDate(dateYmd);
+                            setAdminCalendarDetail(
+                              item.kind === "grounds"
+                                ? { kind: "grounds", jobId: job.id, date: dateYmd }
+                                : { kind: "cleaning", jobId: job.id, date: dateYmd }
+                            );
+                          }}
+                          className="block w-full truncate rounded-full border px-2 py-1 text-left text-[11px] font-medium"
                           style={{
                             backgroundColor: item.kind === "grounds" ? "#eff9ee" : propertyColor.bg,
                             color: isStranded ? "#8a2e22" : isOffered ? "#8a5a0a" : item.kind === "grounds" ? "#2f6f36" : propertyColor.text,
                             borderColor: isStranded ? "#efc6c6" : isOffered ? "#f2d49b" : item.kind === "grounds" ? "#bddbbd" : propertyColor.border,
                           }}
                         >
-                          {item.kind === "grounds" ? "Grounds" : "Cleaning"}: {getPropertyName(job.property_id)}
-                        </div>
+                          {item.kind === "grounds" ? "Grounds" : "Cleaning"}: {getPropertyName(job.property_id)}{assigneeSummary ? ` - ${assigneeSummary}` : ""}
+                        </button>
                       );
                     })}
 
@@ -22902,6 +22944,154 @@ This removes its linked members and deletes the grounds account.`
           </div>
         </div>
       </section>
+      {adminCalendarDetail ? (() => {
+        if (adminCalendarDetail.kind === "checkin") {
+          const booking = propertyBookingEvents.find((entry) => entry.id === adminCalendarDetail.bookingId) || null;
+          if (!booking) return null;
+          const property = properties.find((entry) => entry.id === booking.property_id) || null;
+          const sourceLabel = getBookingSourceLabel(booking.source);
+          const guestCount = Number.isFinite(Number(booking.guest_count)) ? Number(booking.guest_count) : null;
+          const checkinTime = formatTimeLabel(property?.default_checkin_time);
+          const checkoutTime = formatTimeLabel(property?.default_checkout_time);
+          const adminNote = booking.admin_note?.trim() || "";
+          const adminNoteImportant = Boolean(booking.admin_note_important);
+
+          return (
+            <div className="fixed inset-0 z-[120] flex items-center justify-center bg-[rgba(24,18,10,0.38)] p-4" onClick={() => setAdminCalendarDetail(null)}>
+              <div className="w-full max-w-xl rounded-[28px] border border-[#e6d6f8] bg-white p-5 shadow-[0_30px_80px_rgba(40,24,80,0.22)]" onClick={(event) => event.stopPropagation()}>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="rounded-full bg-[#7c3aed] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white">Check-in</div>
+                    <h3 className="mt-3 text-xl font-semibold text-[#241c15]">{property?.name || property?.address || "Unknown property"}</h3>
+                    <div className="mt-1 text-sm text-[#6f6255]">{booking.summary?.trim() || "Reserved"}</div>
+                  </div>
+                  <button type="button" onClick={() => setAdminCalendarDetail(null)} className="rounded-full border border-[#e2d8f4] bg-white px-3 py-1.5 text-sm font-medium text-[#6f6255] transition hover:bg-[#faf7ff]">Close</button>
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3 text-sm text-[#5f5245]">
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-[#8a7b68]">Stay</div>
+                    <div className="mt-2">Check-in: {formatDateLabel(booking.checkin_date)}{checkinTime ? ` at ${checkinTime}` : ""}</div>
+                    <div className="mt-1">Check-out: {formatDateLabel(booking.checkout_date)}{checkoutTime ? ` at ${checkoutTime}` : ""}</div>
+                  </div>
+                  <div className="rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3 text-sm text-[#5f5245]">
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-[#8a7b68]">Booking</div>
+                    <div className="mt-2">{formatGuestCountLabel(guestCount)}</div>
+                    <div className="mt-1">{sourceLabel}</div>
+                  </div>
+                </div>
+                {adminNote ? <div className={`mt-4 rounded-[18px] border px-4 py-3 text-sm ${adminNoteImportant ? "border-[#b91c1c] bg-[#fff1f2] text-[#991b1b]" : "border-[#eadfce] bg-[#fffaf0] text-[#5f5245]"}`}>{adminNote}</div> : null}
+                <div className="mt-5 flex flex-wrap gap-2">
+                  <button type="button" onClick={() => {
+                    setAdminCalendarDetail(null);
+                    openBookingNoteEditor({
+                      bookingEventId: booking.id,
+                      propertyName: property?.name || property?.address || "Booking",
+                      summary: booking.summary || sourceLabel,
+                      guestName: booking.summary?.trim() || "",
+                      guestCount,
+                      adminNote,
+                      adminNoteImportant,
+                    });
+                  }} className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-semibold text-[#5f5245] transition hover:bg-white">{adminNote ? "Edit note" : "Add note"}</button>
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        if (adminCalendarDetail.kind === "cleaning") {
+          const job = jobs.find((entry) => entry.id === adminCalendarDetail.jobId) || null;
+          if (!job) return null;
+          const slots = jobSlotsByJobId[job.id] ?? [];
+          const cleanerNames = getCalendarCleanerNames(job);
+          const acceptedCount = slots.filter((slot) => slot.status === "accepted").length;
+          const offeredCount = slots.filter((slot) => slot.status === "offered").length;
+          const strandedCount = slots.filter((slot) => slot.status === "stranded").length;
+          const propertyColor = getPropertyColor(job.property_id);
+
+          return (
+            <div className="fixed inset-0 z-[120] flex items-center justify-center bg-[rgba(24,18,10,0.38)] p-4" onClick={() => setAdminCalendarDetail(null)}>
+              <div className="w-full max-w-xl rounded-[28px] border bg-white p-5 shadow-[0_30px_80px_rgba(40,24,80,0.22)]" style={{ borderColor: propertyColor.border }} onClick={(event) => event.stopPropagation()}>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ backgroundColor: propertyColor.bg, color: propertyColor.text }}>Cleaning</div>
+                    <h3 className="mt-3 text-xl font-semibold text-[#241c15]">{getPropertyName(job.property_id)}</h3>
+                    <div className="mt-1 text-sm text-[#6f6255]">{getJobDisplayStatus(job, slots)}</div>
+                  </div>
+                  <button type="button" onClick={() => setAdminCalendarDetail(null)} className="rounded-full border border-[#e2d8f4] bg-white px-3 py-1.5 text-sm font-medium text-[#6f6255] transition hover:bg-[#faf7ff]">Close</button>
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3 text-sm text-[#5f5245]">
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-[#8a7b68]">Who is cleaning</div>
+                    <div className="mt-2">{cleanerNames.length > 0 ? cleanerNames.join(", ") : "No cleaner assigned yet"}</div>
+                  </div>
+                  <div className="rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3 text-sm text-[#5f5245]">
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-[#8a7b68]">Staffing</div>
+                    <div className="mt-2">Accepted: {acceptedCount}/{job.cleaner_units_needed}</div>
+                    <div className="mt-1">Offered: {offeredCount}</div>
+                    <div className="mt-1">Stranded: {strandedCount}</div>
+                  </div>
+                </div>
+                {job.notes ? <div className="mt-4 rounded-[18px] border border-[#eadfce] bg-[#fffaf0] px-4 py-3 text-sm text-[#5f5245]">{job.notes}</div> : null}
+                <div className="mt-5 flex flex-wrap gap-2">
+                  <button type="button" onClick={() => {
+                    setAdminCalendarDetail(null);
+                    setHighlightedJobId(job.id);
+                    setActiveSection("jobs");
+                    setTimeout(() => {
+                      document.getElementById(`job-${job.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+                    }, 50);
+                  }} className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-semibold text-[#5f5245] transition hover:bg-white">Open job</button>
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        const job = groundsJobs.find((entry) => entry.id === adminCalendarDetail.jobId) || null;
+        if (!job) return null;
+        const slots = groundsJobSlotsByJobId[job.id] ?? [];
+        const groundsNames = getCalendarGroundsNames(job);
+        const acceptedCount = slots.filter((slot) => slot.status === "accepted").length;
+        const offeredCount = slots.filter((slot) => slot.status === "offered").length;
+        const strandedCount = slots.filter((slot) => slot.status === "stranded").length;
+
+        return (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-[rgba(24,18,10,0.38)] p-4" onClick={() => setAdminCalendarDetail(null)}>
+            <div className="w-full max-w-xl rounded-[28px] border border-[#bddbbd] bg-white p-5 shadow-[0_30px_80px_rgba(40,24,80,0.22)]" onClick={(event) => event.stopPropagation()}>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="rounded-full bg-[#2f6f36] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white">Grounds</div>
+                  <h3 className="mt-3 text-xl font-semibold text-[#241c15]">{getPropertyName(job.property_id)}</h3>
+                  <div className="mt-1 text-sm text-[#6f6255]">{getGroundsJobDisplayStatus(job, slots)}</div>
+                </div>
+                <button type="button" onClick={() => setAdminCalendarDetail(null)} className="rounded-full border border-[#e2d8f4] bg-white px-3 py-1.5 text-sm font-medium text-[#6f6255] transition hover:bg-[#faf7ff]">Close</button>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3 text-sm text-[#5f5245]">
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-[#8a7b68]">Assigned team</div>
+                  <div className="mt-2">{groundsNames.length > 0 ? groundsNames.join(", ") : "No grounds team assigned yet"}</div>
+                </div>
+                <div className="rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3 text-sm text-[#5f5245]">
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-[#8a7b68]">Staffing</div>
+                  <div className="mt-2">Accepted: {acceptedCount}/{job.grounds_units_needed}</div>
+                  <div className="mt-1">Offered: {offeredCount}</div>
+                  <div className="mt-1">Stranded: {strandedCount}</div>
+                </div>
+              </div>
+              {job.notes ? <div className="mt-4 rounded-[18px] border border-[#eadfce] bg-[#fffaf0] px-4 py-3 text-sm text-[#5f5245]">{job.notes}</div> : null}
+              <div className="mt-5 flex flex-wrap gap-2">
+                <button type="button" onClick={() => {
+                  setAdminCalendarDetail(null);
+                  setActiveSection("jobs");
+                  setJobWorkflowTab("grounds");
+                }} className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-semibold text-[#5f5245] transition hover:bg-white">Open grounds job</button>
+              </div>
+            </div>
+          </div>
+        );
+      })() : null}
+      </>
     );
   }
 
@@ -22914,6 +23104,7 @@ This removes its linked members and deletes the grounds account.`
     };
 
     return (
+      <>
       <section className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -23062,6 +23253,231 @@ This removes its linked members and deletes the grounds account.`
           )}
         </div>
       </section>
+      {adminCalendarDetail ? (() => {
+        if (adminCalendarDetail.kind === "checkin") {
+          const booking = propertyBookingEvents.find((entry) => entry.id === adminCalendarDetail.bookingId) || null;
+          if (!booking) return null;
+          const property = properties.find((entry) => entry.id === booking.property_id) || null;
+          const sourceLabel = getBookingSourceLabel(booking.source);
+          const guestCount = Number.isFinite(Number(booking.guest_count)) ? Number(booking.guest_count) : null;
+          const checkinTime = formatTimeLabel(property?.default_checkin_time);
+          const checkoutTime = formatTimeLabel(property?.default_checkout_time);
+          const adminNote = booking.admin_note?.trim() || "";
+          const adminNoteImportant = Boolean(booking.admin_note_important);
+
+          return (
+            <div className="fixed inset-0 z-[120] flex items-center justify-center bg-[rgba(24,18,10,0.38)] p-4" onClick={() => setAdminCalendarDetail(null)}>
+              <div
+                className="w-full max-w-xl rounded-[28px] border border-[#e6d6f8] bg-white p-5 shadow-[0_30px_80px_rgba(40,24,80,0.22)]"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="rounded-full bg-[#7c3aed] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white">
+                      Check-in
+                    </div>
+                    <h3 className="mt-3 text-xl font-semibold text-[#241c15]">{property?.name || property?.address || "Unknown property"}</h3>
+                    <div className="mt-1 text-sm text-[#6f6255]">{booking.summary?.trim() || "Reserved"}</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAdminCalendarDetail(null)}
+                    className="rounded-full border border-[#e2d8f4] bg-white px-3 py-1.5 text-sm font-medium text-[#6f6255] transition hover:bg-[#faf7ff]"
+                  >
+                    Close
+                  </button>
+                </div>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3 text-sm text-[#5f5245]">
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-[#8a7b68]">Stay</div>
+                    <div className="mt-2">Check-in: {formatDateLabel(booking.checkin_date)}{checkinTime ? ` at ${checkinTime}` : ""}</div>
+                    <div className="mt-1">Check-out: {formatDateLabel(booking.checkout_date)}{checkoutTime ? ` at ${checkoutTime}` : ""}</div>
+                  </div>
+                  <div className="rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3 text-sm text-[#5f5245]">
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-[#8a7b68]">Booking</div>
+                    <div className="mt-2">{formatGuestCountLabel(guestCount)}</div>
+                    <div className="mt-1">{sourceLabel}</div>
+                  </div>
+                </div>
+
+                {adminNote ? (
+                  <div className={`mt-4 rounded-[18px] border px-4 py-3 text-sm ${
+                    adminNoteImportant
+                      ? "border-[#b91c1c] bg-[#fff1f2] text-[#991b1b]"
+                      : "border-[#eadfce] bg-[#fffaf0] text-[#5f5245]"
+                  }`}>
+                    {adminNote}
+                  </div>
+                ) : null}
+
+                <div className="mt-5 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAdminCalendarDetail(null);
+                      openBookingNoteEditor({
+                        bookingEventId: booking.id,
+                        propertyName: property?.name || property?.address || "Booking",
+                        summary: booking.summary || sourceLabel,
+                        guestName: booking.summary?.trim() || "",
+                        guestCount,
+                        adminNote,
+                        adminNoteImportant,
+                      });
+                    }}
+                    className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-semibold text-[#5f5245] transition hover:bg-white"
+                  >
+                    {adminNote ? "Edit note" : "Add note"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        if (adminCalendarDetail.kind === "cleaning") {
+          const job = jobs.find((entry) => entry.id === adminCalendarDetail.jobId) || null;
+          if (!job) return null;
+          const slots = jobSlotsByJobId[job.id] ?? [];
+          const cleanerNames = getCalendarCleanerNames(job);
+          const acceptedCount = slots.filter((slot) => slot.status === "accepted").length;
+          const offeredCount = slots.filter((slot) => slot.status === "offered").length;
+          const strandedCount = slots.filter((slot) => slot.status === "stranded").length;
+          const propertyColor = getPropertyColor(job.property_id);
+
+          return (
+            <div className="fixed inset-0 z-[120] flex items-center justify-center bg-[rgba(24,18,10,0.38)] p-4" onClick={() => setAdminCalendarDetail(null)}>
+              <div
+                className="w-full max-w-xl rounded-[28px] border bg-white p-5 shadow-[0_30px_80px_rgba(40,24,80,0.22)]"
+                style={{ borderColor: propertyColor.border }}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ backgroundColor: propertyColor.bg, color: propertyColor.text }}>
+                      Cleaning
+                    </div>
+                    <h3 className="mt-3 text-xl font-semibold text-[#241c15]">{getPropertyName(job.property_id)}</h3>
+                    <div className="mt-1 text-sm text-[#6f6255]">{getJobDisplayStatus(job, slots)}</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAdminCalendarDetail(null)}
+                    className="rounded-full border border-[#e2d8f4] bg-white px-3 py-1.5 text-sm font-medium text-[#6f6255] transition hover:bg-[#faf7ff]"
+                  >
+                    Close
+                  </button>
+                </div>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3 text-sm text-[#5f5245]">
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-[#8a7b68]">Who is cleaning</div>
+                    <div className="mt-2">{cleanerNames.length > 0 ? cleanerNames.join(", ") : "No cleaner assigned yet"}</div>
+                  </div>
+                  <div className="rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3 text-sm text-[#5f5245]">
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-[#8a7b68]">Staffing</div>
+                    <div className="mt-2">Accepted: {acceptedCount}/{job.cleaner_units_needed}</div>
+                    <div className="mt-1">Offered: {offeredCount}</div>
+                    <div className="mt-1">Stranded: {strandedCount}</div>
+                  </div>
+                </div>
+
+                {job.notes ? (
+                  <div className="mt-4 rounded-[18px] border border-[#eadfce] bg-[#fffaf0] px-4 py-3 text-sm text-[#5f5245]">
+                    {job.notes}
+                  </div>
+                ) : null}
+
+                <div className="mt-5 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAdminCalendarDetail(null);
+                      setHighlightedJobId(job.id);
+                      setActiveSection("jobs");
+                      setTimeout(() => {
+                        document.getElementById(`job-${job.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+                      }, 50);
+                    }}
+                    className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-semibold text-[#5f5245] transition hover:bg-white"
+                  >
+                    Open job
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        const job = groundsJobs.find((entry) => entry.id === adminCalendarDetail.jobId) || null;
+        if (!job) return null;
+        const slots = groundsJobSlotsByJobId[job.id] ?? [];
+        const groundsNames = getCalendarGroundsNames(job);
+        const acceptedCount = slots.filter((slot) => slot.status === "accepted").length;
+        const offeredCount = slots.filter((slot) => slot.status === "offered").length;
+        const strandedCount = slots.filter((slot) => slot.status === "stranded").length;
+
+        return (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-[rgba(24,18,10,0.38)] p-4" onClick={() => setAdminCalendarDetail(null)}>
+            <div
+              className="w-full max-w-xl rounded-[28px] border border-[#bddbbd] bg-white p-5 shadow-[0_30px_80px_rgba(40,24,80,0.22)]"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="rounded-full bg-[#2f6f36] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white">
+                    Grounds
+                  </div>
+                  <h3 className="mt-3 text-xl font-semibold text-[#241c15]">{getPropertyName(job.property_id)}</h3>
+                  <div className="mt-1 text-sm text-[#6f6255]">{getGroundsJobDisplayStatus(job, slots)}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAdminCalendarDetail(null)}
+                  className="rounded-full border border-[#e2d8f4] bg-white px-3 py-1.5 text-sm font-medium text-[#6f6255] transition hover:bg-[#faf7ff]"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3 text-sm text-[#5f5245]">
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-[#8a7b68]">Assigned team</div>
+                  <div className="mt-2">{groundsNames.length > 0 ? groundsNames.join(", ") : "No grounds team assigned yet"}</div>
+                </div>
+                <div className="rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3 text-sm text-[#5f5245]">
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-[#8a7b68]">Staffing</div>
+                  <div className="mt-2">Accepted: {acceptedCount}/{job.grounds_units_needed}</div>
+                  <div className="mt-1">Offered: {offeredCount}</div>
+                  <div className="mt-1">Stranded: {strandedCount}</div>
+                </div>
+              </div>
+
+              {job.notes ? (
+                <div className="mt-4 rounded-[18px] border border-[#eadfce] bg-[#fffaf0] px-4 py-3 text-sm text-[#5f5245]">
+                  {job.notes}
+                </div>
+              ) : null}
+
+              <div className="mt-5 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAdminCalendarDetail(null);
+                    setActiveSection("jobs");
+                    setJobWorkflowTab("grounds");
+                  }}
+                  className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-semibold text-[#5f5245] transition hover:bg-white"
+                >
+                  Open grounds job
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })() : null}
+      </>
     );
   }
 
