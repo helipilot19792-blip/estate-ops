@@ -331,6 +331,7 @@ export default function CleanerMobileView({
   sops,
   handleAcceptJob,
   handleDeclineJob,
+  handleReleaseJob,
   handleArriveJob,
   handleStartJob,
   handleFinishJob,
@@ -347,6 +348,7 @@ export default function CleanerMobileView({
   getTimeRemainingMs,
   formatRemaining,
   getCountdownTone,
+  canReleaseSelectedJob,
   toYmd,
   selectedDate,
   setSelectedDate,
@@ -964,14 +966,27 @@ export default function CleanerMobileView({
                 ) : null}
 
                 {isAccepted(selectedCleanerJob.slot.status) ? (
-                  <button
-                    type="button"
-                    onClick={() => void handleStartJob()}
-                    disabled={actionLoading !== null}
-                    className="min-h-[46px] rounded-full border border-amber-500/40 bg-amber-500/20 px-4 py-3 text-sm font-semibold text-amber-100 transition hover:bg-amber-500/30 disabled:opacity-50"
-                  >
-                    {actionLoading === "start" ? "Starting..." : "Start Job"}
-                  </button>
+                  <>
+                    {canReleaseSelectedJob ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleReleaseJob()}
+                        disabled={actionLoading !== null}
+                        className="min-h-[46px] rounded-full border border-rose-400/40 bg-rose-500/20 px-4 py-3 text-sm font-semibold text-rose-100 transition hover:bg-rose-500/30 disabled:opacity-50"
+                      >
+                        {actionLoading === "release" ? "Releasing..." : "Release to Backup"}
+                      </button>
+                    ) : null}
+
+                    <button
+                      type="button"
+                      onClick={() => void handleStartJob()}
+                      disabled={actionLoading !== null}
+                      className="min-h-[46px] rounded-full border border-amber-500/40 bg-amber-500/20 px-4 py-3 text-sm font-semibold text-amber-100 transition hover:bg-amber-500/30 disabled:opacity-50"
+                    >
+                      {actionLoading === "start" ? "Starting..." : "Start Job"}
+                    </button>
+                  </>
                 ) : null}
 
                 {(isAccepted(selectedCleanerJob.slot.status) || isInProgress(selectedCleanerJob.slot.status)) ? (

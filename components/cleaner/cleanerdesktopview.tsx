@@ -326,11 +326,13 @@ function JobCard({
   actionLoading,
   handleAcceptJob,
   handleDeclineJob,
+  handleReleaseJob,
   handleStartJob,
   handleFinishJob,
   handleCloseDetails,
   availableProperties,
   currentProfileId,
+  canReleaseSelectedJob,
 }: {
   item: CleanerJob;
   isSelected: boolean;
@@ -354,11 +356,13 @@ function JobCard({
   actionLoading: CleanerViewProps["actionLoading"];
   handleAcceptJob: CleanerViewProps["handleAcceptJob"];
   handleDeclineJob: CleanerViewProps["handleDeclineJob"];
+  handleReleaseJob: CleanerViewProps["handleReleaseJob"];
   handleStartJob: CleanerViewProps["handleStartJob"];
   handleFinishJob: CleanerViewProps["handleFinishJob"];
   handleCloseDetails: CleanerViewProps["handleCloseDetails"];
   availableProperties: CleanerViewProps["properties"];
   currentProfileId: string | null;
+  canReleaseSelectedJob: boolean;
 }) {
   const [reportOpen, setReportOpen] = useState(false);
   const [reportSubmittedMessage, setReportSubmittedMessage] = useState("");
@@ -558,14 +562,27 @@ function JobCard({
             )}
 
             {isAccepted ? (
-              <button
-                type="button"
-                onClick={() => void handleStartJob()}
-                disabled={actionLoading !== null}
-                className="rounded-full border border-amber-500/45 bg-amber-500/15 px-5 py-2 text-sm font-medium text-amber-100 transition hover:bg-amber-500/25 disabled:opacity-50"
-              >
-                {actionLoading === "start" ? "Starting..." : "Start Job"}
-              </button>
+              <>
+                {canReleaseSelectedJob ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleReleaseJob()}
+                    disabled={actionLoading !== null}
+                    className="rounded-full border border-rose-400/45 bg-rose-500/15 px-5 py-2 text-sm font-medium text-rose-100 transition hover:bg-rose-500/25 disabled:opacity-50"
+                  >
+                    {actionLoading === "release" ? "Releasing..." : "Release to Backup"}
+                  </button>
+                ) : null}
+
+                <button
+                  type="button"
+                  onClick={() => void handleStartJob()}
+                  disabled={actionLoading !== null}
+                  className="rounded-full border border-amber-500/45 bg-amber-500/15 px-5 py-2 text-sm font-medium text-amber-100 transition hover:bg-amber-500/25 disabled:opacity-50"
+                >
+                  {actionLoading === "start" ? "Starting..." : "Start Job"}
+                </button>
+              </>
             ) : null}
 
             {(isAccepted || isInProgress) ? (
@@ -752,6 +769,7 @@ export default function CleanerDesktopView({
   scrollToJobsSection,
   handleAcceptJob,
   handleDeclineJob,
+  handleReleaseJob,
   handleStartJob,
   handleFinishJob,
   handleCloseDetails,
@@ -766,6 +784,7 @@ export default function CleanerDesktopView({
   getSlotDisplayStatus,
   getStatusTone,
   getTeamMessage,
+  canReleaseSelectedJob,
   canSwitchToGrounds,
   groundsWaitingCount,
   handleSwitchToGrounds,
@@ -859,12 +878,13 @@ export default function CleanerDesktopView({
               actionLoading={actionLoading}
               handleAcceptJob={handleAcceptJob}
               handleDeclineJob={handleDeclineJob}
+              handleReleaseJob={handleReleaseJob}
               handleStartJob={handleStartJob}
               handleFinishJob={handleFinishJob}
               handleCloseDetails={handleCloseDetails}
               availableProperties={properties}
               currentProfileId={profile?.id || null}
-
+              canReleaseSelectedJob={canReleaseSelectedJob && selectedCleanerJob?.slot.id === item.slot.id}
             />
           );
         })}
@@ -1390,11 +1410,15 @@ export default function CleanerDesktopView({
                         actionLoading={actionLoading}
                         handleAcceptJob={handleAcceptJob}
                         handleDeclineJob={handleDeclineJob}
+                        handleReleaseJob={handleReleaseJob}
                         handleStartJob={handleStartJob}
                         handleFinishJob={handleFinishJob}
                         handleCloseDetails={handleCloseDetails}
                         availableProperties={properties}
                         currentProfileId={profile?.id || null}
+                        canReleaseSelectedJob={
+                          canReleaseSelectedJob && selectedCleanerJob?.slot.id === collapsedPreviewJob.slot.id
+                        }
                       />
                     ) : (
                       <p className="text-sm text-[#cdbda0]">

@@ -1027,7 +1027,7 @@ type StaffJobStatusEventRow = {
   job_kind: "cleaner" | "grounds";
   job_id: string;
   account_id?: string | null;
-  event_type: "accepted" | "arrived" | "started" | "completed";
+  event_type: "accepted" | "arrived" | "started" | "completed" | "release_requested";
   title: string;
   body: string;
   url?: string | null;
@@ -1632,6 +1632,7 @@ export default function AdminPage() {
   const [expandedPaymentSlotIds, setExpandedPaymentSlotIds] = useState<Set<string>>(() => new Set());
   const [reassignSelections, setReassignSelections] = useState<Record<string, string>>({});
   const [reassigningJobId, setReassigningJobId] = useState<string | null>(null);
+  const [approvingCleanerReleaseRequestId, setApprovingCleanerReleaseRequestId] = useState<string | null>(null);
   const [assigningSelfJobId, setAssigningSelfJobId] = useState<string | null>(null);
   const [acceptingOnBehalfSlotId, setAcceptingOnBehalfSlotId] = useState<string | null>(null);
   const [highlightedJobId, setHighlightedJobId] = useState<string | null>(null);
@@ -5923,6 +5924,52 @@ export default function AdminPage() {
       setError(err?.message || "Could not reassign stranded job.");
     } finally {
       setReassigningJobId(null);
+    }
+  }
+
+  async function approveCleanerReleaseRequest(requestId: string) {
+    setError("");
+    setActionMessage("");
+    setApprovingCleanerReleaseRequestId(requestId);
+
+    try {
+      if (!currentOrganizationId) {
+        throw new Error("No organization selected.");
+      }
+
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        throw new Error("Could not verify your admin session.");
+      }
+
+      const response = await fetch("/api/admin/cleaner-release-request", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          requestEventId: requestId,
+          organizationId: currentOrganizationId,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || "Could not approve cleaner release request.");
+      }
+
+      setActionMessage(payload?.message || "Cleaner release approved.");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Could not approve cleaner release request.");
+    } finally {
+      setApprovingCleanerReleaseRequestId(null);
     }
   }
 
@@ -11439,6 +11486,15 @@ This removes its linked members and deletes the grounds account.`
     }, 0);
   }, [chatConversations, chatHiddenItems, chatMessages, chatParticipants, currentAdminUserId]);
 
+  const pendingCleanerReleaseRequests = useMemo(
+    () =>
+      staffJobStatusEvents
+        .filter((event) => event.event_type === "release_requested")
+        .filter((event) => String(event.metadata?.request_status || "pending").toLowerCase().trim() === "pending")
+        .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()),
+    [staffJobStatusEvents]
+  );
+
   const notificationCenterItems = useMemo(() => {
     const sentUnpaidInvoices = ownerInvoices.filter((invoice) => invoice.status === "sent");
     const runningDraftInvoices = ownerInvoices.filter(
@@ -11495,6 +11551,18 @@ This removes its linked members and deletes the grounds account.`
         title: "Account deletion requests",
         detail: "Users requested account and personal information deletion review.",
         count: openDeletionRequests.length,
+        tone: "red",
+        actionLabel: "Review requests",
+        onClick: () => setActiveSection("notifications"),
+      });
+    }
+
+    if (pendingCleanerReleaseRequests.length > 0) {
+      items.push({
+        key: "cleaner-release-requests",
+        title: "Cleaner release approvals",
+        detail: "Cleaners requested release from accepted jobs where no backup cleaner was next in line.",
+        count: pendingCleanerReleaseRequests.length,
         tone: "red",
         actionLabel: "Review requests",
         onClick: () => setActiveSection("notifications"),
@@ -11646,6 +11714,7 @@ This removes its linked members and deletes the grounds account.`
     ownerInvoices,
     propertyHealthRows,
     staffJobStatusEvents,
+    pendingCleanerReleaseRequests.length,
     accountDeletionRequests,
     isCleaningCompanyMode,
     now,
@@ -12204,7 +12273,7 @@ This removes its linked members and deletes the grounds account.`
             {[
               { label: "Unread chat", value: unreadChatCount, tone: toneClasses.blue },
               { label: "Bulletin Board", value: bulletinUnreadCount, tone: bulletinUnreadCount > 0 ? toneClasses.amber : toneClasses.green },
-              { label: "Job issues", value: strandedJobs.length + failedNotificationStats.total, tone: strandedJobs.length + failedNotificationStats.total > 0 ? toneClasses.red : toneClasses.green },
+              { label: "Job issues", value: strandedJobs.length + failedNotificationStats.total + pendingCleanerReleaseRequests.length, tone: strandedJobs.length + failedNotificationStats.total + pendingCleanerReleaseRequests.length > 0 ? toneClasses.red : toneClasses.green },
               { label: "Maintenance", value: maintenanceFlagCounts.open, tone: maintenanceFlagCounts.urgent > 0 ? toneClasses.red : toneClasses.amber },
               { label: "Property health", value: propertyHealthStats.atRisk, tone: propertyHealthStats.atRisk > 0 ? toneClasses.amber : toneClasses.green },
               { label: "Privacy requests", value: openDeletionRequests.length, tone: openDeletionRequests.length > 0 ? toneClasses.red : toneClasses.green },
@@ -12260,6 +12329,65 @@ This removes its linked members and deletes the grounds account.`
                   </div>
                 </div>
               ))
+            )}
+          </div>
+        </section>
+
+        <section className="rounded-[30px] border border-[#fecaca] bg-[linear-gradient(180deg,#fffafa_0%,#fff5f5_100%)] p-5 shadow-[0_18px_45px_rgba(220,38,38,0.06)]">
+          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#b91c1c]">Job Release Queue</p>
+              <h3 className="mt-2 text-xl font-semibold tracking-tight text-[#7f1d1d]">Cleaner release approvals</h3>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-[#7f4a4a]">
+                Approve these only when it is okay to release the cleaner without a backup and move the slot into the stranded queue.
+              </p>
+            </div>
+            <span className="rounded-full border border-[#fecaca] bg-white px-3 py-1 text-xs font-semibold text-[#b91c1c]">
+              {pendingCleanerReleaseRequests.length} open
+            </span>
+          </div>
+
+          <div className="mt-5 space-y-3">
+            {pendingCleanerReleaseRequests.length === 0 ? (
+              <div className="rounded-[22px] border border-dashed border-[#fecaca] bg-white/70 px-4 py-8 text-center text-sm text-[#7f7263]">
+                No cleaner release approvals are waiting right now.
+              </div>
+            ) : (
+              pendingCleanerReleaseRequests.map((event) => {
+                const propertyName = String(event.metadata?.property_name || event.metadata?.property_address || "Unknown property");
+                const cleanerName = String(event.metadata?.current_cleaner_name || event.metadata?.requester_email || "Cleaner");
+                const approving = approvingCleanerReleaseRequestId === event.id;
+
+                return (
+                  <div key={event.id} className="rounded-[22px] border border-[#fecaca] bg-white p-4 shadow-sm">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h4 className="text-base font-semibold text-[#7f1d1d]">{propertyName}</h4>
+                          <span className="rounded-full border border-[#fca5a5] bg-[#fff5f5] px-2.5 py-0.5 text-xs font-semibold text-[#8a2e22]">
+                            pending
+                          </span>
+                        </div>
+                        <p className="mt-2 text-sm leading-6 text-[#7f4a4a]">
+                          {cleanerName} requested release on {formatDateTime(event.created_at)} with no backup cleaner next in line.
+                        </p>
+                        <p className="mt-2 rounded-[16px] border border-[#fee2e2] bg-[#fffafa] px-3 py-2 text-sm leading-6 text-[#7f4a4a]">
+                          {event.body}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => void approveCleanerReleaseRequest(event.id)}
+                        disabled={approving}
+                        className="rounded-full bg-[#241c15] px-4 py-2 text-sm font-semibold text-[#f8f2e8] transition hover:bg-[#352a21] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {approving ? "Approving..." : "Approve release"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
             )}
           </div>
         </section>

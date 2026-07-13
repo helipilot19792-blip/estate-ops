@@ -144,7 +144,7 @@ export type CleanerViewProps = {
   loading: boolean;
   parseJobNotes: (notes: string | null) => ParsedJobNotes;
   signingOut: boolean;
-  actionLoading: "accept" | "decline" | "arrive" | "start" | "finish" | null;
+  actionLoading: "accept" | "decline" | "release" | "arrive" | "start" | "finish" | null;
   profile: Profile | null;
   cleanerAccount: CleanerAccount | null;
   properties: Property[];
@@ -193,6 +193,7 @@ export type CleanerViewProps = {
   scrollToJobsSection: () => void;
   handleAcceptJob: () => Promise<void>;
   handleDeclineJob: () => Promise<void>;
+  handleReleaseJob: () => Promise<void>;
   handleArriveJob: (slotId?: string) => Promise<void>;
   handleStartJob: () => Promise<void>;
   handleFinishJob: () => Promise<void>;
@@ -221,6 +222,7 @@ export type CleanerViewProps = {
     selectedRing: string;
   };
   getTeamMessage: (item: CleanerJob) => string;
+  canReleaseSelectedJob: boolean;
   canSwitchToGrounds: boolean;
   groundsWaitingCount: number;
   handleSwitchToGrounds: () => void;
@@ -1469,6 +1471,89 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     }
   }
 
+  function canReleaseCleanerJob(job: CleanerJob | null | undefined) {
+    if (!job) return false;
+    if ((job.slot.status || "").toLowerCase().trim() !== "accepted") return false;
+    if (!job.jobDate) return false;
+    const today = new Date().toISOString().slice(0, 10);
+    return job.jobDate >= today;
+  }
+
+  async function handleReleaseJob() {
+    if (!selectedCleanerJob || !profile?.id) return;
+    if (!canReleaseCleanerJob(selectedCleanerJob)) {
+      setJobsWarning("Only today's or future accepted jobs can be released to a backup cleaner.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Release this accepted job to the next backup cleaner in line? This will immediately send them the offer."
+    );
+    if (!confirmed) return;
+
+    setJobsWarning(null);
+    setJobsSuccess(null);
+    setActionLoading("release");
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("Your login session expired. Please log in again.");
+      }
+
+      const response = await fetch("/api/staff-job-action", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          portal: "cleaner",
+          action: "release",
+          slotId: selectedCleanerJob.slot.id,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || "Could not release job to backup cleaner.");
+      }
+
+      if (payload?.requestPending) {
+        setJobsSuccess(payload?.message || "Admin approval was requested to release this job without a backup cleaner.");
+        if (Array.isArray(payload?.adminPush?.errors) && payload.adminPush.errors.length > 0) {
+          setJobsWarning(`Approval request was saved, but the admin push notification had an issue: ${payload.adminPush.errors[0]}`);
+        }
+        await refreshCleanerJobs();
+        return;
+      }
+
+      const backupName = String(payload?.replacementCleaner?.display_name || "").trim();
+      const pushErrors = Array.isArray(payload?.notificationResult?.errors) ? payload.notificationResult.errors : [];
+
+      await refreshCleanerJobs();
+      setSelectedSlotId(null);
+      setJobsSuccess(
+        backupName
+          ? `Job released and re-offered to ${backupName}.`
+          : "Job released and re-offered to the next backup cleaner."
+      );
+
+      if (pushErrors.length > 0) {
+        setJobsWarning(`Job was released, but the backup notification had an issue: ${pushErrors[0]}`);
+      }
+    } catch (error: any) {
+      setJobsSuccess(null);
+      setJobsWarning(error?.message || "Could not release job to backup cleaner.");
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
   useEffect(() => {
     let active = true;
 
@@ -1868,6 +1953,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     scrollToJobsSection,
     handleAcceptJob,
     handleDeclineJob,
+    handleReleaseJob,
     handleArriveJob,
     handleStartJob,
     handleFinishJob,
@@ -1885,6 +1971,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     getSlotDisplayStatus,
     getStatusTone,
     getTeamMessage,
+    canReleaseSelectedJob: canReleaseCleanerJob(selectedCleanerJob),
     canSwitchToGrounds,
     groundsWaitingCount,
     handleSwitchToGrounds,

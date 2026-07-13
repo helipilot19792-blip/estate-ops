@@ -134,3 +134,31 @@ export async function sendAdminJobStatusPush(
 
   return { sent: result.sent, errors: [...result.errors, ...eventErrors], deliveries: result.deliveries };
 }
+
+export async function sendAdminApprovalRequestPush(
+  service: ServiceClient,
+  organizationId: string,
+  payload: {
+    title: string;
+    body: string;
+    url: string;
+    tag: string;
+  }
+) {
+  const { data: adminMembers, error: adminError } = await service
+    .from("organization_members")
+    .select("profile_id")
+    .eq("organization_id", organizationId)
+    .eq("role", "admin");
+
+  if (adminError) {
+    return { sent: 0, errors: [adminError.message] };
+  }
+
+  const profileIds: string[] = [
+    ...new Set<string>((adminMembers || []).map((row: any) => String(row.profile_id || "")).filter(Boolean)),
+  ];
+
+  const result = await sendStaffPushNotifications("admin", profileIds, payload);
+  return { sent: result.sent, errors: result.errors, deliveries: result.deliveries };
+}
