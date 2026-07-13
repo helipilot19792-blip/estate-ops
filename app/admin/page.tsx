@@ -9817,6 +9817,13 @@ This removes its linked members and deletes the grounds account.`
     return `${names[0]} +${names.length - 1}`;
   }
 
+  function getCalendarCleaningBooking(job: Job) {
+    const jobDate = job.scheduled_for || extractCheckoutDate(job.notes);
+    if (!jobDate) return null;
+    const sameDayBookings = adminBookingEventsByDate.get(jobDate) ?? [];
+    return sameDayBookings.find((booking) => booking.property_id === job.property_id) || null;
+  }
+
   function adminCalendarCleaningJobMatches(job: Job) {
     if (adminCalendarPropertyFilter !== "all" && job.property_id !== adminCalendarPropertyFilter) return false;
     if (
@@ -23004,6 +23011,11 @@ This removes its linked members and deletes the grounds account.`
           if (!job) return null;
           const slots = jobSlotsByJobId[job.id] ?? [];
           const cleanerNames = getCalendarCleanerNames(job);
+          const linkedBooking = getCalendarCleaningBooking(job);
+          const linkedProperty = properties.find((entry) => entry.id === job.property_id) || null;
+          const linkedGuestCount = Number.isFinite(Number(linkedBooking?.guest_count)) ? Number(linkedBooking?.guest_count) : null;
+          const linkedCheckinTime = formatTimeLabel(linkedProperty?.default_checkin_time);
+          const linkedCheckoutTime = formatTimeLabel(linkedProperty?.default_checkout_time);
           const acceptedCount = slots.filter((slot) => slot.status === "accepted").length;
           const offeredCount = slots.filter((slot) => slot.status === "offered").length;
           const strandedCount = slots.filter((slot) => slot.status === "stranded").length;
@@ -23032,7 +23044,28 @@ This removes its linked members and deletes the grounds account.`
                     <div className="mt-1">Stranded: {strandedCount}</div>
                   </div>
                 </div>
-                {job.notes ? <div className="mt-4 rounded-[18px] border border-[#eadfce] bg-[#fffaf0] px-4 py-3 text-sm text-[#5f5245]">{job.notes}</div> : null}
+                <div className="mt-4 rounded-[18px] border border-[#eadfce] bg-[#fffaf0] px-4 py-3 text-sm text-[#5f5245]">
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-[#8a7b68]">Stay summary</div>
+                  {linkedBooking ? (
+                    <>
+                      <div className="mt-2">{linkedBooking.summary?.trim() || "Reserved"}</div>
+                      <div className="mt-1">
+                        Check-in: {formatDateLabel(linkedBooking.checkin_date)}{linkedCheckinTime ? ` at ${linkedCheckinTime}` : ""}
+                      </div>
+                      <div className="mt-1">
+                        Check-out: {formatDateLabel(linkedBooking.checkout_date)}{linkedCheckoutTime ? ` at ${linkedCheckoutTime}` : ""}
+                      </div>
+                      <div className="mt-1">
+                        {formatGuestCountLabel(linkedGuestCount)} - {getBookingSourceLabel(linkedBooking.source)}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="mt-2">Cleaning date: {formatScheduledFor(job.scheduled_for || extractCheckoutDate(job.notes))}</div>
+                      <div className="mt-1">No linked booking details available yet.</div>
+                    </>
+                  )}
+                </div>
                 <div className="mt-5 flex flex-wrap gap-2">
                   <button type="button" onClick={() => {
                     setAdminCalendarDetail(null);
