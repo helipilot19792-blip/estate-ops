@@ -338,11 +338,15 @@ export default function CleanerMobileView({
   handleSignOut,
   signingOut,
   actionLoading,
+  now,
   getStatusTone,
   getSlotDisplayStatus,
   getTeamMessage,
   formatDateLabel,
   formatDateTimeLabel,
+  getTimeRemainingMs,
+  formatRemaining,
+  getCountdownTone,
   toYmd,
   selectedDate,
   setSelectedDate,
@@ -681,6 +685,9 @@ export default function CleanerMobileView({
     return items.map((item) => {
       const tone = getStatusTone(item.slot.status, item.job.staffing_status);
       const isSelected = selectedSlotId === item.slot.id;
+      const waiting = isOffered(item.slot.status);
+      const remainingMs = waiting ? getTimeRemainingMs(item, now) : null;
+      const countdownTone = getCountdownTone(remainingMs);
       const itemProperty = propertyById.get(item.job.property_id);
       const propertyName = itemProperty?.name || itemProperty?.address || "Property job";
       const propertyAddress = itemProperty?.address || "No property address";
@@ -733,6 +740,14 @@ export default function CleanerMobileView({
                 <p>No job notes.</p>
               )}
             </div>
+
+            {waiting && remainingMs !== null ? (
+              <p className={`mt-3 text-sm font-semibold ${countdownTone}`}>
+                {remainingMs < 0
+                  ? `Overdue by ${formatRemaining(remainingMs)}`
+                  : `Accept within ${formatRemaining(remainingMs)}`}
+              </p>
+            ) : null}
           </button>
 
           {isSelected && selectedCleanerJob && selectedCleanerJob.slot.id === item.slot.id ? (
@@ -773,6 +788,14 @@ export default function CleanerMobileView({
               </div>
 
               <div className="mt-4 space-y-3 text-sm text-[#e8ddca]">
+                {waiting && remainingMs !== null ? (
+                  <div className={`rounded-2xl border border-current/15 bg-[#100d0a] px-3 py-3 font-semibold ${countdownTone}`}>
+                    {remainingMs < 0
+                      ? `Overdue by ${formatRemaining(remainingMs)}`
+                      : `Accept within ${formatRemaining(remainingMs)}`}
+                  </div>
+                ) : null}
+
                 <div>
                   <div className="text-xs uppercase tracking-[0.18em] text-[#b08b47]">Team</div>
                   <div className="mt-1">{getTeamMessage(selectedCleanerJob)}</div>
