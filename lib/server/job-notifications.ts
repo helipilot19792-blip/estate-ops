@@ -472,8 +472,12 @@ async function loadSlotBundle(
 }
 
 function buildDigestJobRow(bundle: SlotBundle, recipient: Recipient, origin: string) {
-  const acceptUrl = createJobEmailActionUrl(origin, bundle.kind, "accept", bundle.slotId, recipient.email);
-  const declineUrl = createJobEmailActionUrl(origin, bundle.kind, "decline", bundle.slotId, recipient.email);
+  const acceptUrl = createJobEmailActionUrl(origin, bundle.kind, "accept", bundle.slotId, recipient.email, {
+    offerVersion: bundle.offeredAt,
+  });
+  const declineUrl = createJobEmailActionUrl(origin, bundle.kind, "decline", bundle.slotId, recipient.email, {
+    offerVersion: bundle.offeredAt,
+  });
   const propertyLine = bundle.propertyAddress
     ? `${bundle.propertyName} - ${bundle.propertyAddress}`
     : bundle.propertyName;
@@ -837,8 +841,12 @@ async function sendNotificationEmail(
 
   for (const recipient of bundle.recipients) {
     const greeting = recipient.name ? `Hi ${recipient.name},` : "Hello,";
-    const acceptUrl = createJobEmailActionUrl(origin, bundle.kind, "accept", bundle.slotId, recipient.email);
-    const declineUrl = createJobEmailActionUrl(origin, bundle.kind, "decline", bundle.slotId, recipient.email);
+    const acceptUrl = createJobEmailActionUrl(origin, bundle.kind, "accept", bundle.slotId, recipient.email, {
+      offerVersion: bundle.offeredAt,
+    });
+    const declineUrl = createJobEmailActionUrl(origin, bundle.kind, "decline", bundle.slotId, recipient.email, {
+      offerVersion: bundle.offeredAt,
+    });
     const showResponseButtons = mode === "offer" || mode === "offer_reminder";
     const sameDayWarning = bundle.sameDayTurnover
       ? `

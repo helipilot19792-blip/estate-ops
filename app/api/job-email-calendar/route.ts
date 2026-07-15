@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import {
   buildJobCalendarIcs,
   getServiceClient,
+  isCurrentJobEmailRecipient,
   loadJobEmailSlotDetails,
   verifyJobEmailActionUrl,
 } from "@/lib/server/job-email-actions";
@@ -26,6 +27,22 @@ export async function GET(request: NextRequest) {
     if (!details) {
       return new Response("Job not found.", {
         status: 404,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+
+    const currentRecipient = await isCurrentJobEmailRecipient(
+      service,
+      verification.kind,
+      details.accountId,
+      verification.email
+    );
+    const currentOffer =
+      Boolean(verification.offerVersion) && verification.offerVersion === String(details.offeredAt || "");
+
+    if (!currentRecipient || !currentOffer) {
+      return new Response("This calendar link belongs to an earlier offer or assignment.", {
+        status: 409,
         headers: { "Cache-Control": "no-store" },
       });
     }

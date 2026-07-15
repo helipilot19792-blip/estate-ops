@@ -9,8 +9,11 @@ type ServiceClient = any;
 type SlotDetails = {
   slotId: string;
   jobId: string;
+  accountId: string;
+  organizationId: string | null;
   kind: JobNotificationKind;
   status: string | null;
+  offeredAt: string | null;
   jobDate: string | null;
   jobNotes: string | null;
   jobType: string | null;
@@ -48,11 +51,12 @@ export function createJobEmailActionUrl(
   action: JobEmailAction,
   slotId: string,
   recipientEmail: string,
-  expiresAtMs = Date.now() + 30 * 24 * 60 * 60 * 1000
+  options: { expiresAtMs?: number; offerVersion?: string | null } = {}
 ) {
   const email = recipientEmail.trim().toLowerCase();
-  const expires = String(expiresAtMs);
-  const sig = signParts([kind, action, slotId, email, expires]);
+  const expires = String(options.expiresAtMs ?? Date.now() + 30 * 24 * 60 * 60 * 1000);
+  const offerVersion = String(options.offerVersion || "").trim();
+  const sig = signParts([kind, action, slotId, email, expires, offerVersion]);
   const pathname = action === "calendar" ? "/api/job-email-calendar" : "/api/job-email-action";
   const url = new URL(pathname, origin);
   url.searchParams.set("kind", kind);
@@ -60,6 +64,7 @@ export function createJobEmailActionUrl(
   url.searchParams.set("slot", slotId);
   url.searchParams.set("email", email);
   url.searchParams.set("expires", expires);
+  url.searchParams.set("offer", offerVersion);
   url.searchParams.set("sig", sig);
   return url.toString();
 }
@@ -78,6 +83,7 @@ export function verifyJobEmailActionUrl(searchParams: URLSearchParams) {
   const slotId = String(searchParams.get("slot") || "").trim();
   const email = String(searchParams.get("email") || "").trim().toLowerCase();
   const expires = String(searchParams.get("expires") || "").trim();
+  const offerVersion = String(searchParams.get("offer") || "").trim();
   const sig = String(searchParams.get("sig") || "").trim();
 
   if (!kind || !action || !slotId || !email || !expires || !sig) {
@@ -89,12 +95,12 @@ export function verifyJobEmailActionUrl(searchParams: URLSearchParams) {
     return { ok: false as const, error: "This email link has expired. Please ask for a fresh job email." };
   }
 
-  const expected = signParts([kind, action, slotId, email, expires]);
+  const expected = signParts([kind, action, slotId, email, expires, offerVersion]);
   if (!timingSafeEqual(sig, expected)) {
     return { ok: false as const, error: "This email link is not valid." };
   }
 
-  return { ok: true as const, kind, action, slotId, email };
+  return { ok: true as const, kind, action, slotId, email, expiresAt, offerVersion };
 }
 
 export function getServiceClient() {
@@ -132,6 +138,44 @@ function getAccountIdColumn(kind: JobNotificationKind) {
   return kind === "cleaner" ? "cleaner_account_id" : "grounds_account_id";
 }
 
+function getMembershipTable(kind: JobNotificationKind) {
+  return kind === "cleaner" ? "cleaner_account_members" : "grounds_account_members";
+}
+
+export async function isCurrentJobEmailRecipient(
+  service: ServiceClient,
+  kind: JobNotificationKind,
+  accountId: string,
+  recipientEmail: string
+) {
+  const normalizedEmail = recipientEmail.trim().toLowerCase();
+  const accountTable = getAccountTable(kind);
+  const membershipTable = getMembershipTable(kind);
+  const accountIdColumn = getAccountIdColumn(kind);
+
+  const [{ data: account, error: accountError }, { data: memberships, error: membershipError }] = await Promise.all([
+    service.from(accountTable as any).select("email").eq("id", accountId).maybeSingle(),
+    service.from(membershipTable as any).select("profile_id").eq(accountIdColumn, accountId),
+  ]);
+
+  if (accountError) throw new Error(accountError.message);
+  if (membershipError) throw new Error(membershipError.message);
+  if (String(account?.email || "").trim().toLowerCase() === normalizedEmail) return true;
+
+  const profileIds = [...new Set((memberships ?? []).map((row: any) => row.profile_id).filter(Boolean))];
+  if (profileIds.length === 0) return false;
+
+  const { data: profiles, error: profilesError } = await service
+    .from("profiles")
+    .select("email")
+    .in("id", profileIds);
+
+  if (profilesError) throw new Error(profilesError.message);
+  return (profiles ?? []).some(
+    (profile: any) => String(profile.email || "").trim().toLowerCase() === normalizedEmail
+  );
+}
+
 function getJobTable(kind: JobNotificationKind) {
   return kind === "cleaner" ? "turnover_jobs" : "grounds_jobs";
 }
@@ -156,7 +200,7 @@ export async function loadJobEmailSlotDetails(
 
   const { data: slot, error: slotError } = await (service
     .from(slotTable as any)
-    .select(`id, job_id, ${accountIdColumn}, status`)
+    .select(`id, job_id, ${accountIdColumn}, status, offered_at`)
     .eq("id", slotId)
     .maybeSingle()) as any;
 
@@ -186,7 +230,7 @@ export async function loadJobEmailSlotDetails(
 
   const { data: property, error: propertyError } = await service
     .from("properties")
-    .select("name,address")
+    .select("name,address,organization_id")
     .eq("id", job.property_id)
     .maybeSingle();
 
@@ -195,8 +239,11 @@ export async function loadJobEmailSlotDetails(
   return {
     slotId: slot.id,
     jobId: slot.job_id,
+    accountId: slot[accountIdColumn],
+    organizationId: property?.organization_id || null,
     kind,
     status: slot.status || null,
+    offeredAt: slot.offered_at || null,
     jobDate: kind === "cleaner" ? getCleanerJobDate(job) : job.scheduled_for || null,
     jobNotes: job.notes || null,
     jobType: job.job_type || null,
