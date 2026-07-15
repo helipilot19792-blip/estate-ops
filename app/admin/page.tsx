@@ -1131,10 +1131,13 @@ function formatLongDate(date: Date) {
   }).replace(",", "");
 }
 
-function formatCurrency(value: number | null | undefined) {
+function formatCurrency(
+  value: number | null | undefined,
+  currencyCode: CurrencyCode = DEFAULT_CURRENCY_CODE
+) {
   return new Intl.NumberFormat(undefined, {
     style: "currency",
-    currency: "USD",
+    currency: currencyCode,
   }).format(Number(value || 0));
 }
 
@@ -17523,7 +17526,7 @@ This removes its linked members and deletes the grounds account.`
                               {property.name || property.address || "Unnamed property"}
                             </div>
                             <div className="mt-1 text-xs text-[#7f7263]">
-                              Saved: turnover {formatCurrency(saved.turnover)} | grounds {formatCurrency(saved.grounds)}
+                              Saved: turnover {formatCurrency(saved.turnover, invoiceDefaultCurrencyCode)} | grounds {formatCurrency(saved.grounds, invoiceDefaultCurrencyCode)}
                             </div>
                             <div className="mt-1 text-xs text-[#7f7263]">
                               Auto-bill: cleaning {saved.billTurnover ? "on" : "off"} | grounds {saved.billGrounds ? "on" : "off"}
@@ -21111,7 +21114,7 @@ This removes its linked members and deletes the grounds account.`
                 Default staffing: {selectedPropertyDefaults.default_cleaner_units_needed} unit{selectedPropertyDefaults.default_cleaner_units_needed === 1 ? "" : "s"}
                 {selectedPropertyDefaults.cleaner_units_required_strict ? ", full team required" : ", one unit may proceed"}
                 <br />
-                Cleaner standard payout per assigned slot: {formatCurrency(selectedPropertyDefaults.default_turnover_payout)}
+                Cleaner standard payout per assigned slot: {formatCurrency(selectedPropertyDefaults.default_turnover_payout, invoiceDefaultCurrencyCode)}
               </div>
             ) : null}
 
@@ -21871,7 +21874,7 @@ This removes its linked members and deletes the grounds account.`
                     <div className="inline-flex items-center gap-2 rounded-full border border-[#d8c7ab] bg-white px-3 py-1.5 text-xs font-semibold text-[#6f6255]">
                       <span>Payment details</span>
                       <span className="text-[#241c15]">
-                        {formatCurrency(expectedPayoutTotal)} expected - {formatCurrency(paidPayoutTotal)} paid
+                        {formatCurrency(expectedPayoutTotal, invoiceDefaultCurrencyCode)} expected - {formatCurrency(paidPayoutTotal, invoiceDefaultCurrencyCode)} paid
                       </span>
                     </div>
                   </div>
@@ -22011,12 +22014,12 @@ This removes its linked members and deletes the grounds account.`
                             >
                               <span>Payment details</span>
                               <span className="rounded-full bg-white px-2 py-0.5 text-[#241c15]">
-                                {getCleanerPayoutTypeLabel(slot.payout_type)} - {formatCurrency(slot.expected_payout_amount)} expected
+                                {getCleanerPayoutTypeLabel(slot.payout_type)} - {formatCurrency(slot.expected_payout_amount, invoiceDefaultCurrencyCode)} expected
                               </span>
                               <span className="rounded-full bg-white px-2 py-0.5 text-[#241c15]">
                                 {getCleanerPaymentStatusLabel(slot.payment_status)}
                                 {slot.payment_status && slot.payment_status !== "unpaid"
-                                  ? ` - ${formatCurrency(slot.paid_amount)} paid`
+                                  ? ` - ${formatCurrency(slot.paid_amount, invoiceDefaultCurrencyCode)} paid`
                                   : ""}
                               </span>
                               <span className="text-[#8a7b68]">{isPaymentExpanded ? "Hide" : "Edit"}</span>
@@ -22154,9 +22157,9 @@ This removes its linked members and deletes the grounds account.`
                                 {savingSlotPaymentId === slot.id ? "Saving..." : "Save payout"}
                               </button>
                               <span className="text-[11px] text-[#8a7b68]">
-                                {getCleanerPayoutTypeLabel(slot.payout_type)} · {formatCurrency(slot.expected_payout_amount)} expected
+                                {getCleanerPayoutTypeLabel(slot.payout_type)} · {formatCurrency(slot.expected_payout_amount, invoiceDefaultCurrencyCode)} expected
                                 {slot.payment_status && slot.payment_status !== "unpaid"
-                                  ? ` · ${formatCurrency(slot.paid_amount)} paid`
+                                  ? ` · ${formatCurrency(slot.paid_amount, invoiceDefaultCurrencyCode)} paid`
                                   : ""}
                               </span>
                             </div>
@@ -22270,7 +22273,7 @@ This removes its linked members and deletes the grounds account.`
                       <div className="mt-1">{getPropertyName(job?.property_id || null)}</div>
                       <div className="mt-1">Slot {slot.slot_number}</div>
                       <div className="mt-1">Status: {getCleanerPaymentStatusLabel(slot.payment_status)}</div>
-                      <div className="mt-1">Expected: {formatCurrency(slot.expected_payout_amount)}</div>
+                      <div className="mt-1">Expected: {formatCurrency(slot.expected_payout_amount, invoiceDefaultCurrencyCode)}</div>
                     </div>
                   );
                 })}
@@ -22308,8 +22311,8 @@ This removes its linked members and deletes the grounds account.`
                       </div>
 
                       <div className="rounded-[18px] border border-[#eadfce] bg-white px-4 py-3 text-sm text-[#6f6255]">
-                        <div>Expected: {formatCurrency(record.expected_payout_amount)}</div>
-                        <div className="mt-1">Paid: {formatCurrency(record.paid_amount)}</div>
+                        <div>Expected: {formatCurrency(record.expected_payout_amount, invoiceDefaultCurrencyCode)}</div>
+                        <div className="mt-1">Paid: {formatCurrency(record.paid_amount, invoiceDefaultCurrencyCode)}</div>
                         <div className="mt-1">Saved: {formatDateTime(record.created_at)}</div>
                         <div className="mt-1">Paid at: {formatDateTime(record.paid_at)}</div>
                       </div>
@@ -23635,7 +23638,7 @@ This removes its linked members and deletes the grounds account.`
                       {selectedPropertyOwnerEmail ? "Owner linked" : "No owner linked"}
                     </span>
                     <span className="rounded-full border border-[#bbf7d0] bg-[#f0fdf4] px-3 py-1 text-xs font-medium text-[#15803d]">
-                      Cleaner payout {formatCurrency(selectedProperty?.default_turnover_payout)}
+                      Cleaner payout {formatCurrency(selectedProperty?.default_turnover_payout, invoiceDefaultCurrencyCode)}
                     </span>
                   </div>
                 </div>
