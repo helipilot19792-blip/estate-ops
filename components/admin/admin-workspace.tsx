@@ -27965,7 +27965,10 @@ This removes its linked members and deletes the grounds account.`
           </div>
         */}
 
-        <AdminOperationsAlerts operationsAlerts={operationsAlerts} />
+        <AdminOperationsAlerts
+          operationsAlerts={operationsAlerts}
+          organizationId={currentOrganizationId}
+        />
 
         {adminMenuOrientation === "top" ? (
           <div className="mb-6 hidden origin-top rounded-[24px] border border-[#e7ddd0] bg-[#fbf8f4] p-3 shadow-[0_18px_45px_rgba(0,0,0,0.05)] transition-all duration-500 ease-out lg:block">

@@ -1,5 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
+const DISMISS_DURATION_MS = 60 * 60 * 1000;
+const DISMISS_STORAGE_PREFIX = "admin-operations-alerts-hidden-until";
+
 type OperationsAlert = {
   key: string;
   label: string;
@@ -9,12 +14,55 @@ type OperationsAlert = {
 
 type AdminOperationsAlertsProps = {
   operationsAlerts: OperationsAlert[];
+  organizationId?: string | null;
 };
 
 export default function AdminOperationsAlerts({
   operationsAlerts,
+  organizationId,
 }: AdminOperationsAlertsProps) {
-  if (operationsAlerts.length === 0) {
+  const [dismissalReady, setDismissalReady] = useState(false);
+  const [hiddenUntil, setHiddenUntil] = useState<number | null>(null);
+  const storageKey = `${DISMISS_STORAGE_PREFIX}:${organizationId || "default"}`;
+
+  useEffect(() => {
+    const savedUntil = Number(window.localStorage.getItem(storageKey) || 0);
+
+    if (Number.isFinite(savedUntil) && savedUntil > Date.now()) {
+      setHiddenUntil(savedUntil);
+    } else {
+      window.localStorage.removeItem(storageKey);
+      setHiddenUntil(null);
+    }
+
+    setDismissalReady(true);
+  }, [storageKey]);
+
+  useEffect(() => {
+    if (!hiddenUntil) return;
+
+    const remainingMs = hiddenUntil - Date.now();
+    if (remainingMs <= 0) {
+      window.localStorage.removeItem(storageKey);
+      setHiddenUntil(null);
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      window.localStorage.removeItem(storageKey);
+      setHiddenUntil(null);
+    }, remainingMs);
+
+    return () => window.clearTimeout(timeout);
+  }, [hiddenUntil, storageKey]);
+
+  function hideTemporarily() {
+    const nextHiddenUntil = Date.now() + DISMISS_DURATION_MS;
+    window.localStorage.setItem(storageKey, String(nextHiddenUntil));
+    setHiddenUntil(nextHiddenUntil);
+  }
+
+  if (!dismissalReady || hiddenUntil || operationsAlerts.length === 0) {
     return null;
   }
 
@@ -28,7 +76,7 @@ export default function AdminOperationsAlerts({
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {operationsAlerts.map((alert) => (
             <button
               key={alert.key}
@@ -48,6 +96,15 @@ export default function AdminOperationsAlerts({
               </span>
             </button>
           ))}
+          <button
+            type="button"
+            onClick={hideTemporarily}
+            aria-label="Hide operations alerts for one hour"
+            title="Hide for one hour"
+            className="inline-flex items-center rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-medium text-[#6f6255] transition hover:bg-white"
+          >
+            Hide for now
+          </button>
         </div>
       </div>
     </div>
