@@ -1029,7 +1029,7 @@ type StaffJobStatusEventRow = {
   job_kind: "cleaner" | "grounds";
   job_id: string;
   account_id?: string | null;
-  event_type: "accepted" | "arrived" | "started" | "completed" | "release_requested";
+  event_type: "accepted" | "arrived" | "started" | "completed" | "release_requested" | "overdue_offer";
   title: string;
   body: string;
   url?: string | null;
@@ -1213,6 +1213,86 @@ function extractCheckoutDate(notes: string | null): string | null {
   if (!notes) return null;
   const match = notes.match(/Checkout date:\s*(\d{4}-\d{2}-\d{2})/i);
   return match?.[1] ?? null;
+}
+
+function parseAutoSyncJobNotes(notes: string | null) {
+  if (!notes) {
+    return {
+      isAutoSync: false,
+      summaryLines: [] as string[],
+      detailLines: [] as string[],
+    };
+  }
+
+  const normalized = notes.replace(/\r\n/g, "\n");
+  const sourceMatch = normalized.match(/\[AUTO_SYNC\s*:\s*([^:\]]+)/i);
+  const rawSource = sourceMatch?.[1]?.trim().toLowerCase() || null;
+  const guestMatch = normalized.match(/Guest\s*\/\s*reservation\s*:\s*(.+)/i);
+  const guestCountMatch = normalized.match(/Guest count\s*:\s*(.+)/i);
+  const checkinMatch = normalized.match(/Check-in date\s*:\s*(\d{4}-\d{2}-\d{2})/i);
+  const checkoutMatch = normalized.match(/Checkout date\s*:\s*(\d{4}-\d{2}-\d{2})/i);
+
+  const sourceLabel =
+    rawSource === "airbnb"
+      ? "Airbnb"
+      : rawSource === "vrbo"
+        ? "VRBO"
+        : rawSource === "booking" || rawSource === "booking.com"
+          ? "Booking.com"
+          : rawSource
+            ? rawSource.toUpperCase()
+            : null;
+
+  const cleanedLines = normalized
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !/^\[AUTO_SYNC:/i.test(line))
+    .filter((line) => !/^Auto-created from .*calendar sync\.?$/i.test(line))
+    .filter((line) => !/^Property\s*:/i.test(line))
+    .filter((line) => !/^Guest\s*\/\s*reservation\s*:/i.test(line))
+    .filter((line) => !/^Guest count\s*:/i.test(line))
+    .filter((line) => !/^Check-in date\s*:/i.test(line))
+    .filter((line) => !/^Checkout date\s*:/i.test(line));
+
+  const summaryLines: string[] = [];
+  if (sourceLabel) summaryLines.push(`Imported from ${sourceLabel}`);
+  if (guestMatch?.[1]?.trim()) summaryLines.push(`Guest: ${guestMatch[1].trim()}`);
+  if (guestCountMatch?.[1]?.trim() && !/not provided by calendar feed/i.test(guestCountMatch[1])) {
+    summaryLines.push(`Guest count: ${guestCountMatch[1].trim()}`);
+  }
+  if (checkinMatch?.[1]) summaryLines.push(`Check-in: ${formatDateLabel(checkinMatch[1])}`);
+  if (checkoutMatch?.[1]) summaryLines.push(`Checkout: ${formatDateLabel(checkoutMatch[1])}`);
+
+  return {
+    isAutoSync: Boolean(sourceMatch || /^Auto-created from .*calendar sync/i.test(normalized)),
+    summaryLines,
+    detailLines: cleanedLines,
+  };
+}
+
+function renderJobNotes(notes: string | null) {
+  if (!notes) {
+    return <div className="mt-3 text-sm leading-6 text-[#6f6255]">No notes</div>;
+  }
+
+  const parsed = parseAutoSyncJobNotes(notes);
+  if (!parsed.isAutoSync) {
+    return <div className="mt-3 text-sm leading-6 text-[#6f6255] whitespace-pre-line">{notes}</div>;
+  }
+
+  return (
+    <div className="mt-3 rounded-[18px] border border-[#eadfce] bg-[#fffaf3] px-4 py-3 text-sm text-[#6f6255]">
+      {parsed.summaryLines.length > 0 ? (
+        <div className="font-medium text-[#5f5245]">{parsed.summaryLines.join(" • ")}</div>
+      ) : (
+        <div className="font-medium text-[#5f5245]">Imported reservation details</div>
+      )}
+      {parsed.detailLines.length > 0 ? (
+        <div className="mt-1 whitespace-pre-line text-[#8a7b68]">{parsed.detailLines.join("\n")}</div>
+      ) : null}
+    </div>
+  );
 }
 
 function extractStatementRange(notes: string | null) {
@@ -22220,7 +22300,7 @@ This removes its linked members and deletes the grounds account.`
                     </div>
                   ) : null}
 
-                  <div className="mt-3 text-sm leading-6 text-[#6f6255]">{job.notes || "No notes"}</div>
+                  {renderJobNotes(job.notes)}
                   <div className="mt-3 flex justify-end">
                     <button
                       onClick={(e) => {
@@ -22365,7 +22445,7 @@ This removes its linked members and deletes the grounds account.`
                             {remainingMs < 0 ? `Offer overdue by ${formatRemaining(remainingMs)}` : `Current offer expires in ${formatRemaining(remainingMs)}`}
                           </div>
                         ) : null}
-                        <div className="mt-3 text-sm leading-6 text-[#6f6255]">{job.notes || "No notes"}</div>
+                        {renderJobNotes(job.notes)}
 
                       </div>
 
@@ -22444,7 +22524,7 @@ This removes its linked members and deletes the grounds account.`
                         <div className="mt-1 text-sm text-[#8a7b68]">
                           Cleaning date: {formatScheduledFor(job?.scheduled_for || extractCheckoutDate(job?.notes || null))}
                         </div>
-                        <div className="mt-3 text-sm leading-6 text-[#6f6255]">{job?.notes || "No notes"}</div>
+                        {renderJobNotes(job?.notes || null)}
                       </div>
 
                       <div className="rounded-[18px] border border-[#efe1d8] bg-[#fcfaf7] px-4 py-3 text-sm text-[#8a5d4b]">

@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
+import { sendAdminOverdueOfferPush } from "@/lib/server/admin-job-status-notifications";
 import { sendStaffPushNotifications } from "@/lib/server/staff-push-notifications";
 import { createJobEmailActionUrl } from "@/lib/server/job-email-actions";
 import { processExpiredCleanerTrainingOffers } from "@/lib/server/cleaner-training-rotation";
@@ -1333,6 +1334,48 @@ async function runOfferDigestEmailSweep(kind: JobNotificationKind, origin: strin
   return sendJobOfferDigestEmailForSlots(kind, slotIds, origin);
 }
 
+async function notifyAdminsForOverdueOffers(kind: JobNotificationKind, origin: string) {
+  const service = getServiceClient();
+  const slotTable = getSlotTable(kind);
+  const accountIdColumn = getAccountIdColumn(kind);
+  const nowIso = new Date().toISOString();
+
+  const { data: rows, error } = await (service
+    .from(slotTable as any)
+    .select(`id, expires_at, status, ${accountIdColumn}`)
+    .eq("status", "offered")
+    .not(accountIdColumn, "is", null)
+    .not("expires_at", "is", null)
+    .lt("expires_at", nowIso)) as any;
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  let sent = 0;
+  let considered = 0;
+  const errors: string[] = [];
+
+  for (const row of rows ?? []) {
+    considered += 1;
+    try {
+      const result = await sendAdminOverdueOfferPush(service, kind, row.id, origin);
+      sent += Number(result.sent || 0);
+      if (result.errors?.length) {
+        errors.push(...result.errors);
+      }
+    } catch (notifyError) {
+      errors.push(notifyError instanceof Error ? notifyError.message : "Unknown overdue admin notification error.");
+    }
+  }
+
+  return {
+    considered,
+    sent,
+    errors,
+  };
+}
+
 export async function sendScheduledJobNotificationEmails(origin: string) {
   const service = getServiceClient();
   const expiredTrainingOffers = await processExpiredCleanerTrainingOffers(service);
@@ -1350,6 +1393,8 @@ export async function sendScheduledJobNotificationEmails(origin: string) {
   const groundsReminders = await runSlotNotificationSweep("grounds", "offer_reminder", origin);
   const cleanerDayOf = await runSlotNotificationSweep("cleaner", "day_of", origin);
   const groundsDayOf = await runSlotNotificationSweep("grounds", "day_of", origin);
+  const cleanerOverdueAdminAlerts = await notifyAdminsForOverdueOffers("cleaner", origin);
+  const groundsOverdueAdminAlerts = await notifyAdminsForOverdueOffers("grounds", origin);
 
   return {
     expiredTrainingOffers: {
@@ -1364,5 +1409,7 @@ export async function sendScheduledJobNotificationEmails(origin: string) {
     groundsReminders,
     cleanerDayOf,
     groundsDayOf,
+    cleanerOverdueAdminAlerts,
+    groundsOverdueAdminAlerts,
   };
 }
