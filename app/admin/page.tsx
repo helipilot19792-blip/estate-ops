@@ -5,10 +5,7 @@ import Image from "next/image";
 import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Copy, Eye, EyeOff, Mail, MapPin, Monitor, Navigation, Phone, Search } from "lucide-react";
-import AdminAiActionsPanel from "@/components/admin/admin-ai-actions-panel";
-import AdminBillingBanner from "@/components/admin/admin-billing-banner";
 import AdminLoadingScene from "@/components/admin/admin-loading-scene";
-import AdminOperationsAlerts from "@/components/admin/admin-operations-alerts";
 import { supabase } from "@/lib/supabase";
 import {
   DEFAULT_CURRENCY_CODE,
@@ -28,6 +25,9 @@ import type { OnboardingStep } from "@/components/onboarding-checklist";
 const OnboardingChecklist = dynamic(() => import("@/components/onboarding-checklist"));
 const PortalInstallControl = dynamic(() => import("@/components/pwa/portalinstallcontrol"));
 const TeamBulletinBoard = dynamic(() => import("@/components/team/team-bulletin"));
+const AdminAiActionsPanel = dynamic(() => import("@/components/admin/admin-ai-actions-panel"), { ssr: false });
+const AdminBillingBanner = dynamic(() => import("@/components/admin/admin-billing-banner"), { ssr: false });
+const AdminOperationsAlerts = dynamic(() => import("@/components/admin/admin-operations-alerts"), { ssr: false });
 
 function getCityFromAddress(address?: string | null) {
   if (!address) return "";
@@ -2556,16 +2556,29 @@ export default function AdminPage() {
         // Home can render from its focused payload. Hydrate the richer workspace
         // shortly afterwards so home-level notification badges remain complete
         // without making the first meaningful screen wait for every data set.
-        homeDataWarmupTimerRef.current = window.setTimeout(() => {
+        const hydrateWorkspace = () => {
           homeDataWarmupTimerRef.current = null;
           void loadData({ background: true });
-        }, 2_500);
+        };
+
+        // Let the browser finish the first paint and user interaction work before
+        // it starts the broad workspace hydration. The timeout is a reliable
+        // fallback for browsers that do not implement requestIdleCallback.
+        if (typeof window.requestIdleCallback === "function") {
+          homeDataWarmupTimerRef.current = window.requestIdleCallback(hydrateWorkspace, { timeout: 4_000 });
+        } else {
+          homeDataWarmupTimerRef.current = globalThis.setTimeout(hydrateWorkspace, 2_500) as unknown as number;
+        }
       })();
 
       return () => {
         cancelled = true;
         if (homeDataWarmupTimerRef.current !== null) {
-          window.clearTimeout(homeDataWarmupTimerRef.current);
+          if (typeof window.cancelIdleCallback === "function") {
+            window.cancelIdleCallback(homeDataWarmupTimerRef.current);
+          } else {
+            globalThis.clearTimeout(homeDataWarmupTimerRef.current);
+          }
           homeDataWarmupTimerRef.current = null;
         }
       };
@@ -2578,7 +2591,11 @@ export default function AdminPage() {
     // actually opens one of those workspaces before transferring and processing it.
     if (checkingAuth || !currentOrganizationId || activeSection === "home" || adminDataLoaded) return;
     if (homeDataWarmupTimerRef.current !== null) {
-      window.clearTimeout(homeDataWarmupTimerRef.current);
+      if (typeof window.cancelIdleCallback === "function") {
+        window.cancelIdleCallback(homeDataWarmupTimerRef.current);
+      } else {
+        globalThis.clearTimeout(homeDataWarmupTimerRef.current);
+      }
       homeDataWarmupTimerRef.current = null;
     }
     void loadData();
