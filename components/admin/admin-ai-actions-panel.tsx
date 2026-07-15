@@ -137,6 +137,12 @@ export default function AdminAiActionsPanel({ organizationId, visible = true }: 
   const pendingCount = visibleActions.length;
 
   async function approveAction(action: ProposedAction) {
+    const approvalVerb = action.kind === "guest_registration_reminder" ? "save this booking note" : "send this message";
+    const confirmed = window.confirm(
+      `Approve and ${approvalVerb}?\n\nRecipient: ${action.recipientLabel}\nChannel: ${action.channelLabel}\n\n${drafts[action.id] || action.previewText}`
+    );
+    if (!confirmed) return;
+
     setBusyId(action.id);
     setError("");
     setNotice("");
@@ -152,7 +158,10 @@ export default function AdminAiActionsPanel({ organizationId, visible = true }: 
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
+          mode: "approve",
+          confirmed: true,
           organizationId,
+          actionId: action.id,
           kind: action.kind,
           payload: action.payload,
           draftMessage: drafts[action.id] || action.previewText,
@@ -247,7 +256,7 @@ export default function AdminAiActionsPanel({ organizationId, visible = true }: 
           <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#3563a8]">AI Actions</div>
           <h2 className="mt-1 text-xl font-semibold text-[#17202a]">Supervised operator inbox</h2>
           <p className="mt-1 text-sm text-[#5f6f86]">
-            The AI watches staffing, billing, and property rules, then prepares actions for approval. Nothing is sent or logged until an admin approves it.
+            The AI watches staffing, billing, and property rules, then prepares a visible preview. No customer, owner, cleaner, or booking record is changed until an admin confirms approval.
           </p>
         </div>
         <button
@@ -329,7 +338,7 @@ export default function AdminAiActionsPanel({ organizationId, visible = true }: 
                   disabled={busyId === action.id}
                   className="rounded-full bg-[#241c15] px-4 py-2 text-sm font-semibold text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60"
                 >
-                  {busyId === action.id ? "Working..." : "Approve"}
+                  {busyId === action.id ? "Working..." : action.kind === "guest_registration_reminder" ? "Approve & save" : "Approve & send"}
                 </button>
                 <button
                   type="button"

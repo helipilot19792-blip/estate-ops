@@ -714,6 +714,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => null);
     const organizationId = String(body?.organizationId || "").trim();
     const mode = String(body?.mode || "approve").trim();
+    const confirmed = body?.confirmed === true;
     const kind = String(body?.kind || "").trim();
     const actionId = String(body?.actionId || "").trim();
     const draftMessage = String(body?.draftMessage || "").trim();
@@ -749,6 +750,13 @@ export async function POST(request: NextRequest) {
         ok: true,
         message: `Action dismissed for ${getDismissalLabel(kind as ProposedAction["kind"])}.`,
       });
+    }
+
+    if (mode !== "approve" || !confirmed || !actionId || !kind) {
+      return NextResponse.json(
+        { ok: false, error: "Explicit admin confirmation and complete action details are required." },
+        { status: 400 }
+      );
     }
 
     if (kind === "invoice_reminder") {

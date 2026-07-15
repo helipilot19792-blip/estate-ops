@@ -951,6 +951,7 @@ type QuoteAiSuggestedLine = {
 type QuoteAiSuggestions = {
   services: QuoteAiSuggestedLine[];
   notesDraft: string;
+  proposalSections: Array<{ title: string; body: string }>;
   missingDetails: string[];
   pricingAdvice: string[];
   readinessSummary: string;
@@ -1817,8 +1818,9 @@ export default function AdminPage() {
   const [quoteProspectName, setQuoteProspectName] = useState("");
   const [quoteProspectEmail, setQuoteProspectEmail] = useState("");
   const [quoteProspectPhone, setQuoteProspectPhone] = useState("");
-  const [quoteAiLoading, setQuoteAiLoading] = useState<"services" | "notes" | "completeness" | null>(null);
+  const [quoteAiLoading, setQuoteAiLoading] = useState<"services" | "proposal" | "completeness" | null>(null);
   const [quoteAiConfigured, setQuoteAiConfigured] = useState(true);
+  const [quoteAiWarning, setQuoteAiWarning] = useState("");
   const [quoteAiSuggestions, setQuoteAiSuggestions] = useState<QuoteAiSuggestions | null>(null);
   const [invoiceRemindersEnabled, setInvoiceRemindersEnabled] = useState(false);
   const [invoiceReminderDaysAfterSent, setInvoiceReminderDaysAfterSent] = useState("15");
@@ -2672,6 +2674,133 @@ export default function AdminPage() {
     }, 600000);
     return () => window.clearInterval(interval);
   }, [checkingAuth, currentOrganizationId, adminDraftDirty]);
+
+  useEffect(() => {
+    if (checkingAuth || !currentOrganizationId) return;
+
+    let refreshTimer: number | null = null;
+    const scheduleHomeRefresh = () => {
+      if (document.visibilityState !== "visible") return;
+      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = null;
+        void loadHomeData();
+      }, 500);
+    };
+
+    const updateTurnoverSlot = (payload: { eventType: string; new: unknown; old: unknown }) => {
+      const incoming = payload.new as JobSlot;
+      const previous = payload.old as Partial<JobSlot>;
+
+      if (payload.eventType === "DELETE") {
+        if (previous?.id) setJobSlots((rows) => rows.filter((row) => row.id !== previous.id));
+        return;
+      }
+
+      if (!incoming?.id) return;
+      if (payload.eventType === "INSERT") {
+        scheduleHomeRefresh();
+        return;
+      }
+      setJobSlots((rows) => {
+        const index = rows.findIndex((row) => row.id === incoming.id);
+        if (index < 0) return rows;
+        const next = [...rows];
+        next[index] = incoming;
+        return next;
+      });
+    };
+
+    const updateGroundsSlot = (payload: { eventType: string; new: unknown; old: unknown }) => {
+      const incoming = payload.new as GroundsJobSlot;
+      const previous = payload.old as Partial<GroundsJobSlot>;
+
+      if (payload.eventType === "DELETE") {
+        if (previous?.id) setGroundsJobSlots((rows) => rows.filter((row) => row.id !== previous.id));
+        return;
+      }
+
+      if (!incoming?.id) return;
+      if (payload.eventType === "INSERT") {
+        scheduleHomeRefresh();
+        return;
+      }
+      setGroundsJobSlots((rows) => {
+        const index = rows.findIndex((row) => row.id === incoming.id);
+        if (index < 0) return rows;
+        const next = [...rows];
+        next[index] = incoming;
+        return next;
+      });
+    };
+
+    const channel = supabase
+      .channel(`admin-operations-realtime-${currentOrganizationId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "turnover_jobs", filter: `organization_id=eq.${currentOrganizationId}` },
+        (payload) => {
+          const incoming = payload.new as Job;
+          const previous = payload.old as Partial<Job>;
+          if (payload.eventType === "DELETE") {
+            if (previous?.id) setJobs((rows) => rows.filter((row) => row.id !== previous.id));
+            return;
+          }
+          if (!incoming?.id) return;
+          setJobs((rows) => {
+            const index = rows.findIndex((row) => row.id === incoming.id);
+            if (index < 0) return [...rows, incoming];
+            const next = [...rows];
+            next[index] = incoming;
+            return next;
+          });
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "turnover_job_slots" },
+        updateTurnoverSlot
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "grounds_jobs", filter: `organization_id=eq.${currentOrganizationId}` },
+        (payload) => {
+          const incoming = payload.new as GroundsJob;
+          const previous = payload.old as Partial<GroundsJob>;
+          if (payload.eventType === "DELETE") {
+            if (previous?.id) setGroundsJobs((rows) => rows.filter((row) => row.id !== previous.id));
+            return;
+          }
+          if (!incoming?.id) return;
+          setGroundsJobs((rows) => {
+            const index = rows.findIndex((row) => row.id === incoming.id);
+            if (index < 0) return [...rows, incoming];
+            const next = [...rows];
+            next[index] = incoming;
+            return next;
+          });
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "grounds_job_slots" },
+        updateGroundsSlot
+      )
+      .subscribe();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") scheduleHomeRefresh();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", scheduleHomeRefresh);
+
+    return () => {
+      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", scheduleHomeRefresh);
+      void supabase.removeChannel(channel);
+    };
+  }, [checkingAuth, currentOrganizationId]);
 
   useEffect(() => {
     setSelectedPropertyOwnerDirty(false);
@@ -15476,13 +15605,22 @@ This removes its linked members and deletes the grounds account.`
     setActionMessage(`${nextItems.length} AI-suggested service${nextItems.length === 1 ? "" : "s"} applied to the quote.`);
   }
 
-  function applyQuoteAiNotes(notesDraft: string) {
-    setInvoiceNotes(notesDraft);
+  function applyQuoteAiProposal(suggestions: QuoteAiSuggestions) {
+    const proposalText = [
+      ...suggestions.proposalSections.map((section) => `${section.title.toUpperCase()}\n${section.body}`),
+      suggestions.notesDraft ? `TERMS & ASSUMPTIONS\n${suggestions.notesDraft}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+
+    if (!proposalText) return;
+    if (invoiceNotes.trim() && !window.confirm("Replace the current quote notes with this reviewed proposal draft?")) return;
+    setInvoiceNotes(proposalText);
     setInvoiceDraftDirty(true);
-    setActionMessage("AI-drafted quote notes applied.");
+    setActionMessage("AI proposal draft applied to the quote. Review it before previewing or sending.");
   }
 
-  async function runQuoteAiHelper(mode: "services" | "notes" | "completeness") {
+  async function runQuoteAiHelper(mode: "services" | "proposal" | "completeness") {
     if (!currentOrganizationId) {
       setError("Choose an organization before using the quote AI helper.");
       return;
@@ -15520,12 +15658,13 @@ This removes its linked members and deletes the grounds account.`
       }
 
       setQuoteAiConfigured(payload?.configured !== false);
+      setQuoteAiWarning(String(payload?.warning || ""));
       setQuoteAiSuggestions(payload.suggestions as QuoteAiSuggestions);
       setActionMessage(
         mode === "services"
           ? "AI service suggestions are ready."
-          : mode === "notes"
-            ? "AI quote notes are ready."
+          : mode === "proposal"
+            ? "AI property proposal is ready for review."
             : "AI completeness review is ready."
       );
     } catch (err: unknown) {
@@ -18221,15 +18360,18 @@ This removes its linked members and deletes the grounds account.`
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div>
                       <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#2b6cb0]">AI Helper</div>
-                      <h4 className="mt-1 text-lg font-semibold text-[#172554]">Quote drafting assist</h4>
+                      <h4 className="mt-1 text-lg font-semibold text-[#172554]">Intelligent proposal builder</h4>
                       <p className="mt-1 max-w-2xl text-sm leading-6 text-[#52627a]">
-                        Generate service suggestions, draft professional quote notes, and flag missing details before you send anything.
+                        Build property-specific services and proposal copy, then review every suggestion before applying it. Nothing is changed or sent automatically.
                       </p>
                       {quoteAiConfigured ? null : (
                         <p className="mt-2 text-xs text-[#6b7280]">
                           Using the local fallback helper because a live OpenAI key is not configured.
                         </p>
                       )}
+                      {quoteAiWarning ? (
+                        <p className="mt-2 text-xs font-medium text-[#92400e]">{quoteAiWarning}</p>
+                      ) : null}
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <button
@@ -18242,11 +18384,11 @@ This removes its linked members and deletes the grounds account.`
                       </button>
                       <button
                         type="button"
-                        onClick={() => void runQuoteAiHelper("notes")}
+                        onClick={() => void runQuoteAiHelper("proposal")}
                         disabled={quoteAiLoading !== null}
                         className="rounded-full border border-[#bfdbfe] bg-white px-4 py-2 text-sm font-semibold text-[#1d4ed8] transition hover:bg-[#eff6ff] disabled:opacity-60"
                       >
-                        {quoteAiLoading === "notes" ? "Thinking..." : "Draft notes"}
+                        {quoteAiLoading === "proposal" ? "Thinking..." : "Build proposal"}
                       </button>
                       <button
                         type="button"
@@ -18302,20 +18444,31 @@ This removes its linked members and deletes the grounds account.`
 
                         <div className="rounded-[18px] border border-[#dbeafe] bg-white p-4">
                           <div className="flex items-center justify-between gap-3">
-                            <div className="text-sm font-semibold text-[#172554]">Drafted quote notes</div>
-                            {quoteAiSuggestions.notesDraft ? (
+                            <div className="text-sm font-semibold text-[#172554]">Property-specific proposal</div>
+                            {quoteAiSuggestions.proposalSections.length > 0 ? (
                               <button
                                 type="button"
-                                onClick={() => applyQuoteAiNotes(quoteAiSuggestions.notesDraft)}
+                                onClick={() => applyQuoteAiProposal(quoteAiSuggestions)}
                                 className="rounded-full bg-[#1d4ed8] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#1e40af]"
                               >
-                                Apply notes
+                                Apply proposal
                               </button>
                             ) : null}
                           </div>
-                          <div className="mt-3 whitespace-pre-wrap rounded-[14px] border border-[#dbeafe] bg-[#f8fbff] px-3 py-3 text-sm leading-6 text-[#334155]">
-                            {quoteAiSuggestions.notesDraft || "No drafted notes yet."}
+                          <div className="mt-3 space-y-2">
+                            {quoteAiSuggestions.proposalSections.map((section, index) => (
+                              <div key={`${section.title}-${index}`} className="rounded-[14px] border border-[#dbeafe] bg-[#f8fbff] px-3 py-3 text-sm text-[#334155]">
+                                <div className="font-semibold text-[#172554]">{section.title}</div>
+                                <div className="mt-1 leading-6 text-[#52627a]">{section.body}</div>
+                              </div>
+                            ))}
                           </div>
+                          {quoteAiSuggestions.notesDraft ? (
+                            <div className="mt-3 whitespace-pre-wrap rounded-[14px] border border-[#fde68a] bg-[#fffbeb] px-3 py-3 text-sm leading-6 text-[#854d0e]">
+                              <div className="font-semibold">Terms and assumptions</div>
+                              <div className="mt-1">{quoteAiSuggestions.notesDraft}</div>
+                            </div>
+                          ) : null}
                         </div>
                       </div>
 
