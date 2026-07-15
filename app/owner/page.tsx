@@ -1414,7 +1414,6 @@ export default function OwnerPage() {
       ownerInvoicesRes,
       ownerInvoiceHiddenItemsRes,
       flagsRes,
-      flagImagesRes,
     ] = await Promise.all([
       supabase
         .from("properties")
@@ -1459,10 +1458,6 @@ export default function OwnerPage() {
         .in("property_id", propertyIds)
         .or("source.eq.owner,owner_visible_at.not.is.null")
         .order("created_at", { ascending: false }),
-      supabase
-        .from("property_maintenance_flag_images")
-        .select("id,flag_id,image_url,caption,sort_order")
-        .order("sort_order", { ascending: true }),
     ]);
 
     for (const res of [
@@ -1474,7 +1469,6 @@ export default function OwnerPage() {
       ownerInvoicesRes,
       ownerInvoiceHiddenItemsRes,
       flagsRes,
-      flagImagesRes,
     ]) {
       if (res.error) {
         if (
@@ -1499,6 +1493,15 @@ export default function OwnerPage() {
       }
     }
 
+    const flagIds = (flagsRes.data ?? []).map((flag) => flag.id);
+    const flagImagesRes = flagIds.length > 0
+      ? await supabase
+          .from("property_maintenance_flag_images")
+          .select("id,flag_id,image_url,caption,sort_order")
+          .in("flag_id", flagIds)
+          .order("sort_order", { ascending: true })
+      : { data: [], error: null };
+
     const loadedProperties = (propertiesRes.data ?? []) as Property[];
     setProperties(loadedProperties);
     setTurnoverJobs((turnoverRes.data ?? []) as TurnoverJob[]);
@@ -1510,7 +1513,8 @@ export default function OwnerPage() {
       ownerInvoiceHiddenItemsRes.error ? [] : ((ownerInvoiceHiddenItemsRes.data ?? []) as OwnerInvoiceHiddenItem[])
     );
     setFlags((flagsRes.data ?? []) as MaintenanceFlag[]);
-    setFlagImages((flagImagesRes.data ?? []) as MaintenanceFlagImage[]);
+    // Images are supplemental; an unavailable image table must not block the owner dashboard.
+    setFlagImages(flagImagesRes.error ? [] : ((flagImagesRes.data ?? []) as MaintenanceFlagImage[]));
     setSelectedPropertyId((currentPropertyId) => {
       if (loadedProperties.some((property) => property.id === currentPropertyId)) {
         return currentPropertyId;

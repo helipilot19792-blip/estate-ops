@@ -1791,6 +1791,7 @@ export default function AdminPage() {
   const maintenanceLibraryInputRef = useRef<HTMLInputElement | null>(null);
   const latestHomeLoadIdRef = useRef(0);
   const latestDataLoadIdRef = useRef(0);
+  const homeDataWarmupTimerRef = useRef<number | null>(null);
   const [invoiceOwnerId, setInvoiceOwnerId] = useState("");
   const [invoicePropertyId, setInvoicePropertyId] = useState("");
   const [invoiceIssueDate, setInvoiceIssueDate] = useState(() => getTodayYmd());
@@ -2307,7 +2308,9 @@ export default function AdminPage() {
     propertyInvoiceRatesDirty;
 
   useEffect(() => {
-    const interval = window.setInterval(() => setNow(new Date()), 1000);
+    // The dashboard only displays minute/day-based time information. Updating every
+    // second forces this very large workspace to recalculate and re-render needlessly.
+    const interval = window.setInterval(() => setNow(new Date()), 60_000);
     return () => window.clearInterval(interval);
   }, []);
 
@@ -2540,14 +2543,46 @@ export default function AdminPage() {
     if (!checkingAuth && currentOrganizationId) {
       setAdminHomeLoaded(false);
       setAdminDataLoaded(false);
+      let cancelled = false;
+      if (homeDataWarmupTimerRef.current !== null) {
+        window.clearTimeout(homeDataWarmupTimerRef.current);
+        homeDataWarmupTimerRef.current = null;
+      }
+
       void (async () => {
         const loadedHome = await loadHomeData();
-        if (loadedHome) {
+        if (!loadedHome || cancelled) return;
+
+        // Home can render from its focused payload. Hydrate the richer workspace
+        // shortly afterwards so home-level notification badges remain complete
+        // without making the first meaningful screen wait for every data set.
+        homeDataWarmupTimerRef.current = window.setTimeout(() => {
+          homeDataWarmupTimerRef.current = null;
           void loadData({ background: true });
-        }
+        }, 2_500);
       })();
+
+      return () => {
+        cancelled = true;
+        if (homeDataWarmupTimerRef.current !== null) {
+          window.clearTimeout(homeDataWarmupTimerRef.current);
+          homeDataWarmupTimerRef.current = null;
+        }
+      };
     }
   }, [checkingAuth, currentOrganizationId]);
+
+  useEffect(() => {
+    // The home endpoint contains everything needed for the initial dashboard. The
+    // complete workspace payload is substantially larger, so wait until a user
+    // actually opens one of those workspaces before transferring and processing it.
+    if (checkingAuth || !currentOrganizationId || activeSection === "home" || adminDataLoaded) return;
+    if (homeDataWarmupTimerRef.current !== null) {
+      window.clearTimeout(homeDataWarmupTimerRef.current);
+      homeDataWarmupTimerRef.current = null;
+    }
+    void loadData();
+  }, [activeSection, adminDataLoaded, checkingAuth, currentOrganizationId]);
 
   useEffect(() => {
     if (!checkingAuth && currentOrganizationId && activeSection === "notifications") {
