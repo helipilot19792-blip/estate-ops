@@ -52,11 +52,21 @@ async function requireAdminAccess(token: string, organizationId: string) {
     throw new Error("Not authenticated.");
   }
 
-  const { data: profile, error: profileError } = await serviceClient
-    .from("profiles")
-    .select("id,email,full_name,phone,role")
-    .eq("id", user.id)
-    .single();
+  const [profileResult, membershipResult] = await Promise.all([
+    serviceClient
+      .from("profiles")
+      .select("id,email,full_name,phone,role")
+      .eq("id", user.id)
+      .single(),
+    serviceClient
+      .from("organization_members")
+      .select("role")
+      .eq("organization_id", organizationId)
+      .eq("profile_id", user.id)
+      .maybeSingle(),
+  ]);
+
+  const { data: profile, error: profileError } = profileResult;
 
   if (profileError || !profile) {
     throw new Error("No profile was found for this user.");
@@ -66,12 +76,7 @@ async function requireAdminAccess(token: string, organizationId: string) {
     return { user, profile };
   }
 
-  const { data: membership, error: membershipError } = await serviceClient
-    .from("organization_members")
-    .select("role")
-    .eq("organization_id", organizationId)
-    .eq("profile_id", user.id)
-    .maybeSingle();
+  const { data: membership, error: membershipError } = membershipResult;
 
   if (membershipError || membership?.role !== "admin") {
     throw new Error("Admin access required for this organization.");
@@ -109,8 +114,10 @@ export async function GET(request: Request) {
       return Response.json({ ok: false, error: "Missing organizationId." }, { status: 400 });
     }
 
-    const { user } = await requireAdminAccess(token, organizationId);
-    await requireWorkspaceBillingAccess(organizationId);
+    const [{ user }] = await Promise.all([
+      requireAdminAccess(token, organizationId),
+      requireWorkspaceBillingAccess(organizationId),
+    ]);
     const todayYmd = new Date().toISOString().slice(0, 10);
     const bookingLookaheadEndYmd = new Date(Date.now() + 540 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
