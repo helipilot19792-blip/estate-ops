@@ -2363,19 +2363,24 @@ export default function AdminPage() {
   useEffect(() => {
     async function checkAuthAndRole() {
       const {
-        data: { user },
-      } = await supabase.auth.getUser();
+        data: { session },
+      } = await supabase.auth.getSession();
+      const user = session?.user;
 
       if (!user) {
         router.replace("/login?portal=admin");
         return;
       }
 
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("id,email,full_name,phone,role")
-        .eq("id", user.id)
-        .single<ProfileRow>();
+      const [profileResult, organizationResult] = await Promise.all([
+        supabase
+          .from("profiles")
+          .select("id,email,full_name,phone,role")
+          .eq("id", user.id)
+          .single<ProfileRow>(),
+        supabase.rpc("get_my_organizations"),
+      ]);
+      const { data: profile, error: profileError } = profileResult;
 
       if (profileError) {
         setError(`Profile lookup failed: ${profileError.message}`);
@@ -2395,10 +2400,6 @@ export default function AdminPage() {
         return;
       }
 
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
       const platformOrganizationRows =
         profile.role === "platform_admin" && session?.access_token
           ? await loadPlatformAdminOrganizations(session.access_token).catch(() => [])
@@ -2407,7 +2408,7 @@ export default function AdminPage() {
       const { data: orgRows, error: orgError } =
         platformOrganizationRows.length > 0
           ? { data: platformOrganizationRows, error: null }
-          : await supabase.rpc("get_my_organizations");
+          : organizationResult;
 
       if (orgError) {
         setError(`Organization lookup failed: ${orgError.message}`);

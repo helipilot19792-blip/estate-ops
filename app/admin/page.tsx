@@ -19,7 +19,6 @@ function AdminWorkspaceFallback() {
 }
 
 const AdminWorkspace = dynamic(() => import("@/components/admin/admin-workspace"), {
-  ssr: false,
   loading: AdminWorkspaceFallback,
 });
 
