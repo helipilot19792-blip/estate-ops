@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { writeAuditLog } from "@/lib/server/audit-log";
 import { sendJobOfferEmailsForSlots } from "@/lib/server/job-notifications";
+import { detectSameDayCleanerConflicts } from "@/lib/server/same-day-cleaner-conflicts";
 
 export const dynamic = "force-dynamic";
 
@@ -160,7 +161,7 @@ export async function POST(request: NextRequest) {
 
     const { data: job, error: jobError } = await service
       .from("turnover_jobs")
-      .select("id, organization_id, property_id, scheduled_for, notes")
+      .select("id, organization_id, property_id, scheduled_for, notes, schedule_conflict_at, schedule_conflict_recommended")
       .eq("id", jobId)
       .eq("organization_id", organizationId)
       .maybeSingle();
@@ -197,10 +198,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Job slot not found." }, { status: 404 });
     }
 
-    const blockedStatuses = new Set(["accepted", "in_progress", "completed"]);
+    const blockedStatuses = new Set(["in_progress", "completed"]);
     if (blockedStatuses.has(String(slot.status || "").toLowerCase())) {
       return NextResponse.json(
         { error: "This slot has already been accepted or is already active, so it cannot be reassigned." },
+        { status: 409 }
+      );
+    }
+    if (String(slot.status || "").toLowerCase() === "accepted" && !job.schedule_conflict_at) {
+      return NextResponse.json(
+        { error: "Accepted jobs can only be reassigned when a same-day schedule conflict is active." },
         { status: 409 }
       );
     }
@@ -291,6 +298,10 @@ export async function POST(request: NextRequest) {
     }
 
     await refreshCleanerJobStaffing(jobId);
+
+    if (job.schedule_conflict_at) {
+      await detectSameDayCleanerConflicts(service, request.nextUrl.origin);
+    }
 
     await writeAuditLog(service, {
       actorProfileId: profile.id,

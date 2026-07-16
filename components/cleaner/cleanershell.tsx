@@ -66,6 +66,9 @@ type TurnoverJob = {
   show_team_status_to_cleaners?: boolean | null;
   sameDayTurnover?: boolean | null;
   sameDayCheckInLabel?: string | null;
+  schedule_conflict_at?: string | null;
+  schedule_conflict_recommended?: boolean | null;
+  schedule_conflict_reason?: string | null;
 };
 
 type TurnoverJobSlot = {

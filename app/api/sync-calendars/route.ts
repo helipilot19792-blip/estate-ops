@@ -4,6 +4,7 @@ import {
   sendJobOfferEmailsForSlots,
 } from "@/lib/server/job-notifications";
 import { applyCleanerTrainingRotationToJob as applyServerCleanerTrainingRotationToJob } from "@/lib/server/cleaner-training-rotation";
+import { detectSameDayCleanerConflicts } from "@/lib/server/same-day-cleaner-conflicts";
 
 export const dynamic = "force-dynamic";
 
@@ -1019,6 +1020,8 @@ export async function POST(request: Request) {
       results.push(resultBucket);
     }
 
+    const conflictResult = await detectSameDayCleanerConflicts(supabase, new URL(request.url).origin);
+
     const totals = results.reduce(
       (acc, item) => {
         acc.created += item.created;
@@ -1054,6 +1057,7 @@ export async function POST(request: Request) {
       mode: "sync",
       calendars_found: calendars.length,
       totals,
+      same_day_cleaner_conflicts: conflictResult,
       results,
     });
   } catch (error: any) {

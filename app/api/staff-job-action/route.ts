@@ -4,6 +4,7 @@ import { sendAdminApprovalRequestPush, sendAdminJobStatusPush } from "@/lib/serv
 import { sendJobOfferEmailsForSlots } from "@/lib/server/job-notifications";
 import { reofferExpiredCleanerTrainingSlot } from "@/lib/server/cleaner-training-rotation";
 import { writeAuditLog } from "@/lib/server/audit-log";
+import { detectSameDayCleanerConflicts } from "@/lib/server/same-day-cleaner-conflicts";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -500,6 +501,7 @@ export async function POST(request: NextRequest) {
       }
 
       await refreshCleanerJobStaffing(service, releasedSlot.job_id);
+      await detectSameDayCleanerConflicts(service, request.nextUrl.origin);
 
       await writeAuditLog(service, {
         actorProfileId: currentProfile?.id || user.id,

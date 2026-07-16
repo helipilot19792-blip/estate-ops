@@ -431,7 +431,7 @@ async function loadCleanerDashboard(profileId: string) {
   const [jobsRes, allSlotsRes] = await Promise.all([
     serviceClient
       .from("turnover_jobs")
-      .select("id, organization_id, property_id, status, notes, created_at, offered_at, accepted_at, declined_at, scheduled_for, staffing_status, cleaner_units_needed, cleaner_units_required_strict, show_team_status_to_cleaners")
+      .select("id, organization_id, property_id, status, notes, created_at, offered_at, accepted_at, declined_at, scheduled_for, staffing_status, cleaner_units_needed, cleaner_units_required_strict, show_team_status_to_cleaners, schedule_conflict_at, schedule_conflict_recommended, schedule_conflict_reason")
       .in("id", jobIds),
     serviceClient
       .from("turnover_job_slots")

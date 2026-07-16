@@ -316,6 +316,15 @@ function SameDayTurnoverBanner({
   );
 }
 
+function ScheduleConflictBanner({ recommended }: { recommended?: boolean | null }) {
+  return (
+    <div className="rounded-2xl border border-[#efbd65] bg-[#fff3d8] px-3 py-2 text-sm text-[#704000]">
+      <strong>Schedule conflict:</strong> a same-day arrival was added after you accepted this work. You are not at fault.
+      {recommended ? " This is the recommended job to release to a backup cleaner." : " Admin is reviewing backup coverage."}
+    </div>
+  );
+}
+
 export default function CleanerMobileView({
   activeJobs,
   historyJobs,
@@ -771,6 +780,9 @@ export default function CleanerMobileView({
                         sameDayCheckInLabel={selectedCleanerJob.job.sameDayCheckInLabel}
                       />
                     </div>
+                  ) : null}
+                  {selectedCleanerJob.job.schedule_conflict_at ? (
+                    <div className="mt-3"><ScheduleConflictBanner recommended={selectedCleanerJob.job.schedule_conflict_recommended} /></div>
                   ) : null}
                 </div>
 

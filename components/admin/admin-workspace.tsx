@@ -220,6 +220,9 @@ type Job = {
   cleaner_units_required_strict: boolean;
   show_team_status_to_cleaners: boolean;
   staffing_status: string | null;
+  schedule_conflict_at?: string | null;
+  schedule_conflict_recommended?: boolean | null;
+  schedule_conflict_reason?: string | null;
 };
 
 type PropertyBookingEvent = {
@@ -6374,7 +6377,7 @@ export default function AdminPage() {
       setReassigningJobId(null);
     }
   }
-  async function reassignOpenJob(jobId: string) {
+  async function reassignOpenJob(jobId: string, slotOverride?: JobSlot) {
     const cleanerAccountId = reassignSelections[jobId];
     if (!cleanerAccountId) {
       setError("Please select a cleaner account before reassigning.");
@@ -6388,7 +6391,7 @@ export default function AdminPage() {
       setError("That cleaner is not assigned to this property. Add them on the Assignments tab first.");
       return;
     }
-    const slot = getNextOpenSlot(jobId);
+    const slot = slotOverride || getNextOpenSlot(jobId);
 
     if (!slot) {
       setError("No open slot was found for that job.");
@@ -22164,6 +22167,45 @@ This removes its linked members and deletes the grounds account.`
                       </span>
                     </div>
                   </div>
+
+                  {job.schedule_conflict_at ? (
+                    <div className="mt-3 rounded-[18px] border border-[#e5a43b] bg-[#fff5dd] p-3 text-[#704000]">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em]">Same-day arrival conflict</div>
+                      <p className="mt-1 text-sm">
+                        {job.schedule_conflict_reason || "This cleaner accepted the work before same-day guest arrivals created a deadline conflict."}
+                      </p>
+                      <p className="mt-1 text-xs font-semibold">
+                        {job.schedule_conflict_recommended
+                          ? "Recommended backup job: this cleaning was accepted later than the other affected cleaning."
+                          : "Another accepted cleaning is the recommended backup job."}
+                      </p>
+                      {job.schedule_conflict_recommended ? (
+                        <div className="mt-3 grid gap-2 md:grid-cols-[1fr_220px]">
+                          <select
+                            className="w-full rounded-[14px] border border-[#d9b56d] bg-white px-3 py-2 text-sm outline-none"
+                            value={reassignSelections[job.id] || ""}
+                            onChange={(e) => setReassignSelections((prev) => ({ ...prev, [job.id]: e.target.value }))}
+                          >
+                            <option value="">Select backup cleaner</option>
+                            {propertyCleanerAccounts.map((account) => (
+                              <option key={account.id} value={account.id}>{account.display_name || "Unnamed cleaner account"}</option>
+                            ))}
+                          </select>
+                          <button
+                            className="rounded-full bg-[#7a4a00] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#633c00] disabled:opacity-60"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              const acceptedSlot = slots.find((slot) => slot.status === "accepted");
+                              if (acceptedSlot) void reassignOpenJob(job.id, acceptedSlot);
+                            }}
+                            disabled={reassigningJobId === job.id || propertyCleanerAccounts.length === 0}
+                          >
+                            {reassigningJobId === job.id ? "Sending..." : "Send to backup cleaner"}
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
 
                   {isCleaningCompanyMode ? (
                     <div className="mt-3 rounded-[18px] border border-[#cfe4cf] bg-[#f4fbf4] p-3">

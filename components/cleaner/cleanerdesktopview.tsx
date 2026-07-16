@@ -303,6 +303,15 @@ function SameDayTurnoverBanner({
   );
 }
 
+function ScheduleConflictBanner({ recommended }: { recommended?: boolean | null }) {
+  return (
+    <div className="mt-3 rounded-2xl border border-[#efbd65] bg-[#fff3d8] px-3 py-2 text-sm text-[#704000]">
+      <strong>Schedule conflict:</strong> a same-day arrival was added after you accepted this work. You are not at fault.
+      {recommended ? " This is the recommended job to release to a backup cleaner." : " Admin is reviewing backup coverage."}
+    </div>
+  );
+}
+
 function JobCard({
   item,
   isSelected,
@@ -409,6 +418,7 @@ function JobCard({
             {item.job.sameDayTurnover ? (
               <SameDayTurnoverBanner sameDayCheckInLabel={item.job.sameDayCheckInLabel} />
             ) : null}
+            {item.job.schedule_conflict_at ? <ScheduleConflictBanner recommended={item.job.schedule_conflict_recommended} /> : null}
 
             <p className="mt-2 text-sm text-[#d9c5a1]">{getTeamMessage(item)}</p>
 
@@ -463,6 +473,7 @@ function JobCard({
               {item.job.sameDayTurnover ? (
                 <SameDayTurnoverBanner sameDayCheckInLabel={item.job.sameDayCheckInLabel} />
               ) : null}
+              {item.job.schedule_conflict_at ? <ScheduleConflictBanner recommended={item.job.schedule_conflict_recommended} /> : null}
               <p className="mt-2 text-sm text-[#d9c5a1]">{getTeamMessage(item)}</p>
             </div>
 
