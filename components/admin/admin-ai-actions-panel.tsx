@@ -58,6 +58,27 @@ type ProposedAction =
         propertyName: string;
         checkinDate: string;
       };
+    }
+  | {
+      id: string;
+      kind: "staffing_advisory";
+      priority: "high" | "medium";
+      category: "Supervisor";
+      title: string;
+      reason: string;
+      recipientLabel: "Admin team";
+      channelLabel: "Review only";
+      previewLabel: "Evidence and recommendation";
+      previewText: string;
+      canEditMessage: false;
+      payload: {
+        anomalyCode: string;
+        jobId: string;
+        propertyId: string;
+        confidence: "high" | "medium";
+        evidence: string[];
+        recommendation: string;
+      };
     };
 
 type Props = {
@@ -137,7 +158,12 @@ export default function AdminAiActionsPanel({ organizationId, visible = true }: 
   const pendingCount = visibleActions.length;
 
   async function approveAction(action: ProposedAction) {
-    const approvalVerb = action.kind === "guest_registration_reminder" ? "save this booking note" : "send this message";
+    const approvalVerb =
+      action.kind === "staffing_advisory"
+        ? "acknowledge this supervisor finding"
+        : action.kind === "guest_registration_reminder"
+          ? "save this booking note"
+          : "send this message";
     const confirmed = window.confirm(
       `Approve and ${approvalVerb}?\n\nRecipient: ${action.recipientLabel}\nChannel: ${action.channelLabel}\n\n${drafts[action.id] || action.previewText}`
     );
@@ -338,7 +364,13 @@ export default function AdminAiActionsPanel({ organizationId, visible = true }: 
                   disabled={busyId === action.id}
                   className="rounded-full bg-[#241c15] px-4 py-2 text-sm font-semibold text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60"
                 >
-                  {busyId === action.id ? "Working..." : action.kind === "guest_registration_reminder" ? "Approve & save" : "Approve & send"}
+                  {busyId === action.id
+                    ? "Working..."
+                    : action.kind === "staffing_advisory"
+                      ? "Acknowledge"
+                      : action.kind === "guest_registration_reminder"
+                        ? "Approve & save"
+                        : "Approve & send"}
                 </button>
                 <button
                   type="button"
@@ -368,7 +400,7 @@ export default function AdminAiActionsPanel({ organizationId, visible = true }: 
                   className="mt-2 w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm text-[#17202a] outline-none focus:border-[#b48d4e]"
                 />
               ) : (
-                <div className="mt-2 text-sm text-[#5f5245]">{action.previewText}</div>
+                <div className="mt-2 whitespace-pre-line text-sm text-[#5f5245]">{action.previewText}</div>
               )}
             </div>
           </div>

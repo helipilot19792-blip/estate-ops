@@ -5,6 +5,13 @@ import { sendDirectProfileChatMessage } from "@/lib/server/direct-profile-chat";
 import { sendStaffPushNotifications } from "@/lib/server/staff-push-notifications";
 import { isMissingAuditLogTableError, writeAuditLog } from "@/lib/server/audit-log";
 import { formatCurrency, normalizeCurrencyCode } from "@/lib/currency";
+import {
+  analyzeStaffingAnomalies,
+  type SupervisorCleanerAssignment,
+  type SupervisorStaffingJob,
+  type SupervisorStaffingSlot,
+  type SupervisorStatusEvent,
+} from "@/lib/server/ai-supervisor-anomalies";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -38,6 +45,9 @@ type JobRow = {
   id: string;
   property_id: string;
   scheduled_for?: string | null;
+  cleaner_units_needed?: number | null;
+  status?: string | null;
+  staffing_status?: string | null;
 };
 
 type JobSlotRow = {
@@ -46,6 +56,9 @@ type JobSlotRow = {
   cleaner_account_id: string | null;
   status: string;
   offered_at?: string | null;
+  declined_at?: string | null;
+  expires_at?: string | null;
+  created_at?: string | null;
 };
 
 type PropertyKnowledgeRow = {
@@ -140,6 +153,27 @@ type ProposedAction =
         propertyId: string;
         propertyName: string;
         checkinDate: string;
+      };
+    }
+  | {
+      id: string;
+      kind: "staffing_advisory";
+      priority: "high" | "medium";
+      category: "Supervisor";
+      title: string;
+      reason: string;
+      recipientLabel: "Admin team";
+      channelLabel: "Review only";
+      previewLabel: "Evidence and recommendation";
+      previewText: string;
+      canEditMessage: false;
+      payload: {
+        anomalyCode: string;
+        jobId: string;
+        propertyId: string;
+        confidence: "high" | "medium";
+        evidence: string[];
+        recommendation: string;
       };
     };
 
@@ -270,12 +304,14 @@ type OrganizationMemberProfileRow = {
 function getDismissalCooldownMs(kind: ProposedAction["kind"]) {
   if (kind === "invoice_reminder") return 7 * 24 * 60 * 60 * 1000;
   if (kind === "guest_registration_reminder") return 3 * 24 * 60 * 60 * 1000;
+  if (kind === "staffing_advisory") return 24 * 60 * 60 * 1000;
   return 12 * 60 * 60 * 1000;
 }
 
 function getDismissalLabel(kind: ProposedAction["kind"]) {
   if (kind === "invoice_reminder") return "7 days";
   if (kind === "guest_registration_reminder") return "3 days";
+  if (kind === "staffing_advisory") return "24 hours";
   return "12 hours";
 }
 
@@ -290,7 +326,7 @@ async function getSnoozedActionIds(serviceClient: any, organizationId: string, a
     .from("audit_logs")
     .select("target_id, created_at")
     .eq("organization_id", organizationId)
-    .eq("action_type", "ai.supervisor.dismissed")
+    .in("action_type", ["ai.supervisor.dismissed", "ai.supervisor.advisory_reviewed"])
     .gte("created_at", oldestRelevantDismissalIso)
     .in("target_id", actions.map((action) => action.id));
 
@@ -321,6 +357,7 @@ async function generateActions(organizationId: string, token: string) {
   const { serviceClient } = await requireAiCopilotAccess({ token, organizationId });
   const todayYmd = getTodayYmd();
   const tomorrowYmd = addDaysYmd(todayYmd, 1);
+  const anomalyEndYmd = addDaysYmd(todayYmd, 90);
 
   const [
     invoicesRes,
@@ -389,6 +426,46 @@ async function generateActions(organizationId: string, token: string) {
     if (result.error) throw new Error(result.error.message);
   }
 
+  const anomalyJobsRes = await serviceClient
+    .from("turnover_jobs")
+    .select("id,property_id,scheduled_for,cleaner_units_needed,status,staffing_status")
+    .eq("organization_id", organizationId)
+    .gte("scheduled_for", todayYmd)
+    .lte("scheduled_for", anomalyEndYmd)
+    .order("scheduled_for", { ascending: true })
+    .limit(300);
+  if (anomalyJobsRes.error) throw new Error(anomalyJobsRes.error.message);
+
+  const anomalyJobs = (anomalyJobsRes.data ?? []) as SupervisorStaffingJob[];
+  const anomalyJobIds = anomalyJobs.map((job) => job.id);
+  const anomalyPropertyIds = [...new Set(anomalyJobs.map((job) => job.property_id))];
+  const [anomalySlotsRes, anomalyAssignmentsRes, anomalyStatusEventsRes] = await Promise.all([
+    anomalyJobIds.length > 0
+      ? serviceClient
+          .from("turnover_job_slots")
+          .select("id,job_id,cleaner_account_id,status,offered_at,declined_at,expires_at,created_at")
+          .in("job_id", anomalyJobIds)
+          .order("created_at", { ascending: true })
+      : Promise.resolve({ data: [], error: null }),
+    anomalyPropertyIds.length > 0
+      ? serviceClient
+          .from("property_cleaner_account_assignments")
+          .select("property_id,cleaner_account_id,priority")
+          .in("property_id", anomalyPropertyIds)
+      : Promise.resolve({ data: [], error: null }),
+    anomalyJobIds.length > 0
+      ? serviceClient
+          .from("staff_job_status_events")
+          .select("job_id,account_id,event_type,created_at,push_sent_count,push_errors")
+          .eq("job_kind", "cleaner")
+          .in("job_id", anomalyJobIds)
+          .order("created_at", { ascending: true })
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  for (const result of [anomalySlotsRes, anomalyAssignmentsRes, anomalyStatusEventsRes]) {
+    if (result.error) throw new Error(result.error.message);
+  }
+
   const owners = new Map(
     ((ownersRes.data ?? []) as OwnerRow[]).map((owner) => [owner.id, owner])
   );
@@ -421,6 +498,53 @@ async function generateActions(organizationId: string, token: string) {
   }
 
   const actions: ProposedAction[] = [];
+
+  const staffingAnomalies = analyzeStaffingAnomalies({
+    jobs: anomalyJobs,
+    slots: (anomalySlotsRes.data ?? []) as SupervisorStaffingSlot[],
+    assignments: (anomalyAssignmentsRes.data ?? []) as SupervisorCleanerAssignment[],
+    statusEvents: (anomalyStatusEventsRes.data ?? []) as SupervisorStatusEvent[],
+    cleanerNames: new Map(
+      ((cleanerAccountsRes.data ?? []) as CleanerAccountRow[]).map((account) => [
+        account.id,
+        account.display_name || `Cleaner ${account.id.slice(0, 8)}`,
+      ])
+    ),
+    propertyNames: new Map(
+      ((propertiesRes.data ?? []) as PropertyRow[]).map((property) => [
+        property.id,
+        property.name || property.address || `Property ${property.id.slice(0, 8)}`,
+      ])
+    ),
+  });
+
+  for (const anomaly of staffingAnomalies.slice(0, 8)) {
+    actions.push({
+      id: anomaly.id,
+      kind: "staffing_advisory",
+      priority: anomaly.priority,
+      category: "Supervisor",
+      title: anomaly.title,
+      reason: anomaly.reason,
+      recipientLabel: "Admin team",
+      channelLabel: "Review only",
+      previewLabel: "Evidence and recommendation",
+      previewText: [
+        `Confidence: ${anomaly.confidence}`,
+        ...anomaly.evidence.map((item) => `Evidence: ${item}`),
+        `Recommendation: ${anomaly.recommendation}`,
+      ].join("\n"),
+      canEditMessage: false,
+      payload: {
+        anomalyCode: anomaly.code,
+        jobId: anomaly.jobId,
+        propertyId: anomaly.propertyId,
+        confidence: anomaly.confidence,
+        evidence: anomaly.evidence,
+        recommendation: anomaly.recommendation,
+      },
+    });
+  }
 
   for (const invoice of (invoicesRes.data ?? []) as InvoiceRow[]) {
     if (!invoice.due_date) continue;
@@ -847,6 +971,38 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         ok: true,
         message: `Guest registration reminder saved to the booking note for ${booking.summary?.trim() || "the upcoming guest"}.`,
+      });
+    }
+
+    if (kind === "staffing_advisory") {
+      const jobId = String(payload?.jobId || "").trim();
+      const anomalyCode = String(payload?.anomalyCode || "").trim();
+      if (!jobId || !anomalyCode) {
+        return NextResponse.json({ ok: false, error: "Supervisor finding details are required." }, { status: 400 });
+      }
+
+      await writeAuditLog(serviceClient, {
+        actorProfileId: profile.id,
+        actorEmail: profile.email,
+        actorRole: profile.role,
+        organizationId,
+        actionType: "ai.supervisor.advisory_reviewed",
+        targetType: "ai_action",
+        targetId: actionId,
+        metadata: {
+          action_id: actionId,
+          anomaly_code: anomalyCode,
+          job_id: jobId,
+          property_id: payload?.propertyId || null,
+          confidence: payload?.confidence || null,
+          evidence: Array.isArray(payload?.evidence) ? payload.evidence : [],
+          recommendation: payload?.recommendation || null,
+        },
+      });
+
+      return NextResponse.json({
+        ok: true,
+        message: "Supervisor finding acknowledged and retained in the audit history.",
       });
     }
 

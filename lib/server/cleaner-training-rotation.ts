@@ -362,6 +362,25 @@ export async function reofferExpiredCleanerTrainingSlot(
       .maybeSingle();
 
     if (insertStrandedError) throw new Error(insertStrandedError.message);
+    if (strandedSlot?.id) {
+      await writeAuditLog(service, {
+        actorProfileId: declinedByProfileId,
+        actorEmail: null,
+        actorRole: declinedByProfileId ? "cleaner" : "system",
+        organizationId: job.organization_id,
+        actionType: "cleaner.job_stranded",
+        targetType: "turnover_job_slot",
+        targetId: strandedSlot.id,
+        metadata: {
+          job_id: job.id,
+          property_id: job.property_id,
+          previous_slot_id: slot.id,
+          previous_cleaner_account_id: slot.cleaner_account_id || null,
+          previous_status: slot.status,
+          slot_number: slot.slot_number,
+        },
+      });
+    }
     await refreshCleanerJobStaffing(service, job.id);
     return { offeredSlotIds: [], expiredSlotIds: [slot.id], strandedSlotIds: strandedSlot?.id ? [strandedSlot.id] : [] };
   }

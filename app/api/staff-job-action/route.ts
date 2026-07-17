@@ -588,6 +588,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Job slot could not be updated." }, { status: 409 });
     }
 
+    const { data: auditJob } = await service
+      .from("turnover_jobs")
+      .select("organization_id, property_id, scheduled_for")
+      .eq("id", updatedSlot.job_id)
+      .maybeSingle();
+    if (auditJob?.organization_id) {
+      await writeAuditLog(service, {
+        actorProfileId: currentProfile?.id || user.id,
+        actorEmail: currentProfile?.email || user.email || null,
+        actorRole: currentProfile?.role || "cleaner",
+        organizationId: auditJob.organization_id,
+        actionType: `cleaner.portal_job_${action}`,
+        targetType: "turnover_job_slot",
+        targetId: updatedSlot.id,
+        metadata: {
+          job_id: updatedSlot.job_id,
+          property_id: auditJob.property_id || null,
+          scheduled_for: auditJob.scheduled_for || null,
+          cleaner_account_id: updatedSlot.cleaner_account_id || slot.cleaner_account_id || null,
+          previous_status: slot.status || null,
+          resulting_status: updatedSlot.status || null,
+        },
+      });
+    }
+
     await refreshCleanerJobStaffing(service, updatedSlot.job_id);
     const declineAdminPush =
       action === "decline"
