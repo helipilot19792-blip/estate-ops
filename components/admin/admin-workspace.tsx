@@ -3317,7 +3317,7 @@ export default function AdminPage() {
     }
 
     const response = await fetch(
-      `/api/admin/home-data?organizationId=${encodeURIComponent(currentOrganizationId)}`,
+      `/api/admin/home-data?organizationId=${encodeURIComponent(currentOrganizationId)}&priority=1`,
       {
         cache: "no-store",
         headers: {

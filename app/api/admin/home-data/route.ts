@@ -105,6 +105,7 @@ export async function GET(request: Request) {
     const token = authHeader?.startsWith("Bearer ") ? authHeader.replace("Bearer ", "").trim() : "";
     const { searchParams } = new URL(request.url);
     const organizationId = searchParams.get("organizationId")?.trim() || "";
+    const priorityOnly = searchParams.get("priority") === "1";
 
     if (!token) {
       return Response.json({ ok: false, error: "Missing authorization header." }, { status: 401 });
@@ -120,7 +121,27 @@ export async function GET(request: Request) {
     ]);
 
     const todayYmd = new Date().toISOString().slice(0, 10);
-    const bookingLookaheadEndYmd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    // The first paint only needs today's operational picture and a small safety
+    // window. The client hydrates the complete workspace after this response.
+    const priorityEndYmd = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const bookingLookaheadEndYmd = priorityOnly
+      ? priorityEndYmd
+      : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const jobsQuery = serviceClient
+      .from("turnover_jobs")
+      .select("*")
+      .eq("organization_id", organizationId)
+      .order("scheduled_for", { ascending: true });
+    const groundsJobsQuery = serviceClient
+      .from("grounds_jobs")
+      .select("*")
+      .eq("organization_id", organizationId)
+      .order("scheduled_for", { ascending: true });
+
+    if (priorityOnly) {
+      jobsQuery.gte("scheduled_for", todayYmd).lte("scheduled_for", priorityEndYmd);
+      groundsJobsQuery.gte("scheduled_for", todayYmd).lte("scheduled_for", priorityEndYmd);
+    }
 
     const [
       propertiesRes,
@@ -144,21 +165,13 @@ export async function GET(request: Request) {
         .select("*")
         .eq("organization_id", organizationId)
         .order("created_at", { ascending: false }),
-      serviceClient
-        .from("turnover_jobs")
-        .select("*")
-        .eq("organization_id", organizationId)
-        .order("created_at", { ascending: false }),
+      jobsQuery,
       serviceClient
         .from("grounds_accounts")
         .select("*")
         .eq("organization_id", organizationId)
         .order("created_at", { ascending: false }),
-      serviceClient
-        .from("grounds_jobs")
-        .select("*")
-        .eq("organization_id", organizationId)
-        .order("created_at", { ascending: false }),
+      groundsJobsQuery,
       serviceClient
         .from("property_booking_events")
         .select("*")
@@ -181,12 +194,14 @@ export async function GET(request: Request) {
         .select("*")
         .eq("organization_id", organizationId)
         .order("created_at", { ascending: false })
-        .limit(100),
-      serviceClient
-        .from("turnover_job_checklist_items")
-        .select("*")
-        .eq("organization_id", organizationId)
-        .order("sort_order", { ascending: true }),
+        .limit(priorityOnly ? 25 : 100),
+      priorityOnly
+        ? emptyResult()
+        : serviceClient
+            .from("turnover_job_checklist_items")
+            .select("*")
+            .eq("organization_id", organizationId)
+            .order("sort_order", { ascending: true }),
     ]);
 
     const requiredResponses = [
