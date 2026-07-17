@@ -330,7 +330,7 @@ export async function reofferExpiredCleanerTrainingSlot(
   );
   const nextOrder =
     currentIndex >= 0
-      ? [...activeAssignments.slice(currentIndex + 1), ...activeAssignments.slice(0, currentIndex + 1)]
+      ? activeAssignments.slice(currentIndex + 1)
       : rotateAssignments(activeAssignments, property.cleaner_rotation_next_cleaner_account_id);
   const nextAssignment = nextOrder.find(
     (assignment: any) =>

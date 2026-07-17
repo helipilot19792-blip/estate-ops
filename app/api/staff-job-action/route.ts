@@ -589,6 +589,17 @@ export async function POST(request: NextRequest) {
     }
 
     await refreshCleanerJobStaffing(service, updatedSlot.job_id);
+    const declineAdminPush =
+      action === "decline"
+        ? await sendAdminJobStatusPush(
+            service,
+            "cleaner",
+            updatedSlot.job_id,
+            updatedSlot.cleaner_account_id || slot.cleaner_account_id,
+            "declined",
+            request.nextUrl.origin
+          )
+        : null;
     const trainingReoffer =
       action === "decline"
         ? await reofferExpiredCleanerTrainingSlot(service, updatedSlot.id, user.id)
@@ -596,6 +607,17 @@ export async function POST(request: NextRequest) {
     const trainingReofferNotification =
       trainingReoffer.offeredSlotIds.length > 0
         ? await sendJobOfferEmailsForSlots("cleaner", trainingReoffer.offeredSlotIds, request.nextUrl.origin)
+        : null;
+    const strandedAdminPush =
+      action === "decline" && (trainingReoffer.strandedSlotIds?.length || 0) > 0
+        ? await sendAdminJobStatusPush(
+            service,
+            "cleaner",
+            updatedSlot.job_id,
+            null,
+            "stranded",
+            request.nextUrl.origin
+          )
         : null;
     const adminPush =
       action === "accept" || action === "start" || action === "finish"
@@ -615,6 +637,8 @@ export async function POST(request: NextRequest) {
       slot: updatedSlot,
       trainingReoffer,
       trainingReofferNotification,
+      declineAdminPush,
+      strandedAdminPush,
       adminPush,
     });
   } catch (error) {

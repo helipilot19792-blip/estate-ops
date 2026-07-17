@@ -2,7 +2,14 @@ import type { JobNotificationKind } from "@/lib/server/job-notifications";
 import { sendStaffPushNotifications } from "@/lib/server/staff-push-notifications";
 
 type ServiceClient = any;
-type AdminJobStatusEvent = "accepted" | "arrived" | "started" | "completed" | "overdue_offer";
+type AdminJobStatusEvent =
+  | "accepted"
+  | "arrived"
+  | "started"
+  | "completed"
+  | "declined"
+  | "stranded"
+  | "overdue_offer";
 
 function isOptionalEventTableError(error: { code?: string | null; message?: string | null } | null | undefined) {
   const message = String(error?.message || "").toLowerCase();
@@ -67,6 +74,20 @@ function getEventCopy(
     return {
       title: `${getTeamLabel(kind)} arrived`,
       body: `${accountName} arrived at ${propertyName} for ${jobLabel.toLowerCase()}.`,
+    };
+  }
+
+  if (event === "declined") {
+    return {
+      title: `${jobLabel} declined`,
+      body: `${accountName} declined ${jobLabel.toLowerCase()} for ${propertyName}. The next assignment step is being checked.`,
+    };
+  }
+
+  if (event === "stranded") {
+    return {
+      title: `${jobLabel} stranded`,
+      body: `${jobLabel} for ${propertyName} has no eligible ${getTeamLabel(kind).toLowerCase()} remaining and needs admin attention.`,
     };
   }
 

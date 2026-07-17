@@ -9,6 +9,8 @@ import {
 } from "@/lib/server/job-email-actions";
 import { sendAdminJobStatusPush } from "@/lib/server/admin-job-status-notifications";
 import { writeAuditLog } from "@/lib/server/audit-log";
+import { reofferExpiredCleanerTrainingSlot } from "@/lib/server/cleaner-training-rotation";
+import { sendJobOfferEmailsForSlots } from "@/lib/server/job-notifications";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -281,6 +283,32 @@ export async function POST(request: NextRequest) {
         "accepted",
         request.nextUrl.origin
       );
+    } else {
+      await sendAdminJobStatusPush(
+        service,
+        verification.kind,
+        updatedSlot.job_id,
+        updatedSlot[accountIdColumn] || details.accountId,
+        "declined",
+        request.nextUrl.origin
+      );
+
+      if (verification.kind === "cleaner") {
+        const trainingReoffer = await reofferExpiredCleanerTrainingSlot(service, updatedSlot.id, null);
+        if (trainingReoffer.offeredSlotIds.length > 0) {
+          await sendJobOfferEmailsForSlots("cleaner", trainingReoffer.offeredSlotIds, request.nextUrl.origin);
+        }
+        if ((trainingReoffer.strandedSlotIds?.length || 0) > 0) {
+          await sendAdminJobStatusPush(
+            service,
+            "cleaner",
+            updatedSlot.job_id,
+            null,
+            "stranded",
+            request.nextUrl.origin
+          );
+        }
+      }
     }
 
     const calendarUrl = verification.action === "accept"
