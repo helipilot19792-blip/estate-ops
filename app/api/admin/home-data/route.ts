@@ -142,7 +142,7 @@ export async function GET(request: Request) {
       // Keep the floating attention banner accurate even when an offer is for a
       // later date. Waiting jobs are a small subset, unlike the full history.
       jobsQuery.or(
-        `and(scheduled_for.gte.${todayYmd},scheduled_for.lte.${priorityEndYmd}),staffing_status.eq.offered,staffing_status.eq.partially_filled,staffing_status.eq.unassigned,staffing_status.eq.stranded,status.eq.offered`
+        `and(scheduled_for.gte.${todayYmd},scheduled_for.lte.${priorityEndYmd}),staffing_status.eq.offered,staffing_status.eq.partially_filled,staffing_status.eq.unassigned,staffing_status.eq.unfilled,staffing_status.eq.stranded,status.eq.offered`
       );
       groundsJobsQuery.gte("scheduled_for", todayYmd).lte("scheduled_for", priorityEndYmd);
     }
