@@ -1795,6 +1795,7 @@ export default function AdminPage() {
   const maintenanceLibraryInputRef = useRef<HTMLInputElement | null>(null);
   const latestHomeLoadIdRef = useRef(0);
   const latestDataLoadIdRef = useRef(0);
+  const adminDataLoadedRef = useRef(false);
   const homeDataWarmupTimerRef = useRef<number | null>(null);
   const [invoiceOwnerId, setInvoiceOwnerId] = useState("");
   const [invoicePropertyId, setInvoicePropertyId] = useState("");
@@ -2549,6 +2550,7 @@ export default function AdminPage() {
     if (!checkingAuth && currentOrganizationId) {
       setAdminHomeLoaded(false);
       setAdminDataLoaded(false);
+      adminDataLoadedRef.current = false;
       let cancelled = false;
       if (homeDataWarmupTimerRef.current !== null) {
         window.clearTimeout(homeDataWarmupTimerRef.current);
@@ -3233,26 +3235,42 @@ export default function AdminPage() {
       return next;
     });
     setAdminHomeLoaded(true);
+    adminDataLoadedRef.current = true;
     setAdminDataLoaded(true);
   }
 
   function applyAdminHomePayload(data: any) {
+    const preserveFullWorkspace = adminDataLoadedRef.current;
+    const mergeById = <T extends { id: string },>(current: T[], incoming: T[]) => {
+      const incomingById = new Map(incoming.map((row) => [row.id, row]));
+      const merged = current.map((row) => incomingById.get(row.id) ?? row);
+      const currentIds = new Set(current.map((row) => row.id));
+      return [...merged, ...incoming.filter((row) => !currentIds.has(row.id))];
+    };
+    const nextJobs = (data.jobs ?? []) as Job[];
+    const nextJobSlots = (data.jobSlots ?? []) as JobSlot[];
+    const nextGroundsJobs = (data.groundsJobs ?? []) as GroundsJob[];
+    const nextGroundsJobSlots = (data.groundsJobSlots ?? []) as GroundsJobSlot[];
+    const nextTurnoverJobChecklistItems = (data.turnoverJobChecklistItems ?? []) as TurnoverJobChecklistItemRow[];
+
     setProperties((data.properties ?? []) as Property[]);
     setCleanerAccounts((data.cleanerAccounts ?? []) as CleanerAccount[]);
     setCleanerAccountMembers((data.cleanerAccountMembers ?? []) as CleanerAccountMember[]);
-    setJobs((data.jobs ?? []) as Job[]);
-    setJobSlots((data.jobSlots ?? []) as JobSlot[]);
+    setJobs((current) => preserveFullWorkspace ? mergeById(current, nextJobs) : nextJobs);
+    setJobSlots((current) => preserveFullWorkspace ? mergeById(current, nextJobSlots) : nextJobSlots);
     setGroundsAccounts((data.groundsAccounts ?? []) as GroundsAccount[]);
     setGroundsAccountMembers((data.groundsAccountMembers ?? []) as GroundsAccountMember[]);
-    setGroundsJobs((data.groundsJobs ?? []) as GroundsJob[]);
-    setGroundsJobSlots((data.groundsJobSlots ?? []) as GroundsJobSlot[]);
+    setGroundsJobs((current) => preserveFullWorkspace ? mergeById(current, nextGroundsJobs) : nextGroundsJobs);
+    setGroundsJobSlots((current) => preserveFullWorkspace ? mergeById(current, nextGroundsJobSlots) : nextGroundsJobSlots);
     setStrandedJobs((data.strandedJobs ?? []) as StrandedJob[]);
     setPropertyBookingEvents((data.propertyBookingEvents ?? []) as PropertyBookingEvent[]);
     setMaintenanceFlags((data.maintenanceFlags ?? []) as MaintenanceFlagRow[]);
     setInspectionRules((data.inspectionRules ?? []) as PropertyInspectionRule[]);
     setStaffJobStatusEvents((data.staffJobStatusEvents ?? []) as StaffJobStatusEventRow[]);
     setJobOfferAuditLogs((data.jobOfferAuditLogs ?? []) as JobOfferAuditLogRow[]);
-    setTurnoverJobChecklistItems((data.turnoverJobChecklistItems ?? []) as TurnoverJobChecklistItemRow[]);
+    setTurnoverJobChecklistItems((current) =>
+      preserveFullWorkspace ? mergeById(current, nextTurnoverJobChecklistItems) : nextTurnoverJobChecklistItems
+    );
     setAdminHomeLoaded(true);
   }
 
@@ -3977,6 +3995,7 @@ export default function AdminPage() {
       return false;
     }
     setAdminHomeLoaded(true);
+    adminDataLoadedRef.current = true;
     setAdminDataLoaded(true);
     return true;
   }
@@ -9769,19 +9788,26 @@ This removes its linked members and deletes the grounds account.`
   );
 
   function jumpToJobs(type: "waiting" | "stranded") {
+    const firstWaitingJobId = [...waitingJobs]
+      .sort((a, b) => {
+        const aDate = a.scheduled_for || extractCheckoutDate(a.notes) || "";
+        const bDate = b.scheduled_for || extractCheckoutDate(b.notes) || "";
+        return aDate.localeCompare(bDate) || (b.created_at || "").localeCompare(a.created_at || "");
+      })[0]?.id;
+
     setActiveSection("jobs");
     setJobWorkflowTab(type === "waiting" ? "active" : "exceptions");
     if (type === "waiting") {
       setSelectedJobsPropertyFilter("all");
       setJobsListFilter("waiting");
       setJobsExpanded(true);
-      setHighlightedJobId(waitingJobs[0]?.id || null);
+      setHighlightedJobId(firstWaitingJobId || null);
     }
 
     setTimeout(() => {
-      if (type === "waiting" && waitingJobs[0]?.id) {
+      if (type === "waiting" && firstWaitingJobId) {
         document
-          .getElementById(`job-${waitingJobs[0].id}`)
+          .getElementById(`job-${firstWaitingJobId}`)
           ?.scrollIntoView({ behavior: "smooth", block: "center" });
         return;
       }
@@ -27551,6 +27577,7 @@ This removes its linked members and deletes the grounds account.`
                       }
                       setAdminHomeLoaded(false);
                       setAdminDataLoaded(false);
+                      adminDataLoadedRef.current = false;
                       setCurrentOrganizationId(nextOrganizationId);
                     }}
                     className="rounded-full border border-[#cbd5e1] bg-white/90 px-4 py-2.5 text-sm font-medium text-[#334155] shadow-sm outline-none transition hover:bg-white focus:border-[#38bdf8]"
