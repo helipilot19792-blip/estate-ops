@@ -2805,11 +2805,6 @@ export default function AdminPage() {
         { event: "*", schema: "public", table: "property_booking_events", filter: `organization_id=eq.${currentOrganizationId}` },
         scheduleHomeRefresh
       )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "admin_stranded_jobs" },
-        scheduleHomeRefresh
-      )
       .subscribe();
 
     const handleVisibilityChange = () => {
