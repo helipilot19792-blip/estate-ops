@@ -2695,6 +2695,7 @@ export default function AdminPage() {
     const updateTurnoverSlot = (payload: { eventType: string; new: unknown; old: unknown }) => {
       const incoming = payload.new as JobSlot;
       const previous = payload.old as Partial<JobSlot>;
+      scheduleHomeRefresh();
 
       if (payload.eventType === "DELETE") {
         if (previous?.id) setJobSlots((rows) => rows.filter((row) => row.id !== previous.id));
@@ -2702,10 +2703,7 @@ export default function AdminPage() {
       }
 
       if (!incoming?.id) return;
-      if (payload.eventType === "INSERT") {
-        scheduleHomeRefresh();
-        return;
-      }
+      if (payload.eventType === "INSERT") return;
       setJobSlots((rows) => {
         const index = rows.findIndex((row) => row.id === incoming.id);
         if (index < 0) return rows;
@@ -2718,6 +2716,7 @@ export default function AdminPage() {
     const updateGroundsSlot = (payload: { eventType: string; new: unknown; old: unknown }) => {
       const incoming = payload.new as GroundsJobSlot;
       const previous = payload.old as Partial<GroundsJobSlot>;
+      scheduleHomeRefresh();
 
       if (payload.eventType === "DELETE") {
         if (previous?.id) setGroundsJobSlots((rows) => rows.filter((row) => row.id !== previous.id));
@@ -2725,10 +2724,7 @@ export default function AdminPage() {
       }
 
       if (!incoming?.id) return;
-      if (payload.eventType === "INSERT") {
-        scheduleHomeRefresh();
-        return;
-      }
+      if (payload.eventType === "INSERT") return;
       setGroundsJobSlots((rows) => {
         const index = rows.findIndex((row) => row.id === incoming.id);
         if (index < 0) return rows;
@@ -2748,6 +2744,7 @@ export default function AdminPage() {
           const previous = payload.old as Partial<Job>;
           if (payload.eventType === "DELETE") {
             if (previous?.id) setJobs((rows) => rows.filter((row) => row.id !== previous.id));
+            scheduleHomeRefresh();
             return;
           }
           if (!incoming?.id) return;
@@ -2758,6 +2755,7 @@ export default function AdminPage() {
             next[index] = incoming;
             return next;
           });
+          scheduleHomeRefresh();
         }
       )
       .on(
@@ -2773,6 +2771,7 @@ export default function AdminPage() {
           const previous = payload.old as Partial<GroundsJob>;
           if (payload.eventType === "DELETE") {
             if (previous?.id) setGroundsJobs((rows) => rows.filter((row) => row.id !== previous.id));
+            scheduleHomeRefresh();
             return;
           }
           if (!incoming?.id) return;
@@ -2783,12 +2782,33 @@ export default function AdminPage() {
             next[index] = incoming;
             return next;
           });
+          scheduleHomeRefresh();
         }
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "grounds_job_slots" },
         updateGroundsSlot
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "property_inspection_rules", filter: `organization_id=eq.${currentOrganizationId}` },
+        scheduleHomeRefresh
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "property_maintenance_flags", filter: `organization_id=eq.${currentOrganizationId}` },
+        scheduleHomeRefresh
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "property_booking_events", filter: `organization_id=eq.${currentOrganizationId}` },
+        scheduleHomeRefresh
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "admin_stranded_jobs" },
+        scheduleHomeRefresh
       )
       .subscribe();
 
