@@ -131,6 +131,7 @@ export async function GET(request: Request) {
       profilesRes,
       ownerAccountsRes,
       propertyBookingEventsRes,
+      cancelledTurnoverJobsRes,
       maintenanceFlagsRes,
       inspectionRulesRes,
       inspectionLogsRes,
@@ -180,6 +181,12 @@ export async function GET(request: Request) {
         .lte("checkin_date", bookingLookaheadEndYmd)
         .gte("checkout_date", todayYmd)
         .order("checkin_date", { ascending: true }),
+      serviceClient
+        .from("cancelled_turnover_jobs")
+        .select("*")
+        .eq("organization_id", organizationId)
+        .order("scheduled_for", { ascending: false })
+        .limit(1000),
       serviceClient.from("property_maintenance_flags").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
       serviceClient.from("property_inspection_rules").select("*").eq("organization_id", organizationId).order("next_due_date", { ascending: true }),
       serviceClient.from("property_inspection_logs").select("*").eq("organization_id", organizationId).order("inspected_at", { ascending: false }),
@@ -377,6 +384,7 @@ export async function GET(request: Request) {
         ownerPropertyAccess: ownerPropertyAccessRes.data ?? [],
         propertyCalendars: propertyCalendarsRes.data ?? [],
         propertyBookingEvents: propertyBookingEventsRes.error && isOptionalTableError(propertyBookingEventsRes.error) ? [] : propertyBookingEventsRes.data ?? [],
+        cancelledTurnoverJobs: cancelledTurnoverJobsRes.error && isOptionalTableError(cancelledTurnoverJobsRes.error) ? [] : cancelledTurnoverJobsRes.data ?? [],
         maintenanceFlags: maintenanceFlagsRes.data ?? [],
         maintenanceFlagImages: maintenanceFlagImagesRes.data ?? [],
         inspectionRules: inspectionRulesRes.error && isOptionalTableError(inspectionRulesRes.error) ? [] : inspectionRulesRes.data ?? [],

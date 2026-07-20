@@ -28,6 +28,7 @@ type PropertyRow = {
 
 type TurnoverJobRow = {
   id: string;
+  organization_id?: string | null;
   property_id: string;
   booking_event_id?: string | null;
   notes: string | null;
@@ -531,7 +532,7 @@ async function deleteStaleUpcomingSyncedJobs(
   const todayYmd = getTodayYmd();
   const { data, error } = await supabase
     .from("turnover_jobs")
-    .select("id, property_id, booking_event_id, notes, scheduled_for, status")
+    .select("id, organization_id, property_id, booking_event_id, notes, scheduled_for, status")
     .eq("property_id", propertyId)
     .limit(500);
 
@@ -559,7 +560,7 @@ async function deleteStaleUpcomingSyncedJobs(
     }
   }
 
-  const staleJobIds = ((data ?? []) as TurnoverJobRow[])
+  const staleJobs = ((data ?? []) as TurnoverJobRow[])
     .filter((job) => {
       const uid =
         (job.booking_event_id ? linkedBookingUidById.get(job.booking_event_id) : null) ??
@@ -568,8 +569,8 @@ async function deleteStaleUpcomingSyncedJobs(
 
       const jobDate = job.scheduled_for || getCheckoutDateFromNotes(job.notes) || "";
       return jobDate >= todayYmd;
-    })
-    .map((job) => job.id);
+    });
+  const staleJobIds = staleJobs.map((job) => job.id);
 
   if (staleJobIds.length === 0) {
     return {
@@ -578,6 +579,69 @@ async function deleteStaleUpcomingSyncedJobs(
       pushSent: 0,
       notificationErrors: [] as string[],
     };
+  }
+
+  const { data: staleSlots, error: staleSlotsError } = await supabase
+    .from("turnover_job_slots")
+    .select("job_id, cleaner_account_id, status, offered_at, accepted_at")
+    .in("job_id", staleJobIds)
+    .not("cleaner_account_id", "is", null);
+
+  if (staleSlotsError) throw staleSlotsError;
+
+  const cleanerAccountIds = [
+    ...new Set((staleSlots ?? []).map((slot) => slot.cleaner_account_id).filter(Boolean) as string[]),
+  ];
+  const cleanerNameById = new Map<string, string>();
+
+  if (cleanerAccountIds.length > 0) {
+    const { data: cleanerRows, error: cleanerRowsError } = await supabase
+      .from("cleaner_accounts")
+      .select("id, display_name, email")
+      .in("id", cleanerAccountIds);
+
+    if (cleanerRowsError) throw cleanerRowsError;
+
+    for (const cleaner of cleanerRows ?? []) {
+      cleanerNameById.set(
+        cleaner.id,
+        String(cleaner.display_name || cleaner.email || "Cleaner").trim()
+      );
+    }
+  }
+
+  const cancellationRows = staleJobs.flatMap((job) => {
+    const scheduledFor = job.scheduled_for || getCheckoutDateFromNotes(job.notes);
+    if (!job.organization_id || !scheduledFor) return [];
+
+    const jobSlots = (staleSlots ?? []).filter((slot) => slot.job_id === job.id);
+    const assignedCleanerAccountIds = [
+      ...new Set(jobSlots.map((slot) => slot.cleaner_account_id).filter(Boolean) as string[]),
+    ];
+    const bookingUid = job.booking_event_id ? linkedBookingUidById.get(job.booking_event_id) : null;
+
+    return [{
+      organization_id: job.organization_id,
+      property_id: job.property_id,
+      original_job_id: job.id,
+      booking_event_id: job.booking_event_id || null,
+      scheduled_for: scheduledFor,
+      source,
+      guest_summary: bookingUid || null,
+      job_notes: job.notes,
+      assigned_cleaner_account_ids: assignedCleanerAccountIds,
+      assigned_cleaner_names: assignedCleanerAccountIds.map((id) => cleanerNameById.get(id) || "Cleaner"),
+      assignment_snapshot: jobSlots,
+      cancelled_at: new Date().toISOString(),
+    }];
+  });
+
+  if (cancellationRows.length > 0) {
+    const { error: cancellationHistoryError } = await supabase
+      .from("cancelled_turnover_jobs")
+      .upsert(cancellationRows, { onConflict: "original_job_id" });
+
+    if (cancellationHistoryError) throw cancellationHistoryError;
   }
 
   const notificationResult = await sendJobCancellationNotificationsForJobs(

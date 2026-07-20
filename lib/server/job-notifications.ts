@@ -1122,7 +1122,6 @@ function shouldSendOfferReminder(bundle: SlotBundle, now = new Date()) {
 
 function shouldSendDayOfReminder(bundle: SlotBundle, now = new Date()) {
   if ((bundle.status || "").toLowerCase().trim() !== "accepted") return false;
-  if (bundle.dayOfReminderSentAt) return false;
   return !!bundle.jobDate && bundle.jobDate === getTodayYmd(now);
 }
 

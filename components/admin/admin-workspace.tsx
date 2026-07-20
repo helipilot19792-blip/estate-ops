@@ -241,6 +241,27 @@ type PropertyBookingEvent = {
   updated_at?: string | null;
 };
 
+type CancelledTurnoverJob = {
+  id: string;
+  organization_id: string;
+  property_id: string;
+  original_job_id: string;
+  booking_event_id?: string | null;
+  scheduled_for: string;
+  source?: string | null;
+  guest_summary?: string | null;
+  job_notes?: string | null;
+  assigned_cleaner_account_ids: string[];
+  assigned_cleaner_names: string[];
+  assignment_snapshot?: Array<{
+    cleaner_account_id?: string | null;
+    status?: string | null;
+    offered_at?: string | null;
+    accepted_at?: string | null;
+  }>;
+  cancelled_at: string;
+};
+
 type PropertyGuestDevice = {
   id: string;
   label: string;
@@ -720,7 +741,7 @@ type InvoiceHistoryFilter = "all" | "unpaid" | "paid" | "draft" | "void" | "quot
 const DEFAULT_INVOICE_WORKFLOW_TAB: InvoiceWorkflowTab = "history";
 const DEFAULT_INVOICE_HISTORY_STATUS_FILTER: InvoiceHistoryFilter = "unpaid";
 type BookingsFilterStatus = "upcoming" | "current" | "past" | "all";
-type AdminCalendarItemKind = "cleaning" | "checkin" | "grounds";
+type AdminCalendarItemKind = "cleaning" | "checkin" | "grounds" | "cancelled";
 type AdminCalendarFilterMode = "all" | AdminCalendarItemKind;
 type AdminMenuOrientation = "side" | "top";
 type OrganizationType = "property_management" | "cleaning_company";
@@ -1688,6 +1709,7 @@ export default function AdminPage() {
   const [ownerPropertyAccess, setOwnerPropertyAccess] = useState<OwnerPropertyAccessRow[]>([]);
   const [propertyCalendars, setPropertyCalendars] = useState<PropertyCalendarRow[]>([]);
   const [propertyBookingEvents, setPropertyBookingEvents] = useState<PropertyBookingEvent[]>([]);
+  const [cancelledTurnoverJobs, setCancelledTurnoverJobs] = useState<CancelledTurnoverJob[]>([]);
   const [maintenanceFlags, setMaintenanceFlags] = useState<MaintenanceFlagRow[]>([]);
   const [maintenanceFlagImages, setMaintenanceFlagImages] = useState<MaintenanceFlagImageRow[]>([]);
   const [inspectionRules, setInspectionRules] = useState<PropertyInspectionRule[]>([]);
@@ -1747,6 +1769,7 @@ export default function AdminPage() {
     | { kind: "cleaning"; jobId: string; date: string }
     | { kind: "grounds"; jobId: string; date: string }
     | { kind: "checkin"; bookingId: string; date: string }
+    | { kind: "cancelled"; cancellationId: string; date: string }
     | null
   >(null);
   const [maintenanceModalOpen, setMaintenanceModalOpen] = useState(false);
@@ -3195,6 +3218,7 @@ export default function AdminPage() {
     setOwnerPropertyAccess((data.ownerPropertyAccess ?? []) as OwnerPropertyAccessRow[]);
     setPropertyCalendars((data.propertyCalendars ?? []) as PropertyCalendarRow[]);
     setPropertyBookingEvents((data.propertyBookingEvents ?? []) as PropertyBookingEvent[]);
+    setCancelledTurnoverJobs((data.cancelledTurnoverJobs ?? []) as CancelledTurnoverJob[]);
     setMaintenanceFlags((data.maintenanceFlags ?? []) as MaintenanceFlagRow[]);
     setMaintenanceFlagImages((data.maintenanceFlagImages ?? []) as MaintenanceFlagImageRow[]);
     setInspectionRules((data.inspectionRules ?? []) as PropertyInspectionRule[]);
@@ -3541,6 +3565,7 @@ export default function AdminPage() {
       ownerPropertyAccessRes,
       propertyCalendarsRes,
       propertyBookingEventsRes,
+      cancelledTurnoverJobsRes,
       maintenanceFlagsRes,
       maintenanceFlagImagesRes,
       inspectionRulesRes,
@@ -3648,6 +3673,12 @@ export default function AdminPage() {
         .lte("checkin_date", bookingCalendarEndYmd)
         .gte("checkout_date", todayYmd)
         .order("checkin_date", { ascending: true }),
+      supabase
+        .from("cancelled_turnover_jobs")
+        .select("*")
+        .eq("organization_id", currentOrganizationId)
+        .order("scheduled_for", { ascending: false })
+        .limit(1000),
       supabase
         .from("property_maintenance_flags")
         .select("*")
@@ -3767,6 +3798,7 @@ export default function AdminPage() {
       ownerPropertyAccessRes,
       propertyCalendarsRes,
       propertyBookingEventsRes,
+      cancelledTurnoverJobsRes,
       maintenanceFlagsRes,
       maintenanceFlagImagesRes,
       inspectionRulesRes,
@@ -3796,6 +3828,7 @@ export default function AdminPage() {
         response !== propertyKnowledgeImagesRes &&
         response !== propertyVendorsRes &&
         response !== propertyBookingEventsRes &&
+        response !== cancelledTurnoverJobsRes &&
         response !== staffJobStatusEventsRes &&
         response !== turnoverJobChecklistItemsRes &&
         response !== accountDeletionRequestsRes &&
@@ -3925,6 +3958,9 @@ export default function AdminPage() {
     setPropertyCalendars(loadedPropertyCalendars);
     setPropertyBookingEvents(
       propertyBookingEventsRes.error ? [] : ((propertyBookingEventsRes.data ?? []) as PropertyBookingEvent[])
+    );
+    setCancelledTurnoverJobs(
+      cancelledTurnoverJobsRes.error ? [] : ((cancelledTurnoverJobsRes.data ?? []) as CancelledTurnoverJob[])
     );
     setMaintenanceFlags((maintenanceFlagsRes.data ?? []) as MaintenanceFlagRow[]);
     setMaintenanceFlagImages(loadedMaintenanceFlagImages);
@@ -10079,6 +10115,23 @@ This removes its linked members and deletes the grounds account.`
     return map;
   }, [groundsJobs, properties]);
 
+  const adminCancelledJobsByDate = useMemo(() => {
+    const map = new Map<string, CancelledTurnoverJob[]>();
+
+    for (const cancellation of cancelledTurnoverJobs) {
+      if (!cancellation.scheduled_for) continue;
+      if (!map.has(cancellation.scheduled_for)) map.set(cancellation.scheduled_for, []);
+      map.get(cancellation.scheduled_for)!.push(cancellation);
+    }
+
+    for (const [key, value] of map.entries()) {
+      value.sort((a, b) => getPropertyName(a.property_id).localeCompare(getPropertyName(b.property_id)));
+      map.set(key, value);
+    }
+
+    return map;
+  }, [cancelledTurnoverJobs, properties]);
+
   const sameDayTurnoverKeySet = useMemo(() => {
     const set = new Set<string>();
     for (const booking of propertyBookingEvents) {
@@ -10183,6 +10236,19 @@ This removes its linked members and deletes the grounds account.`
     return true;
   }
 
+  function adminCalendarCancellationMatches(cancellation: CancelledTurnoverJob) {
+    if (!isAdminCalendarKindVisible("cancelled")) return false;
+    if (adminCalendarPropertyFilter !== "all" && cancellation.property_id !== adminCalendarPropertyFilter) return false;
+    if (
+      adminCalendarCleanerFilter !== "all" &&
+      !cancellation.assigned_cleaner_account_ids.includes(adminCalendarCleanerFilter)
+    ) {
+      return false;
+    }
+    if (adminCalendarSameDayOnly) return false;
+    return true;
+  }
+
   const adminSelectedDayCleaningJobs = useMemo(() => {
     if (!adminSelectedDate) return [];
     return (adminJobsByDate.get(adminSelectedDate) ?? []).filter(adminCalendarCleaningJobMatches);
@@ -10223,6 +10289,18 @@ This removes its linked members and deletes the grounds account.`
     adminCalendarFilterMode,
     cleanerAssignedPropertyIdsByAccountId,
     sameDayTurnoverKeySet,
+  ]);
+
+  const adminSelectedDayCancelledJobs = useMemo(() => {
+    if (!adminSelectedDate) return [];
+    return (adminCancelledJobsByDate.get(adminSelectedDate) ?? []).filter(adminCalendarCancellationMatches);
+  }, [
+    adminCancelledJobsByDate,
+    adminSelectedDate,
+    adminCalendarPropertyFilter,
+    adminCalendarCleanerFilter,
+    adminCalendarSameDayOnly,
+    adminCalendarFilterMode,
   ]);
 
   const filteredMaintenanceFlags = useMemo(() => {
@@ -22838,6 +22916,65 @@ This removes its linked members and deletes the grounds account.`
       </div>
     );
   }
+  function renderCancelledCalendarDetail(cancellationId: string) {
+      const cancellation = cancelledTurnoverJobs.find((entry) => entry.id === cancellationId) || null;
+      if (!cancellation) return null;
+
+      const assignmentDetails = (cancellation.assignment_snapshot ?? [])
+        .filter((slot) => slot.cleaner_account_id)
+        .map((slot) => ({
+          name:
+            cancellation.assigned_cleaner_names[
+              cancellation.assigned_cleaner_account_ids.indexOf(String(slot.cleaner_account_id))
+            ] || "Cleaner",
+          status: String(slot.status || "assigned").replaceAll("_", " "),
+        }));
+
+      return (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-[rgba(24,18,10,0.38)] p-4" onClick={() => setAdminCalendarDetail(null)}>
+          <div className="w-full max-w-xl rounded-[28px] border border-[#f2b8b5] bg-white p-5 shadow-[0_30px_80px_rgba(80,24,20,0.2)]" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="inline-flex rounded-full bg-[#b53b32] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white">Cancelled cleaning</div>
+                <h3 className="mt-3 text-xl font-semibold text-[#241c15]">{getPropertyName(cancellation.property_id)}</h3>
+                <div className="mt-1 text-sm text-[#6f6255]">Originally scheduled for {formatDateLabel(cancellation.scheduled_for)}</div>
+              </div>
+              <button type="button" onClick={() => setAdminCalendarDetail(null)} className="rounded-full border border-[#e2d8f4] bg-white px-3 py-1.5 text-sm font-medium text-[#6f6255] transition hover:bg-[#faf7ff]">Close</button>
+            </div>
+
+            <div className="mt-4 rounded-[18px] border border-[#f0d4d2] bg-[#fff8f7] px-4 py-3 text-sm text-[#5f5245]">
+              <div className="text-[11px] uppercase tracking-[0.16em] text-[#8a7b68]">Who had been assigned</div>
+              <div className="mt-2 font-semibold text-[#7f2f29]">
+                {cancellation.assigned_cleaner_names.length > 0 ? cancellation.assigned_cleaner_names.join(", ") : "No cleaner had been assigned"}
+              </div>
+              {assignmentDetails.length > 0 ? (
+                <div className="mt-2 space-y-1 text-xs text-[#7f7263]">
+                  {assignmentDetails.map((assignment, index) => (
+                    <div key={`${assignment.name}-${index}`}>{assignment.name}: {assignment.status}</div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3 text-sm text-[#5f5245]">
+                <div className="text-[11px] uppercase tracking-[0.16em] text-[#8a7b68]">Cancellation recorded</div>
+                <div className="mt-2">{formatDateTime(cancellation.cancelled_at)}</div>
+              </div>
+              <div className="rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3 text-sm text-[#5f5245]">
+                <div className="text-[11px] uppercase tracking-[0.16em] text-[#8a7b68]">Calendar source</div>
+                <div className="mt-2">{getBookingSourceLabel(cancellation.source)}</div>
+              </div>
+            </div>
+
+            {cancellation.job_notes ? (
+              <div className="mt-4 rounded-[18px] border border-[#eadfce] bg-[#fffaf0] px-4 py-3 text-sm whitespace-pre-wrap text-[#5f5245]">{cancellation.job_notes}</div>
+            ) : null}
+          </div>
+        </div>
+      );
+  }
+
   function renderCalendarSection() {
     return (
       <>
@@ -22926,6 +23063,7 @@ This removes its linked members and deletes the grounds account.`
                 { key: "cleaning" as const, label: "Cleaning" },
                 { key: "checkin" as const, label: "Check-ins" },
                 { key: "grounds" as const, label: "Grounds" },
+                { key: "cancelled" as const, label: "Cancelled" },
               ].map((item) => (
                 <button
                   key={item.key}
@@ -22977,7 +23115,8 @@ This removes its linked members and deletes the grounds account.`
               const dayJobs = (adminJobsByDate.get(dateYmd) ?? []).filter(adminCalendarCleaningJobMatches);
               const dayGroundsJobs = (adminGroundsJobsByDate.get(dateYmd) ?? []).filter(adminCalendarGroundsJobMatches);
               const dayBookings = (adminBookingEventsByDate.get(dateYmd) ?? []).filter(adminCalendarBookingMatches);
-              const dayItemCount = dayJobs.length + dayGroundsJobs.length + dayBookings.length;
+              const dayCancelledJobs = (adminCancelledJobsByDate.get(dateYmd) ?? []).filter(adminCalendarCancellationMatches);
+              const dayItemCount = dayJobs.length + dayGroundsJobs.length + dayBookings.length + dayCancelledJobs.length;
               const urgentCount = [...dayJobs, ...dayGroundsJobs].filter((job) => {
                 const slots = "grounds_units_needed" in job ? groundsJobSlotsByJobId[job.id] ?? [] : jobSlotsByJobId[job.id] ?? [];
                 return slots.some((slot) => slot.status === "offered" || slot.status === "stranded");
@@ -22990,6 +23129,7 @@ This removes its linked members and deletes the grounds account.`
                 ...dayJobs.map((job) => ({ kind: "cleaning" as const, id: job.id, job })),
                 ...dayGroundsJobs.map((job) => ({ kind: "grounds" as const, id: job.id, job })),
                 ...dayBookings.map((booking) => ({ kind: "checkin" as const, id: booking.id, booking })),
+                ...dayCancelledJobs.map((cancellation) => ({ kind: "cancelled" as const, id: cancellation.id, cancellation })),
               ];
 
               return (
@@ -23018,6 +23158,28 @@ This removes its linked members and deletes the grounds account.`
 
                   <div className="mt-2 space-y-1">
                     {visibleItems.slice(0, 2).map((item) => {
+                      if (item.kind === "cancelled") {
+                        const cancellation = item.cancellation;
+                        const cleanerSummary = formatCalendarAssigneeSummary(
+                          cancellation.assigned_cleaner_names,
+                          "No cleaner assigned"
+                        );
+                        return (
+                          <button
+                            key={cancellation.id}
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setAdminSelectedDate(dateYmd);
+                              setAdminCalendarDetail({ kind: "cancelled", cancellationId: cancellation.id, date: dateYmd });
+                            }}
+                            className="block w-full truncate rounded-full border border-[#f2b8b5] bg-[#fff1f0] px-2 py-1 text-left text-[11px] font-medium text-[#9f2d24] transition hover:bg-[#ffe7e5] focus:outline-none focus:ring-2 focus:ring-[#ef9a94]"
+                          >
+                            Cancelled: {getPropertyName(cancellation.property_id)} - {cleanerSummary}
+                          </button>
+                        );
+                      }
+
                       if (item.kind === "checkin") {
                         const booking = item.booking;
                         return (
@@ -23101,7 +23263,7 @@ This removes its linked members and deletes the grounds account.`
             <div>
               <h3 className="text-lg font-semibold">Happenings for {formatDateLabel(adminSelectedDate)}</h3>
               <div className="mt-1 text-sm text-[#7f7263]">
-                {adminSelectedDayCleaningJobs.length} cleaning job{adminSelectedDayCleaningJobs.length === 1 ? "" : "s"}, {adminSelectedDayGroundsJobs.length} grounds job{adminSelectedDayGroundsJobs.length === 1 ? "" : "s"}, and {adminSelectedDayBookingEvents.length} check-in{adminSelectedDayBookingEvents.length === 1 ? "" : "s"} on this day
+                {adminSelectedDayCleaningJobs.length} cleaning job{adminSelectedDayCleaningJobs.length === 1 ? "" : "s"}, {adminSelectedDayGroundsJobs.length} grounds job{adminSelectedDayGroundsJobs.length === 1 ? "" : "s"}, {adminSelectedDayBookingEvents.length} check-in{adminSelectedDayBookingEvents.length === 1 ? "" : "s"}, and {adminSelectedDayCancelledJobs.length} cancellation{adminSelectedDayCancelledJobs.length === 1 ? "" : "s"} on this day
               </div>
             </div>
 
@@ -23119,12 +23281,37 @@ This removes its linked members and deletes the grounds account.`
           </div>
 
           <div className="mt-4 space-y-3">
-            {adminSelectedDayCleaningJobs.length === 0 && adminSelectedDayGroundsJobs.length === 0 && adminSelectedDayBookingEvents.length === 0 ? (
+            {adminSelectedDayCleaningJobs.length === 0 && adminSelectedDayGroundsJobs.length === 0 && adminSelectedDayBookingEvents.length === 0 && adminSelectedDayCancelledJobs.length === 0 ? (
               <div className="rounded-[18px] border border-dashed border-[#d8c7ab] bg-white px-4 py-4 text-sm text-[#7f7263]">
                 Nothing scheduled for this day yet.
               </div>
             ) : (
               <>
+              {adminSelectedDayCancelledJobs.map((cancellation) => (
+                <button
+                  key={cancellation.id}
+                  type="button"
+                  onClick={() => setAdminCalendarDetail({ kind: "cancelled", cancellationId: cancellation.id, date: cancellation.scheduled_for })}
+                  className="block w-full rounded-[20px] border border-[#f2b8b5] bg-[#fff8f7] p-4 text-left transition hover:shadow-sm"
+                  style={{ boxShadow: "inset 4px 0 0 #b53b32" }}
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-[#b53b32] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white">
+                      Cancelled
+                    </span>
+                    <div className="text-base font-semibold text-[#241c15]">
+                      {getPropertyName(cancellation.property_id)}
+                    </div>
+                  </div>
+                  <div className="mt-2 text-sm text-[#6f6255]">
+                    Originally assigned: {cancellation.assigned_cleaner_names.length > 0 ? cancellation.assigned_cleaner_names.join(", ") : "No cleaner assigned"}
+                  </div>
+                  <div className="mt-1 text-sm text-[#8a7b68]">
+                    Guest cancellation recorded {formatDateTime(cancellation.cancelled_at)}
+                  </div>
+                </button>
+              ))}
+
               {adminSelectedDayBookingEvents.map((booking) => {
                 const property = properties.find((item) => item.id === booking.property_id) || null;
                 const sourceLabel = getBookingSourceLabel(booking.source);
@@ -23324,6 +23511,10 @@ This removes its linked members and deletes the grounds account.`
         </div>
       </section>
       {adminCalendarDetail ? (() => {
+        if (adminCalendarDetail.kind === "cancelled") {
+          return renderCancelledCalendarDetail(adminCalendarDetail.cancellationId);
+        }
+
         if (adminCalendarDetail.kind === "checkin") {
           const booking = propertyBookingEvents.find((entry) => entry.id === adminCalendarDetail.bookingId) || null;
           if (!booking) return null;
@@ -23659,6 +23850,10 @@ This removes its linked members and deletes the grounds account.`
         </div>
       </section>
       {adminCalendarDetail ? (() => {
+        if (adminCalendarDetail.kind === "cancelled") {
+          return renderCancelledCalendarDetail(adminCalendarDetail.cancellationId);
+        }
+
         if (adminCalendarDetail.kind === "checkin") {
           const booking = propertyBookingEvents.find((entry) => entry.id === adminCalendarDetail.bookingId) || null;
           if (!booking) return null;
