@@ -1490,7 +1490,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     }
 
     const confirmed = window.confirm(
-      "Release this accepted job to the next backup cleaner in line? This will immediately send them the offer."
+      "Release this accepted job? If a backup cleaner is assigned, they will receive the offer immediately. Otherwise, the job will be marked stranded and admin will be alerted."
     );
     if (!confirmed) return;
 
@@ -1526,10 +1526,11 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
         throw new Error(payload?.error || "Could not release job to backup cleaner.");
       }
 
-      if (payload?.requestPending) {
-        setJobsSuccess(payload?.message || "Admin approval was requested to release this job without a backup cleaner.");
+      if (payload?.stranded) {
+        setSelectedSlotId(null);
+        setJobsSuccess(payload?.message || "No backup is available. The job is now stranded and admin has been alerted.");
         if (Array.isArray(payload?.adminPush?.errors) && payload.adminPush.errors.length > 0) {
-          setJobsWarning(`Approval request was saved, but the admin push notification had an issue: ${payload.adminPush.errors[0]}`);
+          setJobsWarning(`The job was stranded, but the admin push notification had an issue: ${payload.adminPush.errors[0]}`);
         }
         await refreshCleanerJobs();
         return;

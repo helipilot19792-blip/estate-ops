@@ -23229,6 +23229,13 @@ This removes its linked members and deletes the grounds account.`
                         item.kind === "grounds" ? groundsJobSlotsByJobId[job.id] ?? [] : jobSlotsByJobId[job.id] ?? [];
                       const isStranded = slots.some((slot) => slot.status === "stranded");
                       const isOffered = slots.some((slot) => slot.status === "offered");
+                      const calendarStatusLabel = isStranded
+                        ? "URGENT — STRANDED"
+                        : isOffered
+                          ? "AWAITING ACCEPTANCE"
+                          : item.kind === "grounds"
+                            ? "Grounds"
+                            : "Cleaning";
 
                       return (
                         <button
@@ -23250,7 +23257,7 @@ This removes its linked members and deletes the grounds account.`
                             borderColor: isStranded ? "#efc6c6" : isOffered ? "#f2d49b" : item.kind === "grounds" ? "#bddbbd" : propertyColor.border,
                           }}
                         >
-                          {item.kind === "grounds" ? "Grounds" : "Cleaning"}: {getPropertyName(job.property_id)}{assigneeSummary ? ` - ${assigneeSummary}` : ""}
+                          {calendarStatusLabel}: {getPropertyName(job.property_id)}{assigneeSummary ? ` - ${assigneeSummary}` : ""}
                         </button>
                       );
                     })}
@@ -23601,6 +23608,7 @@ This removes its linked members and deletes the grounds account.`
           const acceptedCount = slots.filter((slot) => slot.status === "accepted").length;
           const offeredCount = slots.filter((slot) => slot.status === "offered").length;
           const strandedCount = slots.filter((slot) => slot.status === "stranded").length;
+          const awaitingAcceptance = offeredCount > 0 && acceptedCount < job.cleaner_units_needed;
           const propertyColor = getPropertyColor(job.property_id);
 
           return (
@@ -23614,10 +23622,22 @@ This removes its linked members and deletes the grounds account.`
                   </div>
                   <button type="button" onClick={() => setAdminCalendarDetail(null)} className="rounded-full border border-[#e2d8f4] bg-white px-3 py-1.5 text-sm font-medium text-[#6f6255] transition hover:bg-[#faf7ff]">Close</button>
                 </div>
+                {strandedCount > 0 ? (
+                  <div className="mt-4 rounded-[18px] border border-[#ef9a94] bg-[#fff1f0] px-4 py-3 text-sm text-[#8a2e22]">
+                    <div className="font-semibold">Urgent: cleaner needed</div>
+                    <div className="mt-1">This job is stranded and does not have a confirmed cleaner.</div>
+                  </div>
+                ) : awaitingAcceptance ? (
+                  <div className="mt-4 rounded-[18px] border border-[#f2c36d] bg-[#fff6df] px-4 py-3 text-sm text-[#8a5a0a]">
+                    <div className="font-semibold">Not staffed yet — awaiting cleaner acceptance</div>
+                    <div className="mt-1">{offeredCount} cleaner offer{offeredCount === 1 ? " is" : "s are"} still awaiting a response.</div>
+                  </div>
+                ) : null}
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <div className="rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3 text-sm text-[#5f5245]">
-                    <div className="text-[11px] uppercase tracking-[0.16em] text-[#8a7b68]">Who is cleaning</div>
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-[#8a7b68]">{acceptedCount > 0 ? "Confirmed cleaner" : "Cleaner offer"}</div>
                     <div className="mt-2">{cleanerNames.length > 0 ? cleanerNames.join(", ") : "No cleaner assigned yet"}</div>
+                    {awaitingAcceptance ? <div className="mt-1 font-semibold text-[#b45309]">Awaiting acceptance — not confirmed</div> : null}
                   </div>
                   <div className="rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3 text-sm text-[#5f5245]">
                     <div className="text-[11px] uppercase tracking-[0.16em] text-[#8a7b68]">Staffing</div>
@@ -23963,6 +23983,7 @@ This removes its linked members and deletes the grounds account.`
           const acceptedCount = slots.filter((slot) => slot.status === "accepted").length;
           const offeredCount = slots.filter((slot) => slot.status === "offered").length;
           const strandedCount = slots.filter((slot) => slot.status === "stranded").length;
+          const awaitingAcceptance = offeredCount > 0 && acceptedCount < job.cleaner_units_needed;
           const propertyColor = getPropertyColor(job.property_id);
 
           return (
@@ -23989,10 +24010,23 @@ This removes its linked members and deletes the grounds account.`
                   </button>
                 </div>
 
+                {strandedCount > 0 ? (
+                  <div className="mt-4 rounded-[18px] border border-[#ef9a94] bg-[#fff1f0] px-4 py-3 text-sm text-[#8a2e22]">
+                    <div className="font-semibold">Urgent: cleaner needed</div>
+                    <div className="mt-1">This job is stranded and does not have a confirmed cleaner.</div>
+                  </div>
+                ) : awaitingAcceptance ? (
+                  <div className="mt-4 rounded-[18px] border border-[#f2c36d] bg-[#fff6df] px-4 py-3 text-sm text-[#8a5a0a]">
+                    <div className="font-semibold">Not staffed yet — awaiting cleaner acceptance</div>
+                    <div className="mt-1">{offeredCount} cleaner offer{offeredCount === 1 ? " is" : "s are"} still awaiting a response.</div>
+                  </div>
+                ) : null}
+
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <div className="rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3 text-sm text-[#5f5245]">
-                    <div className="text-[11px] uppercase tracking-[0.16em] text-[#8a7b68]">Who is cleaning</div>
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-[#8a7b68]">{acceptedCount > 0 ? "Confirmed cleaner" : "Cleaner offer"}</div>
                     <div className="mt-2">{cleanerNames.length > 0 ? cleanerNames.join(", ") : "No cleaner assigned yet"}</div>
+                    {awaitingAcceptance ? <div className="mt-1 font-semibold text-[#b45309]">Awaiting acceptance — not confirmed</div> : null}
                   </div>
                   <div className="rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3 text-sm text-[#5f5245]">
                     <div className="text-[11px] uppercase tracking-[0.16em] text-[#8a7b68]">Staffing</div>
