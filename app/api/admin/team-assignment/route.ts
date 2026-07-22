@@ -74,7 +74,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing assignment details." }, { status: 400 });
     }
 
-    if (!Number.isInteger(priority) || priority < 1 || priority > 3) {
+    const maximumPriority = kind === "cleaner" ? 6 : 3;
+    if (!Number.isInteger(priority) || priority < 1 || priority > maximumPriority) {
       return NextResponse.json({ error: "Choose a valid assignment priority." }, { status: 400 });
     }
 

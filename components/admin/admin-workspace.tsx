@@ -5848,7 +5848,7 @@ export default function AdminPage() {
       for (let index = 0; index < orderedAssignments.length; index += 1) {
         const { error: assignmentError } = await supabase
           .from("property_cleaner_account_assignments")
-          .update({ priority: Math.min(index + 1, 3) })
+          .update({ priority: Math.min(index + 1, 6) })
           .eq("id", orderedAssignments[index].id);
 
         if (assignmentError) throw assignmentError;
@@ -8835,7 +8835,10 @@ This removes its linked members and deletes the grounds account.`
     if (priority === 1) return "Primary";
     if (priority === 2) return "Backup";
     if (priority === 3) return "Second Backup";
-    return `Priority ${priority}`;
+    if (priority === 4) return "Third Backup";
+    if (priority === 5) return "Fourth Backup";
+    if (priority === 6) return "Fifth Backup";
+    return `Backup ${Math.max(priority - 1, 1)}`;
   }
 
   function formatDateTime(value?: string | null) {
@@ -21191,6 +21194,9 @@ This removes its linked members and deletes the grounds account.`
               <option value="1">Primary</option>
               <option value="2">Backup</option>
               <option value="3">Second Backup</option>
+              <option value="4">Third Backup</option>
+              <option value="5">Fourth Backup</option>
+              <option value="6">Fifth Backup</option>
             </select>
 
             <div className="flex flex-wrap gap-3">
@@ -21209,11 +21215,15 @@ This removes its linked members and deletes the grounds account.`
         </section>
 
         <section className="rounded-[30px] border border-[#b8d8ea] bg-[#f8fcff] p-5 shadow-[0_18px_45px_rgba(37,99,135,0.05)]">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-xl font-semibold tracking-tight text-[#12394a]">Cleaner Assignments</h2>
-            <span className="rounded-full border border-[#b8d8ea] bg-white px-3 py-1 text-xs font-medium text-[#26708f]">{assignments.length}</span>
+          <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#26708f]">Property roster</div>
+              <h2 className="mt-1 text-xl font-semibold tracking-tight text-[#12394a]">Cleaner Assignments</h2>
+              <p className="mt-1 text-sm text-[#4f6e7c]">Each property has one clear cleaner list, in the order jobs will be offered.</p>
+            </div>
+            <span className="w-fit rounded-full border border-[#b8d8ea] bg-white px-3 py-1 text-xs font-medium text-[#26708f]">{assignments.length} assignments</span>
           </div>
-          <div className="mb-4 grid gap-3 lg:grid-cols-2">
+          <div className="grid gap-4 lg:grid-cols-2">
             {properties
               .filter((property) => getCleanerAssignmentsForProperty(property.id).length > 0)
               .map((property) => {
@@ -21222,24 +21232,19 @@ This removes its linked members and deletes the grounds account.`
                 const rotationOrder = getTrainingRotationOrder(property);
                 const nextCleanerId = rotationOrder[0]?.cleaner_account_id || propertyAssignments[0]?.cleaner_account_id || null;
                 return (
-                  <div key={`rotation-${property.id}`} className={`rounded-[22px] border p-4 shadow-sm ${
+                  <div key={`cleaner-roster-${property.id}`} className={`rounded-[22px] border p-5 shadow-sm ${
                     trainingEnabled
                       ? "border-[#f1cf8f] bg-[#fff8e8]"
                       : "border-[#b8d8ea] bg-white"
                   }`}>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
-                        <div className="text-sm font-semibold text-[#12394a]">{property.name || property.address || "Property"}</div>
+                        <div className="text-lg font-semibold text-[#12394a]">{property.name || property.address || "Property"}</div>
                         <div className="mt-1 text-xs leading-5 text-[#4f6e7c]">
                           {trainingEnabled
-                            ? `Training Rotation on. Next job starts with ${getCleanerAccountName(nextCleanerId)}.`
-                            : "Primary/backup mode. The primary cleaner is offered new jobs first."}
+                            ? `Training rotation is on. The next job starts with ${getCleanerAccountName(nextCleanerId)}.`
+                            : "Primary cleaner receives new jobs first, followed by backups."}
                         </div>
-                        {trainingEnabled ? (
-                          <div className="mt-2 text-xs text-[#8a6112]">
-                            Order: {rotationOrder.map((assignment) => getCleanerAccountName(assignment.cleaner_account_id)).join(" -> ")}
-                          </div>
-                        ) : null}
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <button
@@ -21259,6 +21264,39 @@ This removes its linked members and deletes the grounds account.`
                           Training Rotation
                         </button>
                       </div>
+                    </div>
+                    <div className={`mt-4 overflow-hidden rounded-[16px] border ${trainingEnabled ? "border-[#f1cf8f]" : "border-[#d7e9f3]"}`}>
+                      {propertyAssignments.map((assignment, index) => {
+                        const members = cleanerMembersByAccountId[assignment.cleaner_account_id] ?? [];
+                        const memberLabel = members.length
+                          ? members.map((member) => member.full_name || member.email || member.id).join(", ")
+                          : getCleanerAccountName(assignment.cleaner_account_id);
+                        const roleLabel = trainingEnabled
+                          ? `Rotation ${index + 1}`
+                          : getPriorityLabel(assignment.priority);
+                        return (
+                          <div
+                            key={assignment.id}
+                            className={`flex items-center gap-3 px-4 py-3 ${index > 0 ? "border-t" : ""} ${trainingEnabled ? "border-[#f1cf8f]" : "border-[#d7e9f3]"}`}
+                          >
+                            <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                              trainingEnabled
+                                ? "border-[#f1cf8f] bg-white text-[#8a6112]"
+                                : assignment.priority === 1
+                                  ? "border-[#9bcce5] bg-[#e8f6fd] text-[#17637f]"
+                                  : "border-[#d7e9f3] bg-white text-[#4f6e7c]"
+                            }`}>
+                              {roleLabel}
+                            </span>
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-semibold text-[#12394a]">{memberLabel}</div>
+                              {members.length > 0 && memberLabel !== getCleanerAccountName(assignment.cleaner_account_id) ? (
+                                <div className="truncate text-xs text-[#6a8793]">{getCleanerAccountName(assignment.cleaner_account_id)}</div>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                     {trainingEnabled ? (
                       <div className="mt-3 flex flex-wrap gap-2 border-t border-[#f1cf8f] pt-3">
@@ -21281,25 +21319,6 @@ This removes its linked members and deletes the grounds account.`
                   </div>
                 );
               })}
-          </div>
-          <div className="space-y-3">
-            {assignments.map((a) => {
-              const members = cleanerMembersByAccountId[a.cleaner_account_id] ?? [];
-              const memberLabel = members.length
-                ? members.map((m) => m.full_name || m.email || m.id).join(", ")
-                : getCleanerAccountName(a.cleaner_account_id);
-
-              return (
-                <div key={a.id} className="rounded-[22px] border border-[#b8d8ea] bg-white p-4 shadow-sm">
-                  <div className="text-base font-semibold text-[#12394a]">{getPropertyName(a.property_id)}</div>
-                  <div className="mt-1 text-sm text-[#4f6e7c]">{memberLabel}</div>
-                  <div className="mt-1 text-xs text-[#6a8793]">Cleaner account: {getCleanerAccountName(a.cleaner_account_id)}</div>
-                  <div className="mt-2 inline-flex rounded-full border border-[#b8d8ea] bg-[#eef8fd] px-3 py-1 text-xs font-medium text-[#26708f]">
-                    {getPriorityLabel(a.priority)}
-                  </div>
-                </div>
-              );
-            })}
           </div>
         </section>
 
