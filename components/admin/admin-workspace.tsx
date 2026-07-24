@@ -1845,10 +1845,12 @@ export default function AdminPage() {
   const [quoteProspectName, setQuoteProspectName] = useState("");
   const [quoteProspectEmail, setQuoteProspectEmail] = useState("");
   const [quoteProspectPhone, setQuoteProspectPhone] = useState("");
+  const [quoteAiPrompt, setQuoteAiPrompt] = useState("");
   const [quoteAiLoading, setQuoteAiLoading] = useState<"services" | "proposal" | "completeness" | null>(null);
   const [quoteAiConfigured, setQuoteAiConfigured] = useState(true);
   const [quoteAiWarning, setQuoteAiWarning] = useState("");
   const [quoteAiSuggestions, setQuoteAiSuggestions] = useState<QuoteAiSuggestions | null>(null);
+  const [quoteAiDetailAnswers, setQuoteAiDetailAnswers] = useState<Record<string, string>>({});
   const [invoiceRemindersEnabled, setInvoiceRemindersEnabled] = useState(false);
   const [invoiceReminderDaysAfterSent, setInvoiceReminderDaysAfterSent] = useState("15");
   const [invoiceReminderRepeatDays, setInvoiceReminderRepeatDays] = useState("15");
@@ -15692,6 +15694,7 @@ This removes its linked members and deletes the grounds account.`
 
   function buildQuoteAiRequest() {
     return {
+      request: quoteAiPrompt.trim() || null,
       propertyName: quotePropertyName.trim() || null,
       address: quotePropertyAddress.trim() || null,
       propertyType: quotePropertyType.trim() || null,
@@ -15707,7 +15710,14 @@ This removes its linked members and deletes the grounds account.`
     };
   }
 
-  function applyQuoteAiServices(lines: QuoteAiSuggestedLine[]) {
+  function applyQuoteAiServices(lines: QuoteAiSuggestedLine[], append = false) {
+    if (
+      !append &&
+      getValidInvoiceLineItems().length > 0 &&
+      !window.confirm("Replace the current quote services with all reviewed suggestions?")
+    ) {
+      return;
+    }
     const nextItems: OwnerInvoiceLineItem[] = lines.map((line, index) => ({
       id: `quote-ai-${Date.now()}-${index}`,
       description: line.description,
@@ -15726,9 +15736,113 @@ This removes its linked members and deletes the grounds account.`
       receipt_urls: [],
       receipt_names: [],
     }));
-    setInvoiceLineItems(nextItems.length > 0 ? nextItems : [getEmptyInvoiceLineItem()]);
+    setInvoiceLineItems((currentItems) => {
+      const currentValidItems = currentItems.filter((item) => item.description.trim());
+      const combinedItems = append ? [...currentValidItems, ...nextItems] : nextItems;
+      return combinedItems.length > 0 ? combinedItems : [getEmptyInvoiceLineItem()];
+    });
     setInvoiceDraftDirty(true);
-    setActionMessage(`${nextItems.length} AI-suggested service${nextItems.length === 1 ? "" : "s"} applied to the quote.`);
+    setActionMessage(
+      `${nextItems.length} reviewed service${nextItems.length === 1 ? "" : "s"} ${append ? "added" : "applied"} to the quote.`
+    );
+  }
+
+  function updateQuoteAiService(index: number, patch: Partial<QuoteAiSuggestedLine>) {
+    setQuoteAiSuggestions((current) =>
+      current
+        ? {
+            ...current,
+            services: current.services.map((service, serviceIndex) =>
+              serviceIndex === index ? { ...service, ...patch } : service
+            ),
+          }
+        : current
+    );
+  }
+
+  function removeQuoteAiService(index: number) {
+    setQuoteAiSuggestions((current) =>
+      current
+        ? { ...current, services: current.services.filter((_, serviceIndex) => serviceIndex !== index) }
+        : current
+    );
+  }
+
+  function updateQuoteAiProposalSection(index: number, patch: { title?: string; body?: string }) {
+    setQuoteAiSuggestions((current) =>
+      current
+        ? {
+            ...current,
+            proposalSections: current.proposalSections.map((section, sectionIndex) =>
+              sectionIndex === index ? { ...section, ...patch } : section
+            ),
+          }
+        : current
+    );
+  }
+
+  function removeQuoteAiProposalSection(index: number) {
+    setQuoteAiSuggestions((current) =>
+      current
+        ? {
+            ...current,
+            proposalSections: current.proposalSections.filter((_, sectionIndex) => sectionIndex !== index),
+          }
+        : current
+    );
+  }
+
+  function appendQuoteNote(label: string, value: string) {
+    const detail = `${label.replace(/[.:\s]+$/, "")}: ${value}`;
+    setInvoiceNotes((current) => {
+      const trimmed = current.trim();
+      return trimmed ? `${trimmed}\n\nCONFIRMED PROPERTY DETAIL\n${detail}` : `CONFIRMED PROPERTY DETAIL\n${detail}`;
+    });
+  }
+
+  function resolveQuoteAiMissingDetail(item: string, index: number) {
+    const answerKey = item;
+    const answer = String(quoteAiDetailAnswers[answerKey] || "").trim();
+    if (!answer) return;
+
+    const normalizedItem = item.toLowerCase();
+    if (/property name|unit identifier|listing name/.test(normalizedItem)) setQuotePropertyName(answer);
+    else if (/street address|property address/.test(normalizedItem)) setQuotePropertyAddress(answer);
+    else if (/property type/.test(normalizedItem)) setQuotePropertyType(answer);
+    else if (/square foot|size/.test(normalizedItem)) setQuoteSquareFootage(answer);
+    else if (/floor/.test(normalizedItem)) setQuoteFloors(answer);
+    else if (/bedroom/.test(normalizedItem)) setQuoteBedrooms(answer);
+    else if (/bathroom/.test(normalizedItem)) setQuoteBathrooms(answer);
+    else if (/owner|prospect name/.test(normalizedItem) && !/email|phone/.test(normalizedItem)) setQuoteProspectName(answer);
+    else if (/email/.test(normalizedItem)) setQuoteProspectEmail(answer);
+    else if (/phone/.test(normalizedItem)) setQuoteProspectPhone(answer);
+    else appendQuoteNote(item, answer);
+
+    setQuoteAiSuggestions((current) =>
+      current
+        ? {
+            ...current,
+            missingDetails: current.missingDetails.filter((_, detailIndex) => detailIndex !== index),
+            readinessSummary:
+              current.missingDetails.length === 1
+                ? "All flagged details have been addressed. Re-check completeness to confirm the quote is ready."
+                : current.readinessSummary,
+          }
+        : current
+    );
+    setQuoteAiDetailAnswers((current) => {
+      const next = { ...current };
+      delete next[answerKey];
+      return next;
+    });
+    setInvoiceDraftDirty(true);
+    setActionMessage("Detail added to the quote. Re-check completeness when you are ready.");
+  }
+
+  function addQuoteAiPricingAdvice(item: string) {
+    appendQuoteNote("Pricing consideration", item);
+    setInvoiceDraftDirty(true);
+    setActionMessage("Pricing consideration added to the quote notes for review.");
   }
 
   function applyQuoteAiProposal(suggestions: QuoteAiSuggestions) {
@@ -15740,8 +15854,16 @@ This removes its linked members and deletes the grounds account.`
       .join("\n\n");
 
     if (!proposalText) return;
-    if (invoiceNotes.trim() && !window.confirm("Replace the current quote notes with this reviewed proposal draft?")) return;
-    setInvoiceNotes(proposalText);
+    const currentNotes = invoiceNotes.trim();
+    if (
+      currentNotes &&
+      !window.confirm("Apply this reviewed proposal and keep the current quote notes underneath it?")
+    ) {
+      return;
+    }
+    setInvoiceNotes(
+      currentNotes ? `${proposalText}\n\nADDITIONAL QUOTE NOTES\n${currentNotes}` : proposalText
+    );
     setInvoiceDraftDirty(true);
     setActionMessage("AI proposal draft applied to the quote. Review it before previewing or sending.");
   }
@@ -15786,6 +15908,7 @@ This removes its linked members and deletes the grounds account.`
       setQuoteAiConfigured(payload?.configured !== false);
       setQuoteAiWarning(String(payload?.warning || ""));
       setQuoteAiSuggestions(payload.suggestions as QuoteAiSuggestions);
+      setQuoteAiDetailAnswers({});
       setActionMessage(
         mode === "services"
           ? "AI service suggestions are ready."
@@ -15828,7 +15951,9 @@ This removes its linked members and deletes the grounds account.`
     setInvoiceApplyTax(true);
     setInvoiceLineItems([getEmptyInvoiceLineItem()]);
     applyQuotePropertySnapshot(null);
+    setQuoteAiPrompt("");
     setQuoteAiSuggestions(null);
+    setQuoteAiDetailAnswers({});
     setQuoteAiConfigured(true);
     setInvoiceDraftDirty(false);
   }
@@ -18490,6 +18615,31 @@ This removes its linked members and deletes the grounds account.`
                       <p className="mt-1 max-w-2xl text-sm leading-6 text-[#52627a]">
                         Build property-specific services and proposal copy, then review every suggestion before applying it. Nothing is changed or sent automatically.
                       </p>
+                      <div className="mt-3 max-w-2xl rounded-[16px] border border-[#bfdbfe] bg-white p-3">
+                        <label htmlFor="quote-ai-request" className="text-xs font-semibold text-[#172554]">
+                          Start here: what is the customer asking for?
+                        </label>
+                        <textarea
+                          id="quote-ai-request"
+                          className="mt-2 min-h-20 w-full resize-y rounded-[12px] border border-[#bfdbfe] bg-[#f8fbff] px-3 py-2 text-sm leading-6 text-[#334155] outline-none placeholder:text-[#94a3b8] focus:border-[#2563eb]"
+                          placeholder='For example: "The customer wants a quote for a decorating consultation and coordination fee only."'
+                          value={quoteAiPrompt}
+                          onChange={(event) => setQuoteAiPrompt(event.target.value)}
+                        />
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <span className="text-[11px] text-[#64748b]">Quick start:</span>
+                          {["Decorating fee only", "Property management proposal", "Cleaning and turnover quote"].map((prompt) => (
+                            <button
+                              key={prompt}
+                              type="button"
+                              onClick={() => setQuoteAiPrompt(prompt)}
+                              className="rounded-full border border-[#dbeafe] bg-[#eff6ff] px-2.5 py-1 text-[11px] font-medium text-[#1d4ed8] transition hover:border-[#93c5fd]"
+                            >
+                              {prompt}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                       {quoteAiConfigured ? null : (
                         <p className="mt-2 text-xs text-[#6b7280]">
                           Using the local fallback helper because a live OpenAI key is not configured.
@@ -18544,7 +18694,105 @@ This removes its linked members and deletes the grounds account.`
                             ) : null}
                           </div>
                           {quoteAiSuggestions.services.length > 0 ? (
-                            <div className="mt-3 space-y-2">
+                            <div className="mt-3 space-y-3">
+                              <p className="text-xs leading-5 text-[#64748b]">
+                                Review names, pricing, and scope before adding anything to the quote.
+                              </p>
+                              {quoteAiSuggestions.services.map((service, index) => (
+                                <div key={`editable-service-${index}`} className="rounded-[14px] border border-[#dbeafe] bg-[#f8fbff] p-3 text-sm text-[#334155]">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-xs font-semibold uppercase tracking-[0.12em] text-[#64748b]">Service {index + 1}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => removeQuoteAiService(index)}
+                                      className="rounded-full px-2 py-1 text-xs font-medium text-[#9f1239] transition hover:bg-[#fff1f2]"
+                                    >
+                                      Dismiss
+                                    </button>
+                                  </div>
+                                  <input
+                                    aria-label={`Suggested service ${index + 1} name`}
+                                    className="mt-2 w-full rounded-[12px] border border-[#bfdbfe] bg-white px-3 py-2 font-semibold text-[#172554] outline-none focus:border-[#2563eb]"
+                                    value={service.description}
+                                    onChange={(event) => updateQuoteAiService(index, { description: event.target.value })}
+                                  />
+                                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                                    <select
+                                      aria-label={`Suggested service ${index + 1} pricing type`}
+                                      className="rounded-[12px] border border-[#bfdbfe] bg-white px-3 py-2 text-xs outline-none focus:border-[#2563eb]"
+                                      value={service.pricing_mode}
+                                      onChange={(event) => updateQuoteAiService(index, { pricing_mode: event.target.value as QuotePricingMode })}
+                                    >
+                                      <option value="flat_rate">Flat rate</option>
+                                      <option value="hourly">Hourly</option>
+                                      <option value="percent_revenue">% of revenue</option>
+                                    </select>
+                                    {service.pricing_mode === "percent_revenue" ? (
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        step="0.1"
+                                        aria-label={`Suggested service ${index + 1} revenue percentage`}
+                                        className="rounded-[12px] border border-[#bfdbfe] bg-white px-3 py-2 text-xs outline-none focus:border-[#2563eb]"
+                                        value={service.revenue_percent ?? ""}
+                                        placeholder="Revenue %"
+                                        onChange={(event) => updateQuoteAiService(index, { revenue_percent: Number(event.target.value) })}
+                                      />
+                                    ) : (
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        aria-label={`Suggested service ${index + 1} rate`}
+                                        className="rounded-[12px] border border-[#bfdbfe] bg-white px-3 py-2 text-xs outline-none focus:border-[#2563eb]"
+                                        value={service.rate}
+                                        placeholder={service.pricing_mode === "hourly" ? "Hourly rate" : "Flat rate"}
+                                        onChange={(event) => updateQuoteAiService(index, { rate: Number(event.target.value) })}
+                                      />
+                                    )}
+                                    {service.pricing_mode === "hourly" ? (
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        step="0.25"
+                                        aria-label={`Suggested service ${index + 1} estimated hours`}
+                                        className="rounded-[12px] border border-[#bfdbfe] bg-white px-3 py-2 text-xs outline-none focus:border-[#2563eb]"
+                                        value={service.estimated_hours ?? ""}
+                                        placeholder="Estimated hours"
+                                        onChange={(event) => updateQuoteAiService(index, { estimated_hours: Number(event.target.value) })}
+                                      />
+                                    ) : null}
+                                    {service.pricing_mode === "percent_revenue" ? (
+                                      <input
+                                        aria-label={`Suggested service ${index + 1} revenue basis`}
+                                        className="rounded-[12px] border border-[#bfdbfe] bg-white px-3 py-2 text-xs outline-none focus:border-[#2563eb]"
+                                        value={service.revenue_basis ?? ""}
+                                        placeholder="e.g. gross booking revenue"
+                                        onChange={(event) => updateQuoteAiService(index, { revenue_basis: event.target.value })}
+                                      />
+                                    ) : null}
+                                  </div>
+                                  <textarea
+                                    aria-label={`Suggested service ${index + 1} scope`}
+                                    className="mt-2 min-h-20 w-full resize-y rounded-[12px] border border-[#bfdbfe] bg-white px-3 py-2 text-xs leading-5 outline-none focus:border-[#2563eb]"
+                                    value={service.service_scope ?? ""}
+                                    placeholder="Scope, exclusions, timing, or assumptions"
+                                    onChange={(event) => updateQuoteAiService(index, { service_scope: event.target.value })}
+                                  />
+                                  <button
+                                    type="button"
+                                    disabled={!service.description.trim()}
+                                    onClick={() => applyQuoteAiServices([service], true)}
+                                    className="mt-2 rounded-full border border-[#93c5fd] bg-white px-3 py-1.5 text-xs font-semibold text-[#1d4ed8] transition hover:bg-[#eff6ff] disabled:opacity-50"
+                                  >
+                                    Add this service
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
+                          {quoteAiSuggestions.services.length > 0 ? (
+                            <div className="hidden">
                               {quoteAiSuggestions.services.map((service, index) => (
                                 <div key={`${service.description}-${index}`} className="rounded-[14px] border border-[#dbeafe] bg-[#f8fbff] px-3 py-3 text-sm text-[#334155]">
                                   <div className="font-semibold text-[#172554]">{service.description}</div>
@@ -18581,18 +18829,49 @@ This removes its linked members and deletes the grounds account.`
                               </button>
                             ) : null}
                           </div>
-                          <div className="mt-3 space-y-2">
+                          <p className="mt-3 text-xs leading-5 text-[#64748b]">
+                            Edit any heading, wording, or assumption. Only this reviewed version is applied.
+                          </p>
+                          <div className="mt-2 space-y-2">
                             {quoteAiSuggestions.proposalSections.map((section, index) => (
-                              <div key={`${section.title}-${index}`} className="rounded-[14px] border border-[#dbeafe] bg-[#f8fbff] px-3 py-3 text-sm text-[#334155]">
-                                <div className="font-semibold text-[#172554]">{section.title}</div>
-                                <div className="mt-1 leading-6 text-[#52627a]">{section.body}</div>
+                              <div key={`proposal-section-${index}`} className="rounded-[14px] border border-[#dbeafe] bg-[#f8fbff] p-3 text-sm text-[#334155]">
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    aria-label={`Proposal section ${index + 1} title`}
+                                    className="min-w-0 flex-1 rounded-[12px] border border-[#bfdbfe] bg-white px-3 py-2 font-semibold text-[#172554] outline-none focus:border-[#2563eb]"
+                                    value={section.title}
+                                    onChange={(event) => updateQuoteAiProposalSection(index, { title: event.target.value })}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => removeQuoteAiProposalSection(index)}
+                                    className="rounded-full px-2 py-1 text-xs font-medium text-[#9f1239] transition hover:bg-[#fff1f2]"
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+                                <textarea
+                                  aria-label={`Proposal section ${index + 1} body`}
+                                  className="mt-2 min-h-28 w-full resize-y rounded-[12px] border border-[#bfdbfe] bg-white px-3 py-2 leading-6 text-[#52627a] outline-none focus:border-[#2563eb]"
+                                  value={section.body}
+                                  onChange={(event) => updateQuoteAiProposalSection(index, { body: event.target.value })}
+                                />
                               </div>
                             ))}
                           </div>
                           {quoteAiSuggestions.notesDraft ? (
-                            <div className="mt-3 whitespace-pre-wrap rounded-[14px] border border-[#fde68a] bg-[#fffbeb] px-3 py-3 text-sm leading-6 text-[#854d0e]">
-                              <div className="font-semibold">Terms and assumptions</div>
-                              <div className="mt-1">{quoteAiSuggestions.notesDraft}</div>
+                            <div className="mt-3 rounded-[14px] border border-[#fde68a] bg-[#fffbeb] p-3 text-sm leading-6 text-[#854d0e]">
+                              <label className="font-semibold" htmlFor="quote-ai-terms">Terms and assumptions</label>
+                              <textarea
+                                id="quote-ai-terms"
+                                className="mt-2 min-h-28 w-full resize-y rounded-[12px] border border-[#fcd34d] bg-white px-3 py-2 text-sm leading-6 outline-none focus:border-[#d97706]"
+                                value={quoteAiSuggestions.notesDraft}
+                                onChange={(event) =>
+                                  setQuoteAiSuggestions((current) =>
+                                    current ? { ...current, notesDraft: event.target.value } : current
+                                  )
+                                }
+                              />
                             </div>
                           ) : null}
                         </div>
@@ -18607,12 +18886,54 @@ This removes its linked members and deletes the grounds account.`
                         </div>
 
                         <div className="rounded-[18px] border border-[#dbeafe] bg-white p-4">
-                          <div className="text-sm font-semibold text-[#172554]">Missing details</div>
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                              <div className="text-sm font-semibold text-[#172554]">Fix missing details</div>
+                              <div className="mt-1 text-xs leading-5 text-[#64748b]">
+                                Answer each item here. We’ll place it in the right quote field or notes.
+                              </div>
+                            </div>
+                            {quoteAiSuggestions.missingDetails.length > 0 ? (
+                              <button
+                                type="button"
+                                onClick={() => void runQuoteAiHelper("completeness")}
+                                disabled={quoteAiLoading !== null}
+                                className="rounded-full border border-[#bfdbfe] bg-white px-3 py-1.5 text-xs font-semibold text-[#1d4ed8] transition hover:bg-[#eff6ff] disabled:opacity-60"
+                              >
+                                {quoteAiLoading === "completeness" ? "Checking..." : "Re-check"}
+                              </button>
+                            ) : null}
+                          </div>
                           {quoteAiSuggestions.missingDetails.length > 0 ? (
                             <div className="mt-3 space-y-2">
                               {quoteAiSuggestions.missingDetails.map((item, index) => (
-                                <div key={`${item}-${index}`} className="rounded-[14px] border border-[#fde68a] bg-[#fffbeb] px-3 py-3 text-sm text-[#854d0e]">
-                                  {item}
+                                <div key={`${item}-${index}`} className="rounded-[14px] border border-[#fde68a] bg-[#fffbeb] p-3 text-sm text-[#854d0e]">
+                                  <label className="font-medium" htmlFor={`quote-missing-${index}`}>{item}</label>
+                                  <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                                    <input
+                                      id={`quote-missing-${index}`}
+                                      className="min-w-0 flex-1 rounded-[12px] border border-[#fcd34d] bg-white px-3 py-2 text-sm text-[#422006] outline-none placeholder:text-[#a16207] focus:border-[#d97706]"
+                                      placeholder="Enter the confirmed detail"
+                                      value={quoteAiDetailAnswers[item] || ""}
+                                      onChange={(event) =>
+                                        setQuoteAiDetailAnswers((current) => ({
+                                          ...current,
+                                          [item]: event.target.value,
+                                        }))
+                                      }
+                                      onKeyDown={(event) => {
+                                        if (event.key === "Enter") resolveQuoteAiMissingDetail(item, index);
+                                      }}
+                                    />
+                                    <button
+                                      type="button"
+                                      disabled={!String(quoteAiDetailAnswers[item] || "").trim()}
+                                      onClick={() => resolveQuoteAiMissingDetail(item, index)}
+                                      className="rounded-full bg-[#d97706] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#b45309] disabled:opacity-50"
+                                    >
+                                      Add detail
+                                    </button>
+                                  </div>
                                 </div>
                               ))}
                             </div>
@@ -18627,8 +18948,15 @@ This removes its linked members and deletes the grounds account.`
                           <div className="text-sm font-semibold text-[#172554]">Pricing advice</div>
                           <div className="mt-3 space-y-2">
                             {quoteAiSuggestions.pricingAdvice.map((item, index) => (
-                              <div key={`${item}-${index}`} className="rounded-[14px] border border-[#dbeafe] bg-[#f8fbff] px-3 py-3 text-sm text-[#334155]">
-                                {item}
+                              <div key={`${item}-${index}`} className="rounded-[14px] border border-[#dbeafe] bg-[#f8fbff] p-3 text-sm text-[#334155]">
+                                <div>{item}</div>
+                                <button
+                                  type="button"
+                                  onClick={() => addQuoteAiPricingAdvice(item)}
+                                  className="mt-2 rounded-full border border-[#bfdbfe] bg-white px-3 py-1.5 text-xs font-semibold text-[#1d4ed8] transition hover:bg-[#eff6ff]"
+                                >
+                                  Add to quote notes
+                                </button>
                               </div>
                             ))}
                           </div>

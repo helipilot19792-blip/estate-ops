@@ -17,6 +17,7 @@ type QuoteLineInput = {
 };
 
 type QuoteDraftInput = {
+  request?: string | null;
   propertyName?: string | null;
   address?: string | null;
   propertyType?: string | null;
@@ -74,6 +75,7 @@ function normalizeText(value: unknown, max = 240) {
 function normalizeQuoteDraft(value: unknown): QuoteDraftInput {
   const raw = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
   return {
+    request: normalizeText(raw.request, 1000),
     propertyName: normalizeText(raw.propertyName),
     address: normalizeText(raw.address),
     propertyType: normalizeText(raw.propertyType),
@@ -115,15 +117,28 @@ function inferEstimatedCleaningHours(quote: QuoteDraftInput) {
 
 function buildFallbackSuggestions(quote: QuoteDraftInput): QuoteAiResponse["suggestions"] {
   const propertyType = String(quote.propertyType || "").toLowerCase();
+  const customerRequest = normalizeText(quote.request, 1000);
+  const isDecoratingRequest = /decorat|design|styling/i.test(customerRequest);
   const existingServices = (quote.services || []).filter((service) => normalizeText(service.description).length > 0);
   const looksRevenueManaged =
     /airbnb|vrbo|booking|short.?term|rental|revenue|management|listing|cottage|vacation/i.test(
-      [quote.propertyName, quote.notes, quote.propertyType].filter(Boolean).join(" ")
+      [quote.propertyName, quote.notes, quote.propertyType, customerRequest].filter(Boolean).join(" ")
     );
   const cleaningHours = inferEstimatedCleaningHours(quote);
   const services: SuggestedQuoteLine[] = [];
 
-  if (existingServices.length === 0) {
+  if (existingServices.length === 0 && isDecoratingRequest) {
+    services.push({
+      description: "Decorating consultation and coordination fee",
+      category: "other",
+      quantity: 1,
+      rate: 0,
+      pricing_mode: "flat_rate",
+      service_scope: customerRequest || "Decorating consultation, styling recommendations, and agreed coordination support.",
+      taxable: true,
+      included: true,
+    });
+  } else if (existingServices.length === 0) {
     services.push({
       description: "Cleaning service",
       category: "other",
@@ -179,18 +194,25 @@ function buildFallbackSuggestions(quote: QuoteDraftInput): QuoteAiResponse["sugg
   const missingDetails: string[] = [];
   if (!quote.ownerName) missingDetails.push("Owner or prospect name is still missing.");
   if (!quote.address) missingDetails.push("Street address is missing.");
-  if (!quote.propertyType) missingDetails.push("Property type is missing.");
-  if (!quote.bedrooms) missingDetails.push("Bedroom count would help scope the quote.");
-  if (!quote.bathrooms) missingDetails.push("Bathroom count would help scope the quote.");
+  if (!isDecoratingRequest && !quote.propertyType) missingDetails.push("Property type is missing.");
+  if (!isDecoratingRequest && !quote.bedrooms) missingDetails.push("Bedroom count would help scope the quote.");
+  if (!isDecoratingRequest && !quote.bathrooms) missingDetails.push("Bathroom count would help scope the quote.");
+  if (isDecoratingRequest && !quote.notes) missingDetails.push("Confirm what the decorating fee includes and excludes.");
   if (existingServices.length === 0) missingDetails.push("No service lines have been confirmed yet.");
 
-  const pricingAdvice = [
-    "Use hourly pricing when cleaning scope may vary after inspection.",
-    looksRevenueManaged
-      ? "For management, state whether the percentage is based on gross booking revenue before taxes and platform fees."
-      : "Use flat-rate pricing when the scope is predictable and you want a cleaner client experience.",
-    "Add exclusions for deep cleans, emergency callouts, supplies, and after-hours work if they are not included.",
-  ];
+  const pricingAdvice = isDecoratingRequest
+    ? [
+        "Use a flat fee when the consultation and coordination scope is clearly defined.",
+        "State whether furniture, décor purchases, delivery, installation, and third-party trades are billed separately.",
+        "Add an approval threshold before any owner-paid purchases are made.",
+      ]
+    : [
+        "Use hourly pricing when cleaning scope may vary after inspection.",
+        looksRevenueManaged
+          ? "For management, state whether the percentage is based on gross booking revenue before taxes and platform fees."
+          : "Use flat-rate pricing when the scope is predictable and you want a cleaner client experience.",
+        "Add exclusions for deep cleans, emergency callouts, supplies, and after-hours work if they are not included.",
+      ];
 
   const notesDraft = [
     "This quote is based on the information available at the time of preparation and may be adjusted if site conditions or service scope change after inspection.",
@@ -213,10 +235,33 @@ function buildFallbackSuggestions(quote: QuoteDraftInput): QuoteAiResponse["sugg
     quote.bathrooms ? `${quote.bathrooms} bathrooms` : "",
     quote.squareFootage ? `${quote.squareFootage} sq. ft.` : "",
   ].filter(Boolean).join(", ");
-  const proposalSections: ProposalSection[] = [
+  const proposalSections: ProposalSection[] = isDecoratingRequest ? [
+    {
+      title: "Decorating fee",
+      body: `Thank you for the opportunity to provide a decorating quote for ${propertyLabel}${location ? ` at ${location}` : ""}.`,
+    },
+    {
+      title: "Proposed scope",
+      body: customerRequest || "The proposed fee covers the agreed decorating consultation and coordination services.",
+    },
+    {
+      title: "Purchases and third-party costs",
+      body: "Furniture, décor, delivery, installation, and third-party contractor costs are excluded unless specifically listed and approved in writing.",
+    },
+    {
+      title: "Owner approval",
+      body: "Recommendations and purchases remain subject to owner approval before any external cost is committed.",
+    },
+    {
+      title: "Next step",
+      body: "Confirm the decorating scope, fee, timing, and any purchasing budget so the quote can be finalized.",
+    },
+  ] : [
     {
       title: "Welcome",
-      body: `Thank you for considering Estate of Mind Property Management for ${propertyLabel}${location ? ` at ${location}` : ""}. This proposal outlines a thoughtful, property-specific approach to protecting the home, supporting guests, and building a dependable operating partnership.`,
+      body: customerRequest
+        ? `Thank you for the opportunity to provide a quote for ${propertyLabel}${location ? ` at ${location}` : ""}. This proposal responds to the requested scope: ${customerRequest}`
+        : `Thank you for considering Estate of Mind Property Management for ${propertyLabel}${location ? ` at ${location}` : ""}. This proposal outlines a thoughtful, property-specific approach to protecting the home, supporting guests, and building a dependable operating partnership.`,
     },
     {
       title: "Our approach",
@@ -356,7 +401,8 @@ Rules:
 - services must be an array of objects with description, category, quantity, rate, pricing_mode, estimated_hours, revenue_percent, revenue_basis, service_scope, taxable, included.
 - category must always be "other".
 - pricing_mode must be one of "flat_rate", "hourly", "percent_revenue".
-- Keep services to 2-5 items. Preserve existing confirmed services and pricing where supplied.
+- Keep services to 1-5 items. Preserve existing confirmed services and pricing where supplied.
+- Treat quote.request as the customer's primary scope. For a narrow request (for example, a decorating fee only), stay narrowly focused and do not add unrelated property-management services.
 - notesDraft should be concise and ready to paste into the quote notes field.
 - proposalSections should contain 6-8 concise sections suitable for a polished partnership proposal. Use the general flow Welcome, Our approach, Property-specific plan, Guest and owner experience, Revenue and marketing strategy, Our commitment, and Next steps. Tailor every section to known facts and clearly label assumptions.
 - missingDetails should be short bullet-style strings.
