@@ -16559,8 +16559,12 @@ This removes its linked members and deletes the grounds account.`
         reply_to_email: invoiceReplyToEmail.trim().toLowerCase() || null,
         header_text: invoiceHeaderText.trim() || null,
         currency_code: invoiceCurrencyCode,
-        corrected_invoice_id: correctionOfInvoice?.id || null,
-        corrected_invoice_number: correctionOfInvoice?.invoice_number || null,
+        ...(correctionOfInvoice
+          ? {
+              corrected_invoice_id: correctionOfInvoice.id,
+              corrected_invoice_number: correctionOfInvoice.invoice_number,
+            }
+          : {}),
         prospect_name: isQuoteComposer ? propertySnapshot.owner_name : null,
         prospect_email: isQuoteComposer ? propertySnapshot.owner_email : null,
         prospect_phone: isQuoteComposer ? propertySnapshot.owner_phone : null,
@@ -16688,8 +16692,6 @@ This removes its linked members and deletes the grounds account.`
           reply_to_email: invoiceReplyToEmail.trim().toLowerCase() || null,
           header_text: invoiceHeaderText.trim() || null,
           currency_code: invoiceCurrencyCode,
-          corrected_invoice_id: null,
-          corrected_invoice_number: null,
           notes: invoiceNotes.trim() || null,
           payment_instructions: invoicePaymentInstructions.trim() || null,
           line_items: uploadedLineItems,
