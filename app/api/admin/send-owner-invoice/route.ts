@@ -250,6 +250,10 @@ export async function POST(request: NextRequest) {
     const currencyCode = normalizeCurrencyCode(invoice.currency_code);
     const documentLabel = getDocumentLabel(documentKind);
     const documentLabelLower = documentLabel.toLowerCase();
+    const correctedInvoiceNumber = String(invoice.corrected_invoice_number || "").trim();
+    const correctionNotice = correctedInvoiceNumber
+      ? `Corrected version of Invoice ${correctedInvoiceNumber}`
+      : "";
     const recipientName =
       owner?.full_name ||
       owner?.email ||
@@ -332,6 +336,7 @@ export async function POST(request: NextRequest) {
         ${invoice.logo_url ? `<img src="${escapeHtml(invoice.logo_url)}" alt="" style="max-height:72px;margin-bottom:16px;" />` : ""}
         <h1 style="margin:0 0 4px;font-size:24px;">${escapeHtml(invoice.company_name || "Property invoice")}</h1>
         <p style="margin:0 0 16px;color:#6f6255;">${documentLabel} ${escapeHtml(invoice.invoice_number)}</p>
+        ${correctionNotice ? `<p style="margin:0 0 18px;padding:10px 12px;border-left:4px solid #a05a1a;background:#fff7ed;color:#7c2d12;font-weight:700;">${escapeHtml(correctionNotice)}. Please use this replacement document and disregard the earlier invoice.</p>` : ""}
         ${invoice.header_text ? `<p style="margin:0 0 18px;">${escapeHtml(invoice.header_text)}</p>` : ""}
         <div style="margin-bottom:18px;padding:14px;border:1px solid #eadfce;border-radius:14px;background:#fcfaf7;">
           <div><strong>${documentKind === "quote" ? "Contact" : "Owner"}:</strong> ${escapeHtml(recipientName)}</div>
@@ -386,6 +391,7 @@ export async function POST(request: NextRequest) {
       ? null
       : await createInvoicePdfBuffer({
           invoiceNumber: invoice.invoice_number,
+          correctedInvoiceNumber: correctedInvoiceNumber || null,
           documentKind,
           currencyCode,
           companyName: invoice.company_name || "Property invoice",
@@ -421,7 +427,7 @@ export async function POST(request: NextRequest) {
       to: recipientEmail,
       cc: ccEmails.length > 0 ? ccEmails : undefined,
       replyTo: replyToEmail || undefined,
-      subject: `${documentLabel} ${invoice.invoice_number} from ${invoice.company_name || "your property manager"}`,
+      subject: `${correctionNotice ? `Corrected ${documentLabel} ${invoice.invoice_number} (replaces Invoice ${correctedInvoiceNumber})` : `${documentLabel} ${invoice.invoice_number}`} from ${invoice.company_name || "your property manager"}`,
       html,
       attachments: [
         isUploadedInvoice
@@ -457,6 +463,18 @@ export async function POST(request: NextRequest) {
 
     if (updateError) {
       return NextResponse.json({ error: updateError.message }, { status: 500 });
+    }
+
+    if (invoice.corrected_invoice_id) {
+      const { error: voidError } = await service
+        .from("owner_invoices")
+        .update({ status: "void", updated_at: now })
+        .eq("id", invoice.corrected_invoice_id)
+        .eq("organization_id", invoice.organization_id)
+        .eq("status", "sent");
+      if (voidError) {
+        console.warn("[send-owner-invoice] original invoice could not be voided", voidError);
+      }
     }
 
     try {

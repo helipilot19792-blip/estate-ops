@@ -1017,6 +1017,8 @@ type OwnerInvoiceRow = {
   notes: string | null;
   payment_instructions: string | null;
   currency_code?: CurrencyCode | null;
+  corrected_invoice_id?: string | null;
+  corrected_invoice_number?: string | null;
   tax_lines?: OwnerInvoiceTaxLine[] | null;
   line_items: OwnerInvoiceLineItem[];
   prospect_name?: string | null;
@@ -1857,6 +1859,7 @@ export default function AdminPage() {
   const [invoiceReminderMaxCount, setInvoiceReminderMaxCount] = useState("3");
   const [invoiceDocumentKind, setInvoiceDocumentKind] = useState<InvoiceDocumentKind>("invoice");
   const [editingOwnerInvoiceId, setEditingOwnerInvoiceId] = useState<string | null>(null);
+  const [correctionOfInvoice, setCorrectionOfInvoice] = useState<Pick<OwnerInvoiceRow, "id" | "invoice_number"> | null>(null);
   const [invoiceWorkflowTab, setInvoiceWorkflowTab] = useState<InvoiceWorkflowTab>(
     DEFAULT_INVOICE_WORKFLOW_TAB
   );
@@ -15938,6 +15941,7 @@ This removes its linked members and deletes the grounds account.`
 
   function resetInvoiceComposer(documentKind: InvoiceDocumentKind = "invoice") {
     setEditingOwnerInvoiceId(null);
+    setCorrectionOfInvoice(null);
     setInvoiceOwnerId("");
     setInvoicePropertyId("");
     setInvoiceIssueDate(getTodayYmd());
@@ -15977,6 +15981,7 @@ This removes its linked members and deletes the grounds account.`
     }
 
     setEditingOwnerInvoiceId(invoice.id);
+    setCorrectionOfInvoice(null);
     setInvoiceOwnerId(invoice.owner_account_id || "");
     setInvoicePropertyId(invoice.property_id || "");
     setInvoiceIssueDate(invoice.issue_date || getTodayYmd());
@@ -16019,6 +16024,25 @@ This removes its linked members and deletes the grounds account.`
     setInvoiceDraftDirty(false);
     setActionMessage(`Loaded running invoice ${invoice.invoice_number}.`);
     setError("");
+  }
+
+  function startInvoiceCorrection(invoice: OwnerInvoiceRow) {
+    if (invoice.invoice_source === "uploaded") {
+      setError("Upload a corrected replacement file, then send it as a new invoice.");
+      return;
+    }
+    if (invoice.status !== "sent") {
+      setError("Only sent, unpaid invoices can be corrected.");
+      return;
+    }
+
+    loadOwnerInvoiceDraft(invoice);
+    setEditingOwnerInvoiceId(null);
+    setCorrectionOfInvoice({ id: invoice.id, invoice_number: invoice.invoice_number });
+    setInvoiceIssueDate(getTodayYmd());
+    setInvoiceWorkflowTab("running");
+    setInvoiceDraftDirty(true);
+    setActionMessage(`Creating a corrected replacement for Invoice ${invoice.invoice_number}. The original will be voided after this version is emailed.`);
   }
 
   function toggleInvoiceHistorySection(section: keyof typeof invoiceHistoryOpenSections) {
@@ -16535,6 +16559,8 @@ This removes its linked members and deletes the grounds account.`
         reply_to_email: invoiceReplyToEmail.trim().toLowerCase() || null,
         header_text: invoiceHeaderText.trim() || null,
         currency_code: invoiceCurrencyCode,
+        corrected_invoice_id: correctionOfInvoice?.id || null,
+        corrected_invoice_number: correctionOfInvoice?.invoice_number || null,
         prospect_name: isQuoteComposer ? propertySnapshot.owner_name : null,
         prospect_email: isQuoteComposer ? propertySnapshot.owner_email : null,
         prospect_phone: isQuoteComposer ? propertySnapshot.owner_phone : null,
@@ -16662,6 +16688,8 @@ This removes its linked members and deletes the grounds account.`
           reply_to_email: invoiceReplyToEmail.trim().toLowerCase() || null,
           header_text: invoiceHeaderText.trim() || null,
           currency_code: invoiceCurrencyCode,
+          corrected_invoice_id: null,
+          corrected_invoice_number: null,
           notes: invoiceNotes.trim() || null,
           payment_instructions: invoicePaymentInstructions.trim() || null,
           line_items: uploadedLineItems,
@@ -16807,6 +16835,7 @@ This removes its linked members and deletes the grounds account.`
         },
         body: JSON.stringify({
           invoiceNumber: "PREVIEW",
+          correctedInvoiceNumber: correctionOfInvoice?.invoice_number || null,
           documentKind: invoiceDocumentKind,
           currencyCode: invoiceCurrencyCode,
           companyName: invoiceCompanyName.trim() || "Property invoice",
@@ -16890,6 +16919,7 @@ This removes its linked members and deletes the grounds account.`
         },
         body: JSON.stringify({
           invoiceNumber: invoice.invoice_number,
+          correctedInvoiceNumber: invoice.corrected_invoice_number || null,
           documentKind,
           currencyCode: normalizeCurrencyCode(invoice.currency_code, invoiceDefaultCurrencyCode),
           companyName: invoice.company_name || "Property invoice",
@@ -17497,6 +17527,11 @@ This removes its linked members and deletes the grounds account.`
                     uploaded file
                   </span>
                 ) : null}
+                {invoice.corrected_invoice_number ? (
+                  <span className="rounded-full border border-[#fed7aa] bg-[#fff7ed] px-2.5 py-0.5 text-xs font-semibold text-[#9a3412]">
+                    corrects {invoice.corrected_invoice_number}
+                  </span>
+                ) : null}
                 {documentKind === "statement" ? (
                   <span className="rounded-full border border-[#bfdbfe] bg-white px-2.5 py-0.5 text-xs font-semibold text-[#2957a4]">
                     statement
@@ -17599,6 +17634,15 @@ This removes its linked members and deletes the grounds account.`
                   className="rounded-full border border-[#f1cf8f] bg-[#fff8e8] px-4 py-2 text-sm font-medium text-[#8a6112] transition hover:bg-[#fff4d8] disabled:opacity-60"
                 >
                   {sendingInvoiceReminderId === invoice.id ? "Sending..." : "Send reminder"}
+                </button>
+              ) : null}
+              {invoice.status === "sent" && !isQuote && invoice.invoice_source !== "uploaded" ? (
+                <button
+                  type="button"
+                  onClick={() => startInvoiceCorrection(invoice)}
+                  className="rounded-full border border-[#fed7aa] bg-[#fff7ed] px-4 py-2 text-sm font-medium text-[#9a3412] hover:bg-[#ffedd5]"
+                >
+                  Correct & resend
                 </button>
               ) : null}
               {isQuote && isAcceptedQuote && !invoice.accepted_property_id ? (

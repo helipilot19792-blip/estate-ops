@@ -136,6 +136,7 @@ export async function POST(request: NextRequest) {
 
     const pdfBuffer = await createInvoicePdfBuffer({
       invoiceNumber: invoice.invoice_number,
+      correctedInvoiceNumber: invoice.corrected_invoice_number || null,
       documentKind,
       currencyCode: normalizeCurrencyCode(invoice.currency_code),
       companyName: invoice.company_name || "Property invoice",

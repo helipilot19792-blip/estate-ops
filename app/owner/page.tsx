@@ -110,6 +110,7 @@ type OwnerInvoice = {
   notes: string | null;
   payment_instructions: string | null;
   currency_code?: CurrencyCode | null;
+  corrected_invoice_number?: string | null;
   tax_lines?: Array<{ id?: string; label: string; rate: number; amount?: number }> | null;
   line_items: OwnerInvoiceLineItem[];
   invoice_source?: "generated" | "uploaded" | null;
@@ -1444,7 +1445,7 @@ export default function OwnerPage() {
         .order("created_at", { ascending: false }),
       supabase
         .from("owner_invoices")
-        .select("id,owner_account_id,property_id,invoice_number,status,issue_date,due_date,company_name,logo_url,header_text,notes,payment_instructions,currency_code,tax_lines,line_items,subtotal,tax_total,total,sent_at,owner_viewed_at")
+        .select("id,owner_account_id,property_id,invoice_number,status,issue_date,due_date,company_name,logo_url,header_text,notes,payment_instructions,currency_code,corrected_invoice_number,tax_lines,line_items,subtotal,tax_total,total,sent_at,owner_viewed_at")
         .eq("owner_account_id", ownerRes.id)
         .in("status", ["sent", "paid"])
         .order("issue_date", { ascending: false }),
@@ -3114,6 +3115,11 @@ export default function OwnerPage() {
                               {invoice.invoice_source === "uploaded" ? (
                                 <span className="ml-2 rounded-full border border-[#e3c177]/30 bg-[#e3c177]/10 px-2 py-0.5 align-middle text-[11px] font-bold uppercase tracking-[0.08em] text-[#f1d9a5]">
                                   {t("ownerPortal.invoices.uploaded")}
+                                </span>
+                              ) : null}
+                              {invoice.corrected_invoice_number ? (
+                                <span className="ml-2 rounded-full border border-[#fed7aa] bg-[#fff7ed] px-2 py-0.5 align-middle text-[11px] font-bold text-[#9a3412]">
+                                  Corrected version of {invoice.corrected_invoice_number}
                                 </span>
                               ) : null}
                             </div>

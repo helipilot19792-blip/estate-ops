@@ -1,8 +1,8 @@
 alter table public.organization_invoice_settings
-  add column if not exists billing_currency_code text not null default 'USD';
+  add column if not exists billing_currency_code text not null default 'CAD';
 
 alter table public.owner_invoices
-  add column if not exists currency_code text not null default 'USD';
+  add column if not exists currency_code text not null default 'CAD';
 
 update public.organization_invoice_settings
 set billing_currency_code = 'USD'

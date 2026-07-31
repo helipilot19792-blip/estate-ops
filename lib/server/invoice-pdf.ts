@@ -32,6 +32,7 @@ export type InvoicePdfPropertySnapshot = {
 
 export type InvoicePdfInput = {
   invoiceNumber: string;
+  correctedInvoiceNumber?: string | null;
   documentKind?: "invoice" | "statement" | "quote";
   currencyCode?: CurrencyCode;
   companyName: string;
@@ -461,6 +462,9 @@ export async function createInvoicePdfBuffer(input: InvoicePdfInput) {
 
   drawText(input.companyName, pageLeft, 22, { bold: true, gap: 28 });
   drawText(`${documentLabel} ${input.invoiceNumber}`, pageLeft, 16, { bold: true, gap: 24 });
+  if (input.correctedInvoiceNumber) {
+    drawText(`Corrected version of Invoice ${input.correctedInvoiceNumber}`, pageLeft, 10.5, { bold: true, color: rgb(0.55, 0.25, 0.08), gap: 16 });
+  }
   const contactLine = [input.ownerName, input.ownerEmail ? `<${input.ownerEmail}>` : "", input.ownerPhone || ""]
     .filter(Boolean)
     .join(" ");

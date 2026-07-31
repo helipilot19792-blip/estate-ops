@@ -1,6 +1,6 @@
 export type CurrencyCode = "USD" | "CAD";
 
-export const DEFAULT_CURRENCY_CODE: CurrencyCode = "USD";
+export const DEFAULT_CURRENCY_CODE: CurrencyCode = "CAD";
 export const SUPPORTED_CURRENCY_CODES: CurrencyCode[] = ["USD", "CAD"];
 
 export function normalizeCurrencyCode(value: unknown, fallback: CurrencyCode = DEFAULT_CURRENCY_CODE): CurrencyCode {
