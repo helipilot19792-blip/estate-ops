@@ -102,7 +102,7 @@ export async function detectSameDayCleanerConflicts(service: ServiceClient, orig
           schedule_conflict_at: now,
           schedule_conflict_group_key: key,
           schedule_conflict_recommended: job.id === recommendedJobId,
-          schedule_conflict_reason: "A same-day guest arrival was added after accepted flexible cleanings.",
+          schedule_conflict_reason: "The same cleaner has multiple accepted cleanings with guest-arrival deadlines on this date.",
         })
         .eq("id", job.id);
       if (error) throw new Error(error.message);
@@ -122,7 +122,7 @@ export async function detectSameDayCleanerConflicts(service: ServiceClient, orig
     try {
       const [cleanerPush, adminPush] = await Promise.all([
         sendStaffPushNotifications("cleaner", cleanerProfileIds, {
-          title: "Same-day cleaning conflict detected",
+          title: "Multiple same-day cleaning deadlines",
           body: `${count} accepted cleanings now have same-day guest arrivals. A backup cleaner is recommended.`,
           url: `${origin}/cleaner`,
           tag: `same-day-cleaner-conflict-${key}`,

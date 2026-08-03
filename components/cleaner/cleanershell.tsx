@@ -180,6 +180,7 @@ export type CleanerViewProps = {
   calendarDays: Date[];
   filteredJobs: CleanerJob[];
   activeJobs: CleanerJob[];
+  activeScheduleConflictJobIds: Set<string>;
   historyJobs: CleanerJob[];
   upcomingFilteredJobs: CleanerJob[];
   collapsedPreviewJob: CleanerJob | null;
@@ -1729,6 +1730,25 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     });
   }, [filteredJobs, now]);
 
+  const activeScheduleConflictJobIds = useMemo(() => {
+    const jobIdsByDate = new Map<string, Set<string>>();
+
+    for (const item of cleanerJobs) {
+      const slotStatus = String(item.slot.status || "").toLowerCase().trim();
+      if (!item.jobDate || !item.job.sameDayTurnover || !["accepted", "in_progress"].includes(slotStatus)) continue;
+      const jobIds = jobIdsByDate.get(item.jobDate) || new Set<string>();
+      jobIds.add(item.job.id);
+      jobIdsByDate.set(item.jobDate, jobIds);
+    }
+
+    const conflictJobIds = new Set<string>();
+    for (const jobIds of jobIdsByDate.values()) {
+      if (jobIds.size < 2) continue;
+      jobIds.forEach((jobId) => conflictJobIds.add(jobId));
+    }
+    return conflictJobIds;
+  }, [cleanerJobs]);
+
   const historyJobs = useMemo(() => {
     const todayYmd = toYmd(now);
 
@@ -1941,6 +1961,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     calendarDays,
     filteredJobs,
     activeJobs,
+    activeScheduleConflictJobIds,
     historyJobs,
     upcomingFilteredJobs,
     collapsedPreviewJob,

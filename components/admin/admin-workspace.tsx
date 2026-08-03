@@ -10179,6 +10179,36 @@ This removes its linked members and deletes the grounds account.`
     return set;
   }, [propertyBookingEvents]);
 
+  function getActiveSameDayTurnoverConflicts(job: Job) {
+    const jobDate = job.scheduled_for || extractCheckoutDate(job.notes);
+    if (!jobDate || !sameDayTurnoverKeySet.has(`${job.property_id}:${jobDate}`)) return [];
+
+    const activeStatuses = new Set(["accepted", "in_progress"]);
+    const activeCleanerIds = new Set(
+      (jobSlotsByJobId[job.id] ?? [])
+        .filter((slot) => activeStatuses.has(String(slot.status || "").toLowerCase()))
+        .map((slot) => slot.cleaner_account_id)
+        .filter((cleanerAccountId): cleanerAccountId is string => Boolean(cleanerAccountId))
+    );
+    if (activeCleanerIds.size === 0) return [];
+
+    return jobSlots
+      .filter((slot) => {
+        if (!slot.cleaner_account_id || !activeCleanerIds.has(slot.cleaner_account_id)) return false;
+        if (!activeStatuses.has(String(slot.status || "").toLowerCase())) return false;
+        return slot.job_id !== job.id;
+      })
+      .map((slot) => {
+        const conflictingJob = jobs.find((candidate) => candidate.id === slot.job_id);
+        if (!conflictingJob) return null;
+        const conflictingDate = conflictingJob.scheduled_for || extractCheckoutDate(conflictingJob.notes);
+        if (conflictingDate !== jobDate) return null;
+        if (!sameDayTurnoverKeySet.has(`${conflictingJob.property_id}:${jobDate}`)) return null;
+        return { slot, job: conflictingJob };
+      })
+      .filter((row): row is { slot: JobSlot; job: Job } => Boolean(row));
+  }
+
   const adminCalendarDays = useMemo(() => getMonthGrid(adminCalendarMonth), [adminCalendarMonth]);
 
   function isAdminCalendarKindVisible(kind: AdminCalendarItemKind) {
@@ -22678,6 +22708,19 @@ This removes its linked members and deletes the grounds account.`
                 cleaningJobDate,
                 job.id
               );
+              const isSameDayTurnover = Boolean(
+                cleaningJobDate && sameDayTurnoverKeySet.has(`${job.property_id}:${cleaningJobDate}`)
+              );
+              const activeSameDayTurnoverConflicts = getActiveSameDayTurnoverConflicts(job);
+              const hasActiveSameDayTurnoverConflict = activeSameDayTurnoverConflicts.length > 0;
+              const conflictCleanerNames = Array.from(new Set(
+                activeSameDayTurnoverConflicts
+                  .map(({ slot }) => getCleanerAccountName(slot.cleaner_account_id))
+                  .filter(Boolean)
+              ));
+              const conflictPropertyNames = Array.from(new Set(
+                activeSameDayTurnoverConflicts.map(({ job: conflictingJob }) => getPropertyName(conflictingJob.property_id))
+              ));
 
               return (
                 <div
@@ -22711,16 +22754,16 @@ This removes its linked members and deletes the grounds account.`
                     </div>
                   </div>
 
-                  {job.schedule_conflict_at ? (
+                  {hasActiveSameDayTurnoverConflict ? (
                     <div className="mt-3 rounded-[18px] border border-[#e5a43b] bg-[#fff5dd] p-3 text-[#704000]">
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em]">Same-day arrival conflict</div>
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em]">Multiple same-day turnover deadlines</div>
                       <p className="mt-1 text-sm">
-                        {job.schedule_conflict_reason || "This cleaner accepted the work before same-day guest arrivals created a deadline conflict."}
+                        {conflictCleanerNames.join(", ") || "The assigned cleaner"} also has accepted work at {conflictPropertyNames.join(", ")}. Both properties have guests arriving this day, so both cleanings must be completed before check-in.
                       </p>
                       <p className="mt-1 text-xs font-semibold">
                         {job.schedule_conflict_recommended
                           ? "Recommended backup job: this cleaning was accepted later than the other affected cleaning."
-                          : "Another accepted cleaning is the recommended backup job."}
+                          : "Review the cleaner's timing or move one cleaning to a backup cleaner."}
                       </p>
                       {job.schedule_conflict_recommended ? (
                         <div className="mt-3 grid gap-2 md:grid-cols-[1fr_220px]">
@@ -22747,6 +22790,13 @@ This removes its linked members and deletes the grounds account.`
                           </button>
                         </div>
                       ) : null}
+                    </div>
+                  ) : isSameDayTurnover ? (
+                    <div className="mt-3 rounded-[18px] border border-[#d8c7ab] bg-[#fffaf3] p-3 text-[#6f6255]">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8a6112]">Same-day turnover</div>
+                      <p className="mt-1 text-sm">
+                        Guests arrive at this property on the cleaning date. This is a deadline reminder for the cleaner, not a scheduling conflict.
+                      </p>
                     </div>
                   ) : null}
 

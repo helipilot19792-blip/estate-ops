@@ -306,7 +306,7 @@ function SameDayTurnoverBanner({
 function ScheduleConflictBanner({ recommended }: { recommended?: boolean | null }) {
   return (
     <div className="mt-3 rounded-2xl border border-[#efbd65] bg-[#fff3d8] px-3 py-2 text-sm text-[#704000]">
-      <strong>Schedule conflict:</strong> a same-day arrival was added after you accepted this work. You are not at fault.
+      <strong>Multiple same-day deadlines:</strong> you currently have more than one accepted cleaning that must be completed before guest check-in. You are not at fault.
       {recommended ? " This is the recommended job to release to a backup cleaner." : " Admin is reviewing backup coverage."}
     </div>
   );
@@ -342,6 +342,7 @@ function JobCard({
   availableProperties,
   currentProfileId,
   canReleaseSelectedJob,
+  hasActiveScheduleConflict,
 }: {
   item: CleanerJob;
   isSelected: boolean;
@@ -372,6 +373,7 @@ function JobCard({
   availableProperties: CleanerViewProps["properties"];
   currentProfileId: string | null;
   canReleaseSelectedJob: boolean;
+  hasActiveScheduleConflict: boolean;
 }) {
   const [reportOpen, setReportOpen] = useState(false);
   const [reportSubmittedMessage, setReportSubmittedMessage] = useState("");
@@ -418,7 +420,7 @@ function JobCard({
             {item.job.sameDayTurnover ? (
               <SameDayTurnoverBanner sameDayCheckInLabel={item.job.sameDayCheckInLabel} />
             ) : null}
-            {item.job.schedule_conflict_at ? <ScheduleConflictBanner recommended={item.job.schedule_conflict_recommended} /> : null}
+            {hasActiveScheduleConflict ? <ScheduleConflictBanner recommended={item.job.schedule_conflict_recommended} /> : null}
 
             <p className="mt-2 text-sm text-[#d9c5a1]">{getTeamMessage(item)}</p>
 
@@ -473,7 +475,7 @@ function JobCard({
               {item.job.sameDayTurnover ? (
                 <SameDayTurnoverBanner sameDayCheckInLabel={item.job.sameDayCheckInLabel} />
               ) : null}
-              {item.job.schedule_conflict_at ? <ScheduleConflictBanner recommended={item.job.schedule_conflict_recommended} /> : null}
+              {hasActiveScheduleConflict ? <ScheduleConflictBanner recommended={item.job.schedule_conflict_recommended} /> : null}
               <p className="mt-2 text-sm text-[#d9c5a1]">{getTeamMessage(item)}</p>
             </div>
 
@@ -765,6 +767,7 @@ export default function CleanerDesktopView({
   calendarDays,
   filteredJobs,
   activeJobs,
+  activeScheduleConflictJobIds,
   historyJobs,
   collapsedPreviewJob,
   hiddenJobsCount,
@@ -896,6 +899,7 @@ export default function CleanerDesktopView({
               availableProperties={properties}
               currentProfileId={profile?.id || null}
               canReleaseSelectedJob={canReleaseSelectedJob && selectedCleanerJob?.slot.id === item.slot.id}
+              hasActiveScheduleConflict={activeScheduleConflictJobIds.has(item.job.id)}
             />
           );
         })}
@@ -1430,6 +1434,7 @@ export default function CleanerDesktopView({
                         canReleaseSelectedJob={
                           canReleaseSelectedJob && selectedCleanerJob?.slot.id === collapsedPreviewJob.slot.id
                         }
+                        hasActiveScheduleConflict={activeScheduleConflictJobIds.has(collapsedPreviewJob.job.id)}
                       />
                     ) : (
                       <p className="text-sm text-[#cdbda0]">
