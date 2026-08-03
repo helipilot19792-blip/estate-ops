@@ -1681,6 +1681,7 @@ export default function AdminPage() {
     return new Date(today.getFullYear(), today.getMonth(), 1);
   });
   const [adminSelectedDate, setAdminSelectedDate] = useState<string | null>(() => toYmd(new Date()));
+  const [adminExpandedCalendarDate, setAdminExpandedCalendarDate] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<AdminSection>("home");
 
   const [properties, setProperties] = useState<Property[]>([]);
@@ -2347,6 +2348,19 @@ export default function AdminPage() {
     const interval = window.setInterval(() => setNow(new Date()), 60_000);
     return () => window.clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (!adminExpandedCalendarDate) return;
+
+    function collapseExpandedCalendarDay(event: PointerEvent) {
+      const target = event.target;
+      if (target instanceof Element && target.closest("[data-admin-calendar-day]")) return;
+      setAdminExpandedCalendarDate(null);
+    }
+
+    document.addEventListener("pointerdown", collapseExpandedCalendarDay);
+    return () => document.removeEventListener("pointerdown", collapseExpandedCalendarDay);
+  }, [adminExpandedCalendarDate]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !currentOrganizationId) {
@@ -11552,8 +11566,9 @@ This removes its linked members and deletes the grounds account.`
     isCleaningCompanyMode,
   ]);
 
-  function selectAdminCalendarDate(dateYmd: string) {
+  function selectAdminCalendarDate(dateYmd: string, itemCount = 0) {
     setAdminSelectedDate(dateYmd);
+    setAdminExpandedCalendarDate(itemCount > 2 ? dateYmd : null);
   }
 
   const selectedPropertyDefaults = properties.find((p) => p.id === jobPropertyId);
@@ -23493,7 +23508,7 @@ This removes its linked members and deletes the grounds account.`
           </label>
         </div>
 
-        <div className="mt-5 overflow-hidden rounded-[26px] border border-[#eadfce]">
+        <div className="mt-5 overflow-visible rounded-[26px] border border-[#eadfce]">
           <div className="grid grid-cols-7 border-b border-[#eadfce] bg-[#f8f4ee]">
             {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
               <div key={day} className="px-2 py-3 text-center text-xs font-semibold uppercase tracking-[0.18em] text-[#8a7b68]">
@@ -23517,6 +23532,7 @@ This removes its linked members and deletes the grounds account.`
               const sameDayCount = dayJobs.filter((job) => sameDayTurnoverKeySet.has(`${job.property_id}:${dateYmd}`)).length;
               const isCurrentMonth = day.getMonth() === adminCalendarMonth.getMonth();
               const isSelected = adminSelectedDate === dateYmd;
+              const isExpanded = adminExpandedCalendarDate === dateYmd;
               const isToday = dateYmd === toYmd(now);
               const visibleItems = [
                 ...dayJobs.map((job) => ({ kind: "cleaning" as const, id: job.id, job })),
@@ -23528,29 +23544,36 @@ This removes its linked members and deletes the grounds account.`
               return (
                 <div
                   key={dateYmd}
-                  onClick={() => selectAdminCalendarDate(dateYmd)}
-                  className={`min-h-[118px] cursor-pointer border-r border-b border-[#eadfce] p-2 text-left align-top transition ${isSelected
+                  data-admin-calendar-day={dateYmd}
+                  onClick={() => selectAdminCalendarDate(dateYmd, dayItemCount)}
+                  className={`relative min-h-[118px] cursor-pointer border-r border-b border-[#eadfce] text-left align-top transition ${isExpanded ? "z-30" : "z-0"} ${isSelected
                     ? "bg-[#fffaf3] shadow-[inset_0_0_0_2px_rgba(180,141,78,0.65)]"
                     : "hover:bg-[#fcfaf7]"
                     } ${!isCurrentMonth ? "bg-[#fbf9f5] text-[#b1a392]" : "text-[#241c15]"}`}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div
-                      className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold ${isToday ? "bg-[#241c15] text-[#f8f2e8]" : "bg-transparent"
-                        }`}
-                    >
-                      {day.getDate()}
+                  <div
+                    className={`p-2 ${isExpanded
+                      ? "absolute inset-x-0 top-0 min-h-full rounded-[16px] border border-[#d8c7ab] bg-[#fffaf3] shadow-[0_18px_45px_rgba(54,39,20,0.22)]"
+                      : ""
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div
+                        className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold ${isToday ? "bg-[#241c15] text-[#f8f2e8]" : "bg-transparent"
+                          }`}
+                      >
+                        {day.getDate()}
+                      </div>
+
+                      {dayItemCount > 0 ? (
+                        <span className="rounded-full border border-[#d8c7ab] bg-white px-2 py-0.5 text-[11px] font-medium text-[#7f7263]">
+                          {dayItemCount}
+                        </span>
+                      ) : null}
                     </div>
 
-                    {dayItemCount > 0 ? (
-                      <span className="rounded-full border border-[#d8c7ab] bg-white px-2 py-0.5 text-[11px] font-medium text-[#7f7263]">
-                        {dayItemCount}
-                      </span>
-                    ) : null}
-                  </div>
-
-                  <div className="mt-2 space-y-1">
-                    {visibleItems.slice(0, 2).map((item) => {
+                    <div className="mt-2 space-y-1">
+                      {visibleItems.slice(0, isExpanded ? visibleItems.length : 2).map((item) => {
                       if (item.kind === "cancelled") {
                         const cancellation = item.cancellation;
                         const cleanerSummary = formatCalendarAssigneeSummary(
@@ -23564,6 +23587,7 @@ This removes its linked members and deletes the grounds account.`
                             onClick={(event) => {
                               event.stopPropagation();
                               setAdminSelectedDate(dateYmd);
+                              setAdminExpandedCalendarDate(null);
                               setAdminCalendarDetail({ kind: "cancelled", cancellationId: cancellation.id, date: dateYmd });
                             }}
                             className="block w-full truncate rounded-full border border-[#f2b8b5] bg-[#fff1f0] px-2 py-1 text-left text-[11px] font-medium text-[#9f2d24] transition hover:bg-[#ffe7e5] focus:outline-none focus:ring-2 focus:ring-[#ef9a94]"
@@ -23582,6 +23606,7 @@ This removes its linked members and deletes the grounds account.`
                             onClick={(event) => {
                               event.stopPropagation();
                               setAdminSelectedDate(dateYmd);
+                              setAdminExpandedCalendarDate(null);
                               setAdminCalendarDetail({ kind: "checkin", bookingId: booking.id, date: dateYmd });
                             }}
                             className="block w-full truncate rounded-full border border-[#d8b4fe] bg-[#faf5ff] px-2 py-1 text-left text-[11px] font-medium text-[#6d28d9] transition hover:bg-[#f3e8ff] focus:outline-none focus:ring-2 focus:ring-[#c084fc]"
@@ -23618,6 +23643,7 @@ This removes its linked members and deletes the grounds account.`
                           onClick={(event) => {
                             event.stopPropagation();
                             setAdminSelectedDate(dateYmd);
+                            setAdminExpandedCalendarDate(null);
                             setAdminCalendarDetail(
                               item.kind === "grounds"
                                 ? { kind: "grounds", jobId: job.id, date: dateYmd }
@@ -23634,23 +23660,34 @@ This removes its linked members and deletes the grounds account.`
                           {calendarStatusLabel}: {getPropertyName(job.property_id)}{assigneeSummary ? ` - ${assigneeSummary}` : ""}
                         </button>
                       );
-                    })}
+                      })}
 
-                    {dayItemCount > 2 ? (
-                      <div className="text-[11px] text-[#8a7b68]">+{dayItemCount - 2} more</div>
-                    ) : null}
+                      {dayItemCount > 2 && !isExpanded ? (
+                      <button
+                        type="button"
+                        aria-expanded="false"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          selectAdminCalendarDate(dateYmd, dayItemCount);
+                        }}
+                        className="block w-full rounded px-1 py-0.5 text-left text-[11px] font-medium text-[#8a7b68] transition hover:bg-[#f3eadc] hover:text-[#5f5245] focus:outline-none focus:ring-2 focus:ring-[#d8c7ab]"
+                      >
+                        +{dayItemCount - 2} more
+                      </button>
+                      ) : null}
 
-                    {urgentCount > 0 ? (
+                      {urgentCount > 0 ? (
                       <div className="pt-1 text-[11px] font-semibold text-[#8a2e22]">
                         {urgentCount} urgent
                       </div>
-                    ) : null}
+                      ) : null}
 
-                    {sameDayCount > 0 ? (
+                      {sameDayCount > 0 ? (
                       <div className="text-[11px] font-semibold text-[#8a6112]">
                         {sameDayCount} same-day
                       </div>
-                    ) : null}
+                      ) : null}
+                    </div>
                   </div>
                 </div>
               );
