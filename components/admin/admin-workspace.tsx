@@ -23823,6 +23823,26 @@ This removes its linked members and deletes the grounds account.`
                 const strandedCount = slots.filter((slot) => slot.status === "stranded").length;
                 const declinedCount = slots.filter((slot) => slot.status === "declined").length;
                 const propertyColor = getPropertyColor(job.property_id);
+                const confirmedCleanerNames = Array.from(new Set(
+                  slots
+                    .filter((slot) => ["accepted", "in_progress", "completed"].includes(String(slot.status || "").toLowerCase()))
+                    .map((slot) => slot.cleaner_account_id ? getCleanerAccountName(slot.cleaner_account_id) : "")
+                    .filter(Boolean)
+                ));
+                const offeredCleanerNames = Array.from(new Set(
+                  slots
+                    .filter((slot) => slot.status === "offered")
+                    .map((slot) => slot.cleaner_account_id ? getCleanerAccountName(slot.cleaner_account_id) : "")
+                    .filter(Boolean)
+                ));
+                const linkedBooking = getCalendarCleaningBooking(job);
+                const linkedGuestCount = Number.isFinite(Number(linkedBooking?.guest_count))
+                  ? Number(linkedBooking?.guest_count)
+                  : null;
+                const parsedNotes = parseAutoSyncJobNotes(job.notes);
+                const visibleNotes = parsedNotes.isAutoSync
+                  ? parsedNotes.detailLines.join("\n")
+                  : job.notes?.trim() || "";
 
                 return (
                   <button
@@ -23855,6 +23875,18 @@ This removes its linked members and deletes the grounds account.`
                         <div className="mt-1 text-sm text-[#8a7b68]">
                           Team progress: {acceptedCount}/{job.cleaner_units_needed} accepted
                         </div>
+                        <div className={`mt-2 text-sm font-semibold ${confirmedCleanerNames.length > 0
+                          ? "text-[#2f6f36]"
+                          : offeredCleanerNames.length > 0
+                            ? "text-[#9a650b]"
+                            : "text-[#9f2d24]"
+                        }`}>
+                          {confirmedCleanerNames.length > 0
+                            ? `Assigned: ${confirmedCleanerNames.join(", ")}`
+                            : offeredCleanerNames.length > 0
+                              ? `Not assigned yet - awaiting acceptance from ${offeredCleanerNames.join(", ")}`
+                              : "Unassigned - no cleaner has accepted this job"}
+                        </div>
                       </div>
 
                       <div className="flex flex-wrap gap-2">
@@ -23873,9 +23905,14 @@ This removes its linked members and deletes the grounds account.`
                       </div>
                     </div>
 
-                    {job.notes ? (
-                      <div className="mt-3 line-clamp-2 text-sm leading-6 text-[#6f6255]">
-                        {job.notes}
+                    {linkedBooking ? (
+                      <div className="mt-3 rounded-[14px] border border-[#eadfce] bg-[#fcfaf7] px-3 py-2 text-sm leading-6 text-[#6f6255]">
+                        Reservation: {linkedBooking.summary?.trim() || "Reserved"} | {formatGuestCountLabel(linkedGuestCount)} | {getBookingSourceLabel(linkedBooking.source)}
+                      </div>
+                    ) : null}
+                    {visibleNotes ? (
+                      <div className="mt-3 whitespace-pre-line text-sm leading-6 text-[#6f6255]">
+                        {visibleNotes}
                       </div>
                     ) : null}
                   </button>
@@ -23888,6 +23925,22 @@ This removes its linked members and deletes the grounds account.`
                 const offeredCount = slots.filter((slot) => slot.status === "offered").length;
                 const strandedCount = slots.filter((slot) => slot.status === "stranded").length;
                 const declinedCount = slots.filter((slot) => slot.status === "declined").length;
+                const confirmedGroundsNames = Array.from(new Set(
+                  slots
+                    .filter((slot) => ["accepted", "in_progress", "completed"].includes(String(slot.status || "").toLowerCase()))
+                    .map((slot) => slot.grounds_account_id ? getGroundsAccountName(slot.grounds_account_id) : "")
+                    .filter(Boolean)
+                ));
+                const offeredGroundsNames = Array.from(new Set(
+                  slots
+                    .filter((slot) => slot.status === "offered")
+                    .map((slot) => slot.grounds_account_id ? getGroundsAccountName(slot.grounds_account_id) : "")
+                    .filter(Boolean)
+                ));
+                const parsedNotes = parseAutoSyncJobNotes(job.notes);
+                const visibleNotes = parsedNotes.isAutoSync
+                  ? parsedNotes.detailLines.join("\n")
+                  : job.notes?.trim() || "";
 
                 return (
                   <button
@@ -23916,6 +23969,18 @@ This removes its linked members and deletes the grounds account.`
                         <div className="mt-1 text-sm text-[#8a7b68]">
                           Team progress: {acceptedCount}/{job.grounds_units_needed} accepted
                         </div>
+                        <div className={`mt-2 text-sm font-semibold ${confirmedGroundsNames.length > 0
+                          ? "text-[#2f6f36]"
+                          : offeredGroundsNames.length > 0
+                            ? "text-[#9a650b]"
+                            : "text-[#9f2d24]"
+                        }`}>
+                          {confirmedGroundsNames.length > 0
+                            ? `Assigned: ${confirmedGroundsNames.join(", ")}`
+                            : offeredGroundsNames.length > 0
+                              ? `Not assigned yet - awaiting acceptance from ${offeredGroundsNames.join(", ")}`
+                              : "Unassigned - no grounds team has accepted this job"}
+                        </div>
                       </div>
 
                       <div className="flex flex-wrap gap-2">
@@ -23934,9 +23999,9 @@ This removes its linked members and deletes the grounds account.`
                       </div>
                     </div>
 
-                    {job.notes ? (
-                      <div className="mt-3 line-clamp-2 text-sm leading-6 text-[#6f6255]">
-                        {job.notes}
+                    {visibleNotes ? (
+                      <div className="mt-3 whitespace-pre-line text-sm leading-6 text-[#6f6255]">
+                        {visibleNotes}
                       </div>
                     ) : null}
                   </button>
