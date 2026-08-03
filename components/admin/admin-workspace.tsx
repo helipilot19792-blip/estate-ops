@@ -1745,6 +1745,7 @@ export default function AdminPage() {
   const [expandedNotificationSlotIds, setExpandedNotificationSlotIds] = useState<Set<string>>(() => new Set());
   const [expandedPaymentSlotIds, setExpandedPaymentSlotIds] = useState<Set<string>>(() => new Set());
   const [reassignSelections, setReassignSelections] = useState<Record<string, string>>({});
+  const [calendarReassignSlotSelections, setCalendarReassignSlotSelections] = useState<Record<string, string>>({});
   const [reassigningJobId, setReassigningJobId] = useState<string | null>(null);
   const [approvingCleanerReleaseRequestId, setApprovingCleanerReleaseRequestId] = useState<string | null>(null);
   const [assigningSelfJobId, setAssigningSelfJobId] = useState<string | null>(null);
@@ -6466,7 +6467,7 @@ export default function AdminPage() {
       setReassigningJobId(null);
     }
   }
-  async function reassignOpenJob(jobId: string, slotOverride?: JobSlot) {
+  async function reassignOpenJob(jobId: string, slotOverride?: JobSlot, reassignSource: "jobs" | "calendar" = "jobs") {
     const cleanerAccountId = reassignSelections[jobId];
     if (!cleanerAccountId) {
       setError("Please select a cleaner account before reassigning.");
@@ -6487,10 +6488,24 @@ export default function AdminPage() {
       return;
     }
 
+    if (slot.cleaner_account_id === cleanerAccountId) {
+      setError("Choose a different cleaner for this slot.");
+      return;
+    }
+
     const jobDate = job?.scheduled_for || extractCheckoutDate(job?.notes || null);
     const conflictLabel = getCleanerSameDayConflictLabel(cleanerAccountId, jobDate, jobId);
     if (conflictLabel && !window.confirm(`${conflictLabel}\n\nOffer this job anyway?`)) {
       return;
+    }
+
+    if (String(slot.status || "").toLowerCase() === "accepted") {
+      const previousCleanerName = getCleanerAccountName(slot.cleaner_account_id);
+      const replacementCleanerName = getCleanerAccountName(cleanerAccountId);
+      const confirmed = window.confirm(
+        `Reassign this accepted slot from ${previousCleanerName} to ${replacementCleanerName}?\n\n${previousCleanerName} will be removed from the job and ${replacementCleanerName} will receive a new offer to accept.`
+      );
+      if (!confirmed) return;
     }
 
     setError("");
@@ -6517,6 +6532,7 @@ export default function AdminPage() {
           jobId,
           slotId: slot.id,
           cleanerAccountId,
+          reassignSource,
         }),
       });
 
@@ -23843,18 +23859,25 @@ This removes its linked members and deletes the grounds account.`
                 const visibleNotes = parsedNotes.isAutoSync
                   ? parsedNotes.detailLines.join("\n")
                   : job.notes?.trim() || "";
+                const propertyCleanerAccounts = getCleanerAccountsForProperty(job.property_id);
+                const reassignableSlots = slots
+                  .filter((slot) => !["in_progress", "completed"].includes(String(slot.status || "").toLowerCase()))
+                  .sort((a, b) => a.slot_number - b.slot_number);
+                const selectedSlotId = calendarReassignSlotSelections[job.id] || reassignableSlots[0]?.id || "";
+                const selectedSlot = reassignableSlots.find((slot) => slot.id === selectedSlotId) || null;
+                const selectedReplacementCleanerId = reassignSelections[job.id] || "";
+                const replacementCleanerAccounts = propertyCleanerAccounts.filter(
+                  (account) => account.id !== selectedSlot?.cleaner_account_id
+                );
+                const selectedReassignConflictLabel = getCleanerSameDayConflictLabel(
+                  selectedReplacementCleanerId,
+                  job.scheduled_for || extractCheckoutDate(job.notes),
+                  job.id
+                );
 
                 return (
-                  <button
+                  <div
                     key={job.id}
-                    type="button"
-                    onClick={() => {
-                      setHighlightedJobId(job.id);
-                      setActiveSection("jobs");
-                      setTimeout(() => {
-                        document.getElementById(`job-${job.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
-                      }, 50);
-                    }}
                     className="block w-full rounded-[20px] border bg-white p-4 text-left transition hover:shadow-sm"
                     style={{ borderColor: propertyColor.border, boxShadow: `inset 4px 0 0 ${propertyColor.text}` }}
                   >
@@ -23902,6 +23925,19 @@ This removes its linked members and deletes the grounds account.`
                           }`}>
                           Stranded: {strandedCount}
                         </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setHighlightedJobId(job.id);
+                            setActiveSection("jobs");
+                            setTimeout(() => {
+                              document.getElementById(`job-${job.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+                            }, 50);
+                          }}
+                          className="rounded-full border border-[#241c15] bg-[#241c15] px-3 py-1 text-xs font-semibold text-white transition hover:bg-[#352a21]"
+                        >
+                          Open job
+                        </button>
                       </div>
                     </div>
 
@@ -23915,7 +23951,82 @@ This removes its linked members and deletes the grounds account.`
                         {visibleNotes}
                       </div>
                     ) : null}
-                  </button>
+
+                    {reassignableSlots.length > 0 ? (
+                      <div className="mt-3 rounded-[16px] border border-[#d8c7ab] bg-[#fffaf3] p-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">
+                          Reassign cleaner
+                        </div>
+                        <div className="mt-2 grid gap-2 lg:grid-cols-[minmax(220px,0.8fr)_minmax(260px,1fr)_auto]">
+                          <label className="text-xs font-medium text-[#6f6255]">
+                            Slot to change
+                            <select
+                              value={selectedSlotId}
+                              onChange={(event) => setCalendarReassignSlotSelections((prev) => ({
+                                ...prev,
+                                [job.id]: event.target.value,
+                              }))}
+                              className="mt-1 w-full rounded-[12px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm text-[#241c15] outline-none focus:border-[#b48d4e]"
+                            >
+                              {reassignableSlots.map((slot) => (
+                                <option key={slot.id} value={slot.id}>
+                                  Slot {slot.slot_number}: {getCleanerAccountName(slot.cleaner_account_id)} ({String(slot.status || "open").replaceAll("_", " ")})
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <label className="text-xs font-medium text-[#6f6255]">
+                            Replacement cleaner
+                            <select
+                              value={selectedReplacementCleanerId}
+                              onChange={(event) => setReassignSelections((prev) => ({
+                                ...prev,
+                                [job.id]: event.target.value,
+                              }))}
+                              className="mt-1 w-full rounded-[12px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm text-[#241c15] outline-none focus:border-[#b48d4e]"
+                            >
+                              <option value="">Select replacement cleaner</option>
+                              {replacementCleanerAccounts.length === 0 ? (
+                                <option value="" disabled>No other cleaners assigned to this property</option>
+                              ) : null}
+                              {replacementCleanerAccounts.map((account) => (
+                                <option key={account.id} value={account.id}>
+                                  {account.display_name || "Unnamed cleaner account"}
+                                  {getCleanerSameDayConflicts(account.id, job.scheduled_for || extractCheckoutDate(job.notes), job.id).length > 0
+                                    ? " - already booked that day"
+                                    : ""}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (selectedSlot) void reassignOpenJob(job.id, selectedSlot, "calendar");
+                            }}
+                            disabled={!selectedSlot || !selectedReplacementCleanerId || reassigningJobId === job.id}
+                            className="self-end rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#352a21] disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {reassigningJobId === job.id ? "Reassigning..." : "Reassign cleaner"}
+                          </button>
+                        </div>
+                        {selectedReassignConflictLabel ? (
+                          <div className="mt-2 rounded-[12px] border border-[#f0c36d] bg-[#fff8e8] px-3 py-2 text-xs font-medium text-[#7a4a00]">
+                            {selectedReassignConflictLabel}
+                          </div>
+                        ) : null}
+                        <div className="mt-2 text-xs text-[#8a7b68]">
+                          The replacement receives a new offer. Accepted slots require confirmation before the current cleaner is removed.
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-3 text-xs font-medium text-[#8a7b68]">
+                        This job is already active or completed and can no longer be reassigned.
+                      </div>
+                    )}
+                  </div>
                 );
               })}
 

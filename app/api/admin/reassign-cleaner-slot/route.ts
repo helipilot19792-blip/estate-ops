@@ -122,6 +122,7 @@ export async function POST(request: NextRequest) {
     const jobId = String(body?.jobId || "").trim();
     const slotId = String(body?.slotId || "").trim();
     const cleanerAccountId = String(body?.cleanerAccountId || "").trim();
+    const reassignSource = body?.reassignSource === "calendar" ? "calendar" : "jobs";
 
     if (!organizationId || !jobId || !slotId || !cleanerAccountId) {
       return NextResponse.json({ error: "Missing reassignment details." }, { status: 400 });
@@ -201,13 +202,7 @@ export async function POST(request: NextRequest) {
     const blockedStatuses = new Set(["in_progress", "completed"]);
     if (blockedStatuses.has(String(slot.status || "").toLowerCase())) {
       return NextResponse.json(
-        { error: "This slot has already been accepted or is already active, so it cannot be reassigned." },
-        { status: 409 }
-      );
-    }
-    if (String(slot.status || "").toLowerCase() === "accepted" && !job.schedule_conflict_at) {
-      return NextResponse.json(
-        { error: "Accepted jobs can only be reassigned when a same-day schedule conflict is active." },
+        { error: "This slot is already active or completed, so it cannot be reassigned." },
         { status: 409 }
       );
     }
@@ -246,6 +241,9 @@ export async function POST(request: NextRequest) {
     }
 
     const previousCleanerId = slot.cleaner_account_id || null;
+    if (previousCleanerId === cleanerAccountId) {
+      return NextResponse.json({ error: "Choose a different cleaner for this slot." }, { status: 400 });
+    }
     let previousCleanerName: string | null = null;
     if (previousCleanerId) {
       const { data: previousCleaner, error: previousCleanerError } = await service
@@ -313,6 +311,7 @@ export async function POST(request: NextRequest) {
       targetId: slot.id,
       metadata: {
         job_id: jobId,
+        reassign_source: reassignSource,
         slot_number: slot.slot_number,
         previous_cleaner_account_id: previousCleanerId,
         previous_cleaner_name: previousCleanerName,
