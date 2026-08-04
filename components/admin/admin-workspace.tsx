@@ -132,6 +132,15 @@ const QUIRKY_SYNCING_COPY = [
 const SHOW_ADMIN_TOP_BANNER = false;
 const MAINTENANCE_FLAG_SNOOZE_DAYS = 3;
 const SHOW_ADMIN_TOP_OVERVIEW = false;
+
+function reportAdminLoadTiming(kind: "home" | "workspace", response: Response, startedAt: number) {
+  if (typeof window === "undefined" || !window.performance) return;
+
+  const durationMs = Math.round(window.performance.now() - startedAt);
+  const serverTiming = response.headers.get("server-timing") || "unavailable";
+  console.info(`[admin-performance] ${kind}`, { durationMs, serverTiming });
+}
+
 const CLEANER_PAYOUT_TYPE_OPTIONS = [
   { value: "standard", label: "Standard" },
   { value: "hourly", label: "Hourly" },
@@ -729,6 +738,29 @@ type AdminSection =
   | "documents"
   | "backup"
   | "invoices";
+type DashboardDataScope = "all" | "attention" | "chat" | "documents" | "invoices" | "operations" | "people";
+
+function getDashboardDataScope(section: AdminSection): DashboardDataScope {
+  if (section === "chat") return "chat";
+  if (section === "documents") return "documents";
+  if (section === "invoices") return "invoices";
+  if (
+    section === "jobs" ||
+    section === "calendar" ||
+    section === "bookings" ||
+    section === "maintenance" ||
+    section === "inspections"
+  ) return "operations";
+  if (
+    section === "team" ||
+    section === "users" ||
+    section === "cleanerAccounts" ||
+    section === "groundsAccounts" ||
+    section === "invites"
+  ) return "people";
+  return "all";
+}
+
 type PropertyEntryMode = "manual" | "airbnb";
 type PropertyWorkflowTab = "add" | "setup" | "directory" | "health";
 type PropertySetupTab = "overview" | "guestDevice" | "access" | "calendars" | "knowledge" | "vendors" | "sops" | "checklists";
@@ -1675,6 +1707,7 @@ export default function AdminPage() {
   const [myOrganizations, setMyOrganizations] = useState<MyOrganizationRow[]>([]);
   const [adminHomeLoaded, setAdminHomeLoaded] = useState(false);
   const [adminDataLoaded, setAdminDataLoaded] = useState(false);
+  const [loadedAdminSections, setLoadedAdminSections] = useState<Set<AdminSection>>(() => new Set());
   const [now, setNow] = useState(() => new Date());
   const [adminCalendarMonth, setAdminCalendarMonth] = useState(() => {
     const today = new Date();
@@ -1821,9 +1854,8 @@ export default function AdminPage() {
   const maintenanceCameraInputRef = useRef<HTMLInputElement | null>(null);
   const maintenanceLibraryInputRef = useRef<HTMLInputElement | null>(null);
   const latestHomeLoadIdRef = useRef(0);
-  const latestDataLoadIdRef = useRef(0);
+  const latestDataLoadIdRef = useRef<Partial<Record<DashboardDataScope, number>>>({});
   const adminDataLoadedRef = useRef(false);
-  const homeDataWarmupTimerRef = useRef<number | null>(null);
   const [invoiceOwnerId, setInvoiceOwnerId] = useState("");
   const [invoicePropertyId, setInvoicePropertyId] = useState("");
   const [invoiceIssueDate, setInvoiceIssueDate] = useState(() => getTodayYmd());
@@ -2596,46 +2628,14 @@ export default function AdminPage() {
     if (!checkingAuth && currentOrganizationId) {
       setAdminHomeLoaded(false);
       setAdminDataLoaded(false);
+      setLoadedAdminSections(new Set());
       adminDataLoadedRef.current = false;
-      let cancelled = false;
-      if (homeDataWarmupTimerRef.current !== null) {
-        window.clearTimeout(homeDataWarmupTimerRef.current);
-        homeDataWarmupTimerRef.current = null;
-      }
-
       void (async () => {
         const loadedHome = await loadHomeData();
-        if (!loadedHome || cancelled) return;
-
-        // Home can render from its focused payload. Hydrate the richer workspace
-        // shortly afterwards so home-level notification badges remain complete
-        // without making the first meaningful screen wait for every data set.
-        const hydrateWorkspace = () => {
-          homeDataWarmupTimerRef.current = null;
-          void loadData({ background: true });
-        };
-
-        // Let the browser finish the first paint and user interaction work before
-        // it starts the broad workspace hydration. The timeout is a reliable
-        // fallback for browsers that do not implement requestIdleCallback.
-        if (typeof window.requestIdleCallback === "function") {
-          homeDataWarmupTimerRef.current = window.requestIdleCallback(hydrateWorkspace, { timeout: 4_000 });
-        } else {
-          homeDataWarmupTimerRef.current = globalThis.setTimeout(hydrateWorkspace, 2_500) as unknown as number;
+        if (loadedHome) {
+          void loadData({ background: true, scope: "attention" });
         }
       })();
-
-      return () => {
-        cancelled = true;
-        if (homeDataWarmupTimerRef.current !== null) {
-          if (typeof window.cancelIdleCallback === "function") {
-            window.cancelIdleCallback(homeDataWarmupTimerRef.current);
-          } else {
-            globalThis.clearTimeout(homeDataWarmupTimerRef.current);
-          }
-          homeDataWarmupTimerRef.current = null;
-        }
-      };
     }
   }, [checkingAuth, currentOrganizationId]);
 
@@ -2643,17 +2643,17 @@ export default function AdminPage() {
     // The home endpoint contains everything needed for the initial dashboard. The
     // complete workspace payload is substantially larger, so wait until a user
     // actually opens one of those workspaces before transferring and processing it.
-    if (checkingAuth || !currentOrganizationId || activeSection === "home" || adminDataLoaded) return;
-    if (homeDataWarmupTimerRef.current !== null) {
-      if (typeof window.cancelIdleCallback === "function") {
-        window.cancelIdleCallback(homeDataWarmupTimerRef.current);
-      } else {
-        globalThis.clearTimeout(homeDataWarmupTimerRef.current);
-      }
-      homeDataWarmupTimerRef.current = null;
-    }
-    void loadData();
-  }, [activeSection, adminDataLoaded, checkingAuth, currentOrganizationId]);
+    if (
+      checkingAuth ||
+      !currentOrganizationId ||
+      activeSection === "home" ||
+      activeSection === "bulletin" ||
+      adminDataLoaded ||
+      loadedAdminSections.has(activeSection)
+    ) return;
+
+    void loadData({ scope: getDashboardDataScope(activeSection) });
+  }, [activeSection, adminDataLoaded, checkingAuth, currentOrganizationId, loadedAdminSections]);
 
   useEffect(() => {
     if (!checkingAuth && currentOrganizationId && activeSection === "notifications") {
@@ -2718,14 +2718,18 @@ export default function AdminPage() {
       return;
     }
 
-    // Keep this as a low-frequency safety refresh. Realtime and action-specific reloads
-    // handle normal updates; full admin hydration is intentionally expensive.
+    // Keep this as a low-frequency safety refresh. Refresh only the screen the admin
+    // is using instead of pulling every workspace dataset in the background.
     const interval = window.setInterval(() => {
       if (document.visibilityState !== "visible") return;
-      void loadData();
+      if (activeSection === "home") {
+        void loadHomeData();
+      } else if (activeSection !== "bulletin") {
+        void loadData({ background: true, scope: getDashboardDataScope(activeSection) });
+      }
     }, 600000);
     return () => window.clearInterval(interval);
-  }, [checkingAuth, currentOrganizationId, adminDraftDirty]);
+  }, [activeSection, checkingAuth, currentOrganizationId, adminDraftDirty]);
 
   useEffect(() => {
     if (checkingAuth || !currentOrganizationId) return;
@@ -3200,9 +3204,158 @@ export default function AdminPage() {
       setSendingSupport(false);
     }
   }
-  function applyAdminDataPayload(data: any) {
+  function applyAdminDataPayload(data: any, scope: DashboardDataScope = "all") {
     const loadedProperties = (data.properties ?? []) as Property[];
     const loadedStrandedJobs = (data.strandedJobs ?? []) as StrandedJob[];
+
+    const applyProfiles = () => {
+      setProfiles(
+        ((data.profiles ?? []) as any[])
+          .map((member) => {
+            const profile = Array.isArray(member.profiles) ? member.profiles[0] : member.profiles;
+            if (!profile) return null;
+
+            return {
+              id: profile.id,
+              email: profile.email,
+              full_name: profile.full_name,
+              phone: profile.phone,
+              role: member.role || profile.role,
+              created_at: profile.created_at,
+            } as ProfileRow;
+          })
+          .filter(Boolean) as ProfileRow[]
+      );
+    };
+
+    if (scope === "attention") {
+      setOwnerAccounts((data.ownerAccounts ?? []) as OwnerAccountRow[]);
+      setOrganizationInvites((data.organizationInvites ?? []) as OrganizationInviteRow[]);
+      setOwnerInvoices((data.ownerInvoices ?? []) as OwnerInvoiceRow[]);
+      setAccountDeletionRequests((data.accountDeletionRequests ?? []) as AccountDeletionRequestRow[]);
+      setChatConversations((data.chatConversations ?? []) as ChatConversationRow[]);
+      setChatParticipants((data.chatParticipants ?? []) as ChatParticipantRow[]);
+      setChatMessages((data.chatMessages ?? []) as ChatMessageRow[]);
+      setChatHiddenItems((data.chatHiddenItems ?? []) as ChatHiddenItemRow[]);
+      return;
+    }
+
+    if (scope === "operations") {
+      setProperties(loadedProperties);
+      setCleanerAccounts((data.cleanerAccounts ?? []) as CleanerAccount[]);
+      setCleanerAccountMembers((data.cleanerAccountMembers ?? []) as CleanerAccountMember[]);
+      setAssignments((data.assignments ?? []) as Assignment[]);
+      setJobs((data.jobs ?? []) as Job[]);
+      setJobSlots((data.jobSlots ?? []) as JobSlot[]);
+      setGroundsAccounts((data.groundsAccounts ?? []) as GroundsAccount[]);
+      setGroundsAccountMembers((data.groundsAccountMembers ?? []) as GroundsAccountMember[]);
+      setGroundsAssignments((data.groundsAssignments ?? []) as GroundsAssignment[]);
+      setGroundsJobs((data.groundsJobs ?? []) as GroundsJob[]);
+      setGroundsJobSlots((data.groundsJobSlots ?? []) as GroundsJobSlot[]);
+      setGroundsRecurringTasks((data.groundsRecurringTasks ?? []) as GroundsRecurringTask[]);
+      setGroundsRecurringRules((data.groundsRecurringRules ?? []) as GroundsRecurringRule[]);
+      setStrandedJobs(loadedStrandedJobs);
+      setPropertyCleaningChecklistItems((data.propertyCleaningChecklistItems ?? []) as PropertyCleaningChecklistItemRow[]);
+      setTurnoverJobChecklistItems((data.turnoverJobChecklistItems ?? []) as TurnoverJobChecklistItemRow[]);
+      setPropertyCalendars((data.propertyCalendars ?? []) as PropertyCalendarRow[]);
+      setPropertyBookingEvents((data.propertyBookingEvents ?? []) as PropertyBookingEvent[]);
+      setCancelledTurnoverJobs((data.cancelledTurnoverJobs ?? []) as CancelledTurnoverJob[]);
+      setMaintenanceFlags((data.maintenanceFlags ?? []) as MaintenanceFlagRow[]);
+      setMaintenanceFlagImages((data.maintenanceFlagImages ?? []) as MaintenanceFlagImageRow[]);
+      setInspectionRules((data.inspectionRules ?? []) as PropertyInspectionRule[]);
+      setInspectionLogs((data.inspectionLogs ?? []) as PropertyInspectionLog[]);
+      setInspectionPhotos((data.inspectionPhotos ?? []) as PropertyInspectionPhoto[]);
+      setStaffJobStatusEvents((data.staffJobStatusEvents ?? []) as StaffJobStatusEventRow[]);
+      setJobOfferAuditLogs((data.jobOfferAuditLogs ?? []) as JobOfferAuditLogRow[]);
+      adminDataLoadedRef.current = true;
+      setLoadedAdminSections((current) => {
+        const next = new Set(current);
+        for (const section of ["jobs", "calendar", "bookings", "maintenance", "inspections"] as AdminSection[]) {
+          next.add(section);
+        }
+        return next;
+      });
+      return;
+    }
+
+    if (scope === "people") {
+      setProperties(loadedProperties);
+      setCleanerAccounts((data.cleanerAccounts ?? []) as CleanerAccount[]);
+      setCleanerAccountMembers((data.cleanerAccountMembers ?? []) as CleanerAccountMember[]);
+      setAssignments((data.assignments ?? []) as Assignment[]);
+      setJobs((data.jobs ?? []) as Job[]);
+      setJobSlots((data.jobSlots ?? []) as JobSlot[]);
+      setGroundsAccounts((data.groundsAccounts ?? []) as GroundsAccount[]);
+      setGroundsAccountMembers((data.groundsAccountMembers ?? []) as GroundsAccountMember[]);
+      setGroundsAssignments((data.groundsAssignments ?? []) as GroundsAssignment[]);
+      setGroundsJobs((data.groundsJobs ?? []) as GroundsJob[]);
+      setGroundsJobSlots((data.groundsJobSlots ?? []) as GroundsJobSlot[]);
+      applyProfiles();
+      setOwnerAccounts((data.ownerAccounts ?? []) as OwnerAccountRow[]);
+      setOrganizationInvites((data.organizationInvites ?? []) as OrganizationInviteRow[]);
+      setStaffJobStatusEvents((data.staffJobStatusEvents ?? []) as StaffJobStatusEventRow[]);
+      const loadedDeletionRequests = (data.accountDeletionRequests ?? []) as AccountDeletionRequestRow[];
+      setAccountDeletionRequests(loadedDeletionRequests);
+      setDeletionRequestDrafts((current) => {
+        const next = { ...current };
+        for (const request of loadedDeletionRequests) {
+          if (!next[request.id]) {
+            next[request.id] = { status: request.status, adminNotes: request.admin_notes || "" };
+          }
+        }
+        return next;
+      });
+      adminDataLoadedRef.current = true;
+      setLoadedAdminSections((current) => {
+        const next = new Set(current);
+        for (const section of ["team", "users", "cleanerAccounts", "groundsAccounts", "invites"] as AdminSection[]) {
+          next.add(section);
+        }
+        return next;
+      });
+      return;
+    }
+
+    if (scope === "chat") {
+      setProperties(loadedProperties);
+      applyProfiles();
+      setOwnerAccounts((data.ownerAccounts ?? []) as OwnerAccountRow[]);
+      setChatConversations((data.chatConversations ?? []) as ChatConversationRow[]);
+      setChatParticipants((data.chatParticipants ?? []) as ChatParticipantRow[]);
+      setChatMessages((data.chatMessages ?? []) as ChatMessageRow[]);
+      setChatHiddenItems((data.chatHiddenItems ?? []) as ChatHiddenItemRow[]);
+      adminDataLoadedRef.current = true;
+      setLoadedAdminSections((current) => new Set(current).add("chat"));
+      return;
+    }
+
+    if (scope === "documents") {
+      setProperties(loadedProperties);
+      setDocumentVaultRows((data.documentVaultRows ?? []) as DocumentVaultRow[]);
+      adminDataLoadedRef.current = true;
+      setLoadedAdminSections((current) => new Set(current).add("documents"));
+      return;
+    }
+
+    if (scope === "invoices") {
+      setProperties(loadedProperties);
+      setCleanerAccounts((data.cleanerAccounts ?? []) as CleanerAccount[]);
+      setCleanerAccountMembers((data.cleanerAccountMembers ?? []) as CleanerAccountMember[]);
+      setJobs((data.jobs ?? []) as Job[]);
+      setGroundsAccounts((data.groundsAccounts ?? []) as GroundsAccount[]);
+      setGroundsAccountMembers((data.groundsAccountMembers ?? []) as GroundsAccountMember[]);
+      setGroundsJobs((data.groundsJobs ?? []) as GroundsJob[]);
+      setOwnerAccounts((data.ownerAccounts ?? []) as OwnerAccountRow[]);
+      setOwnerPropertyAccess((data.ownerPropertyAccess ?? []) as OwnerPropertyAccessRow[]);
+      setInvoiceSettings((data.invoiceSettings ?? null) as InvoiceSettingsRow | null);
+      setPropertyInvoiceRates((data.propertyInvoiceRates ?? []) as PropertyInvoiceRateRow[]);
+      setOwnerInvoices((data.ownerInvoices ?? []) as OwnerInvoiceRow[]);
+      setOwnerInvoiceEvents((data.ownerInvoiceEvents ?? []) as OwnerInvoiceEventRow[]);
+      setCleanerPaymentRecords((data.cleanerPaymentRecords ?? []) as CleanerPaymentRecordRow[]);
+      adminDataLoadedRef.current = true;
+      setLoadedAdminSections((current) => new Set(current).add("invoices"));
+      return;
+    }
 
     setProperties(loadedProperties);
     setCleanerAccounts((data.cleanerAccounts ?? []) as CleanerAccount[]);
@@ -3227,23 +3380,7 @@ export default function AdminPage() {
     setPropertyKnowledgeImages((data.propertyKnowledgeImages ?? []) as PropertyKnowledgeImageRow[]);
     setPropertyVendors((data.propertyVendors ?? []) as PropertyVendorRow[]);
     setDocumentVaultRows((data.documentVaultRows ?? []) as DocumentVaultRow[]);
-    setProfiles(
-      ((data.profiles ?? []) as any[])
-        .map((member) => {
-          const profile = Array.isArray(member.profiles) ? member.profiles[0] : member.profiles;
-          if (!profile) return null;
-
-          return {
-            id: profile.id,
-            email: profile.email,
-            full_name: profile.full_name,
-            phone: profile.phone,
-            role: member.role || profile.role,
-            created_at: profile.created_at,
-          } as ProfileRow;
-        })
-        .filter(Boolean) as ProfileRow[]
-    );
+    applyProfiles();
     setOwnerAccounts((data.ownerAccounts ?? []) as OwnerAccountRow[]);
     setOwnerPropertyAccess((data.ownerPropertyAccess ?? []) as OwnerPropertyAccessRow[]);
     setPropertyCalendars((data.propertyCalendars ?? []) as PropertyCalendarRow[]);
@@ -3291,6 +3428,7 @@ export default function AdminPage() {
     setAdminHomeLoaded(true);
     adminDataLoadedRef.current = true;
     setAdminDataLoaded(true);
+    setLoadedAdminSections(new Set(Object.keys(ADMIN_FEATURE_LABELS) as AdminSection[]));
   }
 
   function applyAdminHomePayload(data: any) {
@@ -3387,6 +3525,7 @@ export default function AdminPage() {
 
   async function loadHomeData() {
     const requestId = ++latestHomeLoadIdRef.current;
+    const startedAt = typeof window !== "undefined" ? window.performance.now() : 0;
     setError("");
 
     if (!currentOrganizationId) {
@@ -3413,6 +3552,7 @@ export default function AdminPage() {
       }
     );
     const payload = await response.json().catch(() => null);
+    reportAdminLoadTiming("home", response, startedAt);
 
     if (!response.ok || !payload?.ok) {
       setError(payload?.error || "Could not load admin home data.");
@@ -3518,9 +3658,12 @@ export default function AdminPage() {
     }
   }
 
-  async function loadData(options?: { background?: boolean }) {
-    const requestId = ++latestDataLoadIdRef.current;
+  async function loadData(options?: { background?: boolean; scope?: DashboardDataScope }) {
+    const startedAt = typeof window !== "undefined" ? window.performance.now() : 0;
     const background = options?.background === true;
+    const scope = options?.scope || getDashboardDataScope(activeSection);
+    const requestId = (latestDataLoadIdRef.current[scope] || 0) + 1;
+    latestDataLoadIdRef.current[scope] = requestId;
     if (!background) {
       setError("");
     }
@@ -3541,7 +3684,7 @@ export default function AdminPage() {
       }
 
       const response = await fetch(
-        `/api/admin/dashboard-data?organizationId=${encodeURIComponent(currentOrganizationId)}`,
+        `/api/admin/dashboard-data?organizationId=${encodeURIComponent(currentOrganizationId)}&scope=${encodeURIComponent(scope)}`,
         {
           cache: "no-store",
           headers: {
@@ -3550,17 +3693,18 @@ export default function AdminPage() {
         }
       );
       const payload = await response.json().catch(() => null);
+      reportAdminLoadTiming("workspace", response, startedAt);
 
       if (!response.ok || !payload?.ok) {
         if (!background) setError(payload?.error || "Could not load admin dashboard data.");
         return false;
       }
 
-      if (requestId !== latestDataLoadIdRef.current) {
+      if (requestId !== latestDataLoadIdRef.current[scope]) {
         return false;
       }
 
-      applyAdminDataPayload(payload.data || {});
+      applyAdminDataPayload(payload.data || {}, (payload.scope || scope) as DashboardDataScope);
       return true;
     }
 
@@ -4057,12 +4201,13 @@ export default function AdminPage() {
       }
       return next;
     });
-    if (requestId !== latestDataLoadIdRef.current) {
+    if (requestId !== latestDataLoadIdRef.current[scope]) {
       return false;
     }
     setAdminHomeLoaded(true);
     adminDataLoadedRef.current = true;
     setAdminDataLoaded(true);
+    setLoadedAdminSections(new Set(Object.keys(ADMIN_FEATURE_LABELS) as AdminSection[]));
     return true;
   }
 
@@ -28571,6 +28716,7 @@ This removes its linked members and deletes the grounds account.`
                       }
                       setAdminHomeLoaded(false);
                       setAdminDataLoaded(false);
+                      setLoadedAdminSections(new Set());
                       adminDataLoadedRef.current = false;
                       setCurrentOrganizationId(nextOrganizationId);
                     }}
@@ -29212,7 +29358,9 @@ This removes its linked members and deletes the grounds account.`
           </div>
         ) : null}
 
-        {(activeSection === "home" ? adminHomeLoaded : adminDataLoaded)
+        {(activeSection === "home"
+          ? adminHomeLoaded
+          : activeSection === "bulletin" || adminDataLoaded || loadedAdminSections.has(activeSection))
           ? renderActiveSection()
           : renderAdminWorkspaceLoading()}
         </div>

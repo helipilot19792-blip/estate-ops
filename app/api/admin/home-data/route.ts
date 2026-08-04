@@ -2,6 +2,8 @@ import { createClient } from "@supabase/supabase-js";
 import { assertWorkspaceBillingAccess } from "@/lib/server/workspace-billing-status";
 
 export const dynamic = "force-dynamic";
+export const runtime = "edge";
+export const preferredRegion = "global";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const anonKey =
@@ -100,6 +102,8 @@ async function requireWorkspaceBillingAccess(organizationId: string) {
 }
 
 export async function GET(request: Request) {
+  const requestStartedAt = Date.now();
+
   try {
     const authHeader = request.headers.get("authorization");
     const token = authHeader?.startsWith("Bearer ") ? authHeader.replace("Bearer ", "").trim() : "";
@@ -119,6 +123,7 @@ export async function GET(request: Request) {
       requireAdminAccess(token, organizationId),
       requireWorkspaceBillingAccess(organizationId),
     ]);
+    const accessFinishedAt = Date.now();
 
     const todayYmd = new Date().toISOString().slice(0, 10);
     // The first paint only needs today's operational picture and a small safety
@@ -207,6 +212,7 @@ export async function GET(request: Request) {
             .eq("organization_id", organizationId)
             .order("sort_order", { ascending: true }),
     ]);
+    const primaryQueriesFinishedAt = Date.now();
 
     const requiredResponses = [
       propertiesRes,
@@ -274,6 +280,7 @@ export async function GET(request: Request) {
             .order("created_at", { ascending: true })
         : emptyResult(),
     ]);
+    const childQueriesFinishedAt = Date.now();
 
     const childRequiredResponses = [
       cleanerAccountMembersRes,
@@ -289,7 +296,7 @@ export async function GET(request: Request) {
       }
     }
 
-    return Response.json({
+    const response = Response.json({
       ok: true,
       data: {
         properties,
@@ -318,6 +325,19 @@ export async function GET(request: Request) {
             : turnoverJobChecklistItemsRes.data ?? [],
       },
     });
+    const responseReadyAt = Date.now();
+    response.headers.set(
+      "Server-Timing",
+      [
+        `access;dur=${accessFinishedAt - requestStartedAt}`,
+        `primary;dur=${primaryQueriesFinishedAt - accessFinishedAt}`,
+        `children;dur=${childQueriesFinishedAt - primaryQueriesFinishedAt}`,
+        `serialize;dur=${responseReadyAt - childQueriesFinishedAt}`,
+        `total;dur=${responseReadyAt - requestStartedAt}`,
+      ].join(", ")
+    );
+    response.headers.set("Cache-Control", "private, no-store");
+    return response;
   } catch (error) {
     return Response.json(
       { ok: false, error: error instanceof Error ? error.message : "Unknown error." },

@@ -2,6 +2,8 @@ import { createClient } from "@supabase/supabase-js";
 import { assertWorkspaceBillingAccess } from "@/lib/server/workspace-billing-status";
 
 export const dynamic = "force-dynamic";
+export const runtime = "edge";
+export const preferredRegion = "global";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const anonKey =
@@ -39,6 +41,14 @@ function isOptionalTableError(error: { code?: string | null; message?: string | 
 
 function emptyResult<T = unknown>() {
   return Promise.resolve({ data: [] as T[], error: null });
+}
+
+type DashboardScope = "all" | "attention" | "chat" | "documents" | "invoices" | "operations" | "people";
+
+function normalizeDashboardScope(value: string | null): DashboardScope {
+  return value === "attention" || value === "chat" || value === "documents" || value === "invoices" || value === "operations" || value === "people"
+    ? value
+    : "all";
 }
 
 async function requireAdminAccess(token: string, organizationId: string) {
@@ -100,11 +110,14 @@ async function requireWorkspaceBillingAccess(organizationId: string) {
 }
 
 export async function GET(request: Request) {
+  const requestStartedAt = Date.now();
+
   try {
     const authHeader = request.headers.get("authorization");
     const token = authHeader?.startsWith("Bearer ") ? authHeader.replace("Bearer ", "").trim() : "";
     const { searchParams } = new URL(request.url);
     const organizationId = searchParams.get("organizationId")?.trim() || "";
+    const scope = normalizeDashboardScope(searchParams.get("scope"));
 
     if (!token) {
       return Response.json({ ok: false, error: "Missing authorization header." }, { status: 401 });
@@ -118,6 +131,16 @@ export async function GET(request: Request) {
       requireAdminAccess(token, organizationId),
       requireWorkspaceBillingAccess(organizationId),
     ]);
+    const accessFinishedAt = Date.now();
+    const includeAll = scope === "all";
+    const includeAttention = scope === "attention";
+    const includeChat = includeAll || includeAttention || scope === "chat";
+    const includeChatDirectory = includeAll || scope === "chat";
+    const includeDocuments = includeAll || scope === "documents";
+    const includeInvoices = includeAll || scope === "invoices";
+    const includeOperations = includeAll || scope === "operations";
+    const includePeople = includeAll || scope === "people";
+    const includeInvoiceAlerts = includeInvoices || includeAttention;
     const todayYmd = new Date().toISOString().slice(0, 10);
     const bookingLookaheadEndYmd = new Date(Date.now() + 540 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
@@ -151,12 +174,23 @@ export async function GET(request: Request) {
       chatHiddenItemsRes,
     ] = await Promise.all([
       serviceClient.from("properties").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
-      serviceClient.from("cleaner_accounts").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
-      serviceClient.from("turnover_jobs").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
-      serviceClient.from("grounds_accounts").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
-      serviceClient.from("grounds_jobs").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
-      serviceClient.from("document_vault_files").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
-      serviceClient
+      includeOperations || includeInvoices || includePeople
+        ? serviceClient.from("cleaner_accounts").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false })
+        : emptyResult(),
+      includeOperations || includeInvoices || includePeople
+        ? serviceClient.from("turnover_jobs").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false })
+        : emptyResult(),
+      includeOperations || includeInvoices || includePeople
+        ? serviceClient.from("grounds_accounts").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false })
+        : emptyResult(),
+      includeOperations || includeInvoices || includePeople
+        ? serviceClient.from("grounds_jobs").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false })
+        : emptyResult(),
+      includeDocuments
+        ? serviceClient.from("document_vault_files").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false })
+        : emptyResult(),
+      includeChatDirectory || includePeople
+        ? serviceClient
         .from("organization_members")
         .select(`
           profile_id,
@@ -172,45 +206,53 @@ export async function GET(request: Request) {
           )
         `)
         .eq("organization_id", organizationId)
-        .order("created_at", { ascending: false }),
-      serviceClient.from("owner_accounts").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
-      serviceClient
+        .order("created_at", { ascending: false })
+        : emptyResult(),
+      includeChat || includeInvoiceAlerts || includePeople
+        ? serviceClient.from("owner_accounts").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false })
+        : emptyResult(),
+      includeOperations
+        ? serviceClient
         .from("property_booking_events")
         .select("*")
         .eq("organization_id", organizationId)
         .lte("checkin_date", bookingLookaheadEndYmd)
         .gte("checkout_date", todayYmd)
-        .order("checkin_date", { ascending: true }),
-      serviceClient
+        .order("checkin_date", { ascending: true })
+        : emptyResult(),
+      includeOperations
+        ? serviceClient
         .from("cancelled_turnover_jobs")
         .select("*")
         .eq("organization_id", organizationId)
         .order("scheduled_for", { ascending: false })
-        .limit(1000),
-      serviceClient.from("property_maintenance_flags").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
-      serviceClient.from("property_inspection_rules").select("*").eq("organization_id", organizationId).order("next_due_date", { ascending: true }),
-      serviceClient.from("property_inspection_logs").select("*").eq("organization_id", organizationId).order("inspected_at", { ascending: false }),
-      serviceClient.from("organization_invites").select("*").eq("organization_id", organizationId).in("role", ["cleaner", "grounds", "admin"]).order("created_at", { ascending: false }),
-      serviceClient.from("organization_invoice_settings").select("*").eq("organization_id", organizationId).maybeSingle(),
-      serviceClient.from("property_invoice_rates").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
-      serviceClient.from("owner_invoices").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }),
-      serviceClient.from("owner_invoice_events").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }).limit(1000),
-      serviceClient.from("staff_job_status_events").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }).limit(100),
-      serviceClient
+        .limit(1000)
+        : emptyResult(),
+      includeOperations ? serviceClient.from("property_maintenance_flags").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }) : emptyResult(),
+      includeOperations ? serviceClient.from("property_inspection_rules").select("*").eq("organization_id", organizationId).order("next_due_date", { ascending: true }) : emptyResult(),
+      includeOperations ? serviceClient.from("property_inspection_logs").select("*").eq("organization_id", organizationId).order("inspected_at", { ascending: false }) : emptyResult(),
+      includePeople || includeAttention ? serviceClient.from("organization_invites").select("*").eq("organization_id", organizationId).in("role", ["cleaner", "grounds", "admin"]).order("created_at", { ascending: false }) : emptyResult(),
+      includeInvoices ? serviceClient.from("organization_invoice_settings").select("*").eq("organization_id", organizationId).maybeSingle() : emptyResult(),
+      includeInvoices ? serviceClient.from("property_invoice_rates").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }) : emptyResult(),
+      includeInvoiceAlerts ? serviceClient.from("owner_invoices").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }) : emptyResult(),
+      includeInvoices ? serviceClient.from("owner_invoice_events").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }).limit(1000) : emptyResult(),
+      includeOperations || includePeople ? serviceClient.from("staff_job_status_events").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }).limit(100) : emptyResult(),
+      includeOperations ? serviceClient
         .from("audit_logs")
         .select("id, organization_id, action_type, target_type, target_id, metadata, created_at")
         .eq("organization_id", organizationId)
         .in("action_type", ["admin.reassign_cleaner_slot", "admin.send_job_offer_notifications"])
         .order("created_at", { ascending: false })
-        .limit(500),
-      serviceClient.from("turnover_job_checklist_items").select("*").eq("organization_id", organizationId).order("sort_order", { ascending: true }),
-      serviceClient.from("account_deletion_requests").select("*").eq("organization_id", organizationId).order("requested_at", { ascending: false }).limit(100),
-      serviceClient.from("chat_conversations").select("id,organization_id,subject,context_type,context_id,created_by_profile_id,last_message_at,created_at,updated_at").eq("organization_id", organizationId).order("updated_at", { ascending: false }),
-      serviceClient.from("chat_participants").select("id,organization_id,conversation_id,participant_type,participant_profile_id,participant_owner_account_id,participant_role,display_name,email,last_read_at,created_at").eq("organization_id", organizationId).order("created_at", { ascending: true }),
-      serviceClient.from("chat_messages").select("id,organization_id,conversation_id,sender_profile_id,body,created_at,updated_at").eq("organization_id", organizationId).order("created_at", { ascending: true }),
-      serviceClient.from("cleaner_payment_records").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }).limit(200),
-      serviceClient.from("chat_hidden_items").select("id,organization_id,conversation_id,message_id,hidden_by_profile_id,hidden_by_owner_account_id,hidden_at").eq("organization_id", organizationId).eq("hidden_by_profile_id", user.id),
+        .limit(500) : emptyResult(),
+      includeOperations ? serviceClient.from("turnover_job_checklist_items").select("*").eq("organization_id", organizationId).order("sort_order", { ascending: true }) : emptyResult(),
+      includePeople || includeAttention ? serviceClient.from("account_deletion_requests").select("*").eq("organization_id", organizationId).order("requested_at", { ascending: false }).limit(100) : emptyResult(),
+      includeChat ? serviceClient.from("chat_conversations").select("id,organization_id,subject,context_type,context_id,created_by_profile_id,last_message_at,created_at,updated_at").eq("organization_id", organizationId).order("updated_at", { ascending: false }) : emptyResult(),
+      includeChat ? serviceClient.from("chat_participants").select("id,organization_id,conversation_id,participant_type,participant_profile_id,participant_owner_account_id,participant_role,display_name,email,last_read_at,created_at").eq("organization_id", organizationId).order("created_at", { ascending: true }) : emptyResult(),
+      includeChat ? serviceClient.from("chat_messages").select("id,organization_id,conversation_id,sender_profile_id,body,created_at,updated_at").eq("organization_id", organizationId).order("created_at", { ascending: true }) : emptyResult(),
+      includeInvoices ? serviceClient.from("cleaner_payment_records").select("*").eq("organization_id", organizationId).order("created_at", { ascending: false }).limit(200) : emptyResult(),
+      includeChat ? serviceClient.from("chat_hidden_items").select("id,organization_id,conversation_id,message_id,hidden_by_profile_id,hidden_by_owner_account_id,hidden_at").eq("organization_id", organizationId).eq("hidden_by_profile_id", user.id) : emptyResult(),
     ]);
+    const primaryQueriesFinishedAt = Date.now();
 
     const requiredResponses = [
       propertiesRes,
@@ -263,64 +305,65 @@ export async function GET(request: Request) {
       maintenanceFlagImagesRes,
       inspectionPhotosRes,
     ] = await Promise.all([
-      cleanerAccountIds.length > 0
+      (includeOperations || includeInvoices || includePeople) && cleanerAccountIds.length > 0
         ? serviceClient.from("cleaner_account_members").select("*").in("cleaner_account_id", cleanerAccountIds).order("created_at", { ascending: false })
         : emptyResult(),
-      propertyIds.length > 0
+      (includeOperations || includePeople) && propertyIds.length > 0
         ? serviceClient.from("property_cleaner_account_assignments").select("*").in("property_id", propertyIds).order("priority", { ascending: true })
         : emptyResult(),
-      jobIds.length > 0
+      (includeOperations || includePeople) && jobIds.length > 0
         ? serviceClient.from("turnover_job_slots").select("*").in("job_id", jobIds).order("job_id", { ascending: true })
         : emptyResult(),
-      groundsAccountIds.length > 0
+      (includeOperations || includeInvoices || includePeople) && groundsAccountIds.length > 0
         ? serviceClient.from("grounds_account_members").select("*").in("grounds_account_id", groundsAccountIds).order("created_at", { ascending: false })
         : emptyResult(),
-      propertyIds.length > 0
+      (includeOperations || includePeople) && propertyIds.length > 0
         ? serviceClient.from("property_grounds_account_assignments").select("*").in("property_id", propertyIds).order("priority", { ascending: true })
         : emptyResult(),
-      groundsJobIds.length > 0
+      (includeOperations || includePeople) && groundsJobIds.length > 0
         ? serviceClient.from("grounds_job_slots").select("*").in("job_id", groundsJobIds).order("job_id", { ascending: true })
         : emptyResult(),
-      propertyIds.length > 0
+      includeOperations && propertyIds.length > 0
         ? serviceClient.from("property_grounds_recurring_tasks").select("*").in("property_id", propertyIds).order("created_at", { ascending: false })
         : emptyResult(),
-      propertyIds.length > 0
+      includeOperations && propertyIds.length > 0
         ? serviceClient.from("property_grounds_recurring_rules").select("*").in("property_id", propertyIds).order("created_at", { ascending: false })
         : emptyResult(),
-      propertyIds.length > 0
+      includeOperations && propertyIds.length > 0
         ? serviceClient.from("admin_stranded_jobs").select("*").in("property_id", propertyIds).order("created_at", { ascending: true })
         : emptyResult(),
-      propertyIds.length > 0
+      includeAll && propertyIds.length > 0
         ? serviceClient.from("property_access").select("*").in("property_id", propertyIds)
         : emptyResult(),
-      propertyIds.length > 0
+      includeAll && propertyIds.length > 0
         ? serviceClient.from("property_sops").select("*").in("property_id", propertyIds).order("created_at", { ascending: false })
         : emptyResult(),
-      propertyIds.length > 0
+      includeOperations && propertyIds.length > 0
         ? serviceClient.from("property_cleaning_checklist_items").select("*").in("property_id", propertyIds).eq("active", true).order("sort_order", { ascending: true })
         : emptyResult(),
-      propertyIds.length > 0
+      includeAll && propertyIds.length > 0
         ? serviceClient.from("property_knowledge").select("*").in("property_id", propertyIds).order("updated_at", { ascending: false })
         : emptyResult(),
-      propertyIds.length > 0
+      includeAll && propertyIds.length > 0
         ? serviceClient.from("property_knowledge_images").select("*").in("property_id", propertyIds).order("created_at", { ascending: false })
         : emptyResult(),
-      propertyIds.length > 0
+      includeAll && propertyIds.length > 0
         ? serviceClient.from("property_vendors").select("*").in("property_id", propertyIds).order("vendor_name", { ascending: true })
         : emptyResult(),
-      ownerAccountIds.length > 0
+      includeInvoices && ownerAccountIds.length > 0
         ? serviceClient.from("owner_property_access").select("*").in("owner_account_id", ownerAccountIds).order("created_at", { ascending: false })
         : emptyResult(),
-      propertyIds.length > 0
+      includeOperations && propertyIds.length > 0
         ? serviceClient.from("property_calendars").select("*").in("property_id", propertyIds).order("created_at", { ascending: false })
         : emptyResult(),
-      maintenanceFlagIds.length > 0
+      includeOperations && maintenanceFlagIds.length > 0
         ? serviceClient.from("property_maintenance_flag_images").select("*").in("flag_id", maintenanceFlagIds).order("sort_order", { ascending: true })
         : emptyResult(),
-      inspectionLogIds.length > 0
+      includeOperations && inspectionLogIds.length > 0
         ? serviceClient.from("property_inspection_photos").select("*").in("inspection_log_id", inspectionLogIds).order("sort_order", { ascending: true })
         : emptyResult(),
     ]);
+    const childQueriesFinishedAt = Date.now();
 
     const childRequiredResponses = [
       cleanerAccountMembersRes,
@@ -346,16 +389,18 @@ export async function GET(request: Request) {
     }
 
     const sopIds = ((sopsRes.data ?? []) as Array<{ id: string }>).map((sop) => sop.id);
-    const sopImagesRes = sopIds.length > 0
+    const sopImagesRes = includeAll && sopIds.length > 0
       ? await serviceClient.from("property_sop_images").select("*").in("sop_id", sopIds).order("sort_order", { ascending: true })
       : { data: [], error: null };
+    const sopImagesFinishedAt = Date.now();
 
     if (sopImagesRes.error) {
       throw new Error(sopImagesRes.error.message);
     }
 
-    return Response.json({
+    const response = Response.json({
       ok: true,
+      scope,
       data: {
         properties,
         cleanerAccounts: cleanerAccountsRes.data ?? [],
@@ -406,6 +451,20 @@ export async function GET(request: Request) {
         chatHiddenItems: chatHiddenItemsRes.error && isOptionalTableError(chatHiddenItemsRes.error) ? [] : chatHiddenItemsRes.data ?? [],
       },
     });
+    const responseReadyAt = Date.now();
+    response.headers.set(
+      "Server-Timing",
+      [
+        `access;dur=${accessFinishedAt - requestStartedAt}`,
+        `primary;dur=${primaryQueriesFinishedAt - accessFinishedAt}`,
+        `children;dur=${childQueriesFinishedAt - primaryQueriesFinishedAt}`,
+        `sop_images;dur=${sopImagesFinishedAt - childQueriesFinishedAt}`,
+        `serialize;dur=${responseReadyAt - sopImagesFinishedAt}`,
+        `total;dur=${responseReadyAt - requestStartedAt}`,
+      ].join(", ")
+    );
+    response.headers.set("Cache-Control", "private, no-store");
+    return response;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not load admin dashboard data.";
     const status =
