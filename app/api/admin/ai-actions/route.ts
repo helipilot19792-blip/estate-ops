@@ -3,8 +3,17 @@ import { requireAiCopilotAccess, getAiCopilotBearerToken } from "@/lib/server/ai
 import { sendOwnerInvoiceReminderEmail } from "@/lib/server/owner-invoice-reminders";
 import { sendDirectProfileChatMessage } from "@/lib/server/direct-profile-chat";
 import { sendStaffPushNotifications } from "@/lib/server/staff-push-notifications";
+import { sendJobOfferEmailsForSlots } from "@/lib/server/job-notifications";
 import { isMissingAuditLogTableError, writeAuditLog } from "@/lib/server/audit-log";
 import { formatCurrency, normalizeCurrencyCode } from "@/lib/currency";
+import {
+  buildTurnoverRescuePlans,
+  type RescueCleaner,
+  type RescueHistorySlot,
+  type RescueJob,
+  type RescueSlot,
+  type TurnoverRescueCandidate,
+} from "@/lib/server/ai-turnover-rescue";
 import {
   analyzeStaffingAnomalies,
   type SupervisorCleanerAssignment,
@@ -56,6 +65,7 @@ type JobSlotRow = {
   cleaner_account_id: string | null;
   status: string;
   offered_at?: string | null;
+  accepted_at?: string | null;
   declined_at?: string | null;
   expires_at?: string | null;
   created_at?: string | null;
@@ -81,6 +91,7 @@ type BookingEventRow = {
 type CleanerAccountRow = {
   id: string;
   display_name: string | null;
+  active?: boolean | null;
 };
 
 type CleanerAccountMemberRow = {
@@ -100,6 +111,27 @@ type ProfileRow = {
 };
 
 type ProposedAction =
+  | {
+      id: string;
+      kind: "turnover_rescue";
+      priority: "high" | "medium";
+      category: "Staffing";
+      title: string;
+      reason: string;
+      recipientLabel: string;
+      channelLabel: "Job offer";
+      previewLabel: "Ranked recovery plan";
+      previewText: string;
+      canEditMessage: false;
+      payload: {
+        jobId: string;
+        slotId: string;
+        propertyId: string;
+        propertyName: string;
+        scheduledFor: string;
+        candidates: TurnoverRescueCandidate[];
+      };
+    }
   | {
       id: string;
       kind: "invoice_reminder";
@@ -282,6 +314,47 @@ function buildGuestRegistrationDraft(params: {
   return `${intro}${steps}`.trim();
 }
 
+function getRescueResponseWindowHours(scheduledFor: string, now = new Date()) {
+  const jobDate = new Date(`${scheduledFor}T12:00:00`);
+  const hoursUntilJob = (jobDate.getTime() - now.getTime()) / (60 * 60 * 1000);
+  if (hoursUntilJob > 7 * 24) return 48;
+  if (hoursUntilJob > 48) return 8;
+  return 2;
+}
+
+async function refreshRescueJobStaffing(serviceClient: any, jobId: string) {
+  const [{ data: job, error: jobError }, { data: slots, error: slotsError }] = await Promise.all([
+    serviceClient.from("turnover_jobs").select("id,cleaner_units_needed").eq("id", jobId).maybeSingle(),
+    serviceClient.from("turnover_job_slots").select("id,status,cleaner_account_id").eq("job_id", jobId),
+  ]);
+  if (jobError) throw new Error(jobError.message);
+  if (slotsError) throw new Error(slotsError.message);
+  if (!job) return;
+
+  const rows = slots ?? [];
+  const unitsNeeded = Math.max(1, Number(job.cleaner_units_needed || 1));
+  const accepted = rows.filter((slot: { status?: string | null }) => ["accepted", "in_progress", "completed"].includes(String(slot.status || "").toLowerCase())).length;
+  const offered = rows.filter((slot: { status?: string | null }) => String(slot.status || "").toLowerCase() === "offered").length;
+  const stranded = rows.some((slot: { status?: string | null; cleaner_account_id?: string | null }) => String(slot.status || "").toLowerCase() === "stranded" || !slot.cleaner_account_id);
+  const staffingStatus = accepted >= unitsNeeded
+    ? "fully_staffed"
+    : stranded
+      ? "stranded"
+      : accepted > 0 || offered > 0
+        ? "partially_filled"
+        : "unassigned";
+
+  const { error } = await serviceClient
+    .from("turnover_jobs")
+    .update({
+      status: accepted >= unitsNeeded ? "accepted" : offered > 0 ? "offered" : "open",
+      staffing_status: staffingStatus,
+      offered_at: offered > 0 ? new Date().toISOString() : null,
+    })
+    .eq("id", jobId);
+  if (error) throw new Error(error.message);
+}
+
 type OrganizationMemberProfileRow = {
   profile_id: string;
   role: string | null;
@@ -302,6 +375,7 @@ type OrganizationMemberProfileRow = {
 };
 
 function getDismissalCooldownMs(kind: ProposedAction["kind"]) {
+  if (kind === "turnover_rescue") return 4 * 60 * 60 * 1000;
   if (kind === "invoice_reminder") return 7 * 24 * 60 * 60 * 1000;
   if (kind === "guest_registration_reminder") return 3 * 24 * 60 * 60 * 1000;
   if (kind === "staffing_advisory") return 24 * 60 * 60 * 1000;
@@ -309,6 +383,7 @@ function getDismissalCooldownMs(kind: ProposedAction["kind"]) {
 }
 
 function getDismissalLabel(kind: ProposedAction["kind"]) {
+  if (kind === "turnover_rescue") return "4 hours";
   if (kind === "invoice_reminder") return "7 days";
   if (kind === "guest_registration_reminder") return "3 days";
   if (kind === "staffing_advisory") return "24 hours";
@@ -363,8 +438,6 @@ async function generateActions(organizationId: string, token: string) {
     invoicesRes,
     ownersRes,
     propertiesRes,
-    jobsRes,
-    slotsRes,
     cleanerAccountsRes,
     cleanerMembersRes,
     memberProfilesRes,
@@ -386,17 +459,8 @@ async function generateActions(organizationId: string, token: string) {
       .select("id,name,address")
       .eq("organization_id", organizationId),
     serviceClient
-      .from("turnover_jobs")
-      .select("id,property_id,scheduled_for")
-      .eq("organization_id", organizationId)
-      .in("scheduled_for", [todayYmd, tomorrowYmd]),
-    serviceClient
-      .from("turnover_job_slots")
-      .select("id,job_id,cleaner_account_id,status,offered_at")
-      .in("status", ["offered", "stranded"]),
-    serviceClient
       .from("cleaner_accounts")
-      .select("id,display_name")
+      .select("id,display_name,active")
       .eq("organization_id", organizationId),
     serviceClient
       .from("cleaner_account_members")
@@ -422,7 +486,7 @@ async function generateActions(organizationId: string, token: string) {
       .eq("guest_registration_required", true),
   ]);
 
-  for (const result of [invoicesRes, ownersRes, propertiesRes, jobsRes, slotsRes, cleanerAccountsRes, cleanerMembersRes, memberProfilesRes, knowledgeRes]) {
+  for (const result of [invoicesRes, ownersRes, propertiesRes, cleanerAccountsRes, cleanerMembersRes, memberProfilesRes, knowledgeRes]) {
     if (result.error) throw new Error(result.error.message);
   }
 
@@ -443,7 +507,7 @@ async function generateActions(organizationId: string, token: string) {
     anomalyJobIds.length > 0
       ? serviceClient
           .from("turnover_job_slots")
-          .select("id,job_id,cleaner_account_id,status,offered_at,declined_at,expires_at,created_at")
+          .select("id,job_id,cleaner_account_id,status,offered_at,accepted_at,declined_at,expires_at,created_at")
           .in("job_id", anomalyJobIds)
           .order("created_at", { ascending: true })
       : Promise.resolve({ data: [], error: null }),
@@ -466,13 +530,28 @@ async function generateActions(organizationId: string, token: string) {
     if (result.error) throw new Error(result.error.message);
   }
 
+  const cleanerAccountIds = ((cleanerAccountsRes.data ?? []) as CleanerAccountRow[]).map((account) => account.id);
+  const historySlotsRes = cleanerAccountIds.length > 0
+    ? await serviceClient
+        .from("turnover_job_slots")
+        .select("cleaner_account_id,status")
+        .in("cleaner_account_id", cleanerAccountIds)
+        .in("status", ["accepted", "in_progress", "completed", "declined"])
+        .limit(2000)
+    : { data: [], error: null };
+  if (historySlotsRes.error) throw new Error(historySlotsRes.error.message);
+
   const owners = new Map(
     ((ownersRes.data ?? []) as OwnerRow[]).map((owner) => [owner.id, owner])
   );
   const properties = new Map(
     ((propertiesRes.data ?? []) as PropertyRow[]).map((property) => [property.id, property])
   );
-  const jobs = new Map(((jobsRes.data ?? []) as JobRow[]).map((job) => [job.id, job]));
+  const jobs = new Map(
+    anomalyJobs
+      .filter((job) => job.scheduled_for && [todayYmd, tomorrowYmd].includes(job.scheduled_for))
+      .map((job) => [job.id, job as JobRow])
+  );
   const cleanerAccounts = new Map(
     ((cleanerAccountsRes.data ?? []) as CleanerAccountRow[]).map((account) => [account.id, account])
   );
@@ -498,6 +577,54 @@ async function generateActions(organizationId: string, token: string) {
   }
 
   const actions: ProposedAction[] = [];
+  const propertyNames = new Map(
+    ((propertiesRes.data ?? []) as PropertyRow[]).map((property) => [
+      property.id,
+      property.name || property.address || `Property ${property.id.slice(0, 8)}`,
+    ])
+  );
+  const { plans: turnoverRescuePlans, coverage: turnoverCoverage } = buildTurnoverRescuePlans({
+    jobs: anomalyJobs as RescueJob[],
+    slots: (anomalySlotsRes.data ?? []) as RescueSlot[],
+    assignments: (anomalyAssignmentsRes.data ?? []) as SupervisorCleanerAssignment[],
+    cleaners: (cleanerAccountsRes.data ?? []) as RescueCleaner[],
+    members: (cleanerMembersRes.data ?? []) as CleanerAccountMemberRow[],
+    historySlots: (historySlotsRes.data ?? []) as RescueHistorySlot[],
+    propertyNames,
+    profileNames: new Map(
+      Array.from(profiles.values()).map((profile) => [profile.id, profile.full_name || profile.email || "Cleaner"])
+    ),
+    todayYmd,
+    tomorrowYmd,
+  });
+
+  for (const plan of turnoverRescuePlans) {
+    const topCandidate = plan.candidates[0];
+    actions.push({
+      id: `turnover-rescue-${plan.jobId}-${plan.slotId}`,
+      kind: "turnover_rescue",
+      priority: plan.urgency,
+      category: "Staffing",
+      title: `Rescue coverage for ${plan.propertyName}`,
+      reason: `${plan.propertyName} still needs cleaner coverage for ${plan.scheduledFor === todayYmd ? "today" : "tomorrow"}.${plan.excludedConflictCount > 0 ? ` ${plan.excludedConflictCount} assigned cleaner${plan.excludedConflictCount === 1 ? " was" : "s were"} excluded for same-day conflicts.` : ""}`,
+      recipientLabel: topCandidate?.cleanerName || "No eligible cleaner found",
+      channelLabel: "Job offer",
+      previewLabel: "Ranked recovery plan",
+      previewText: topCandidate
+        ? `Offer the open slot to ${topCandidate.cleanerName}. The co-pilot ranked ${plan.candidates.length} eligible candidate${plan.candidates.length === 1 ? "" : "s"} after checking property priority, response history, prior declines, and same-day accepted jobs.`
+        : "No eligible assigned cleaner remains. Add a backup cleaner or choose an external coverage path before approving a job offer.",
+      canEditMessage: false,
+      payload: {
+        jobId: plan.jobId,
+        slotId: plan.slotId,
+        propertyId: plan.propertyId,
+        propertyName: plan.propertyName,
+        scheduledFor: plan.scheduledFor,
+        candidates: plan.candidates,
+      },
+    });
+  }
+  const rescueJobIds = new Set(turnoverRescuePlans.map((plan) => plan.jobId));
 
   const staffingAnomalies = analyzeStaffingAnomalies({
     jobs: anomalyJobs,
@@ -510,15 +637,13 @@ async function generateActions(organizationId: string, token: string) {
         account.display_name || `Cleaner ${account.id.slice(0, 8)}`,
       ])
     ),
-    propertyNames: new Map(
-      ((propertiesRes.data ?? []) as PropertyRow[]).map((property) => [
-        property.id,
-        property.name || property.address || `Property ${property.id.slice(0, 8)}`,
-      ])
-    ),
+    propertyNames,
   });
 
   for (const anomaly of staffingAnomalies.slice(0, 8)) {
+    if (rescueJobIds.has(anomaly.jobId) && ["expired_offer", "stranded_without_admin_event", "stranded_notification_failed"].includes(anomaly.code)) {
+      continue;
+    }
     actions.push({
       id: anomaly.id,
       kind: "staffing_advisory",
@@ -587,8 +712,10 @@ async function generateActions(organizationId: string, token: string) {
     reason: string;
   }> = [];
 
-  for (const slot of (slotsRes.data ?? []) as JobSlotRow[]) {
+  for (const slot of (anomalySlotsRes.data ?? []) as JobSlotRow[]) {
     if (!slot.cleaner_account_id) continue;
+    if (String(slot.status || "").toLowerCase() !== "offered") continue;
+    if (slot.expires_at && new Date(slot.expires_at).getTime() <= Date.now()) continue;
     const job = jobs.get(slot.job_id);
     if (!job?.scheduled_for) continue;
 
@@ -717,13 +844,24 @@ async function generateActions(organizationId: string, token: string) {
     actions
   );
 
-  return actions
+  const pendingActions = actions
     .filter((action) => !snoozedActionIds.has(action.id))
     .sort((a, b) => {
       const priorityRank = { high: 0, medium: 1 };
       return priorityRank[a.priority] - priorityRank[b.priority] || a.title.localeCompare(b.title);
-    })
-    .slice(0, 8);
+    });
+  const visibleActions = pendingActions.slice(0, 8);
+
+  return {
+    actions: visibleActions,
+    brief: {
+      needsActionNow: pendingActions.filter((action) => action.priority === "high").length,
+      atRisk: pendingActions.filter((action) => action.priority === "medium").length,
+      waiting: turnoverCoverage.waiting,
+      covered: turnoverCoverage.resolved,
+      generatedAt: new Date().toISOString(),
+    },
+  };
 }
 
 async function notifyHighPriorityActions(options: {
@@ -816,14 +954,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "Missing organizationId." }, { status: 400 });
     }
 
-    const actions = await generateActions(organizationId, token);
+    const { actions, brief } = await generateActions(organizationId, token);
     await notifyHighPriorityActions({
       organizationId,
       origin: request.nextUrl.origin,
       actions,
       token,
     });
-    return NextResponse.json({ ok: true, actions });
+    return NextResponse.json({ ok: true, actions, brief });
   } catch (error) {
     return NextResponse.json(
       { ok: false, error: getActionError(error, "Could not load AI actions.") },
@@ -881,6 +1019,160 @@ export async function POST(request: NextRequest) {
         { ok: false, error: "Explicit admin confirmation and complete action details are required." },
         { status: 400 }
       );
+    }
+
+    if (kind === "turnover_rescue") {
+      const jobId = String(payload?.jobId || "").trim();
+      const slotId = String(payload?.slotId || "").trim();
+      const selectedCandidateAccountId = String(body?.selectedCandidateAccountId || "").trim();
+      if (!jobId || !slotId || !selectedCandidateAccountId) {
+        return NextResponse.json({ ok: false, error: "Choose a ranked cleaner before approving this rescue plan." }, { status: 400 });
+      }
+
+      const [{ data: job, error: jobError }, { data: slot, error: slotError }] = await Promise.all([
+        serviceClient
+          .from("turnover_jobs")
+          .select("id,organization_id,property_id,scheduled_for,status")
+          .eq("id", jobId)
+          .eq("organization_id", organizationId)
+          .maybeSingle(),
+        serviceClient
+          .from("turnover_job_slots")
+          .select("id,job_id,cleaner_account_id,status,offered_at,accepted_at,declined_at")
+          .eq("id", slotId)
+          .eq("job_id", jobId)
+          .maybeSingle(),
+      ]);
+      if (jobError) throw new Error(jobError.message);
+      if (slotError) throw new Error(slotError.message);
+      if (!job || !slot) return NextResponse.json({ ok: false, error: "The turnover job or open slot no longer exists." }, { status: 404 });
+      if (!job.scheduled_for) return NextResponse.json({ ok: false, error: "The turnover has no scheduled date." }, { status: 409 });
+      if (["accepted", "in_progress", "completed"].includes(String(slot.status || "").toLowerCase())) {
+        return NextResponse.json({ ok: false, error: "This slot is already covered. Refresh the co-pilot plan." }, { status: 409 });
+      }
+
+      const [
+        { data: cleaner, error: cleanerError },
+        { data: assignment, error: assignmentError },
+        { data: priorDecline, error: priorDeclineError },
+      ] = await Promise.all([
+        serviceClient
+          .from("cleaner_accounts")
+          .select("id,display_name,active")
+          .eq("id", selectedCandidateAccountId)
+          .eq("organization_id", organizationId)
+          .maybeSingle(),
+        serviceClient
+          .from("property_cleaner_account_assignments")
+          .select("id,priority")
+          .eq("property_id", job.property_id)
+          .eq("cleaner_account_id", selectedCandidateAccountId)
+          .maybeSingle(),
+        serviceClient
+          .from("turnover_job_slots")
+          .select("id")
+          .eq("job_id", jobId)
+          .eq("cleaner_account_id", selectedCandidateAccountId)
+          .eq("status", "declined")
+          .limit(1)
+          .maybeSingle(),
+      ]);
+      if (cleanerError) throw new Error(cleanerError.message);
+      if (assignmentError) throw new Error(assignmentError.message);
+      if (priorDeclineError) throw new Error(priorDeclineError.message);
+      if (!cleaner || cleaner.active === false || !assignment) {
+        return NextResponse.json({ ok: false, error: "That cleaner is no longer an active assignment for this property." }, { status: 409 });
+      }
+      if (priorDecline) {
+        return NextResponse.json({ ok: false, error: "That cleaner already declined this turnover. Refresh for the next candidate." }, { status: 409 });
+      }
+
+      const { data: activeSlots, error: activeSlotsError } = await serviceClient
+        .from("turnover_job_slots")
+        .select("id,job_id")
+        .eq("cleaner_account_id", selectedCandidateAccountId)
+        .in("status", ["accepted", "in_progress"])
+        .neq("id", slotId);
+      if (activeSlotsError) throw new Error(activeSlotsError.message);
+      if ((activeSlots ?? []).some((row: { job_id?: string | null }) => row.job_id === jobId)) {
+        return NextResponse.json({ ok: false, error: "That cleaner is already active on another slot for this turnover." }, { status: 409 });
+      }
+      const activeJobIds = Array.from(new Set((activeSlots ?? []).map((row: { job_id?: string | null }) => row.job_id).filter(Boolean))) as string[];
+      if (activeJobIds.length > 0) {
+        const { data: conflictingJobs, error: conflictsError } = await serviceClient
+          .from("turnover_jobs")
+          .select("id")
+          .in("id", activeJobIds)
+          .eq("scheduled_for", job.scheduled_for)
+          .limit(1);
+        if (conflictsError) throw new Error(conflictsError.message);
+        if ((conflictingJobs ?? []).length > 0) {
+          return NextResponse.json({ ok: false, error: "That cleaner now has another accepted job on this date. Refresh for a new ranking." }, { status: 409 });
+        }
+      }
+
+      const now = new Date();
+      const offeredAt = now.toISOString();
+      const expiresAt = new Date(now.getTime() + getRescueResponseWindowHours(job.scheduled_for, now) * 60 * 60 * 1000).toISOString();
+      const previousCleanerAccountId = slot.cleaner_account_id || null;
+      const previousStatus = slot.status || null;
+      const { data: updatedSlot, error: updateError } = await serviceClient
+        .from("turnover_job_slots")
+        .update({
+          cleaner_account_id: selectedCandidateAccountId,
+          status: "offered",
+          offered_at: offeredAt,
+          expires_at: expiresAt,
+          accepted_at: null,
+          declined_at: null,
+          accepted_by_profile_id: null,
+          declined_by_profile_id: null,
+          offer_email_sent_at: null,
+          offer_reminder_sent_at: null,
+          day_of_reminder_sent_at: null,
+          offer_push_sent_at: null,
+          offer_reminder_push_sent_at: null,
+          day_of_reminder_push_sent_at: null,
+        })
+        .eq("id", slotId)
+        .eq("job_id", jobId)
+        .not("status", "in", "(accepted,in_progress,completed)")
+        .select("id")
+        .maybeSingle();
+      if (updateError) throw new Error(updateError.message);
+      if (!updatedSlot) return NextResponse.json({ ok: false, error: "The slot changed before approval. Refresh the plan." }, { status: 409 });
+
+      await refreshRescueJobStaffing(serviceClient, jobId);
+      const notificationResult = await sendJobOfferEmailsForSlots("cleaner", [slotId], request.nextUrl.origin, {
+        allowedOrganizationIds: new Set([organizationId]),
+      });
+      await writeAuditLog(serviceClient, {
+        actorProfileId: profile.id,
+        actorEmail: profile.email,
+        actorRole: profile.role,
+        organizationId,
+        actionType: "ai.supervisor.turnover_rescue_approved",
+        targetType: "turnover_job_slot",
+        targetId: slotId,
+        metadata: {
+          action_id: actionId,
+          job_id: jobId,
+          property_id: job.property_id,
+          scheduled_for: job.scheduled_for,
+          previous_cleaner_account_id: previousCleanerAccountId,
+          previous_status: previousStatus,
+          selected_cleaner_account_id: selectedCandidateAccountId,
+          selected_cleaner_name: cleaner.display_name || null,
+          assignment_priority: assignment.priority ?? null,
+          offer_expires_at: expiresAt,
+          notification_result: notificationResult,
+        },
+      });
+
+      return NextResponse.json({
+        ok: true,
+        message: `Job offer sent to ${cleaner.display_name || "the selected cleaner"}. The co-pilot will keep it in Waiting until they respond.`,
+      });
     }
 
     if (kind === "invoice_reminder") {
