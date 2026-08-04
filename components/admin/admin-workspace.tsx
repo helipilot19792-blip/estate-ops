@@ -2084,6 +2084,9 @@ export default function AdminPage() {
   const [selectedPropertyId, setSelectedPropertyId] = useState("");
   const [propertyWorkflowTab, setPropertyWorkflowTab] = useState<PropertyWorkflowTab>("directory");
   const [propertySetupTab, setPropertySetupTab] = useState<PropertySetupTab>("overview");
+  const [selectedPropertyName, setSelectedPropertyName] = useState("");
+  const [propertyNameDirty, setPropertyNameDirty] = useState(false);
+  const [savingSelectedPropertyName, setSavingSelectedPropertyName] = useState(false);
   const [selectedPropertyUnitsNeeded, setSelectedPropertyUnitsNeeded] = useState("1");
   const [selectedPropertyUnitsStrict, setSelectedPropertyUnitsStrict] = useState(false);
   const [selectedPropertyShowTeamStatus, setSelectedPropertyShowTeamStatus] = useState(true);
@@ -2928,6 +2931,8 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!selectedPropertyId) {
+      setSelectedPropertyName("");
+      setPropertyNameDirty(false);
       setDoorCode("");
       setAlarmCode("");
       setAccessNotes("");
@@ -2977,6 +2982,10 @@ export default function AdminPage() {
 
     const selectedProperty = properties.find((p) => p.id === selectedPropertyId);
     const linkedOwner = getOwnerForProperty(selectedPropertyId);
+
+    if (!propertyNameDirty) {
+      setSelectedPropertyName(selectedProperty?.name || "");
+    }
 
     if (!selectedPropertyOwnerDirty) {
       setSelectedPropertyOwnerName(linkedOwner?.full_name || "");
@@ -3037,6 +3046,7 @@ export default function AdminPage() {
     propertyDefaultsDirty,
     propertyManualDetailsDirty,
     propertyKnowledgeDirty,
+    propertyNameDirty,
     selectedPropertyOwnerDirty,
   ]);
 
@@ -7317,6 +7327,71 @@ This removes its linked members and deletes the grounds account.`
       setSavingSelectedPropertyDefaults(false);
     }
   }
+
+  async function saveSelectedPropertyName() {
+    if (!selectedPropertyId || !currentOrganizationId) return;
+
+    const propertyName = selectedPropertyName.trim();
+    if (!propertyName) {
+      setError("Property name is required.");
+      return;
+    }
+
+    if (propertyName.length > 160) {
+      setError("Property name must be 160 characters or fewer.");
+      return;
+    }
+
+    setError("");
+    setActionMessage("");
+    setSavingSelectedPropertyName(true);
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        throw new Error("No active admin session was found.");
+      }
+
+      const response = await fetch("/api/admin/property-name", {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          organizationId: currentOrganizationId,
+          propertyId: selectedPropertyId,
+          propertyName,
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || !payload?.ok || !payload?.property) {
+        throw new Error(payload?.error || "Could not save property name.");
+      }
+
+      const updatedProperty = payload.property as Property;
+      setProperties((current) =>
+        current.map((property) =>
+          property.id === updatedProperty.id ? { ...property, ...updatedProperty } : property
+        )
+      );
+      setSelectedPropertyName(updatedProperty.name || propertyName);
+      setPropertyNameDirty(false);
+      setActionMessage("Property name saved.");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Could not save property name.");
+    } finally {
+      setSavingSelectedPropertyName(false);
+    }
+  }
+
   async function saveSelectedPropertyOwner() {
     if (!selectedPropertyId) return;
 
@@ -24849,7 +24924,10 @@ This removes its linked members and deletes the grounds account.`
           <select
             className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
             value={selectedPropertyId}
-            onChange={(e) => setSelectedPropertyId(e.target.value)}
+            onChange={(e) => {
+              setPropertyNameDirty(false);
+              setSelectedPropertyId(e.target.value);
+            }}
           >
             <option value="">Select property</option>
             {properties.map((p) => (
@@ -24871,6 +24949,37 @@ This removes its linked members and deletes the grounds account.`
                   <p className="mt-1 text-sm text-[#7f7263]">
                     {selectedProperty?.address || "No address saved yet"}
                   </p>
+                  <form
+                    className="mt-4 max-w-xl rounded-[18px] border border-[#d8c7ab] bg-white p-3"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void saveSelectedPropertyName();
+                    }}
+                  >
+                    <label htmlFor="selected-property-name" className="text-xs font-semibold uppercase tracking-[0.14em] text-[#6f6255]">
+                      Property name
+                    </label>
+                    <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                      <input
+                        id="selected-property-name"
+                        value={selectedPropertyName}
+                        maxLength={160}
+                        onChange={(event) => {
+                          setSelectedPropertyName(event.target.value);
+                          setPropertyNameDirty(true);
+                        }}
+                        className="min-w-0 flex-1 rounded-[14px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-2.5 text-sm outline-none transition focus:border-[#b48d4e]"
+                        placeholder="Property name"
+                      />
+                      <button
+                        type="submit"
+                        disabled={savingSelectedPropertyName || !propertyNameDirty || !selectedPropertyName.trim()}
+                        className="rounded-full bg-[#241c15] px-4 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {savingSelectedPropertyName ? "Saving..." : "Save name"}
+                      </button>
+                    </div>
+                  </form>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <span className="rounded-full border border-[#d8c7ab] bg-white px-3 py-1 text-xs font-medium text-[#6f6255]">
                       {selectedPropertySavedCalendars.length} calendar
