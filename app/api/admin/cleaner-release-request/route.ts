@@ -95,6 +95,69 @@ async function refreshCleanerJobStaffing(service: any, jobId: string) {
   if (updateError) throw new Error(updateError.message);
 }
 
+function getRequestedCleanerAccountId(requestEvent: any) {
+  return String(
+    requestEvent?.account_id ||
+    requestEvent?.metadata?.cleaner_account_id ||
+    requestEvent?.metadata?.current_cleaner_account_id ||
+    ""
+  ).trim();
+}
+
+async function closeStaleReleaseRequest(options: {
+  service: any;
+  requestEvent: any;
+  profile: any;
+  user: any;
+  organizationId: string;
+  reason: string;
+  currentSlotStatus?: string | null;
+  currentCleanerAccountId?: string | null;
+}) {
+  const resolvedAt = new Date().toISOString();
+  const nextMetadata = {
+    ...(options.requestEvent.metadata || {}),
+    request_status: "closed_stale",
+    resolution_reason: options.reason,
+    resolved_at: resolvedAt,
+    resolved_by_profile_id: options.profile.id,
+    resolved_by_email: options.profile.email || options.user.email || null,
+    current_slot_status: options.currentSlotStatus || null,
+    current_cleaner_account_id: options.currentCleanerAccountId || null,
+  };
+
+  const { error: requestUpdateError } = await options.service
+    .from("staff_job_status_events")
+    .update({ metadata: nextMetadata })
+    .eq("id", options.requestEvent.id)
+    .eq("organization_id", options.organizationId);
+  if (requestUpdateError) throw new Error(requestUpdateError.message);
+
+  await writeAuditLog(options.service, {
+    actorProfileId: options.profile.id,
+    actorEmail: options.profile.email || options.user.email || null,
+    actorRole: options.profile.role,
+    organizationId: options.organizationId,
+    actionType: "admin.close_stale_cleaner_release_request",
+    targetType: "staff_job_status_event",
+    targetId: options.requestEvent.id,
+    metadata: {
+      job_id: options.requestEvent.job_id || null,
+      slot_id: options.requestEvent.metadata?.slot_id || null,
+      requested_cleaner_account_id: getRequestedCleanerAccountId(options.requestEvent) || null,
+      current_cleaner_account_id: options.currentCleanerAccountId || null,
+      current_slot_status: options.currentSlotStatus || null,
+      resolution_reason: options.reason,
+    },
+  });
+
+  return NextResponse.json({
+    ok: true,
+    reconciled: true,
+    message: "This release request was already stale, so it has been closed without changing any cleaner assignment.",
+  });
+}
+
 export async function POST(request: NextRequest) {
   if (!supabaseUrl || !publicSupabaseKey || !serviceRoleKey) {
     return NextResponse.json({ error: "Missing Supabase server environment variables." }, { status: 500 });
@@ -160,11 +223,41 @@ export async function POST(request: NextRequest) {
     }
 
     if (!slot) {
-      return NextResponse.json({ error: "Requested slot no longer exists." }, { status: 404 });
+      return closeStaleReleaseRequest({
+        service,
+        requestEvent,
+        profile,
+        user,
+        organizationId,
+        reason: "slot_no_longer_exists",
+      });
     }
 
-    if (String(slot.status || "").toLowerCase().trim() !== "accepted") {
-      return NextResponse.json({ error: "Only accepted slots can be released into the stranded queue." }, { status: 409 });
+    const currentSlotStatus = String(slot.status || "").toLowerCase().trim();
+    const requestedCleanerAccountId = getRequestedCleanerAccountId(requestEvent);
+    if (currentSlotStatus !== "accepted") {
+      return closeStaleReleaseRequest({
+        service,
+        requestEvent,
+        profile,
+        user,
+        organizationId,
+        reason: "slot_is_no_longer_accepted",
+        currentSlotStatus,
+        currentCleanerAccountId: slot.cleaner_account_id,
+      });
+    }
+    if (!requestedCleanerAccountId || requestedCleanerAccountId !== String(slot.cleaner_account_id || "")) {
+      return closeStaleReleaseRequest({
+        service,
+        requestEvent,
+        profile,
+        user,
+        organizationId,
+        reason: requestedCleanerAccountId ? "slot_now_belongs_to_another_cleaner" : "request_has_no_cleaner_identity",
+        currentSlotStatus,
+        currentCleanerAccountId: slot.cleaner_account_id,
+      });
     }
 
     const { data: updatedSlot, error: updateError } = await service
@@ -180,6 +273,8 @@ export async function POST(request: NextRequest) {
         expires_at: null,
       })
       .eq("id", slot.id)
+      .eq("cleaner_account_id", requestedCleanerAccountId)
+      .eq("status", "accepted")
       .select("id, job_id")
       .maybeSingle();
 
