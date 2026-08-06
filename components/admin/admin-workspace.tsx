@@ -1931,6 +1931,7 @@ export default function AdminPage() {
   ]);
   const [teamWorkflowTab, setTeamWorkflowTab] = useState<TeamWorkflowTab>("invites");
   const [teamInviteRole, setTeamInviteRole] = useState<TeamInviteRole>("admin");
+  const [selectedInvitationId, setSelectedInvitationId] = useState<string | null>(null);
   const {
     conversationId: bulletinConversationId,
     unreadCount: bulletinUnreadCount,
@@ -11500,6 +11501,50 @@ This removes its linked members and deletes the grounds account.`
 
   const invitationStatusRows = useMemo(() => {
     const teamRows = organizationInvites.map((invite) => {
+      const normalizedEmail = invite.email.trim().toLowerCase();
+      const profile = profiles.find(
+        (entry) => entry.email?.trim().toLowerCase() === normalizedEmail
+      );
+      const linkedAccountIds = new Set<string>();
+
+      if (profile && invite.role === "cleaner") {
+        cleanerAccountMembers
+          .filter((member) => member.profile_id === profile.id)
+          .forEach((member) => linkedAccountIds.add(member.cleaner_account_id));
+      }
+      if (profile && invite.role === "grounds") {
+        groundsAccountMembers
+          .filter((member) => member.profile_id === profile.id)
+          .forEach((member) => linkedAccountIds.add(member.grounds_account_id));
+      }
+
+      const linkedCleanerAccounts = invite.role === "cleaner"
+        ? cleanerAccounts.filter(
+            (account) =>
+              linkedAccountIds.has(account.id) || account.email?.trim().toLowerCase() === normalizedEmail
+          )
+        : [];
+      const linkedGroundsAccounts = invite.role === "grounds"
+        ? groundsAccounts.filter(
+            (account) =>
+              linkedAccountIds.has(account.id) || account.email?.trim().toLowerCase() === normalizedEmail
+          )
+        : [];
+      const accountIds = new Set([
+        ...linkedCleanerAccounts.map((account) => account.id),
+        ...linkedGroundsAccounts.map((account) => account.id),
+      ]);
+      const propertyIds = new Set(
+        invite.role === "cleaner"
+          ? assignments
+              .filter((assignment) => accountIds.has(assignment.cleaner_account_id))
+              .map((assignment) => assignment.property_id)
+          : invite.role === "grounds"
+            ? groundsAssignments
+                .filter((assignment) => accountIds.has(assignment.grounds_account_id))
+                .map((assignment) => assignment.property_id)
+            : []
+      );
       const status = invite.accepted_at
         ? "accepted"
         : invite.status === "revoked"
@@ -11519,6 +11564,23 @@ This removes its linked members and deletes the grounds account.`
         sentAt: invite.sent_at || invite.created_at || null,
         acceptedAt: invite.accepted_at || null,
         expiresAt: invite.expires_at || null,
+        phone:
+          profile?.phone ||
+          invite.phone ||
+          linkedCleanerAccounts.find((account) => account.phone)?.phone ||
+          linkedGroundsAccounts.find((account) => account.phone)?.phone ||
+          null,
+        profileId: profile?.id || null,
+        accountNames: [
+          ...linkedCleanerAccounts.map((account) => account.display_name || account.email || "Cleaner team"),
+          ...linkedGroundsAccounts.map((account) => account.display_name || account.email || "Grounds team"),
+        ],
+        properties: properties
+          .filter((property) => propertyIds.has(property.id))
+          .map((property) => ({ id: property.id, name: property.name, address: property.address })),
+        accountActive:
+          linkedCleanerAccounts[0]?.active ?? linkedGroundsAccounts[0]?.active ?? null,
+        joinedAt: profile?.created_at || null,
         canRevoke: !invite.accepted_at && (invite.status === "pending" || invite.status === "sent" || !invite.status),
         canRemove: invite.role === "cleaner" || invite.role === "grounds",
       };
@@ -11526,27 +11588,64 @@ This removes its linked members and deletes the grounds account.`
 
     const ownerRows = ownerAccounts
       .filter((owner) => owner.invite_sent_at || owner.invite_accepted_at)
-      .map((owner) => ({
-        id: `owner-${owner.id}`,
-        sourceId: owner.id,
-        kind: "owner" as const,
-        name: owner.full_name || owner.email,
-        email: owner.email,
-        role: "owner" as const,
-        status: owner.invite_accepted_at ? "accepted" : "sent",
-        sentAt: owner.invite_sent_at || null,
-        acceptedAt: owner.invite_accepted_at || null,
-        expiresAt: null,
-        canRevoke: false,
-        canRemove: false,
-      }));
+      .map((owner) => {
+        const normalizedEmail = owner.email.trim().toLowerCase();
+        const profile = profiles.find(
+          (entry) =>
+            entry.id === owner.profile_id || entry.email?.trim().toLowerCase() === normalizedEmail
+        );
+        const propertyIds = new Set(
+          ownerPropertyAccess
+            .filter((access) => access.owner_account_id === owner.id)
+            .map((access) => access.property_id)
+        );
+
+        return {
+          id: `owner-${owner.id}`,
+          sourceId: owner.id,
+          kind: "owner" as const,
+          name: owner.full_name || owner.email,
+          email: owner.email,
+          role: "owner" as const,
+          status: owner.invite_accepted_at ? "accepted" : "sent",
+          sentAt: owner.invite_sent_at || null,
+          acceptedAt: owner.invite_accepted_at || null,
+          expiresAt: null,
+          phone: profile?.phone || null,
+          profileId: profile?.id || owner.profile_id || null,
+          accountNames: [] as string[],
+          properties: properties
+            .filter((property) => propertyIds.has(property.id))
+            .map((property) => ({ id: property.id, name: property.name, address: property.address })),
+          accountActive: owner.is_active,
+          joinedAt: profile?.created_at || owner.created_at || null,
+          canRevoke: false,
+          canRemove: false,
+        };
+      });
 
     return [...teamRows, ...ownerRows].sort((a, b) => {
       const aDate = a.acceptedAt || a.sentAt || "";
       const bDate = b.acceptedAt || b.sentAt || "";
       return bDate.localeCompare(aDate);
     });
-  }, [organizationInvites, ownerAccounts]);
+  }, [
+    assignments,
+    cleanerAccountMembers,
+    cleanerAccounts,
+    groundsAccountMembers,
+    groundsAccounts,
+    groundsAssignments,
+    organizationInvites,
+    ownerAccounts,
+    ownerPropertyAccess,
+    profiles,
+    properties,
+  ]);
+
+  const selectedInvitation = selectedInvitationId
+    ? invitationStatusRows.find((invite) => invite.id === selectedInvitationId) || null
+    : null;
 
   const filteredDocumentVaultRows = useMemo(
     () =>
@@ -14384,7 +14483,21 @@ This removes its linked members and deletes the grounds account.`
         <div className="mt-3 grid gap-3 lg:grid-cols-2">
           {invitationStatusRows.length > 0 ? (
             invitationStatusRows.map((invite) => (
-              <div key={invite.id} className="rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-4">
+              <div
+                key={invite.id}
+                role="button"
+                tabIndex={0}
+                aria-label={`View all available details for ${invite.name}`}
+                onClick={() => setSelectedInvitationId(invite.id)}
+                onKeyDown={(event) => {
+                  if (event.target !== event.currentTarget) return;
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setSelectedInvitationId(invite.id);
+                  }
+                }}
+                className="group cursor-pointer rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-4 text-left transition hover:border-[#cdb48d] hover:bg-white hover:shadow-[0_12px_30px_rgba(36,28,21,0.08)] focus:outline-none focus:ring-2 focus:ring-[#b48d4e]/40"
+              >
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
@@ -14408,7 +14521,10 @@ This removes its linked members and deletes the grounds account.`
                       {invite.canRevoke && (invite.role !== "admin" || canManageAdminAccess) ? (
                         <button
                           type="button"
-                          onClick={() => void deleteOrganizationInvite(invite.sourceId)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void deleteOrganizationInvite(invite.sourceId);
+                          }}
                           disabled={deletingOrganizationInviteId === invite.sourceId}
                           className="rounded-full border border-[#efc6c6] bg-[#fff5f5] px-4 py-2 text-sm font-medium text-[#8a2e22] transition hover:bg-[#fff0f0] disabled:opacity-60"
                         >
@@ -14418,13 +14534,14 @@ This removes its linked members and deletes the grounds account.`
                       {invite.canRemove && (invite.role === "cleaner" || invite.role === "grounds") ? (
                         <button
                           type="button"
-                          onClick={() =>
+                          onClick={(event) => {
+                            event.stopPropagation();
                             void removeTeamMemberCompletely({
                               inviteId: invite.sourceId,
                               email: invite.email,
                               role: invite.role === "cleaner" ? "cleaner" : "grounds",
-                            })
-                          }
+                            });
+                          }}
                           disabled={removingTeamInviteKey === `${invite.role}:${invite.email.trim().toLowerCase()}`}
                           className="rounded-full border border-[#f3b4b4] bg-white px-4 py-2 text-sm font-medium text-[#9f1d1d] transition hover:bg-[#fff5f5] disabled:opacity-60"
                         >
@@ -14435,6 +14552,10 @@ This removes its linked members and deletes the grounds account.`
                       ) : null}
                     </div>
                   ) : null}
+                </div>
+                <div className="mt-3 flex items-center gap-1.5 border-t border-[#eadfce] pt-3 text-xs font-semibold text-[#8a6a3d]">
+                  <Eye size={14} strokeWidth={2.2} aria-hidden="true" />
+                  <span className="group-hover:underline">View all available details</span>
                 </div>
               </div>
             ))
@@ -28399,6 +28520,156 @@ This removes its linked members and deletes the grounds account.`
 
   return (
     <main className="admin-shell min-h-screen">
+      {selectedInvitation ? (
+        <div
+          className="fixed inset-0 z-[130] flex items-center justify-center bg-black/45 p-4"
+          role="presentation"
+          onClick={() => setSelectedInvitationId(null)}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="invitation-person-details-title"
+            onClick={(event) => event.stopPropagation()}
+            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[28px] border border-[#eadfce] bg-white p-5 shadow-[0_28px_90px_rgba(15,23,42,0.3)] md:p-6"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#8a7b68]">
+                  Person details
+                </div>
+                <h2 id="invitation-person-details-title" className="mt-2 text-2xl font-semibold text-[#241c15]">
+                  {selectedInvitation.name}
+                </h2>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${getInviteStatusTone(selectedInvitation.status)}`}>
+                    {formatInviteStatus(selectedInvitation.status)}
+                  </span>
+                  <span className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-2.5 py-0.5 text-[11px] font-semibold capitalize text-[#6f6255]">
+                    {selectedInvitation.role}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedInvitationId(null)}
+                className="shrink-0 rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-2 text-sm font-semibold text-[#5f5245] transition hover:bg-white"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              <div className="rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+                <h3 className="text-sm font-semibold text-[#241c15]">Contact information</h3>
+                <dl className="mt-3 space-y-3 text-sm">
+                  <div>
+                    <dt className="text-xs font-medium uppercase tracking-[0.14em] text-[#8a7b68]">Full name</dt>
+                    <dd className="mt-1 font-medium text-[#241c15]">{selectedInvitation.name}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs font-medium uppercase tracking-[0.14em] text-[#8a7b68]">Email</dt>
+                    <dd className="mt-1 break-all">
+                      <a className="font-medium text-[#7b5b2f] hover:underline" href={`mailto:${selectedInvitation.email}`}>
+                        {selectedInvitation.email}
+                      </a>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs font-medium uppercase tracking-[0.14em] text-[#8a7b68]">Phone number</dt>
+                    <dd className="mt-1">
+                      {selectedInvitation.phone ? (
+                        <a className="font-medium text-[#7b5b2f] hover:underline" href={`tel:${selectedInvitation.phone}`}>
+                          {selectedInvitation.phone}
+                        </a>
+                      ) : (
+                        <span className="text-[#7f7263]">No phone number saved</span>
+                      )}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+
+              <div className="rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+                <h3 className="text-sm font-semibold text-[#241c15]">Portal account</h3>
+                <dl className="mt-3 space-y-3 text-sm">
+                  <div>
+                    <dt className="text-xs font-medium uppercase tracking-[0.14em] text-[#8a7b68]">Account connection</dt>
+                    <dd className="mt-1 font-medium text-[#241c15]">
+                      {selectedInvitation.profileId ? "Connected" : "No portal profile linked"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs font-medium uppercase tracking-[0.14em] text-[#8a7b68]">Account status</dt>
+                    <dd className="mt-1 font-medium text-[#241c15]">
+                      {selectedInvitation.accountActive === null
+                        ? "Not available"
+                        : selectedInvitation.accountActive
+                          ? "Active"
+                          : "Inactive"}
+                    </dd>
+                  </div>
+                  {selectedInvitation.joinedAt ? (
+                    <div>
+                      <dt className="text-xs font-medium uppercase tracking-[0.14em] text-[#8a7b68]">Profile created</dt>
+                      <dd className="mt-1 font-medium text-[#241c15]">{formatDateTime(selectedInvitation.joinedAt)}</dd>
+                    </div>
+                  ) : null}
+                  {selectedInvitation.accountNames.length > 0 ? (
+                    <div>
+                      <dt className="text-xs font-medium uppercase tracking-[0.14em] text-[#8a7b68]">Linked team</dt>
+                      <dd className="mt-1 font-medium text-[#241c15]">{selectedInvitation.accountNames.join(", ")}</dd>
+                    </div>
+                  ) : null}
+                </dl>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+              <h3 className="text-sm font-semibold text-[#241c15]">Linked properties and addresses</h3>
+              {selectedInvitation.properties.length > 0 ? (
+                <div className="mt-3 grid gap-2">
+                  {selectedInvitation.properties.map((property) => (
+                    <div key={property.id} className="flex items-start gap-3 rounded-[16px] border border-[#eadfce] bg-white px-3 py-3">
+                      <MapPin className="mt-0.5 shrink-0 text-[#9b7844]" size={17} strokeWidth={2.1} aria-hidden="true" />
+                      <div className="min-w-0">
+                        <div className="font-medium text-[#241c15]">{property.name || property.address || "Unnamed property"}</div>
+                        <div className="mt-0.5 text-sm text-[#7f7263]">{property.address || "No address saved"}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-2 text-sm text-[#7f7263]">No linked property addresses are available for this person.</p>
+              )}
+            </div>
+
+            <div className="mt-4 rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+              <h3 className="text-sm font-semibold text-[#241c15]">Invitation activity</h3>
+              <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-3">
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-[0.14em] text-[#8a7b68]">Sent</dt>
+                  <dd className="mt-1 font-medium text-[#241c15]">
+                    {selectedInvitation.sentAt ? formatDateTime(selectedInvitation.sentAt) : "Not available"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-[0.14em] text-[#8a7b68]">Accepted</dt>
+                  <dd className="mt-1 font-medium text-[#241c15]">
+                    {selectedInvitation.acceptedAt ? formatDateTime(selectedInvitation.acceptedAt) : "Not accepted"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-[0.14em] text-[#8a7b68]">Expires</dt>
+                  <dd className="mt-1 font-medium text-[#241c15]">
+                    {selectedInvitation.expiresAt ? formatDateTime(selectedInvitation.expiresAt) : "Not applicable"}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+          </section>
+        </div>
+      ) : null}
       {selectedStaffContact ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4">
           <div className="w-full max-w-sm rounded-[24px] border border-[#eadfce] bg-white p-5 shadow-[0_24px_70px_rgba(15,23,42,0.24)]">
