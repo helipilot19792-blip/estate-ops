@@ -190,7 +190,7 @@ type Property = {
   default_cleaner_units_needed: number;
   cleaner_units_required_strict: boolean;
   show_team_status_to_cleaners: boolean;
-  cleaner_assignment_mode?: "priority" | "training_rotation" | null;
+  cleaner_assignment_mode?: "priority" | "training_rotation" | "manual" | null;
   cleaner_rotation_next_cleaner_account_id?: string | null;
 };
 
@@ -5921,7 +5921,7 @@ export default function AdminPage() {
     await loadData();
   }
 
-  async function updateCleanerAssignmentMode(property: Property, mode: "priority" | "training_rotation") {
+  async function updateCleanerAssignmentMode(property: Property, mode: "priority" | "training_rotation" | "manual") {
     if (!currentOrganizationId) {
       setError("Choose an organization before updating cleaner rotation.");
       return;
@@ -5962,6 +5962,24 @@ export default function AdminPage() {
         body: JSON.stringify({
           organizationId: currentOrganizationId,
           propertyId: property.id,
+          wifiNetwork: property.wifi_network ?? "",
+          wifiPassword: property.wifi_password ?? "",
+          guestDeviceWelcomeMessage: property.guest_device_welcome_message ?? "",
+          guestDeviceLocalInfo: property.guest_device_local_info ?? "",
+          garbageDay: property.garbage_day ?? "",
+          garbageNotes: property.garbage_notes ?? "",
+          garbagePickupWeekday: property.garbage_pickup_weekday ?? null,
+          garbageRotationAnchorDate: property.garbage_rotation_anchor_date ?? "",
+          garbageWeekALabel: property.garbage_week_a_label ?? "Garbage + recycling",
+          garbageWeekBLabel: property.garbage_week_b_label ?? "Recycling only",
+          latitude: property.latitude ?? "",
+          longitude: property.longitude ?? "",
+          defaultCheckinTime: property.default_checkin_time ?? "",
+          defaultCheckoutTime: property.default_checkout_time ?? "",
+          defaultTurnoverPayout: property.default_turnover_payout ?? 0,
+          defaultCleanerUnitsNeeded: property.default_cleaner_units_needed,
+          cleanerUnitsRequiredStrict: property.cleaner_units_required_strict,
+          showTeamStatusToCleaners: property.show_team_status_to_cleaners,
           cleanerAssignmentMode: mode,
           cleanerRotationNextCleanerAccountId: nextCleanerId,
         }),
@@ -5987,6 +6005,8 @@ export default function AdminPage() {
       setActionMessage(
         mode === "training_rotation"
           ? `Training Rotation turned on for ${property.name || property.address || "property"}.`
+          : mode === "manual"
+            ? `Full Manual mode turned on for ${property.name || property.address || "property"}. Admin must choose the cleaner for every new cleaning.`
           : `Primary/backup mode restored for ${property.name || property.address || "property"}.`
       );
       await loadData();
@@ -6170,8 +6190,11 @@ export default function AdminPage() {
     setJobUnitsNeeded("1");
     setJobUnitsStrict(false);
     setJobShowTeamStatus(true);
-    setActionMessage(`Job created successfully.${notificationNote}`.trim());
-    alert(`Cleaning job created.${notificationNote}`.trim());
+    const creationMessage = result.manualAssignment
+      ? "Cleaning job created. Choose a cleaner from this property's eligible cleaner list to send the offer."
+      : `Cleaning job created.${notificationNote}`.trim();
+    setActionMessage(creationMessage);
+    alert(creationMessage);
     await loadData();
     setActiveSection("jobs");
     setHighlightedJobId(result.jobId);
@@ -10041,6 +10064,10 @@ This removes its linked members and deletes the grounds account.`
     if (accepted >= needed) return "Fully staffed";
     if (accepted > 0 && job.cleaner_units_required_strict) return "Partially filled";
     if (accepted > 0 && !job.cleaner_units_required_strict) return "Ready";
+    if (
+      (stranded > 0 || job.staffing_status === "stranded") &&
+      properties.find((property) => property.id === job.property_id)?.cleaner_assignment_mode === "manual"
+    ) return "Manual assignment needed";
     if (stranded > 0 || job.staffing_status === "stranded") return "Stranded";
     if (offered > 0) return "Jobs waiting for acceptance";
     if (declined > 0) return "Reoffer needed";
@@ -10081,6 +10108,28 @@ This removes its linked members and deletes the grounds account.`
       }),
     [waitingJobs, jobSlotsByJobId, now]
   );
+
+  const manualAssignmentJobs = useMemo(
+    () =>
+      jobs.filter((job) => {
+        const property = properties.find((item) => item.id === job.property_id);
+        if (property?.cleaner_assignment_mode !== "manual") return false;
+
+        const slots = jobSlotsByJobId[job.id] ?? [];
+        const hasStaffedSlot = slots.some((slot) =>
+          ["offered", "accepted", "in_progress", "completed"].includes(
+            String(slot.status || "").toLowerCase()
+          )
+        );
+        return slots.length > 0 && !hasStaffedSlot;
+      }),
+    [jobs, jobSlotsByJobId, properties]
+  );
+
+  const nonManualStrandedJobs = useMemo(() => {
+    const manualJobIds = new Set(manualAssignmentJobs.map((job) => job.id));
+    return strandedJobs.filter((job) => !manualJobIds.has(job.id));
+  }, [manualAssignmentJobs, strandedJobs]);
 
   function jumpToJobs(type: "waiting" | "stranded") {
     const firstWaitingJobId = [...waitingJobs]
@@ -10303,11 +10352,33 @@ This removes its linked members and deletes the grounds account.`
   );
 
   const filteredStrandedJobs = useMemo(
-    () =>
-      selectedJobsPropertyFilter === "all"
-        ? strandedJobs
-        : strandedJobs.filter((job) => job.property_id === selectedJobsPropertyFilter),
-    [strandedJobs, selectedJobsPropertyFilter]
+    () => {
+      const rows = new Map<string, StrandedJob>();
+
+      for (const job of strandedJobs) rows.set(job.id, job);
+      for (const job of manualAssignmentJobs) {
+        const property = properties.find((item) => item.id === job.property_id);
+        rows.set(job.id, {
+          id: job.id,
+          property_id: job.property_id,
+          property_name: property?.name || null,
+          property_address: property?.address || null,
+          status: job.status,
+          notes: job.notes,
+          created_at: job.created_at,
+          scheduled_for: job.scheduled_for,
+          cleaner_units_needed: job.cleaner_units_needed,
+          cleaner_units_required_strict: job.cleaner_units_required_strict,
+          staffing_status: job.staffing_status || null,
+        });
+      }
+
+      const assignmentNeededJobs = [...rows.values()];
+      return selectedJobsPropertyFilter === "all"
+        ? assignmentNeededJobs
+        : assignmentNeededJobs.filter((job) => job.property_id === selectedJobsPropertyFilter);
+    },
+    [manualAssignmentJobs, properties, strandedJobs, selectedJobsPropertyFilter]
   );
 
   const adminJobsByDate = useMemo(() => {
@@ -11852,9 +11923,20 @@ This removes its linked members and deletes the grounds account.`
     const alerts: Array<{
       key: string;
       label: string;
+      actionLabel?: string;
       tone: "amber" | "red" | "green";
       onClick: () => void;
     }> = [];
+
+    if (manualAssignmentJobs.length > 0) {
+      alerts.push({
+        key: "manual-cleaner-assignment",
+        label: `Choose a cleaner for ${manualAssignmentJobs.length} manual cleaning${manualAssignmentJobs.length === 1 ? "" : "s"}`,
+        actionLabel: "Choose cleaner",
+        tone: "amber",
+        onClick: () => jumpToJobs("stranded"),
+      });
+    }
 
     if (waitingJobs.length > 0) {
       alerts.push({
@@ -11874,10 +11956,10 @@ This removes its linked members and deletes the grounds account.`
       });
     }
 
-    if (strandedJobs.length > 0) {
+    if (nonManualStrandedJobs.length > 0) {
       alerts.push({
         key: "stranded",
-        label: `${strandedJobs.length} stranded job${strandedJobs.length === 1 ? "" : "s"}`,
+        label: `${nonManualStrandedJobs.length} stranded job${nonManualStrandedJobs.length === 1 ? "" : "s"}`,
         tone: "red",
         onClick: () => jumpToJobs("stranded"),
       });
@@ -11924,7 +12006,8 @@ This removes its linked members and deletes the grounds account.`
   }, [
     waitingJobs.length,
     overdueWaitingJobs.length,
-    strandedJobs.length,
+    manualAssignmentJobs.length,
+    nonManualStrandedJobs.length,
     maintenanceFlagCounts.open,
     maintenanceFlagCounts.urgent,
     dueInspectionRules.length,
@@ -12550,14 +12633,26 @@ This removes its linked members and deletes the grounds account.`
       });
     }
 
-    if (strandedJobs.length > 0) {
+    if (nonManualStrandedJobs.length > 0) {
       items.push({
         key: "stranded-jobs",
         title: "Stranded jobs",
         detail: "Cleaning jobs need manual assignment or review.",
-        count: strandedJobs.length,
+        count: nonManualStrandedJobs.length,
         tone: "red",
         actionLabel: "Review jobs",
+        onClick: () => jumpToJobs("stranded"),
+      });
+    }
+
+    if (manualAssignmentJobs.length > 0) {
+      items.push({
+        key: "manual-cleaner-assignment",
+        title: "Manual cleaner assignments",
+        detail: "New cleanings are waiting for an admin to choose a cleaner assigned to that property.",
+        count: manualAssignmentJobs.length,
+        tone: "amber",
+        actionLabel: "Choose cleaner",
         onClick: () => jumpToJobs("stranded"),
       });
     }
@@ -12655,7 +12750,8 @@ This removes its linked members and deletes the grounds account.`
     bulletinUnreadCount,
     failedNotificationStats.total,
     failedNotificationStats.overdue,
-    strandedJobs.length,
+    nonManualStrandedJobs.length,
+    manualAssignmentJobs.length,
     maintenanceFlagCounts.open,
     maintenanceFlagCounts.urgent,
     dueInspectionRules.length,
@@ -22005,11 +22101,14 @@ This removes its linked members and deletes the grounds account.`
               .map((property) => {
                 const propertyAssignments = getCleanerAssignmentsForProperty(property.id);
                 const trainingEnabled = property.cleaner_assignment_mode === "training_rotation";
+                const manualEnabled = property.cleaner_assignment_mode === "manual";
                 const rotationOrder = getTrainingRotationOrder(property);
                 const nextCleanerId = rotationOrder[0]?.cleaner_account_id || propertyAssignments[0]?.cleaner_account_id || null;
                 return (
                   <div key={`cleaner-roster-${property.id}`} className={`rounded-[22px] border p-5 shadow-sm ${
-                    trainingEnabled
+                    manualEnabled
+                      ? "border-[#c9b7e8] bg-[#f8f4ff]"
+                      : trainingEnabled
                       ? "border-[#f1cf8f] bg-[#fff8e8]"
                       : "border-[#b8d8ea] bg-white"
                   }`}>
@@ -22017,7 +22116,9 @@ This removes its linked members and deletes the grounds account.`
                       <div>
                         <div className="text-lg font-semibold text-[#12394a]">{property.name || property.address || "Property"}</div>
                         <div className="mt-1 text-xs leading-5 text-[#4f6e7c]">
-                          {trainingEnabled
+                          {manualEnabled
+                            ? "Full Manual mode is on. New cleanings wait for admin to choose from this property's cleaner list."
+                            : trainingEnabled
                             ? `Training rotation is on. The next job starts with ${getCleanerAccountName(nextCleanerId)}.`
                             : "Primary cleaner receives new jobs first, followed by backups."}
                         </div>
@@ -22025,11 +22126,19 @@ This removes its linked members and deletes the grounds account.`
                       <div className="flex flex-wrap gap-2">
                         <button
                           type="button"
-                          disabled={savingCleanerRotationPropertyId === property.id || !trainingEnabled}
+                          disabled={savingCleanerRotationPropertyId === property.id || (!trainingEnabled && !manualEnabled)}
                           onClick={() => void updateCleanerAssignmentMode(property, "priority")}
                           className="rounded-full border border-[#b8d8ea] bg-white px-3 py-1.5 text-xs font-semibold text-[#26708f] transition hover:bg-[#eef8fd] disabled:opacity-50"
                         >
                           Primary/backup
+                        </button>
+                        <button
+                          type="button"
+                          disabled={savingCleanerRotationPropertyId === property.id || manualEnabled}
+                          onClick={() => void updateCleanerAssignmentMode(property, "manual")}
+                          className="rounded-full border border-[#c9b7e8] bg-[#f8f4ff] px-3 py-1.5 text-xs font-semibold text-[#68419a] transition hover:bg-[#f0e8ff] disabled:opacity-50"
+                        >
+                          Full Manual
                         </button>
                         <button
                           type="button"
@@ -22041,22 +22150,26 @@ This removes its linked members and deletes the grounds account.`
                         </button>
                       </div>
                     </div>
-                    <div className={`mt-4 overflow-hidden rounded-[16px] border ${trainingEnabled ? "border-[#f1cf8f]" : "border-[#d7e9f3]"}`}>
+                    <div className={`mt-4 overflow-hidden rounded-[16px] border ${manualEnabled ? "border-[#c9b7e8]" : trainingEnabled ? "border-[#f1cf8f]" : "border-[#d7e9f3]"}`}>
                       {propertyAssignments.map((assignment, index) => {
                         const members = cleanerMembersByAccountId[assignment.cleaner_account_id] ?? [];
                         const memberLabel = members.length
                           ? members.map((member) => member.full_name || member.email || member.id).join(", ")
                           : getCleanerAccountName(assignment.cleaner_account_id);
-                        const roleLabel = trainingEnabled
+                        const roleLabel = manualEnabled
+                          ? "Eligible"
+                          : trainingEnabled
                           ? `Rotation ${index + 1}`
                           : getPriorityLabel(assignment.priority);
                         return (
                           <div
                             key={assignment.id}
-                            className={`flex items-center gap-3 px-4 py-3 ${index > 0 ? "border-t" : ""} ${trainingEnabled ? "border-[#f1cf8f]" : "border-[#d7e9f3]"}`}
+                            className={`flex items-center gap-3 px-4 py-3 ${index > 0 ? "border-t" : ""} ${manualEnabled ? "border-[#c9b7e8]" : trainingEnabled ? "border-[#f1cf8f]" : "border-[#d7e9f3]"}`}
                           >
                             <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
-                              trainingEnabled
+                              manualEnabled
+                                ? "border-[#c9b7e8] bg-white text-[#68419a]"
+                                : trainingEnabled
                                 ? "border-[#f1cf8f] bg-white text-[#8a6112]"
                                 : assignment.priority === 1
                                   ? "border-[#9bcce5] bg-[#e8f6fd] text-[#17637f]"
@@ -23595,12 +23708,12 @@ This removes its linked members and deletes the grounds account.`
           >
             <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
               <div>
-                <div className="text-[11px] uppercase tracking-[0.24em] text-[#b14b4b]">Immediate Attention Needed</div>
+                <div className="text-[11px] uppercase tracking-[0.24em] text-[#b14b4b]">Admin Assignment Needed</div>
                 <h2 className="mt-2 text-3xl font-bold tracking-tight text-[#7e1f1f] animate-pulse">
-                  🚨 {filteredStrandedJobs.length} stranded job{filteredStrandedJobs.length === 1 ? "" : "s"}
+                  {filteredStrandedJobs.length} cleaning job{filteredStrandedJobs.length === 1 ? "" : "s"} need a cleaner
                 </h2>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-[#8b3838]">
-                  These jobs have missing cleaner units and need manual assignment.
+                  Choose from the cleaners assigned to each property. Manual-mode jobs stay here until admin sends the offer.
                 </p>
               </div>
             </div>
@@ -23610,6 +23723,7 @@ This removes its linked members and deletes the grounds account.`
                 const slots = jobSlotsByJobId[job.id] ?? [];
                 const remainingMs = getActiveCountdownMs(job.id);
                 const propertyCleanerAccounts = getCleanerAccountsForProperty(job.property_id);
+                const isManualAssignment = properties.find((property) => property.id === job.property_id)?.cleaner_assignment_mode === "manual";
 
                 return (
                   <div key={job.id} className="rounded-[22px] border border-[#f0d0d0] bg-white px-4 py-4 shadow-sm">
@@ -23620,7 +23734,7 @@ This removes its linked members and deletes the grounds account.`
                           Cleaning date: {formatScheduledFor(job.scheduled_for || extractCheckoutDate(job.notes))}
                         </div>
                         <div className="mt-1 text-sm text-[#8a5d4b]">
-                          Status: {job.staffing_status || job.status || "Stranded"}
+                          Status: {isManualAssignment ? "Waiting for admin to choose a cleaner" : job.staffing_status || job.status || "Stranded"}
                         </div>
                         {remainingMs !== null ? (
                           <div className={`mt-1 text-sm font-semibold ${getCountdownTone(remainingMs)}`}>
@@ -23639,7 +23753,7 @@ This removes its linked members and deletes the grounds account.`
                             setReassignSelections((prev) => ({ ...prev, [job.id]: e.target.value }))
                           }
                         >
-                          <option value="">Select cleaner account</option>
+                          <option value="">Select a cleaner for this property</option>
                           {propertyCleanerAccounts.length === 0 ? (
                             <option value="" disabled>
                               No cleaners assigned to this property
@@ -23657,7 +23771,7 @@ This removes its linked members and deletes the grounds account.`
                           onClick={() => void reassignStrandedJob(job.id)}
                           disabled={reassigningJobId === job.id || propertyCleanerAccounts.length === 0}
                         >
-                          {reassigningJobId === job.id ? "Reassigning..." : "Reassign Stranded Job"}
+                          {reassigningJobId === job.id ? "Sending offer..." : isManualAssignment ? "Offer Job to Cleaner" : "Reassign Stranded Job"}
                         </button>
 
                         <button

@@ -27,7 +27,7 @@ function normalizeOptionalCoordinate(value: unknown, min: number, max: number) {
 function normalizeCleanerAssignmentMode(value: unknown) {
   const text = String(value || "").trim();
   if (!text) return null;
-  return text === "priority" || text === "training_rotation" ? text : "";
+  return text === "priority" || text === "training_rotation" || text === "manual" ? text : "";
 }
 
 function normalizeOptionalCurrency(value: unknown) {
@@ -152,7 +152,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (cleanerAssignmentMode === "") {
-      return NextResponse.json({ error: "Cleaner assignment mode must be priority or training_rotation." }, { status: 400 });
+      return NextResponse.json({ error: "Cleaner assignment mode must be priority, training_rotation, or manual." }, { status: 400 });
     }
 
     const { data: existingProperty, error: existingPropertyError } = await serviceClient

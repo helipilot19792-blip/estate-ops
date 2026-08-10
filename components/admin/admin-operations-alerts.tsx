@@ -8,6 +8,7 @@ const DISMISS_STORAGE_PREFIX = "admin-operations-alerts-hidden-until";
 type OperationsAlert = {
   key: string;
   label: string;
+  actionLabel?: string;
   tone: "amber" | "red" | "green";
   onClick: () => void;
 };
@@ -92,7 +93,7 @@ export default function AdminOperationsAlerts({
             >
               <span>{alert.label}</span>
               <span className="rounded-full border border-current/20 px-2 py-0.5 text-[11px]">
-                View
+                {alert.actionLabel || "View"}
               </span>
             </button>
           ))}

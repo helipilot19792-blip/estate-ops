@@ -5,6 +5,7 @@ import {
 } from "@/lib/server/job-notifications";
 import { applyCleanerTrainingRotationToJob as applyServerCleanerTrainingRotationToJob } from "@/lib/server/cleaner-training-rotation";
 import { detectSameDayCleanerConflicts } from "@/lib/server/same-day-cleaner-conflicts";
+import { prepareManualCleanerAssignment } from "@/lib/server/manual-cleaner-assignment";
 
 export const dynamic = "force-dynamic";
 
@@ -1031,6 +1032,20 @@ export async function POST(request: Request) {
           } catch (rotationError: any) {
             resultBucket.errors.push(
               `Job created but Training Rotation failed for ${event.summary || "reservation"} on ${event.checkoutDate}: ${rotationError?.message || "Unknown rotation error"}`
+            );
+          }
+
+          try {
+            await prepareManualCleanerAssignment(supabase, {
+              jobId: insertedJob.id,
+              organizationId: property.organization_id,
+              property,
+              scheduledFor: event.checkoutDate,
+              origin: new URL(request.url).origin,
+            });
+          } catch (manualAssignmentError: unknown) {
+            resultBucket.errors.push(
+              `Job created but manual cleaner assignment setup failed for ${event.summary || "reservation"} on ${event.checkoutDate}: ${manualAssignmentError instanceof Error ? manualAssignmentError.message : "Unknown manual assignment error"}`
             );
           }
 

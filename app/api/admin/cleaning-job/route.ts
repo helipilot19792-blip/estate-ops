@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { writeAuditLog } from "@/lib/server/audit-log";
 import { applyCleanerTrainingRotationToJob, getCleanerOfferResponseWindowHours } from "@/lib/server/cleaner-training-rotation";
 import { sendJobOfferEmailsForSlots } from "@/lib/server/job-notifications";
+import { prepareManualCleanerAssignment } from "@/lib/server/manual-cleaner-assignment";
 
 export const dynamic = "force-dynamic";
 
@@ -242,7 +243,7 @@ export async function POST(request: NextRequest) {
 
     const { data: property, error: propertyError } = await service
       .from("properties")
-      .select("id, organization_id, default_turnover_payout")
+      .select("id, organization_id, name, address, default_turnover_payout, cleaner_assignment_mode")
       .eq("id", propertyId)
       .eq("organization_id", organizationId)
       .maybeSingle();
@@ -302,12 +303,22 @@ export async function POST(request: NextRequest) {
 
     await applyCleanerTrainingRotationToJob(service, insertedJob.id);
 
-    const offerSlotIds = await ensureManualCleaningJobHasOfferedSlots({
+    const manualAssignment = await prepareManualCleanerAssignment(service, {
       jobId: insertedJob.id,
-      propertyId,
+      organizationId,
+      property,
       scheduledFor,
-      notes,
+      origin: request.nextUrl.origin,
     });
+
+    const offerSlotIds = manualAssignment.manual
+      ? []
+      : await ensureManualCleaningJobHasOfferedSlots({
+          jobId: insertedJob.id,
+          propertyId,
+          scheduledFor,
+          notes,
+        });
     const notificationResult =
       offerSlotIds.length > 0
         ? await sendJobOfferEmailsForSlots("cleaner", offerSlotIds, request.nextUrl.origin, {
@@ -317,7 +328,9 @@ export async function POST(request: NextRequest) {
             sent: 0,
             pushSent: 0,
             skipped: 0,
-            errors: ["No active cleaner assignment was available to offer this job."],
+            errors: manualAssignment.manual
+              ? []
+              : ["No active cleaner assignment was available to offer this job."],
           };
 
     await writeAuditLog(service, {
@@ -336,6 +349,7 @@ export async function POST(request: NextRequest) {
         notifications_sent: notificationResult.sent,
         push_sent: notificationResult.pushSent,
         notification_error_count: notificationResult.errors.length,
+        manual_assignment: manualAssignment.manual,
       },
     });
 
@@ -343,6 +357,7 @@ export async function POST(request: NextRequest) {
       ok: true,
       jobId: insertedJob.id,
       notification: notificationResult,
+      manualAssignment: manualAssignment.manual,
     });
   } catch (error) {
     return NextResponse.json(
