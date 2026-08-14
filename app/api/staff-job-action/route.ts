@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { sendAdminJobStatusPush } from "@/lib/server/admin-job-status-notifications";
 import { sendJobOfferEmailsForSlots } from "@/lib/server/job-notifications";
 import { reofferExpiredCleanerTrainingSlot } from "@/lib/server/cleaner-training-rotation";
+import { getCleanerOfferExpiresAtForDailySweep } from "@/lib/server/cleaner-offer-deadlines";
 import { writeAuditLog } from "@/lib/server/audit-log";
 import { detectSameDayCleanerConflicts } from "@/lib/server/same-day-cleaner-conflicts";
 
@@ -23,17 +24,6 @@ function extractCheckoutDate(notes: string | null) {
 
 function getJobDate(job: { scheduled_for?: string | null; notes?: string | null }) {
   return job.scheduled_for || extractCheckoutDate(job.notes || null);
-}
-
-function getResponseWindowHours(jobDate: string | null, now = new Date()) {
-  if (!jobDate) return 8;
-
-  const job = new Date(`${jobDate}T12:00:00`);
-  const diff = (job.getTime() - now.getTime()) / (1000 * 60 * 60);
-
-  if (diff > 24 * 7) return 48;
-  if (diff > 48) return 8;
-  return 2;
 }
 
 function pickNextBackupCleaner(
@@ -433,9 +423,7 @@ export async function POST(request: NextRequest) {
 
       const nowDate = new Date();
       const offeredAt = nowDate.toISOString();
-      const expiresAt = new Date(
-        nowDate.getTime() + getResponseWindowHours(jobDate, nowDate) * 60 * 60 * 1000
-      ).toISOString();
+      const expiresAt = getCleanerOfferExpiresAtForDailySweep(jobDate, nowDate);
 
       const { data: releasedSlot, error: releaseError } = await service
         .from("turnover_job_slots")

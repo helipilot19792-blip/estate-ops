@@ -3,7 +3,10 @@ import {
   sendJobCancellationNotificationsForJobs,
   sendJobOfferEmailsForSlots,
 } from "@/lib/server/job-notifications";
-import { applyCleanerTrainingRotationToJob as applyServerCleanerTrainingRotationToJob } from "@/lib/server/cleaner-training-rotation";
+import {
+  applyCleanerTrainingRotationToJob as applyServerCleanerTrainingRotationToJob,
+} from "@/lib/server/cleaner-training-rotation";
+import { getCleanerOfferExpiresAtForDailySweep } from "@/lib/server/cleaner-offer-deadlines";
 import { detectSameDayCleanerConflicts } from "@/lib/server/same-day-cleaner-conflicts";
 import { prepareManualCleanerAssignment } from "@/lib/server/manual-cleaner-assignment";
 
@@ -1057,9 +1060,21 @@ export async function POST(request: Request) {
             .not("cleaner_account_id", "is", null);
 
           if (!offerSlotsError && (offerSlots ?? []).length > 0) {
+            const offerSlotIds = (offerSlots ?? []).map((slot) => slot.id);
+            const { error: alignExpiryError } = await supabase
+              .from("turnover_job_slots")
+              .update({ expires_at: getCleanerOfferExpiresAtForDailySweep(event.checkoutDate) })
+              .in("id", offerSlotIds);
+
+            if (alignExpiryError) {
+              resultBucket.errors.push(
+                `Job created but its cleaner offer deadline could not be aligned to the daily sweep: ${alignExpiryError.message}`
+              );
+            }
+
             const notificationResult = await sendJobOfferEmailsForSlots(
               "cleaner",
-              (offerSlots ?? []).map((slot) => slot.id),
+              offerSlotIds,
               new URL(request.url).origin
             );
 

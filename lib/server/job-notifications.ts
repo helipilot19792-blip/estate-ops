@@ -3,7 +3,10 @@ import { Resend } from "resend";
 import { sendAdminOverdueOfferPush } from "@/lib/server/admin-job-status-notifications";
 import { sendStaffPushNotifications } from "@/lib/server/staff-push-notifications";
 import { createJobEmailActionUrl } from "@/lib/server/job-email-actions";
-import { processExpiredCleanerTrainingOffers } from "@/lib/server/cleaner-training-rotation";
+import {
+  hasNextEligibleCleanerForSlot,
+  processExpiredCleanerTrainingOffers,
+} from "@/lib/server/cleaner-training-rotation";
 
 export type JobNotificationKind = "cleaner" | "grounds";
 type JobNotificationMode = "offer" | "offer_reminder" | "day_of";
@@ -38,6 +41,7 @@ type SlotBundle = {
   recipients: Recipient[];
   sameDayTurnover: boolean;
   sameDayCheckInLabel: string | null;
+  hasNextCleanerInLine?: boolean;
 };
 
 type JobCancellationBundle = {
@@ -142,17 +146,6 @@ async function loadSameDayTurnoverInfo(
     sameDayTurnover: true,
     sameDayCheckInLabel: parts.length > 0 ? parts.join(" - ") : "Incoming guest checks in the same day",
   };
-}
-
-function getResponseWindowHours(jobDate: string | null, now = new Date()) {
-  if (!jobDate) return 8;
-
-  const job = new Date(`${jobDate}T12:00:00`);
-  const diffHours = (job.getTime() - now.getTime()) / (1000 * 60 * 60);
-
-  if (diffHours > 24 * 7) return 48;
-  if (diffHours > 48) return 8;
-  return 2;
 }
 
 function formatDateLabel(dateString: string | null) {
@@ -495,6 +488,9 @@ function buildDigestJobRow(bundle: SlotBundle, recipient: Recipient, origin: str
       <p style="margin:0 0 6px;font-weight:700;color:#241c15;">${propertyLine}</p>
       <p style="margin:0 0 6px;color:#5f5245;"><strong>Scheduled:</strong> ${formatDateLabel(bundle.jobDate)}</p>
       <p style="margin:0 0 12px;color:#5f5245;"><strong>Team / account:</strong> ${bundle.accountLabel}</p>
+      <p style="margin:0 0 12px;color:#5f5245;"><strong>Respond by:</strong> ${formatDateTimeLabel(bundle.expiresAt)}.${
+        bundle.hasNextCleanerInLine ? " If you do not respond, the job will be offered to the next cleaner in line." : ""
+      }</p>
       ${sameDayWarning}
       <a href="${acceptUrl}" style="display:inline-block;padding:10px 14px;background:#1f6f3d;color:#ffffff;border-radius:999px;text-decoration:none;margin:0 8px 8px 0;font-weight:700;">
         Accept
@@ -543,6 +539,14 @@ export async function sendJobOfferDigestEmailForSlots(
       if ((bundle.status || "").toLowerCase().trim() !== "offered") {
         skipped += 1;
         continue;
+      }
+
+      if (kind === "cleaner") {
+        try {
+          bundle.hasNextCleanerInLine = await hasNextEligibleCleanerForSlot(service, slotId);
+        } catch (nextCleanerError) {
+          errors.push(nextCleanerError instanceof Error ? nextCleanerError.message : "Could not check the next cleaner in line.");
+        }
       }
 
       const needsEmail = !bundle.offerEmailSentAt;
@@ -791,11 +795,14 @@ function buildEmailCopy(bundle: SlotBundle, mode: JobNotificationMode, origin: s
     : bundle.propertyName;
 
   if (mode === "offer") {
+    const reassignmentWarning = bundle.hasNextCleanerInLine
+      ? " If you do not respond by then, this job will be offered to the next cleaner in line."
+      : "";
     return {
       subject: `New ${kindLabel} job offer: ${bundle.propertyName} on ${dateLabel}`,
       intro: `You have a new ${bundle.detailLabel.toLowerCase()} waiting for your response.`,
       actionText: "Open portal for full details",
-      footer: `Please respond by ${deadlineLabel} if possible.`,
+      footer: `Please respond by ${deadlineLabel}.${reassignmentWarning}`,
       portalUrl,
       calendarUrl,
       propertyLine,
@@ -804,11 +811,14 @@ function buildEmailCopy(bundle: SlotBundle, mode: JobNotificationMode, origin: s
   }
 
   if (mode === "offer_reminder") {
+    const reassignmentWarning = bundle.hasNextCleanerInLine
+      ? ` If you do not respond by then, this job will be offered to the next cleaner in line.`
+      : "";
     return {
-      subject: `Reminder: ${kindLabel} job still waiting for response`,
-      intro: `This ${bundle.detailLabel.toLowerCase()} has not been accepted yet.`,
+      subject: `Action needed: ${kindLabel} job offer expires soon`,
+      intro: `This ${bundle.detailLabel.toLowerCase()} offer is about to expire.`,
       actionText: "Open portal for full details",
-      footer: `Current response deadline: ${deadlineLabel}.`,
+      footer: `Please respond by ${deadlineLabel}.${reassignmentWarning}`,
       portalUrl,
       calendarUrl,
       propertyLine,
@@ -938,9 +948,14 @@ async function sendNotificationPush(
 
   const result = await sendStaffPushNotifications(bundle.kind, profileIds, {
     title: emailCopy.subject,
-    body: bundle.sameDayTurnover
-      ? `Same-day turnover - ${bundle.organizationName ? `${bundle.organizationName}: ` : ""}${bundle.propertyName} - ${emailCopy.dateLabel}`
-      : `${bundle.organizationName ? `${bundle.organizationName}: ` : ""}${bundle.propertyName} - ${emailCopy.dateLabel}`,
+    body:
+      mode === "offer_reminder" || (mode === "offer" && bundle.hasNextCleanerInLine)
+        ? `${bundle.propertyName}: respond by ${formatDateTimeLabel(bundle.expiresAt)}${
+            bundle.hasNextCleanerInLine ? " or the job will be offered to the next cleaner in line" : ""
+          }.`
+        : bundle.sameDayTurnover
+          ? `Same-day turnover - ${bundle.organizationName ? `${bundle.organizationName}: ` : ""}${bundle.propertyName} - ${emailCopy.dateLabel}`
+          : `${bundle.organizationName ? `${bundle.organizationName}: ` : ""}${bundle.propertyName} - ${emailCopy.dateLabel}`,
     url: emailCopy.portalUrl,
     tag: `${bundle.kind}-${mode}-${bundle.slotId}`,
   });
@@ -1109,15 +1124,15 @@ function shouldSendOfferReminder(bundle: SlotBundle, now = new Date()) {
   const offered = bundle.offeredAt ? new Date(bundle.offeredAt) : null;
   if (!offered || Number.isNaN(offered.getTime())) return false;
 
-  const jobDate = bundle.jobDate;
-  const responseHours = getResponseWindowHours(jobDate, now);
-  const reminderHours = Math.max(1, responseHours / 2);
-  const reminderAt = new Date(offered.getTime() + reminderHours * 60 * 60 * 1000);
+  const expires = bundle.expiresAt ? new Date(bundle.expiresAt) : null;
+  if (!expires || Number.isNaN(expires.getTime()) || now >= expires) return false;
+
+  const reminderAt = new Date(expires.getTime() - 24 * 60 * 60 * 1000);
 
   if (now >= reminderAt) return true;
 
   const tomorrowYmd = getTomorrowYmd(now);
-  return !!jobDate && jobDate <= tomorrowYmd;
+  return !!bundle.jobDate && bundle.jobDate <= tomorrowYmd;
 }
 
 function shouldSendDayOfReminder(bundle: SlotBundle, now = new Date()) {
@@ -1162,6 +1177,14 @@ export async function sendJobOfferEmailsForSlots(
       if ((bundle.status || "").toLowerCase().trim() !== "offered") {
         skipped += 1;
         continue;
+      }
+
+      if (kind === "cleaner") {
+        try {
+          bundle.hasNextCleanerInLine = await hasNextEligibleCleanerForSlot(service, slotId);
+        } catch (nextCleanerError) {
+          errors.push(nextCleanerError instanceof Error ? nextCleanerError.message : "Could not check the next cleaner in line.");
+        }
       }
 
       const needsEmail = options?.forceResend ? true : !bundle.offerEmailSentAt;
@@ -1286,6 +1309,14 @@ async function runSlotNotificationSweep(
 
     const bundle = await loadSlotBundle(service, kind, row.id);
     if (!bundle) continue;
+
+    if (mode === "offer_reminder" && kind === "cleaner") {
+      try {
+        bundle.hasNextCleanerInLine = await hasNextEligibleCleanerForSlot(service, row.id);
+      } catch (nextCleanerError) {
+        errors.push(nextCleanerError instanceof Error ? nextCleanerError.message : "Could not check the next cleaner in line.");
+      }
+    }
 
     let eligible = false;
     if (mode === "offer") eligible = (bundle.status || "").toLowerCase().trim() === "offered";

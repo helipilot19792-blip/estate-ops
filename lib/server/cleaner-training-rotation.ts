@@ -1,4 +1,5 @@
 import { writeAuditLog } from "@/lib/server/audit-log";
+import { getCleanerOfferExpiresAtForDailySweep } from "@/lib/server/cleaner-offer-deadlines";
 
 type ServiceClient = any;
 
@@ -9,6 +10,8 @@ type TrainingRotationResult = {
   errors?: string[];
 };
 
+type CleanerAssignmentMode = "priority" | "training_rotation" | "manual";
+
 function extractCheckoutDate(notes: string | null): string | null {
   if (!notes) return null;
   const match = notes.match(/Checkout date:\s*(\d{4}-\d{2}-\d{2})/i);
@@ -17,22 +20,6 @@ function extractCheckoutDate(notes: string | null): string | null {
 
 function getCleanerJobDate(job: { scheduled_for?: string | null; notes?: string | null }) {
   return job.scheduled_for || extractCheckoutDate(job.notes || null);
-}
-
-export function getCleanerOfferResponseWindowHours(jobDate: string | null, now = new Date()) {
-  if (!jobDate) return 8;
-
-  const job = new Date(`${jobDate}T12:00:00`);
-  const diffHours = (job.getTime() - now.getTime()) / (1000 * 60 * 60);
-
-  if (diffHours > 24 * 7) return 48;
-  if (diffHours > 48) return 8;
-  return 2;
-}
-
-function getExpiresAt(jobDate: string | null, now = new Date()) {
-  const responseHours = getCleanerOfferResponseWindowHours(jobDate, now);
-  return new Date(now.getTime() + responseHours * 60 * 60 * 1000).toISOString();
 }
 
 async function refreshCleanerJobStaffing(service: ServiceClient, jobId: string) {
@@ -147,6 +134,47 @@ function rotateAssignments(assignments: any[], nextCleanerAccountId?: string | n
     : assignments;
 }
 
+function findNextEligibleAssignment(params: {
+  assignments: any[];
+  assignmentMode: CleanerAssignmentMode;
+  currentCleanerAccountId: string | null;
+  nextCleanerAccountId?: string | null;
+  declinedCleanerIds: Set<string>;
+  unavailableCleanerIds: Set<string>;
+}) {
+  const {
+    assignments,
+    assignmentMode,
+    currentCleanerAccountId,
+    nextCleanerAccountId,
+    declinedCleanerIds,
+    unavailableCleanerIds,
+  } = params;
+  const currentIndex = assignments.findIndex(
+    (assignment: any) => assignment.cleaner_account_id === currentCleanerAccountId
+  );
+
+  let nextOrder: any[];
+  if (currentIndex >= 0) {
+    nextOrder = assignments.slice(currentIndex + 1);
+    if (assignmentMode === "training_rotation") {
+      nextOrder = [...nextOrder, ...assignments.slice(0, currentIndex)];
+    }
+  } else if (assignmentMode === "training_rotation") {
+    nextOrder = rotateAssignments(assignments, nextCleanerAccountId);
+  } else {
+    nextOrder = assignments;
+  }
+
+  const nextAssignment = nextOrder.find(
+    (assignment: any) =>
+      !declinedCleanerIds.has(assignment.cleaner_account_id) &&
+      !unavailableCleanerIds.has(assignment.cleaner_account_id)
+  );
+
+  return { nextAssignment: nextAssignment || null, nextOrder };
+}
+
 async function updateNextCleanerPointer(
   service: ServiceClient,
   property: { id: string; organization_id: string },
@@ -214,7 +242,7 @@ export async function applyCleanerTrainingRotationToJob(
 
   const now = new Date();
   const nowIso = now.toISOString();
-  const expiresAt = getExpiresAt(getCleanerJobDate(job), now);
+  const expiresAt = getCleanerOfferExpiresAtForDailySweep(getCleanerJobDate(job), now);
   const offeredSlotIds: string[] = [];
 
   for (let index = 0; index < assignedCount; index += 1) {
@@ -281,7 +309,10 @@ export async function reofferExpiredCleanerTrainingSlot(
     .maybeSingle();
 
   if (propertyError) throw new Error(propertyError.message);
-  if (property?.cleaner_assignment_mode !== "training_rotation") return { offeredSlotIds: [] };
+  const assignmentMode = property?.cleaner_assignment_mode as CleanerAssignmentMode | null | undefined;
+  if (assignmentMode !== "training_rotation" && assignmentMode !== "priority") {
+    return { offeredSlotIds: [] };
+  }
 
   const { data: allSlots, error: allSlotsError } = await service
     .from("turnover_job_slots")
@@ -308,9 +339,8 @@ export async function reofferExpiredCleanerTrainingSlot(
   }
 
   const activeAssignments = await loadActiveAssignments(service, property.id);
-  if (activeAssignments.length < 2) return { offeredSlotIds: [] };
 
-  const declinedCleanerIds = new Set(
+  const declinedCleanerIds = new Set<string>(
     (allSlots ?? [])
       .filter((row: any) => row.status === "declined")
       .map((row: any) => row.cleaner_account_id)
@@ -318,25 +348,21 @@ export async function reofferExpiredCleanerTrainingSlot(
   );
   if (slot.cleaner_account_id) declinedCleanerIds.add(slot.cleaner_account_id);
 
-  const unavailableCleanerIds = new Set(
+  const unavailableCleanerIds = new Set<string>(
     (allSlots ?? [])
       .filter((row: any) => ["offered", "accepted", "in_progress", "completed"].includes(String(row.status || "").toLowerCase()))
       .map((row: any) => row.cleaner_account_id)
       .filter(Boolean)
   );
 
-  const currentIndex = activeAssignments.findIndex(
-    (assignment: any) => assignment.cleaner_account_id === slot.cleaner_account_id
-  );
-  const nextOrder =
-    currentIndex >= 0
-      ? activeAssignments.slice(currentIndex + 1)
-      : rotateAssignments(activeAssignments, property.cleaner_rotation_next_cleaner_account_id);
-  const nextAssignment = nextOrder.find(
-    (assignment: any) =>
-      !declinedCleanerIds.has(assignment.cleaner_account_id) &&
-      !unavailableCleanerIds.has(assignment.cleaner_account_id)
-  );
+  const { nextAssignment, nextOrder } = findNextEligibleAssignment({
+    assignments: activeAssignments,
+    assignmentMode,
+    currentCleanerAccountId: slot.cleaner_account_id || null,
+    nextCleanerAccountId: property.cleaner_rotation_next_cleaner_account_id,
+    declinedCleanerIds,
+    unavailableCleanerIds,
+  });
 
   const now = new Date();
   const nowIso = now.toISOString();
@@ -385,7 +411,7 @@ export async function reofferExpiredCleanerTrainingSlot(
     return { offeredSlotIds: [], expiredSlotIds: [slot.id], strandedSlotIds: strandedSlot?.id ? [strandedSlot.id] : [] };
   }
 
-  const expiresAt = getExpiresAt(getCleanerJobDate(job), now);
+  const expiresAt = getCleanerOfferExpiresAtForDailySweep(getCleanerJobDate(job), now);
   const { data: newSlot, error: insertError } = await service
     .from("turnover_job_slots")
     .insert({
@@ -422,7 +448,7 @@ export async function reofferExpiredCleanerTrainingSlot(
       targetType: "turnover_job_slot",
       targetId: newSlot.id,
       metadata: {
-        reassign_source: "training_rotation_expired",
+        reassign_source: `${assignmentMode}_${slot.status === "declined" ? "declined" : "expired"}`,
         job_id: job.id,
         slot_number: slot.slot_number,
         previous_slot_id: slot.id,
@@ -438,13 +464,83 @@ export async function reofferExpiredCleanerTrainingSlot(
     });
   }
 
-  const nextPointer = nextOrder.find(
-    (assignment: any) => assignment.cleaner_account_id !== nextAssignment.cleaner_account_id
-  );
-  await updateNextCleanerPointer(service, property, nextPointer?.cleaner_account_id || activeAssignments[0]?.cleaner_account_id || null);
+  if (assignmentMode === "training_rotation") {
+    const nextPointer = nextOrder.find(
+      (assignment: any) => assignment.cleaner_account_id !== nextAssignment.cleaner_account_id
+    );
+    await updateNextCleanerPointer(service, property, nextPointer?.cleaner_account_id || activeAssignments[0]?.cleaner_account_id || null);
+  }
   await refreshCleanerJobStaffing(service, job.id);
 
   return { offeredSlotIds: newSlot?.id ? [newSlot.id] : [], expiredSlotIds: [slot.id] };
+}
+
+export async function hasNextEligibleCleanerForSlot(service: ServiceClient, slotId: string) {
+  const { data: slot, error: slotError } = await service
+    .from("turnover_job_slots")
+    .select("id, job_id, cleaner_account_id")
+    .eq("id", slotId)
+    .maybeSingle();
+
+  if (slotError) throw new Error(slotError.message);
+  if (!slot?.job_id || !slot.cleaner_account_id) return false;
+
+  const { data: job, error: jobError } = await service
+    .from("turnover_jobs")
+    .select("id, property_id")
+    .eq("id", slot.job_id)
+    .maybeSingle();
+
+  if (jobError) throw new Error(jobError.message);
+  if (!job?.property_id) return false;
+
+  const { data: property, error: propertyError } = await service
+    .from("properties")
+    .select("id, cleaner_assignment_mode, cleaner_rotation_next_cleaner_account_id")
+    .eq("id", job.property_id)
+    .maybeSingle();
+
+  if (propertyError) throw new Error(propertyError.message);
+  const assignmentMode = property?.cleaner_assignment_mode as CleanerAssignmentMode | null | undefined;
+  if (assignmentMode !== "training_rotation" && assignmentMode !== "priority") return false;
+
+  const [{ data: allSlots, error: allSlotsError }, activeAssignments] = await Promise.all([
+    service
+      .from("turnover_job_slots")
+      .select("status, cleaner_account_id")
+      .eq("job_id", slot.job_id),
+    loadActiveAssignments(service, property.id),
+  ]);
+
+  if (allSlotsError) throw new Error(allSlotsError.message);
+
+  const declinedCleanerIds = new Set<string>(
+    (allSlots ?? [])
+      .filter((row: any) => row.status === "declined")
+      .map((row: any) => row.cleaner_account_id)
+      .filter(Boolean)
+  );
+  declinedCleanerIds.add(slot.cleaner_account_id);
+
+  const unavailableCleanerIds = new Set<string>(
+    (allSlots ?? [])
+      .filter((row: any) =>
+        ["offered", "accepted", "in_progress", "completed"].includes(String(row.status || "").toLowerCase())
+      )
+      .map((row: any) => row.cleaner_account_id)
+      .filter((cleanerAccountId: string | null) => Boolean(cleanerAccountId) && cleanerAccountId !== slot.cleaner_account_id)
+  );
+
+  return Boolean(
+    findNextEligibleAssignment({
+      assignments: activeAssignments,
+      assignmentMode,
+      currentCleanerAccountId: slot.cleaner_account_id,
+      nextCleanerAccountId: property.cleaner_rotation_next_cleaner_account_id,
+      declinedCleanerIds,
+      unavailableCleanerIds,
+    }).nextAssignment
+  );
 }
 
 export async function processExpiredCleanerTrainingOffers(service: ServiceClient): Promise<TrainingRotationResult> {

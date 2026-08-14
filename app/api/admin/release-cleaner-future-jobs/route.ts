@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { writeAuditLog } from "@/lib/server/audit-log";
 import { sendJobOfferDigestEmailForSlots, sendJobOfferEmailsForSlots } from "@/lib/server/job-notifications";
+import { getCleanerOfferExpiresAtForDailySweep } from "@/lib/server/cleaner-offer-deadlines";
 
 export const dynamic = "force-dynamic";
 
@@ -29,18 +30,6 @@ function extractCheckoutDate(notes: string | null): string | null {
 
 function getJobDate(job: any) {
   return job.scheduled_for || extractCheckoutDate(job.notes);
-}
-
-function getResponseWindowHours(jobDate: string | null) {
-  if (!jobDate) return 8;
-
-  const now = new Date();
-  const job = new Date(jobDate + "T12:00:00");
-  const diff = (job.getTime() - now.getTime()) / (1000 * 60 * 60);
-
-  if (diff > 24 * 7) return 48;
-  if (diff > 48) return 8;
-  return 2;
 }
 
 export async function POST(req: NextRequest) {
@@ -205,7 +194,6 @@ export async function POST(req: NextRequest) {
       if (!job) continue;
 
       const jobDate = getJobDate(job);
-      const responseHours = getResponseWindowHours(jobDate);
 
       let replacementCleanerId: string | null = null;
 
@@ -229,7 +217,7 @@ export async function POST(req: NextRequest) {
             cleaner_account_id: replacementCleanerId,
             status: "offered",
             offered_at: new Date().toISOString(),
-            expires_at: new Date(Date.now() + responseHours * 3600000).toISOString(),
+            expires_at: getCleanerOfferExpiresAtForDailySweep(jobDate),
             accepted_at: null,
             declined_at: null,
             accepted_by_profile_id: null,

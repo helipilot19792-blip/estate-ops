@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { writeAuditLog } from "@/lib/server/audit-log";
-import { applyCleanerTrainingRotationToJob, getCleanerOfferResponseWindowHours } from "@/lib/server/cleaner-training-rotation";
+import {
+  applyCleanerTrainingRotationToJob,
+} from "@/lib/server/cleaner-training-rotation";
+import { getCleanerOfferExpiresAtForDailySweep } from "@/lib/server/cleaner-offer-deadlines";
 import { sendJobOfferEmailsForSlots } from "@/lib/server/job-notifications";
 import { prepareManualCleanerAssignment } from "@/lib/server/manual-cleaner-assignment";
 
@@ -47,17 +50,6 @@ function normalizeDate(value: unknown) {
   return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : "";
 }
 
-function extractCheckoutDate(notes: string | null) {
-  if (!notes) return null;
-  const match = notes.match(/Checkout date:\s*(\d{4}-\d{2}-\d{2})/i);
-  return match?.[1] || null;
-}
-
-function getCleanerOfferExpiresAt(jobDate: string | null, now = new Date()) {
-  const responseHours = getCleanerOfferResponseWindowHours(jobDate, now);
-  return new Date(now.getTime() + responseHours * 60 * 60 * 1000).toISOString();
-}
-
 async function seedTurnoverSlotPayouts(jobId: string, defaultTurnoverPayout: number | null | undefined) {
   const { error } = await service
     .from("turnover_job_slots")
@@ -80,7 +72,6 @@ async function ensureManualCleaningJobHasOfferedSlots(params: {
   jobId: string;
   propertyId: string;
   scheduledFor: string | null;
-  notes: string | null;
 }) {
   const { data: existingOfferedSlots, error: existingOfferedError } = await service
     .from("turnover_job_slots")
@@ -91,7 +82,14 @@ async function ensureManualCleaningJobHasOfferedSlots(params: {
 
   if (existingOfferedError) throw new Error(existingOfferedError.message);
   if ((existingOfferedSlots ?? []).length > 0) {
-    return (existingOfferedSlots ?? []).map((slot) => slot.id).filter(Boolean);
+    const existingOfferedSlotIds = (existingOfferedSlots ?? []).map((slot) => slot.id).filter(Boolean);
+    const { error: alignExpiryError } = await service
+      .from("turnover_job_slots")
+      .update({ expires_at: getCleanerOfferExpiresAtForDailySweep(params.scheduledFor) })
+      .in("id", existingOfferedSlotIds);
+
+    if (alignExpiryError) throw new Error(alignExpiryError.message);
+    return existingOfferedSlotIds;
   }
 
   const { data: slots, error: slotsError } = await service
@@ -128,7 +126,7 @@ async function ensureManualCleaningJobHasOfferedSlots(params: {
 
   const now = new Date();
   const offeredAt = now.toISOString();
-  const expiresAt = getCleanerOfferExpiresAt(params.scheduledFor || extractCheckoutDate(params.notes), now);
+  const expiresAt = getCleanerOfferExpiresAtForDailySweep(params.scheduledFor, now);
   const offeredSlotIds: string[] = [];
   const assignableCount = Math.min((slots ?? []).length, activeAssignments.length);
 
@@ -312,12 +310,11 @@ export async function POST(request: NextRequest) {
     });
 
     const offerSlotIds = manualAssignment.manual
-      ? []
-      : await ensureManualCleaningJobHasOfferedSlots({
+        ? []
+        : await ensureManualCleaningJobHasOfferedSlots({
           jobId: insertedJob.id,
           propertyId,
           scheduledFor,
-          notes,
         });
     const notificationResult =
       offerSlotIds.length > 0

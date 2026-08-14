@@ -4,6 +4,7 @@ import { sendOwnerInvoiceReminderEmail } from "@/lib/server/owner-invoice-remind
 import { sendDirectProfileChatMessage } from "@/lib/server/direct-profile-chat";
 import { sendStaffPushNotifications } from "@/lib/server/staff-push-notifications";
 import { sendJobOfferEmailsForSlots } from "@/lib/server/job-notifications";
+import { getCleanerOfferExpiresAtForDailySweep } from "@/lib/server/cleaner-offer-deadlines";
 import { isMissingAuditLogTableError, writeAuditLog } from "@/lib/server/audit-log";
 import { formatCurrency, normalizeCurrencyCode } from "@/lib/currency";
 import {
@@ -312,14 +313,6 @@ function buildGuestRegistrationDraft(params: {
     : " Register the guest with the resort before arrival and confirm once complete.";
 
   return `${intro}${steps}`.trim();
-}
-
-function getRescueResponseWindowHours(scheduledFor: string, now = new Date()) {
-  const jobDate = new Date(`${scheduledFor}T12:00:00`);
-  const hoursUntilJob = (jobDate.getTime() - now.getTime()) / (60 * 60 * 1000);
-  if (hoursUntilJob > 7 * 24) return 48;
-  if (hoursUntilJob > 48) return 8;
-  return 2;
 }
 
 async function refreshRescueJobStaffing(serviceClient: any, jobId: string) {
@@ -1113,7 +1106,7 @@ export async function POST(request: NextRequest) {
 
       const now = new Date();
       const offeredAt = now.toISOString();
-      const expiresAt = new Date(now.getTime() + getRescueResponseWindowHours(job.scheduled_for, now) * 60 * 60 * 1000).toISOString();
+      const expiresAt = getCleanerOfferExpiresAtForDailySweep(job.scheduled_for, now);
       const previousCleanerAccountId = slot.cleaner_account_id || null;
       const previousStatus = slot.status || null;
       const { data: updatedSlot, error: updateError } = await serviceClient

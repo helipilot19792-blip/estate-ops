@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { writeAuditLog } from "@/lib/server/audit-log";
 import { sendJobOfferEmailsForSlots } from "@/lib/server/job-notifications";
 import { detectSameDayCleanerConflicts } from "@/lib/server/same-day-cleaner-conflicts";
+import { getCleanerOfferExpiresAtForDailySweep } from "@/lib/server/cleaner-offer-deadlines";
 
 export const dynamic = "force-dynamic";
 
@@ -29,27 +30,6 @@ function createAuthClient(token: string) {
       },
     },
   });
-}
-
-function extractCheckoutDate(notes: string | null) {
-  if (!notes) return null;
-  const match = notes.match(/Checkout date:\s*(\d{4}-\d{2}-\d{2})/i);
-  return match?.[1] ?? null;
-}
-
-function getCleanerJobDate(job: { scheduled_for?: string | null; notes?: string | null }) {
-  return job.scheduled_for || extractCheckoutDate(job.notes || null);
-}
-
-function getResponseWindowHours(jobDate: string | null, now = new Date()) {
-  if (!jobDate) return 8;
-
-  const job = new Date(`${jobDate}T12:00:00`);
-  const diffHours = (job.getTime() - now.getTime()) / (1000 * 60 * 60);
-
-  if (diffHours > 24 * 7) return 48;
-  if (diffHours > 48) return 8;
-  return 2;
 }
 
 async function refreshCleanerJobStaffing(jobId: string) {
@@ -261,9 +241,7 @@ export async function POST(request: NextRequest) {
 
     const now = new Date();
     const offeredAt = now.toISOString();
-    const expiresAt = new Date(
-      now.getTime() + getResponseWindowHours(getCleanerJobDate(job), now) * 60 * 60 * 1000
-    ).toISOString();
+    const expiresAt = getCleanerOfferExpiresAtForDailySweep(job.scheduled_for || null, now);
 
     const { data: updatedSlot, error: updateError } = await service
       .from("turnover_job_slots")

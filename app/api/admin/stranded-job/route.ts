@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { writeAuditLog } from "@/lib/server/audit-log";
 import { sendJobCancellationNotificationsForJobs, sendJobOfferEmailsForSlots } from "@/lib/server/job-notifications";
+import { getCleanerOfferExpiresAtForDailySweep } from "@/lib/server/cleaner-offer-deadlines";
 
 export const dynamic = "force-dynamic";
 
@@ -10,27 +11,6 @@ const publicSupabaseKey =
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-function extractCheckoutDate(notes: string | null): string | null {
-  if (!notes) return null;
-  const match = notes.match(/Checkout date:\s*(\d{4}-\d{2}-\d{2})/i);
-  return match?.[1] ?? null;
-}
-
-function getCleanerJobDate(job: { scheduled_for?: string | null; notes?: string | null }) {
-  return job.scheduled_for || extractCheckoutDate(job.notes || null);
-}
-
-function getResponseWindowHours(jobDate: string | null, now = new Date()) {
-  if (!jobDate) return 8;
-
-  const job = new Date(`${jobDate}T12:00:00`);
-  const diffHours = (job.getTime() - now.getTime()) / (1000 * 60 * 60);
-
-  if (diffHours > 24 * 7) return 48;
-  if (diffHours > 48) return 8;
-  return 2;
-}
 
 async function refreshCleanerJobStaffing(service: any, jobId: string) {
   const { data: job, error: jobError } = await service
@@ -280,14 +260,13 @@ export async function POST(request: NextRequest) {
     }
 
     const now = new Date();
-    const responseHours = getResponseWindowHours(getCleanerJobDate(job), now);
     const { data: updatedSlot, error: updateError } = await service
       .from("turnover_job_slots")
       .update({
         cleaner_account_id: cleanerAccountId,
         status: "offered",
         offered_at: now.toISOString(),
-        expires_at: new Date(now.getTime() + responseHours * 60 * 60 * 1000).toISOString(),
+        expires_at: getCleanerOfferExpiresAtForDailySweep(job.scheduled_for || null, now),
         accepted_at: null,
         declined_at: null,
         accepted_by_profile_id: null,
