@@ -202,6 +202,41 @@ async function getCleanerDisplayName(service: ServiceClient, cleanerAccountId?: 
   return data?.display_name || null;
 }
 
+async function loadPreviouslyDeclinedCleanerIds(service: ServiceClient, jobId: string) {
+  const declinedCleanerIds = new Set<string>();
+  const { data, error } = await service
+    .from("audit_logs")
+    .select("action_type, metadata")
+    .contains("metadata", { job_id: jobId });
+
+  if (error) return declinedCleanerIds;
+
+  for (const row of data ?? []) {
+    const actionType = String(row.action_type || "");
+    const metadata = row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+
+    if (actionType === "cleaner.portal_job_decline") {
+      const cleanerAccountId = String(metadata.cleaner_account_id || "").trim();
+      if (cleanerAccountId) declinedCleanerIds.add(cleanerAccountId);
+    }
+
+    if (actionType === "cleaner.email_job_decline") {
+      const cleanerAccountId = String(metadata.offered_account_id || "").trim();
+      if (cleanerAccountId) declinedCleanerIds.add(cleanerAccountId);
+    }
+
+    if (actionType === "admin.reassign_cleaner_slot") {
+      const source = String(metadata.reassign_source || "");
+      if (source.endsWith("_declined") || source.endsWith("_expired")) {
+        const cleanerAccountId = String(metadata.previous_cleaner_account_id || "").trim();
+        if (cleanerAccountId) declinedCleanerIds.add(cleanerAccountId);
+      }
+    }
+  }
+
+  return declinedCleanerIds;
+}
+
 export async function applyCleanerTrainingRotationToJob(
   service: ServiceClient,
   jobId: string
@@ -340,12 +375,13 @@ export async function reofferExpiredCleanerTrainingSlot(
 
   const activeAssignments = await loadActiveAssignments(service, property.id);
 
-  const declinedCleanerIds = new Set<string>(
-    (allSlots ?? [])
-      .filter((row: any) => row.status === "declined")
-      .map((row: any) => row.cleaner_account_id)
-      .filter(Boolean)
-  );
+  const declinedCleanerIds = await loadPreviouslyDeclinedCleanerIds(service, job.id);
+  for (const cleanerAccountId of (allSlots ?? [])
+    .filter((row: any) => row.status === "declined")
+    .map((row: any) => row.cleaner_account_id)
+    .filter(Boolean)) {
+    declinedCleanerIds.add(cleanerAccountId);
+  }
   if (slot.cleaner_account_id) declinedCleanerIds.add(slot.cleaner_account_id);
 
   const unavailableCleanerIds = new Set<string>(
@@ -366,28 +402,33 @@ export async function reofferExpiredCleanerTrainingSlot(
 
   const now = new Date();
   const nowIso = now.toISOString();
-  await service
-    .from("turnover_job_slots")
-    .update({
-      status: "declined",
-      declined_at: nowIso,
-      declined_by_profile_id: declinedByProfileId,
-    })
-    .eq("id", slot.id);
 
   if (!nextAssignment) {
-    const { data: strandedSlot, error: insertStrandedError } = await service
+    const { data: strandedSlot, error: strandError } = await service
       .from("turnover_job_slots")
-      .insert({
-        job_id: job.id,
-        slot_number: slot.slot_number,
+      .update({
         cleaner_account_id: null,
         status: "stranded",
+        offered_at: null,
+        expires_at: null,
+        accepted_at: null,
+        declined_at: nowIso,
+        accepted_by_profile_id: null,
+        declined_by_profile_id: declinedByProfileId,
+        offer_email_sent_at: null,
+        offer_reminder_sent_at: null,
+        day_of_reminder_sent_at: null,
+        offer_push_sent_at: null,
+        offer_reminder_push_sent_at: null,
+        day_of_reminder_push_sent_at: null,
       })
+      .eq("id", slot.id)
+      .eq("cleaner_account_id", slot.cleaner_account_id)
       .select("id")
       .maybeSingle();
 
-    if (insertStrandedError) throw new Error(insertStrandedError.message);
+    if (strandError) throw new Error(strandError.message);
+    if (!strandedSlot) throw new Error("Cleaner slot changed before it could be marked stranded.");
     if (strandedSlot?.id) {
       await writeAuditLog(service, {
         actorProfileId: declinedByProfileId,
@@ -412,15 +453,17 @@ export async function reofferExpiredCleanerTrainingSlot(
   }
 
   const expiresAt = getCleanerOfferExpiresAtForDailySweep(getCleanerJobDate(job), now);
-  const { data: newSlot, error: insertError } = await service
+  const { data: reassignedSlot, error: reassignError } = await service
     .from("turnover_job_slots")
-    .insert({
-      job_id: job.id,
-      slot_number: slot.slot_number,
+    .update({
       cleaner_account_id: nextAssignment.cleaner_account_id,
       status: "offered",
       offered_at: nowIso,
       expires_at: expiresAt,
+      accepted_at: null,
+      declined_at: null,
+      accepted_by_profile_id: null,
+      declined_by_profile_id: null,
       offer_email_sent_at: null,
       offer_reminder_sent_at: null,
       day_of_reminder_sent_at: null,
@@ -428,12 +471,15 @@ export async function reofferExpiredCleanerTrainingSlot(
       offer_reminder_push_sent_at: null,
       day_of_reminder_push_sent_at: null,
     })
+    .eq("id", slot.id)
+    .eq("cleaner_account_id", slot.cleaner_account_id)
     .select("id")
     .maybeSingle();
 
-  if (insertError) throw new Error(insertError.message);
+  if (reassignError) throw new Error(reassignError.message);
+  if (!reassignedSlot) throw new Error("Cleaner slot changed before it could be reassigned.");
 
-  if (newSlot?.id) {
+  if (reassignedSlot?.id) {
     const [previousCleanerName, newCleanerName] = await Promise.all([
       getCleanerDisplayName(service, slot.cleaner_account_id),
       getCleanerDisplayName(service, nextAssignment.cleaner_account_id),
@@ -446,7 +492,7 @@ export async function reofferExpiredCleanerTrainingSlot(
       organizationId: job.organization_id,
       actionType: "admin.reassign_cleaner_slot",
       targetType: "turnover_job_slot",
-      targetId: newSlot.id,
+      targetId: reassignedSlot.id,
       metadata: {
         reassign_source: `${assignmentMode}_${slot.status === "declined" ? "declined" : "expired"}`,
         job_id: job.id,
@@ -472,7 +518,7 @@ export async function reofferExpiredCleanerTrainingSlot(
   }
   await refreshCleanerJobStaffing(service, job.id);
 
-  return { offeredSlotIds: newSlot?.id ? [newSlot.id] : [], expiredSlotIds: [slot.id] };
+  return { offeredSlotIds: reassignedSlot?.id ? [reassignedSlot.id] : [], expiredSlotIds: [slot.id] };
 }
 
 export async function hasNextEligibleCleanerForSlot(service: ServiceClient, slotId: string) {
