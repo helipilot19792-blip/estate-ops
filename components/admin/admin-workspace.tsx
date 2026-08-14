@@ -1783,6 +1783,7 @@ export default function AdminPage() {
   const [approvingCleanerReleaseRequestId, setApprovingCleanerReleaseRequestId] = useState<string | null>(null);
   const [assigningSelfJobId, setAssigningSelfJobId] = useState<string | null>(null);
   const [acceptingOnBehalfSlotId, setAcceptingOnBehalfSlotId] = useState<string | null>(null);
+  const [decliningOnBehalfSlotId, setDecliningOnBehalfSlotId] = useState<string | null>(null);
   const [highlightedJobId, setHighlightedJobId] = useState<string | null>(null);
   const [syncingCalendarsNow, setSyncingCalendarsNow] = useState(false);
   const [deletingPropertyId, setDeletingPropertyId] = useState<string | null>(null);
@@ -6841,6 +6842,7 @@ export default function AdminPage() {
           organizationId: currentOrganizationId,
           jobId,
           slotId: slot.id,
+          action: "accept",
         }),
       });
 
@@ -6864,6 +6866,73 @@ export default function AdminPage() {
       setError(err instanceof Error ? err.message : "Could not accept the cleaner job.");
     } finally {
       setAcceptingOnBehalfSlotId(null);
+    }
+  }
+
+  async function declineCleanerJobOnBehalf(jobId: string, slot: JobSlot) {
+    if (!currentOrganizationId) {
+      setError("No organization is selected.");
+      return;
+    }
+
+    if (!slot.cleaner_account_id) {
+      setError("Assign a cleaner before declining on their behalf.");
+      return;
+    }
+
+    const cleanerName = getCleanerAccountName(slot.cleaner_account_id);
+    const confirmed = window.confirm(
+      `Mark slot ${slot.slot_number} as declined for ${cleanerName}?\n\nUse this only when the cleaner declined outside the app. This stops the current offer and marks the job as needing coverage. It will not automatically send an offer to another cleaner.`
+    );
+    if (!confirmed) return;
+
+    setError("");
+    setActionMessage("");
+    setDecliningOnBehalfSlotId(slot.id);
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("Could not verify your admin session.");
+      }
+
+      const response = await fetch("/api/admin/accept-cleaner-job-on-behalf", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          organizationId: currentOrganizationId,
+          jobId,
+          slotId: slot.id,
+          action: "decline",
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || "Could not decline the cleaner job.");
+      }
+
+      setActionMessage(
+        payload?.alreadyDeclined
+          ? `${cleanerName} was already marked declined for this job.`
+          : `${cleanerName} declined outside the app. The offer is closed; choose a cleaner below to reassign the open slot.`
+      );
+      await loadData();
+      setHighlightedJobId(jobId);
+      setTimeout(() => {
+        document.getElementById(`job-${jobId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 50);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not decline the cleaner job.");
+    } finally {
+      setDecliningOnBehalfSlotId(null);
     }
   }
 
@@ -12166,6 +12235,14 @@ This removes its linked members and deletes the grounds account.`
         id: `current-${slot.id}`,
         tone: "current",
         text: `Offered to ${cleanerName}${slot.offered_at ? ` on ${formatDateTime(slot.offered_at)}` : ""}`,
+      });
+    }
+
+    if (slot.status === "declined" && cleanerName !== "Unassigned") {
+      history.push({
+        id: `declined-${slot.id}`,
+        tone: "previous",
+        text: `${cleanerName} declined${slot.declined_at ? ` on ${formatDateTime(slot.declined_at)}` : ""}`,
       });
     }
 
@@ -23360,17 +23437,30 @@ This removes its linked members and deletes the grounds account.`
                               </button>
                             ) : null}
                             {canAcceptOnBehalf ? (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void acceptCleanerJobOnBehalf(job.id, slot);
-                                }}
-                                disabled={acceptingOnBehalfSlotId === slot.id}
-                                className="inline-flex rounded-full border border-[#2f6b55] bg-[#f4fbf4] px-3 py-1 font-semibold text-[#2f6b55] transition hover:bg-[#e9f7ed] disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                {acceptingOnBehalfSlotId === slot.id ? "Accepting..." : "Accept for cleaner"}
-                              </button>
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void acceptCleanerJobOnBehalf(job.id, slot);
+                                  }}
+                                  disabled={acceptingOnBehalfSlotId === slot.id || decliningOnBehalfSlotId === slot.id}
+                                  className="inline-flex rounded-full border border-[#2f6b55] bg-[#f4fbf4] px-3 py-1 font-semibold text-[#2f6b55] transition hover:bg-[#e9f7ed] disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  {acceptingOnBehalfSlotId === slot.id ? "Accepting..." : "Accept for cleaner"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void declineCleanerJobOnBehalf(job.id, slot);
+                                  }}
+                                  disabled={acceptingOnBehalfSlotId === slot.id || decliningOnBehalfSlotId === slot.id}
+                                  className="inline-flex rounded-full border border-[#dc6b62] bg-[#fff7f7] px-3 py-1 font-semibold text-[#a3312a] transition hover:bg-[#fff0f0] disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  {decliningOnBehalfSlotId === slot.id ? "Declining..." : "Decline for cleaner"}
+                                </button>
+                              </>
                             ) : null}
                           </div>
                           {expandedNotificationSlotIds.has(slot.id) ? renderSlotNotificationDetails(slot) : null}

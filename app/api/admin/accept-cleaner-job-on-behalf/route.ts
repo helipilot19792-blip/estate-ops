@@ -183,6 +183,7 @@ export async function POST(request: NextRequest) {
     const organizationId = String(body?.organizationId || "").trim();
     const jobId = String(body?.jobId || "").trim();
     const slotId = String(body?.slotId || "").trim();
+    const action = body?.action === "decline" ? "decline" : "accept";
 
     if (!organizationId || !jobId || !slotId) {
       return NextResponse.json({ error: "Missing cleaner job details." }, { status: 400 });
@@ -214,11 +215,11 @@ export async function POST(request: NextRequest) {
     if (slotError) return NextResponse.json({ error: slotError.message }, { status: 500 });
     if (!slot) return NextResponse.json({ error: "Cleaner job slot not found." }, { status: 404 });
     if (!slot.cleaner_account_id) {
-      return NextResponse.json({ error: "Assign a cleaner before accepting on their behalf." }, { status: 400 });
+      return NextResponse.json({ error: `Assign a cleaner before ${action === "accept" ? "accepting" : "declining"} on their behalf.` }, { status: 400 });
     }
 
     const currentStatus = String(slot.status || "").toLowerCase();
-    if (["accepted", "in_progress", "completed"].includes(currentStatus)) {
+    if (action === "accept" && ["accepted", "in_progress", "completed"].includes(currentStatus)) {
       return NextResponse.json({
         ok: true,
         alreadyAccepted: true,
@@ -226,9 +227,24 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    if (action === "decline" && currentStatus === "declined") {
+      return NextResponse.json({
+        ok: true,
+        alreadyDeclined: true,
+        slotId: slot.id,
+      });
+    }
+
+    if (action === "decline" && ["accepted", "in_progress", "completed"].includes(currentStatus)) {
+      return NextResponse.json(
+        { error: "An accepted or started cleaner job cannot be declined on their behalf. Use the release workflow instead." },
+        { status: 409 }
+      );
+    }
+
     if (!["offered", "stranded"].includes(currentStatus)) {
       return NextResponse.json(
-        { error: "Only offered or stranded cleaner slots can be accepted on behalf of a cleaner." },
+        { error: `Only offered or stranded cleaner slots can be ${action === "accept" ? "accepted" : "declined"} on behalf of a cleaner.` },
         { status: 409 }
       );
     }
@@ -236,21 +252,35 @@ export async function POST(request: NextRequest) {
     const now = new Date().toISOString();
     const { data: updatedSlot, error: updateError } = await service
       .from("turnover_job_slots")
-      .update({
-        status: "accepted",
-        accepted_at: now,
-        accepted_by_profile_id: admin.profile.id,
-        declined_at: null,
-        declined_by_profile_id: null,
-        expires_at: null,
-      })
+      .update(
+        action === "accept"
+          ? {
+              status: "accepted",
+              accepted_at: now,
+              accepted_by_profile_id: admin.profile.id,
+              declined_at: null,
+              declined_by_profile_id: null,
+              expires_at: null,
+            }
+          : {
+              status: "declined",
+              declined_at: now,
+              declined_by_profile_id: admin.profile.id,
+              accepted_at: null,
+              accepted_by_profile_id: null,
+              expires_at: null,
+            }
+      )
       .eq("id", slot.id)
+      .eq("job_id", jobId)
+      .eq("cleaner_account_id", slot.cleaner_account_id)
+      .in("status", ["offered", "stranded"])
       .select("id, job_id, cleaner_account_id, status")
       .maybeSingle();
 
     if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
     if (!updatedSlot) {
-      return NextResponse.json({ error: "Cleaner job slot could not be accepted." }, { status: 409 });
+      return NextResponse.json({ error: `Cleaner job slot could not be ${action === "accept" ? "accepted" : "declined"}. Refresh and try again.` }, { status: 409 });
     }
 
     await refreshCleanerJobStaffing(service, jobId);
@@ -260,7 +290,7 @@ export async function POST(request: NextRequest) {
       actorEmail: admin.profile.email || admin.user.email || null,
       actorRole: admin.profile.role,
       organizationId,
-      actionType: "admin.accept_cleaner_job_on_behalf",
+      actionType: `admin.${action}_cleaner_job_on_behalf`,
       targetType: "turnover_job_slot",
       targetId: slot.id,
       metadata: {
@@ -278,11 +308,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       alreadyAccepted: false,
+      alreadyDeclined: false,
+      action,
       slot: updatedSlot,
     });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Could not accept cleaner job." },
+      { error: error instanceof Error ? error.message : "Could not update cleaner job on behalf of the cleaner." },
       { status: 500 }
     );
   }
