@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import {
   getCleanerOfferExpiresAtForDailySweep,
   getCleanerOfferResponseDays,
+  isCleanerJobDatePast,
+  isCleanerOfferInFinalWarningWindow,
 } from "../lib/server/cleaner-offer-deadlines.ts";
 
 const afterDailySweep = new Date("2026-08-14T13:00:00Z");
@@ -20,5 +22,13 @@ assert.equal(getCleanerOfferExpiresAtForDailySweep("2026-08-16", afterDailySweep
 
 const beforeDailySweep = new Date("2026-08-14T11:00:00Z");
 assert.equal(getCleanerOfferExpiresAtForDailySweep("2026-09-15", beforeDailySweep), "2026-08-18T12:00:00.000Z");
+
+assert.equal(isCleanerJobDatePast("2026-08-13", afterDailySweep), true);
+assert.equal(isCleanerJobDatePast("2026-08-14", afterDailySweep), false);
+assert.equal(isCleanerJobDatePast("2026-08-15", afterDailySweep), false);
+
+assert.equal(isCleanerOfferInFinalWarningWindow("2026-08-15T12:00:00.000Z", afterDailySweep), true);
+assert.equal(isCleanerOfferInFinalWarningWindow("2026-08-16T12:00:00.000Z", afterDailySweep), false);
+assert.equal(isCleanerOfferInFinalWarningWindow("2026-08-14T12:00:00.000Z", afterDailySweep), false);
 
 console.log("Cleaner offer deadline tests passed.");

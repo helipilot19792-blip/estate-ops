@@ -9,7 +9,8 @@
     "lint": "eslint",
     "test:ai-supervisor": "node --experimental-strip-types scripts/test-ai-supervisor-anomalies.mjs",
     "test:ai-turnover-rescue": "node --experimental-strip-types scripts/test-ai-turnover-rescue.mjs",
-    "test:cleaner-offer-deadlines": "node --experimental-strip-types scripts/test-cleaner-offer-deadlines.mjs"
+    "test:cleaner-offer-deadlines": "node --experimental-strip-types scripts/test-cleaner-offer-deadlines.mjs",
+    "test:cleaner-offer-eligibility": "node --experimental-strip-types scripts/test-cleaner-offer-eligibility.mjs"
   },
   "dependencies": {
     "@supabase/auth-helpers-nextjs": "^0.15.0",

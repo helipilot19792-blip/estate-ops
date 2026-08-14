@@ -1,5 +1,13 @@
 import { writeAuditLog } from "@/lib/server/audit-log";
-import { getCleanerOfferExpiresAtForDailySweep } from "@/lib/server/cleaner-offer-deadlines";
+import {
+  getCleanerOfferExpiresAtForDailySweep,
+  isCleanerJobDatePast,
+} from "@/lib/server/cleaner-offer-deadlines";
+import {
+  findNextEligibleCleanerAssignment,
+  rotateCleanerAssignments,
+  type CleanerAssignmentMode,
+} from "@/lib/server/cleaner-offer-eligibility";
 
 type ServiceClient = any;
 
@@ -9,8 +17,6 @@ type TrainingRotationResult = {
   strandedSlotIds?: string[];
   errors?: string[];
 };
-
-type CleanerAssignmentMode = "priority" | "training_rotation" | "manual";
 
 function extractCheckoutDate(notes: string | null): string | null {
   if (!notes) return null;
@@ -125,54 +131,7 @@ async function loadActiveAssignments(service: ServiceClient, propertyId: string)
 }
 
 function rotateAssignments(assignments: any[], nextCleanerAccountId?: string | null) {
-  const startIndex = nextCleanerAccountId
-    ? assignments.findIndex((assignment: any) => assignment.cleaner_account_id === nextCleanerAccountId)
-    : -1;
-
-  return startIndex > 0
-    ? [...assignments.slice(startIndex), ...assignments.slice(0, startIndex)]
-    : assignments;
-}
-
-function findNextEligibleAssignment(params: {
-  assignments: any[];
-  assignmentMode: CleanerAssignmentMode;
-  currentCleanerAccountId: string | null;
-  nextCleanerAccountId?: string | null;
-  declinedCleanerIds: Set<string>;
-  unavailableCleanerIds: Set<string>;
-}) {
-  const {
-    assignments,
-    assignmentMode,
-    currentCleanerAccountId,
-    nextCleanerAccountId,
-    declinedCleanerIds,
-    unavailableCleanerIds,
-  } = params;
-  const currentIndex = assignments.findIndex(
-    (assignment: any) => assignment.cleaner_account_id === currentCleanerAccountId
-  );
-
-  let nextOrder: any[];
-  if (currentIndex >= 0) {
-    nextOrder = assignments.slice(currentIndex + 1);
-    if (assignmentMode === "training_rotation") {
-      nextOrder = [...nextOrder, ...assignments.slice(0, currentIndex)];
-    }
-  } else if (assignmentMode === "training_rotation") {
-    nextOrder = rotateAssignments(assignments, nextCleanerAccountId);
-  } else {
-    nextOrder = assignments;
-  }
-
-  const nextAssignment = nextOrder.find(
-    (assignment: any) =>
-      !declinedCleanerIds.has(assignment.cleaner_account_id) &&
-      !unavailableCleanerIds.has(assignment.cleaner_account_id)
-  );
-
-  return { nextAssignment: nextAssignment || null, nextOrder };
+  return rotateCleanerAssignments(assignments, nextCleanerAccountId);
 }
 
 async function updateNextCleanerPointer(
@@ -249,6 +208,7 @@ export async function applyCleanerTrainingRotationToJob(
 
   if (jobError) throw new Error(jobError.message);
   if (!job?.property_id) return { offeredSlotIds: [] };
+  if (isCleanerJobDatePast(getCleanerJobDate(job))) return { offeredSlotIds: [] };
 
   const { data: property, error: propertyError } = await service
     .from("properties")
@@ -336,6 +296,7 @@ export async function reofferExpiredCleanerTrainingSlot(
 
   if (jobError) throw new Error(jobError.message);
   if (!job?.property_id) return { offeredSlotIds: [] };
+  if (isCleanerJobDatePast(getCleanerJobDate(job))) return { offeredSlotIds: [] };
 
   const { data: property, error: propertyError } = await service
     .from("properties")
@@ -391,7 +352,7 @@ export async function reofferExpiredCleanerTrainingSlot(
       .filter(Boolean)
   );
 
-  const { nextAssignment, nextOrder } = findNextEligibleAssignment({
+  const { nextAssignment, nextOrder } = findNextEligibleCleanerAssignment({
     assignments: activeAssignments,
     assignmentMode,
     currentCleanerAccountId: slot.cleaner_account_id || null,
@@ -533,12 +494,13 @@ export async function hasNextEligibleCleanerForSlot(service: ServiceClient, slot
 
   const { data: job, error: jobError } = await service
     .from("turnover_jobs")
-    .select("id, property_id")
+    .select("id, property_id, scheduled_for, notes")
     .eq("id", slot.job_id)
     .maybeSingle();
 
   if (jobError) throw new Error(jobError.message);
   if (!job?.property_id) return false;
+  if (isCleanerJobDatePast(getCleanerJobDate(job))) return false;
 
   const { data: property, error: propertyError } = await service
     .from("properties")
@@ -560,12 +522,13 @@ export async function hasNextEligibleCleanerForSlot(service: ServiceClient, slot
 
   if (allSlotsError) throw new Error(allSlotsError.message);
 
-  const declinedCleanerIds = new Set<string>(
-    (allSlots ?? [])
-      .filter((row: any) => row.status === "declined")
-      .map((row: any) => row.cleaner_account_id)
-      .filter(Boolean)
-  );
+  const declinedCleanerIds = await loadPreviouslyDeclinedCleanerIds(service, slot.job_id);
+  for (const cleanerAccountId of (allSlots ?? [])
+    .filter((row: any) => row.status === "declined")
+    .map((row: any) => row.cleaner_account_id)
+    .filter(Boolean)) {
+    declinedCleanerIds.add(cleanerAccountId);
+  }
   declinedCleanerIds.add(slot.cleaner_account_id);
 
   const unavailableCleanerIds = new Set<string>(
@@ -578,7 +541,7 @@ export async function hasNextEligibleCleanerForSlot(service: ServiceClient, slot
   );
 
   return Boolean(
-    findNextEligibleAssignment({
+    findNextEligibleCleanerAssignment({
       assignments: activeAssignments,
       assignmentMode,
       currentCleanerAccountId: slot.cleaner_account_id,

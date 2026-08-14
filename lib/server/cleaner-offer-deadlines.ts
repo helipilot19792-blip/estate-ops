@@ -24,3 +24,17 @@ export function getCleanerOfferExpiresAtForDailySweep(jobDate: string | null, no
   );
   return expirationSweep.toISOString();
 }
+
+export function isCleanerJobDatePast(jobDate: string | null, now = new Date()) {
+  if (!jobDate || !/^\d{4}-\d{2}-\d{2}$/.test(jobDate)) return false;
+  return jobDate < now.toISOString().slice(0, 10);
+}
+
+export function isCleanerOfferInFinalWarningWindow(expiresAt: string | null, now = new Date()) {
+  if (!expiresAt) return false;
+
+  const expirationTime = new Date(expiresAt).getTime();
+  if (!Number.isFinite(expirationTime) || expirationTime <= now.getTime()) return false;
+
+  return expirationTime - now.getTime() <= 24 * 60 * 60 * 1000;
+}

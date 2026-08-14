@@ -7,6 +7,7 @@ import {
   hasNextEligibleCleanerForSlot,
   processExpiredCleanerTrainingOffers,
 } from "@/lib/server/cleaner-training-rotation";
+import { isCleanerOfferInFinalWarningWindow } from "@/lib/server/cleaner-offer-deadlines";
 
 export type JobNotificationKind = "cleaner" | "grounds";
 type JobNotificationMode = "offer" | "offer_reminder" | "day_of";
@@ -482,6 +483,10 @@ function buildDigestJobRow(bundle: SlotBundle, recipient: Recipient, origin: str
     `
     : "";
 
+  const finalWarning = isCleanerOfferInFinalWarningWindow(bundle.expiresAt)
+    ? `<p style="margin:0 0 12px;color:#b42318;"><strong>Urgent:</strong> This offer is already in its final response window and is about to expire.</p>`
+    : "";
+
   return `
     <div style="border:1px solid #eadfce;border-radius:14px;padding:14px;margin:0 0 12px;background:#fffaf4;">
       ${bundle.organizationName ? `<p style="margin:0 0 4px;font-size:12px;text-transform:uppercase;letter-spacing:0.14em;color:#8a7047;">${bundle.organizationName}</p>` : ""}
@@ -491,6 +496,7 @@ function buildDigestJobRow(bundle: SlotBundle, recipient: Recipient, origin: str
       <p style="margin:0 0 12px;color:#5f5245;"><strong>Respond by:</strong> ${formatDateTimeLabel(bundle.expiresAt)}.${
         bundle.hasNextCleanerInLine ? " If you do not respond, the job will be offered to the next cleaner in line." : ""
       }</p>
+      ${finalWarning}
       ${sameDayWarning}
       <a href="${acceptUrl}" style="display:inline-block;padding:10px 14px;background:#1f6f3d;color:#ffffff;border-radius:999px;text-decoration:none;margin:0 8px 8px 0;font-weight:700;">
         Accept
@@ -795,12 +801,15 @@ function buildEmailCopy(bundle: SlotBundle, mode: JobNotificationMode, origin: s
     : bundle.propertyName;
 
   if (mode === "offer") {
+    const isFinalWarning = isCleanerOfferInFinalWarningWindow(bundle.expiresAt);
     const reassignmentWarning = bundle.hasNextCleanerInLine
       ? " If you do not respond by then, this job will be offered to the next cleaner in line."
       : "";
     return {
-      subject: `New ${kindLabel} job offer: ${bundle.propertyName} on ${dateLabel}`,
-      intro: `You have a new ${bundle.detailLabel.toLowerCase()} waiting for your response.`,
+      subject: `${isFinalWarning ? "Urgent: " : "New "}${kindLabel} job offer: ${bundle.propertyName} on ${dateLabel}`,
+      intro: isFinalWarning
+        ? `This ${bundle.detailLabel.toLowerCase()} is already in its final response window and is about to expire.`
+        : `You have a new ${bundle.detailLabel.toLowerCase()} waiting for your response.`,
       actionText: "Open portal for full details",
       footer: `Please respond by ${deadlineLabel}.${reassignmentWarning}`,
       portalUrl,
