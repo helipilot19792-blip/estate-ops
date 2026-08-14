@@ -37,6 +37,8 @@ type InvoiceRow = {
   currency_code?: string | null;
   last_reminder_sent_at?: string | null;
   reminder_count?: number | null;
+  company_name?: string | null;
+  payment_instructions?: string | null;
 };
 
 type OwnerRow = {
@@ -147,6 +149,9 @@ type ProposedAction =
       canEditMessage: false;
       payload: {
         invoiceId: string;
+        recipientEmail: string;
+        subject: string;
+        messageText: string;
       };
     }
   | {
@@ -421,7 +426,7 @@ async function getSnoozedActionIds(serviceClient: any, organizationId: string, a
   return snoozedActionIds;
 }
 
-async function generateActions(organizationId: string, token: string) {
+async function generateActions(organizationId: string, token: string, origin: string) {
   const { serviceClient } = await requireAiCopilotAccess({ token, organizationId });
   const todayYmd = getTodayYmd();
   const tomorrowYmd = addDaysYmd(todayYmd, 1);
@@ -438,7 +443,7 @@ async function generateActions(organizationId: string, token: string) {
   ] = await Promise.all([
     serviceClient
       .from("owner_invoices")
-      .select("id,invoice_number,owner_account_id,property_id,status,due_date,total,last_reminder_sent_at,reminder_count")
+      .select("id,invoice_number,owner_account_id,property_id,status,due_date,total,currency_code,last_reminder_sent_at,reminder_count,company_name,payment_instructions")
       .eq("organization_id", organizationId)
       .eq("status", "sent")
       .order("due_date", { ascending: true })
@@ -676,20 +681,43 @@ async function generateActions(organizationId: string, token: string) {
 
     const owner = owners.get(invoice.owner_account_id);
     const property = invoice.property_id ? properties.get(invoice.property_id) : null;
+    const invoiceNumber = invoice.invoice_number || "this invoice";
+    const companyName = invoice.company_name || "your property manager";
+    const propertyLabel = property?.name || property?.address || "All linked properties";
+    const ownerLabel = owner?.full_name || owner?.email || "Owner";
+    const ownerPortalUrl = `${origin}/owner?tab=invoices`;
+    const reminderSubject = `Reminder: Invoice ${invoiceNumber} from ${companyName}`;
+    const reminderMessage = [
+      "Invoice reminder",
+      `This is a friendly reminder that invoice ${invoiceNumber} is still outstanding.`,
+      "",
+      `Owner: ${ownerLabel}`,
+      `Property: ${propertyLabel}`,
+      `Invoice: ${invoiceNumber}`,
+      ...(invoice.due_date ? [`Due date: ${invoice.due_date}`] : []),
+      `Amount due: ${formatCurrency(invoice.total, normalizeCurrencyCode(invoice.currency_code))}`,
+      ...(invoice.payment_instructions ? ["", `Payment: ${invoice.payment_instructions}`] : []),
+      "",
+      "Please log in to your owner portal to view or download the invoice.",
+      ownerPortalUrl,
+    ].join("\n");
     actions.push({
       id: `invoice-${invoice.id}`,
       kind: "invoice_reminder",
       priority: overdueDays >= 7 ? "high" : "medium",
       category: "Billing",
       title: `Chase overdue invoice ${invoice.invoice_number || ""}`.trim(),
-      reason: `${owner?.full_name || owner?.email || "Owner"} is ${overdueDays === 0 ? "due today" : `${overdueDays} day${overdueDays === 1 ? "" : "s"} overdue`} for ${formatCurrency(invoice.total, normalizeCurrencyCode(invoice.currency_code))}${property ? ` at ${property.name || property.address || "this property"}` : ""}.`,
-      recipientLabel: owner?.full_name || owner?.email || "Owner",
+      reason: `${ownerLabel} is ${overdueDays === 0 ? "due today" : `${overdueDays} day${overdueDays === 1 ? "" : "s"} overdue`} for ${formatCurrency(invoice.total, normalizeCurrencyCode(invoice.currency_code))}${property ? ` at ${property.name || property.address || "this property"}` : ""}.`,
+      recipientLabel: ownerLabel,
       channelLabel: "Owner email",
-      previewLabel: "Approval will send",
-      previewText: `The existing standard invoice reminder email for ${invoice.invoice_number || "this invoice"}.`,
+      previewLabel: "Email prepared for approval",
+      previewText: reminderMessage,
       canEditMessage: false,
       payload: {
         invoiceId: invoice.id,
+        recipientEmail: owner?.email || "",
+        subject: reminderSubject,
+        messageText: reminderMessage,
       },
     });
   }
@@ -947,7 +975,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "Missing organizationId." }, { status: 400 });
     }
 
-    const { actions, brief } = await generateActions(organizationId, token);
+    const { actions, brief } = await generateActions(organizationId, token, request.nextUrl.origin);
     await notifyHighPriorityActions({
       organizationId,
       origin: request.nextUrl.origin,

@@ -48,6 +48,9 @@ type ProposedAction =
       canEditMessage: false;
       payload: {
         invoiceId: string;
+        recipientEmail: string;
+        subject: string;
+        messageText: string;
       };
     }
   | {
@@ -141,6 +144,7 @@ export default function AdminAiActionsPanel({ organizationId, visible = true }: 
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busyId, setBusyId] = useState("");
+  const [reviewingId, setReviewingId] = useState("");
   const [expanded, setExpanded] = useState(false);
 
   const loadActions = useCallback(async () => {
@@ -208,14 +212,6 @@ export default function AdminAiActionsPanel({ organizationId, visible = true }: 
   const pendingCount = visibleActions.length;
 
   async function approveAction(action: ProposedAction) {
-    const approvalVerb =
-      action.kind === "turnover_rescue"
-        ? "send this job offer"
-        : action.kind === "staffing_advisory"
-        ? "acknowledge this supervisor finding"
-        : action.kind === "guest_registration_reminder"
-          ? "save this booking note"
-          : "send this message";
     const selectedCandidate = action.kind === "turnover_rescue"
       ? action.payload.candidates.find((candidate) => candidate.cleanerAccountId === selectedCandidates[action.id])
       : null;
@@ -223,10 +219,6 @@ export default function AdminAiActionsPanel({ organizationId, visible = true }: 
       setError("Choose an eligible cleaner before approving this rescue plan.");
       return;
     }
-    const confirmed = window.confirm(
-      `Approve and ${approvalVerb}?\n\nRecipient: ${selectedCandidate?.cleanerName || action.recipientLabel}\nChannel: ${action.channelLabel}\n\n${drafts[action.id] || action.previewText}`
-    );
-    if (!confirmed) return;
 
     setBusyId(action.id);
     setError("");
@@ -261,11 +253,100 @@ export default function AdminAiActionsPanel({ organizationId, visible = true }: 
 
       setNotice(payload?.message || "Action approved.");
       setActions((current) => current.filter((item) => item.id !== action.id));
+      setReviewingId("");
     } catch (approveError) {
       setError(approveError instanceof Error ? approveError.message : "Could not approve that action.");
     } finally {
       setBusyId("");
     }
+  }
+
+  function getApprovalDetails(action: ProposedAction) {
+    const draft = drafts[action.id] || action.previewText;
+
+    if (action.kind === "turnover_rescue") {
+      const cleaner = action.payload.candidates.find(
+        (candidate) => candidate.cleanerAccountId === selectedCandidates[action.id]
+      );
+      return {
+        operation: "Create and send a cleaner job offer",
+        recipient: cleaner?.cleanerName || "No cleaner selected",
+        destination: "Cleaner job offer notifications",
+        subject: `Turnover at ${action.payload.propertyName} on ${action.payload.scheduledFor}`,
+        content: `Offer the open turnover slot at ${action.payload.propertyName} on ${action.payload.scheduledFor} to ${cleaner?.cleanerName || "the selected cleaner"}.`,
+        effects: [
+          "Recheck that the cleaner is active, assigned to this property, has not declined, and has no same-day accepted job.",
+          "Assign the open slot to the selected cleaner and change its status to Offered with a response deadline.",
+          "Send the existing job-offer email and push notifications available for that cleaner.",
+          "Update the turnover job's staffing status and record the approval in the audit log.",
+        ],
+        confirmLabel: "Confirm & send job offer",
+      };
+    }
+
+    if (action.kind === "invoice_reminder") {
+      return {
+        operation: "Send an invoice reminder email",
+        recipient: `${action.recipientLabel}${action.payload.recipientEmail ? ` <${action.payload.recipientEmail}>` : ""}`,
+        destination: "Owner email",
+        subject: action.payload.subject,
+        content: action.payload.messageText,
+        effects: [
+          "Send this email immediately using the invoice's configured sender and reply-to addresses.",
+          "Update the invoice's last-reminder time and increase its reminder count by one.",
+          "Create a reminder-sent event containing the recipient and email delivery ID.",
+        ],
+        confirmLabel: "Confirm & send email",
+      };
+    }
+
+    if (action.kind === "cleaner_follow_up") {
+      return {
+        operation: "Send a direct chat message",
+        recipient: action.recipientLabel,
+        destination: "Cleaner chat",
+        subject: action.payload.subject,
+        content: draft,
+        effects: [
+          "Send the message immediately from your admin profile.",
+          "Create or update the direct conversation with this cleaner.",
+          "Store the message in the organization's chat history.",
+          "Send the cleaner a push notification with a shortened preview when push notifications are enabled.",
+        ],
+        confirmLabel: "Confirm & send chat",
+      };
+    }
+
+    if (action.kind === "guest_registration_reminder") {
+      return {
+        operation: "Save an important booking note",
+        recipient: "Admin team",
+        destination: `Booking record for ${action.payload.propertyName}`,
+        subject: `Guest registration reminder for ${action.payload.checkinDate}`,
+        content: `AI supervisor reminder:\n${draft}`,
+        effects: [
+          "Append this text to the existing admin note; existing note content will not be replaced.",
+          "Mark the booking note as important.",
+          "Mark the guest-registration reminder as completed so it is not proposed again.",
+          "No message is sent to the guest, owner, or cleaner.",
+        ],
+        confirmLabel: "Confirm & save booking note",
+      };
+    }
+
+    return {
+      operation: "Acknowledge a supervisor finding",
+      recipient: "Admin team",
+      destination: "Internal audit history only",
+      subject: action.title,
+      content: action.previewText,
+      effects: [
+        "Record that this finding was reviewed, including its evidence and recommendation.",
+        "Hide this finding for 24 hours.",
+        "No message is sent and no staffing, customer, owner, cleaner, or booking record is changed.",
+      ],
+      confirmLabel: "Confirm acknowledgement",
+    };
   }
 
   async function dismissAction(action: ProposedAction) {
@@ -440,19 +521,15 @@ export default function AdminAiActionsPanel({ organizationId, visible = true }: 
               <div className="flex shrink-0 gap-2">
                 <button
                   type="button"
-                  onClick={() => void approveAction(action)}
+                  onClick={() => setReviewingId((current) => current === action.id ? "" : action.id)}
                   disabled={busyId === action.id || (action.kind === "turnover_rescue" && action.payload.candidates.length === 0)}
                   className="rounded-full bg-[#241c15] px-4 py-2 text-sm font-semibold text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60"
                 >
                   {busyId === action.id
                     ? "Working..."
-                    : action.kind === "turnover_rescue"
-                      ? action.payload.candidates.length > 0 ? "Approve & offer" : "No eligible cleaner"
-                      : action.kind === "staffing_advisory"
-                      ? "Acknowledge"
-                      : action.kind === "guest_registration_reminder"
-                        ? "Approve & save"
-                        : "Approve & send"}
+                    : action.kind === "turnover_rescue" && action.payload.candidates.length === 0
+                      ? "No eligible cleaner"
+                      : reviewingId === action.id ? "Close approval review" : "Review approval"}
                 </button>
                 <button
                   type="button"
@@ -531,6 +608,65 @@ export default function AdminAiActionsPanel({ organizationId, visible = true }: 
                 <div className="mt-2 whitespace-pre-line text-sm text-[#5f5245]">{action.previewText}</div>
               )}
             </div>
+
+            {reviewingId === action.id ? (() => {
+              const details = getApprovalDetails(action);
+              return (
+                <div className="mt-4 rounded-[18px] border-2 border-[#79a2df] bg-[#f5f9ff] p-4 shadow-sm">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#2957a4]">
+                    Exactly what you are approving
+                  </div>
+                  <div className="mt-2 text-base font-semibold text-[#17202a]">{details.operation}</div>
+                  <p className="mt-1 text-sm text-[#5f6f86]">
+                    Nothing happens when you open this review. The action runs only when you use the confirmation button below.
+                  </p>
+
+                  <dl className="mt-4 grid gap-3 text-sm md:grid-cols-2">
+                    <div className="rounded-[14px] border border-[#d9e6f7] bg-white p-3">
+                      <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8a7b68]">Recipient</dt>
+                      <dd className="mt-1 font-medium text-[#17202a]">{details.recipient}</dd>
+                    </div>
+                    <div className="rounded-[14px] border border-[#d9e6f7] bg-white p-3">
+                      <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8a7b68]">Channel / destination</dt>
+                      <dd className="mt-1 font-medium text-[#17202a]">{details.destination}</dd>
+                    </div>
+                  </dl>
+
+                  <div className="mt-3 rounded-[14px] border border-[#d9e6f7] bg-white p-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8a7b68]">Subject / purpose</div>
+                    <div className="mt-1 text-sm font-medium text-[#17202a]">{details.subject}</div>
+                    <div className="mt-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8a7b68]">Exact message or saved content</div>
+                    <div className="mt-1 whitespace-pre-line text-sm leading-6 text-[#5f5245]">{details.content}</div>
+                  </div>
+
+                  <div className="mt-3 rounded-[14px] border border-[#d9e6f7] bg-white p-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8a7b68]">What will happen after confirmation</div>
+                    <ol className="mt-2 space-y-1.5 text-sm leading-5 text-[#5f5245]">
+                      {details.effects.map((effect, index) => <li key={effect}>{index + 1}. {effect}</li>)}
+                    </ol>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void approveAction(action)}
+                      disabled={busyId === action.id}
+                      className="rounded-full bg-[#241c15] px-4 py-2 text-sm font-semibold text-[#f8f2e8] transition hover:bg-[#352a21] disabled:opacity-60"
+                    >
+                      {busyId === action.id ? "Working..." : details.confirmLabel}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReviewingId("")}
+                      disabled={busyId === action.id}
+                      className="rounded-full border border-[#b9d1fb] bg-white px-4 py-2 text-sm font-semibold text-[#2957a4] transition hover:bg-[#eef5ff] disabled:opacity-60"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              );
+            })() : null}
           </div>
         ))}
       </div>
