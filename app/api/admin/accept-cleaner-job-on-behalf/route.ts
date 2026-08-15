@@ -93,7 +93,7 @@ async function requireAdmin(service: SupabaseClient, token: string, organization
 async function refreshCleanerJobStaffing(service: SupabaseClient, jobId: string) {
   const { data: job, error: jobError } = await service
     .from("turnover_jobs")
-    .select("id, cleaner_units_needed, cleaner_units_required_strict")
+    .select("id, status, cleaner_units_needed")
     .eq("id", jobId)
     .maybeSingle();
 
@@ -117,22 +117,12 @@ async function refreshCleanerJobStaffing(service: SupabaseClient, jobId: string)
   );
   const completedSlots = slotRows.filter((slot: any) => slot.status === "completed");
   const offeredSlots = slotRows.filter((slot: any) => slot.status === "offered");
-  const stillStranded = slotRows.some(
-    (slot: any) => slot.status === "stranded" || !slot.cleaner_account_id
-  );
-
   const staffingStatus =
     activeSlots.length >= needed
       ? "fully_staffed"
-      : activeSlots.length > 0 && Boolean(job.cleaner_units_required_strict)
+      : activeSlots.length > 0 || offeredSlots.length > 0
         ? "partially_filled"
-        : activeSlots.length > 0
-          ? "ready"
-          : offeredSlots.length > 0
-            ? "offered"
-            : stillStranded
-              ? "stranded"
-              : "unassigned";
+        : "unfilled";
 
   const status =
     completedSlots.length >= needed
@@ -143,8 +133,8 @@ async function refreshCleanerJobStaffing(service: SupabaseClient, jobId: string)
           ? "accepted"
           : offeredSlots.length > 0
             ? "offered"
-            : stillStranded
-              ? "stranded"
+            : job.status === "assigned"
+              ? "assigned"
               : "open";
 
   const earliestOfferedAt =
@@ -184,6 +174,9 @@ export async function POST(request: NextRequest) {
     const jobId = String(body?.jobId || "").trim();
     const slotId = String(body?.slotId || "").trim();
     const action = body?.action === "decline" ? "decline" : "accept";
+    const expectedCleanerAccountId = String(body?.expectedCleanerAccountId || "").trim();
+    const expectedStatus = String(body?.expectedStatus || "").trim().toLowerCase();
+    const expectedOfferedAt = String(body?.expectedOfferedAt || "").trim();
 
     if (!organizationId || !jobId || !slotId) {
       return NextResponse.json({ error: "Missing cleaner job details." }, { status: 400 });
@@ -214,6 +207,17 @@ export async function POST(request: NextRequest) {
 
     if (slotError) return NextResponse.json({ error: slotError.message }, { status: 500 });
     if (!slot) return NextResponse.json({ error: "Cleaner job slot not found." }, { status: 404 });
+    if (
+      !expectedCleanerAccountId ||
+      slot.cleaner_account_id !== expectedCleanerAccountId ||
+      (expectedStatus && String(slot.status || "").toLowerCase() !== expectedStatus) ||
+      (expectedOfferedAt && String(slot.offered_at || "") !== expectedOfferedAt)
+    ) {
+      return NextResponse.json(
+        { error: "This cleaner offer changed after the page loaded. Refresh the job before confirming on the cleaner's behalf." },
+        { status: 409 }
+      );
+    }
     if (!slot.cleaner_account_id) {
       return NextResponse.json({ error: `Assign a cleaner before ${action === "accept" ? "accepting" : "declining"} on their behalf.` }, { status: 400 });
     }
@@ -250,7 +254,7 @@ export async function POST(request: NextRequest) {
     }
 
     const now = new Date().toISOString();
-    const { data: updatedSlot, error: updateError } = await service
+    let updateQuery = service
       .from("turnover_job_slots")
       .update(
         action === "accept"
@@ -273,8 +277,14 @@ export async function POST(request: NextRequest) {
       )
       .eq("id", slot.id)
       .eq("job_id", jobId)
-      .eq("cleaner_account_id", slot.cleaner_account_id)
-      .in("status", ["offered", "stranded"])
+      .eq("cleaner_account_id", expectedCleanerAccountId)
+      .eq("status", slot.status);
+
+    updateQuery = slot.offered_at
+      ? updateQuery.eq("offered_at", slot.offered_at)
+      : updateQuery.is("offered_at", null);
+
+    const { data: updatedSlot, error: updateError } = await updateQuery
       .select("id, job_id, cleaner_account_id, status")
       .maybeSingle();
 

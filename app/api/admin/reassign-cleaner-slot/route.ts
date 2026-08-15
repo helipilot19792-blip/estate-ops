@@ -103,6 +103,11 @@ export async function POST(request: NextRequest) {
     const slotId = String(body?.slotId || "").trim();
     const cleanerAccountId = String(body?.cleanerAccountId || "").trim();
     const reassignSource = body?.reassignSource === "calendar" ? "calendar" : "jobs";
+    const expectedCleanerAccountId = body?.expectedCleanerAccountId
+      ? String(body.expectedCleanerAccountId).trim()
+      : null;
+    const expectedStatus = String(body?.expectedStatus || "").trim().toLowerCase();
+    const expectedOfferedAt = body?.expectedOfferedAt ? String(body.expectedOfferedAt).trim() : null;
 
     if (!organizationId || !jobId || !slotId || !cleanerAccountId) {
       return NextResponse.json({ error: "Missing reassignment details." }, { status: 400 });
@@ -179,6 +184,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Job slot not found." }, { status: 404 });
     }
 
+    if (
+      slot.cleaner_account_id !== expectedCleanerAccountId ||
+      (expectedStatus && String(slot.status || "").toLowerCase() !== expectedStatus) ||
+      String(slot.offered_at || "") !== String(expectedOfferedAt || "")
+    ) {
+      return NextResponse.json(
+        { error: "This slot changed after the page loaded. Refresh the job and choose the replacement again." },
+        { status: 409 }
+      );
+    }
+
     const blockedStatuses = new Set(["in_progress", "completed"]);
     if (blockedStatuses.has(String(slot.status || "").toLowerCase())) {
       return NextResponse.json(
@@ -243,7 +259,7 @@ export async function POST(request: NextRequest) {
     const offeredAt = now.toISOString();
     const expiresAt = getCleanerOfferExpiresAtForDailySweep(job.scheduled_for || null, now);
 
-    const { data: updatedSlot, error: updateError } = await service
+    let updateQuery = service
       .from("turnover_job_slots")
       .update({
         cleaner_account_id: cleanerAccountId,
@@ -262,6 +278,17 @@ export async function POST(request: NextRequest) {
         day_of_reminder_push_sent_at: null,
       })
       .eq("id", slot.id)
+      .eq("job_id", jobId)
+      .eq("status", slot.status);
+
+    updateQuery = slot.cleaner_account_id
+      ? updateQuery.eq("cleaner_account_id", slot.cleaner_account_id)
+      : updateQuery.is("cleaner_account_id", null);
+    updateQuery = slot.offered_at
+      ? updateQuery.eq("offered_at", slot.offered_at)
+      : updateQuery.is("offered_at", null);
+
+    const { data: updatedSlot, error: updateError } = await updateQuery
       .select("id")
       .maybeSingle();
 

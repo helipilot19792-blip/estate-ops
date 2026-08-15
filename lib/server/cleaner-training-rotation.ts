@@ -18,6 +18,13 @@ type TrainingRotationResult = {
   errors?: string[];
 };
 
+type ExpiredOfferSnapshot = {
+  cleanerAccountId: string | null;
+  status: string | null;
+  offeredAt: string | null;
+  expiresAt: string | null;
+};
+
 function extractCheckoutDate(notes: string | null): string | null {
   if (!notes) return null;
   const match = notes.match(/Checkout date:\s*(\d{4}-\d{2}-\d{2})/i);
@@ -31,7 +38,7 @@ function getCleanerJobDate(job: { scheduled_for?: string | null; notes?: string 
 async function refreshCleanerJobStaffing(service: ServiceClient, jobId: string) {
   const { data: job, error: jobError } = await service
     .from("turnover_jobs")
-    .select("id, cleaner_units_needed")
+    .select("id, status, cleaner_units_needed")
     .eq("id", jobId)
     .maybeSingle();
 
@@ -55,15 +62,11 @@ async function refreshCleanerJobStaffing(service: ServiceClient, jobId: string) 
   );
   const completedSlots = slotRows.filter((slot: any) => slot.status === "completed");
   const offeredSlots = slotRows.filter((slot: any) => slot.status === "offered");
-  const stillStranded = slotRows.some((slot: any) => slot.status === "stranded" || !slot.cleaner_account_id);
-
-  const staffingStatus = stillStranded
-    ? "stranded"
-    : activeSlots.length >= unitsNeeded
+  const staffingStatus = activeSlots.length >= unitsNeeded
       ? "fully_staffed"
       : activeSlots.length > 0 || offeredSlots.length > 0
         ? "partially_filled"
-        : "unassigned";
+        : "unfilled";
 
   const status =
     completedSlots.length >= unitsNeeded
@@ -74,7 +77,9 @@ async function refreshCleanerJobStaffing(service: ServiceClient, jobId: string) 
           ? "accepted"
           : offeredSlots.length > 0
             ? "offered"
-            : "open";
+            : job.status === "assigned"
+              ? "assigned"
+              : "open";
 
   const earliestOfferedAt =
     offeredSlots
@@ -277,16 +282,29 @@ export async function applyCleanerTrainingRotationToJob(
 export async function reofferExpiredCleanerTrainingSlot(
   service: ServiceClient,
   slotId: string,
-  declinedByProfileId: string | null = null
+  declinedByProfileId: string | null = null,
+  expectedExpiredOffer?: ExpiredOfferSnapshot
 ): Promise<TrainingRotationResult> {
   const { data: slot, error: slotError } = await service
     .from("turnover_job_slots")
-    .select("id, job_id, slot_number, cleaner_account_id, status, offered_at, accepted_at, declined_at")
+    .select("id, job_id, slot_number, cleaner_account_id, status, offered_at, expires_at, accepted_at, declined_at")
     .eq("id", slotId)
     .maybeSingle();
 
   if (slotError) throw new Error(slotError.message);
   if (!slot?.job_id) return { offeredSlotIds: [] };
+  if (expectedExpiredOffer) {
+    const expiresAtMs = new Date(String(slot.expires_at || "")).getTime();
+    const snapshotStillMatches =
+      String(slot.status || "").toLowerCase() === "offered" &&
+      slot.cleaner_account_id === expectedExpiredOffer.cleanerAccountId &&
+      String(slot.status || "") === String(expectedExpiredOffer.status || "") &&
+      String(slot.offered_at || "") === String(expectedExpiredOffer.offeredAt || "") &&
+      String(slot.expires_at || "") === String(expectedExpiredOffer.expiresAt || "") &&
+      Number.isFinite(expiresAtMs) &&
+      expiresAtMs <= Date.now();
+    if (!snapshotStillMatches) return { offeredSlotIds: [] };
+  }
 
   const { data: job, error: jobError } = await service
     .from("turnover_jobs")
@@ -365,7 +383,7 @@ export async function reofferExpiredCleanerTrainingSlot(
   const nowIso = now.toISOString();
 
   if (!nextAssignment) {
-    const { data: strandedSlot, error: strandError } = await service
+    let strandQuery = service
       .from("turnover_job_slots")
       .update({
         cleaner_account_id: null,
@@ -385,6 +403,11 @@ export async function reofferExpiredCleanerTrainingSlot(
       })
       .eq("id", slot.id)
       .eq("cleaner_account_id", slot.cleaner_account_id)
+      .eq("status", slot.status);
+    strandQuery = slot.offered_at
+      ? strandQuery.eq("offered_at", slot.offered_at)
+      : strandQuery.is("offered_at", null);
+    const { data: strandedSlot, error: strandError } = await strandQuery
       .select("id")
       .maybeSingle();
 
@@ -414,7 +437,7 @@ export async function reofferExpiredCleanerTrainingSlot(
   }
 
   const expiresAt = getCleanerOfferExpiresAtForDailySweep(getCleanerJobDate(job), now);
-  const { data: reassignedSlot, error: reassignError } = await service
+  let reassignQuery = service
     .from("turnover_job_slots")
     .update({
       cleaner_account_id: nextAssignment.cleaner_account_id,
@@ -434,6 +457,11 @@ export async function reofferExpiredCleanerTrainingSlot(
     })
     .eq("id", slot.id)
     .eq("cleaner_account_id", slot.cleaner_account_id)
+    .eq("status", slot.status);
+  reassignQuery = slot.offered_at
+    ? reassignQuery.eq("offered_at", slot.offered_at)
+    : reassignQuery.is("offered_at", null);
+  const { data: reassignedSlot, error: reassignError } = await reassignQuery
     .select("id")
     .maybeSingle();
 
@@ -556,7 +584,7 @@ export async function processExpiredCleanerTrainingOffers(service: ServiceClient
   const nowIso = new Date().toISOString();
   const { data: expiredSlots, error: expiredError } = await service
     .from("turnover_job_slots")
-    .select("id")
+    .select("id, cleaner_account_id, status, offered_at, expires_at")
     .eq("status", "offered")
     .not("expires_at", "is", null)
     .lte("expires_at", nowIso);
@@ -570,7 +598,12 @@ export async function processExpiredCleanerTrainingOffers(service: ServiceClient
 
   for (const slot of expiredSlots ?? []) {
     try {
-      const result = await reofferExpiredCleanerTrainingSlot(service, slot.id);
+      const result = await reofferExpiredCleanerTrainingSlot(service, slot.id, null, {
+        cleanerAccountId: slot.cleaner_account_id || null,
+        status: slot.status || null,
+        offeredAt: slot.offered_at || null,
+        expiresAt: slot.expires_at || null,
+      });
       offeredSlotIds.push(...result.offeredSlotIds);
       expiredSlotIds.push(...(result.expiredSlotIds || []));
       strandedSlotIds.push(...(result.strandedSlotIds || []));

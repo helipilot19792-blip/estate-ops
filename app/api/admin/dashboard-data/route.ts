@@ -332,7 +332,7 @@ export async function GET(request: Request) {
       includeOperations && propertyIds.length > 0
         ? serviceClient.from("admin_stranded_jobs").select("*").in("property_id", propertyIds).order("created_at", { ascending: true })
         : emptyResult(),
-      includeAll && propertyIds.length > 0
+      propertyIds.length > 0
         ? serviceClient.from("property_access").select("*").in("property_id", propertyIds)
         : emptyResult(),
       includeAll && propertyIds.length > 0
@@ -341,7 +341,7 @@ export async function GET(request: Request) {
       includeOperations && propertyIds.length > 0
         ? serviceClient.from("property_cleaning_checklist_items").select("*").in("property_id", propertyIds).eq("active", true).order("sort_order", { ascending: true })
         : emptyResult(),
-      includeAll && propertyIds.length > 0
+      propertyIds.length > 0
         ? serviceClient.from("property_knowledge").select("*").in("property_id", propertyIds).order("updated_at", { ascending: false })
         : emptyResult(),
       includeAll && propertyIds.length > 0

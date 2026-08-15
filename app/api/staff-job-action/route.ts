@@ -52,7 +52,7 @@ function pickNextBackupCleaner(
 async function refreshCleanerJobStaffing(service: any, jobId: string) {
   const { data: job, error: jobError } = await service
     .from("turnover_jobs")
-    .select("id, cleaner_units_needed")
+    .select("id, status, cleaner_units_needed")
     .eq("id", jobId)
     .maybeSingle();
 
@@ -76,17 +76,11 @@ async function refreshCleanerJobStaffing(service: any, jobId: string) {
   );
   const completedSlots = slotRows.filter((slot: any) => slot.status === "completed");
   const offeredSlots = slotRows.filter((slot: any) => slot.status === "offered");
-  const stillStranded = slotRows.some(
-    (slot: any) => slot.status === "stranded" || !slot.cleaner_account_id
-  );
-
-  const staffingStatus = stillStranded
-    ? "stranded"
-    : activeSlots.length >= needed
+  const staffingStatus = activeSlots.length >= needed
       ? "fully_staffed"
       : activeSlots.length > 0 || offeredSlots.length > 0
         ? "partially_filled"
-        : "unassigned";
+        : "unfilled";
 
   const status =
     completedSlots.length >= needed
@@ -97,7 +91,9 @@ async function refreshCleanerJobStaffing(service: any, jobId: string) {
       ? "accepted"
       : offeredSlots.length > 0
         ? "offered"
-        : "open";
+        : job.status === "assigned"
+          ? "assigned"
+          : "open";
 
   const earliestOfferedAt =
     offeredSlots

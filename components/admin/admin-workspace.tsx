@@ -3210,6 +3210,12 @@ export default function AdminPage() {
     const loadedProperties = (data.properties ?? []) as Property[];
     const loadedStrandedJobs = (data.strandedJobs ?? []) as StrandedJob[];
 
+    // Field access is visible above every mobile admin section, so scoped loads
+    // must keep its property and access sources synchronized as well.
+    setProperties(loadedProperties);
+    setAccessRows((data.accessRows ?? []) as AccessRow[]);
+    setPropertyKnowledgeRows((data.propertyKnowledge ?? []) as PropertyKnowledgeRow[]);
+
     const applyProfiles = () => {
       setProfiles(
         ((data.profiles ?? []) as any[])
@@ -3243,7 +3249,6 @@ export default function AdminPage() {
     }
 
     if (scope === "operations") {
-      setProperties(loadedProperties);
       setCleanerAccounts((data.cleanerAccounts ?? []) as CleanerAccount[]);
       setCleanerAccountMembers((data.cleanerAccountMembers ?? []) as CleanerAccountMember[]);
       setAssignments((data.assignments ?? []) as Assignment[]);
@@ -6713,6 +6718,9 @@ export default function AdminPage() {
           slotId: slot.id,
           cleanerAccountId,
           reassignSource,
+          expectedCleanerAccountId: slot.cleaner_account_id,
+          expectedStatus: slot.status,
+          expectedOfferedAt: slot.offered_at || null,
         }),
       });
 
@@ -6734,6 +6742,7 @@ export default function AdminPage() {
             ? `Job reassigned. ${notifyEmailSent} email${notifyEmailSent === 1 ? "" : "s"} and ${notifyPushSent} push alert${notifyPushSent === 1 ? "" : "s"} sent.`
             : "Job reassigned."
       );
+      setReassignSelections((current) => ({ ...current, [jobId]: "" }));
       await loadData();
     } catch (err: any) {
       setError(err?.message || "Could not reassign the job.");
@@ -6843,6 +6852,9 @@ export default function AdminPage() {
           jobId,
           slotId: slot.id,
           action: "accept",
+          expectedCleanerAccountId: slot.cleaner_account_id,
+          expectedStatus: slot.status,
+          expectedOfferedAt: slot.offered_at || null,
         }),
       });
 
@@ -6910,6 +6922,9 @@ export default function AdminPage() {
           jobId,
           slotId: slot.id,
           action: "decline",
+          expectedCleanerAccountId: slot.cleaner_account_id,
+          expectedStatus: slot.status,
+          expectedOfferedAt: slot.offered_at || null,
         }),
       });
 
@@ -23222,6 +23237,13 @@ This removes its linked members and deletes the grounds account.`
                 0
               );
               const propertyCleanerAccounts = getCleanerAccountsForProperty(job.property_id);
+              const nextOpenSlot = slots
+                .slice()
+                .sort((a, b) => a.slot_number - b.slot_number)
+                .find((slot) => !["accepted", "in_progress", "completed"].includes(String(slot.status || "").toLowerCase()));
+              const nextSlotReplacementAccounts = propertyCleanerAccounts.filter(
+                (account) => account.id !== nextOpenSlot?.cleaner_account_id
+              );
               const currentAdminAssignedSlot = slots.find(
                 (slot) =>
                   !!slot.cleaner_account_id &&
@@ -23233,7 +23255,11 @@ This removes its linked members and deletes the grounds account.`
                 acceptedCount < job.cleaner_units_needed &&
                 !currentAdminAssignedSlot;
               const cleaningJobDate = job.scheduled_for || extractCheckoutDate(job.notes);
-              const selectedReassignCleanerId = reassignSelections[job.id] || "";
+              const selectedReassignCleanerId = nextSlotReplacementAccounts.some(
+                (account) => account.id === reassignSelections[job.id]
+              )
+                ? reassignSelections[job.id]
+                : "";
               const selectedReassignConflictLabel = getCleanerSameDayConflictLabel(
                 selectedReassignCleanerId,
                 cleaningJobDate,
@@ -23645,18 +23671,18 @@ This removes its linked members and deletes the grounds account.`
                       <div className="grid gap-2 md:grid-cols-[1fr_220px]">
                         <select
                           className="w-full rounded-[14px] border border-[#d9ccbb] bg-white px-3 py-2 text-sm outline-none transition focus:border-[#b48d4e]"
-                          value={reassignSelections[job.id] || ""}
+                          value={selectedReassignCleanerId}
                           onChange={(e) =>
                             setReassignSelections((prev) => ({ ...prev, [job.id]: e.target.value }))
                           }
                         >
                           <option value="">Select cleaner account</option>
-                          {propertyCleanerAccounts.length === 0 ? (
+                          {nextSlotReplacementAccounts.length === 0 ? (
                             <option value="" disabled>
-                              No cleaners assigned to this property
+                              No other cleaners assigned to this property
                             </option>
                           ) : null}
-                          {propertyCleanerAccounts.map((account) => (
+                          {nextSlotReplacementAccounts.map((account) => (
                             <option key={account.id} value={account.id}>
                               {account.display_name || "Unnamed cleaner account"}
                               {getCleanerSameDayConflicts(account.id, cleaningJobDate, job.id).length > 0
@@ -23672,7 +23698,11 @@ This removes its linked members and deletes the grounds account.`
                             e.stopPropagation();
                             void reassignOpenJob(job.id);
                           }}
-                          disabled={reassigningJobId === job.id || propertyCleanerAccounts.length === 0}
+                          disabled={
+                            reassigningJobId === job.id ||
+                            nextSlotReplacementAccounts.length === 0 ||
+                            !selectedReassignCleanerId
+                          }
                         >
                           {reassigningJobId === job.id ? "Reassigning..." : "Reassign next open slot"}
                         </button>
