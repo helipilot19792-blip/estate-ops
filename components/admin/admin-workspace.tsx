@@ -9223,6 +9223,14 @@ This removes its linked members and deletes the grounds account.`
     return formatLongDate(d);
   }
 
+  function formatScheduledForWithWeekday(value?: string | null) {
+    if (!value) return "Not set";
+    const d = new Date(`${value}T12:00:00`);
+    if (Number.isNaN(d.getTime())) return value;
+    const weekday = d.toLocaleDateString("en-US", { weekday: "long" });
+    return `${weekday}, ${formatLongDate(d)}`;
+  }
+
   function formatFileSize(bytes?: number | null) {
     if (!bytes || bytes <= 0) return "Unknown size";
     if (bytes < 1024) return `${bytes} B`;
@@ -23300,7 +23308,7 @@ This removes its linked members and deletes the grounds account.`
                     <div className="inline-flex items-center gap-3 rounded-full border border-[#d79a2b] bg-[#fff3d7] px-4 py-2 text-[#6f4300] shadow-sm">
                       <span className="text-[10px] font-bold uppercase tracking-[0.18em]">Cleaning date</span>
                       <span className="text-sm font-bold text-[#241c15]">
-                        {formatScheduledFor(cleaningJobDate)}
+                        {formatScheduledForWithWeekday(cleaningJobDate)}
                       </span>
                     </div>
                     <div className="inline-flex items-center gap-2 rounded-full border border-[#d8c7ab] bg-white px-3 py-1.5 text-xs font-semibold text-[#6f6255]">
