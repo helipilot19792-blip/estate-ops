@@ -8,6 +8,7 @@ import type {
   AdminV2Briefing,
   AdminV2TimelineItem,
 } from "@/lib/admin-v2/briefing";
+import { rememberGuleraExperience } from "@/lib/gulera-experience";
 import { supabase } from "@/lib/supabase";
 import styles from "./admin-v2-shell.module.css";
 
@@ -58,7 +59,7 @@ function LoadingScene() {
       <p className={styles.eyebrow}>Gulera OS 2.0</p>
       <h1>Opening your calm command center.</h1>
       <p>Verifying your workspace without loading Classic Gulera.</p>
-      <Link className={styles.classicLink} href="/admin">Switch to Classic Gulera</Link>
+      <Link className={styles.classicLink} href="/admin" onClick={() => rememberGuleraExperience("classic")}>Switch to Classic Gulera</Link>
     </main>
   );
 }
@@ -71,7 +72,7 @@ function AccessError({ message }: { message: string }) {
       <p>{message}</p>
       <div className={styles.centeredActions}>
         <Link className={styles.primaryLink} href="/login?portal=admin">Return to login</Link>
-        <Link className={styles.classicLink} href="/admin">Switch to Classic Gulera</Link>
+        <Link className={styles.classicLink} href="/admin" onClick={() => rememberGuleraExperience("classic")}>Switch to Classic Gulera</Link>
       </div>
     </main>
   );
@@ -100,7 +101,7 @@ function OrganizationChooser({
           </button>
         ))}
       </div>
-      <Link className={styles.classicLink} href="/admin">Switch to Classic Gulera</Link>
+      <Link className={styles.classicLink} href="/admin" onClick={() => rememberGuleraExperience("classic")}>Switch to Classic Gulera</Link>
     </main>
   );
 }
@@ -272,7 +273,7 @@ function LiveBriefing({ data }: { data: AdminV2Briefing }) {
       </section>
 
       <footer className={styles.previewFooter}>
-        <span>Phase 3 · Read-only AI Manager</span>
+        <span>Phase 4 · Your chosen Gulera experience</span>
         <p>Live organization records · No external or state-changing actions</p>
       </footer>
     </>
@@ -311,7 +312,7 @@ function CommandCenter({ state, onOrganizationChange, onRetry }: {
               </label>
             ) : null}
             <div className={styles.statusPill}>Live records · Read-only</div>
-            <Link className={styles.classicButton} href="/admin">Switch to Classic Gulera</Link>
+            <Link className={styles.classicButton} href="/admin" onClick={() => rememberGuleraExperience("classic")}>Switch to Classic Gulera</Link>
           </div>
         </header>
 

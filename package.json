@@ -11,6 +11,7 @@
     "test:ai-turnover-rescue": "node --experimental-strip-types scripts/test-ai-turnover-rescue.mjs",
     "test:admin-v2-isolation": "node --experimental-strip-types scripts/test-admin-v2-isolation.mjs",
     "test:admin-v2-briefing": "node --experimental-strip-types scripts/test-admin-v2-briefing.mjs",
+    "test:admin-v2-experience": "node --experimental-strip-types scripts/test-admin-v2-experience.mjs",
     "test:demo-isolation": "node --experimental-strip-types scripts/test-demo-isolation.mjs",
     "test:cleaner-offer-deadlines": "node --experimental-strip-types scripts/test-cleaner-offer-deadlines.mjs",
     "test:cleaner-offer-eligibility": "node --experimental-strip-types scripts/test-cleaner-offer-eligibility.mjs"

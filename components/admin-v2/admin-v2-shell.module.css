@@ -97,10 +97,15 @@
 }
 
 .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
   min-height: 5.75rem;
   padding: 1rem clamp(1.25rem, 3vw, 3.5rem);
   border-bottom: 1px solid var(--line);
   display: flex;
+  background: rgba(247, 244, 236, 0.9);
+  backdrop-filter: blur(16px);
   align-items: center;
   justify-content: space-between;
   gap: 1.5rem;

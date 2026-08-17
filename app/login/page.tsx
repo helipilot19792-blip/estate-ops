@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Eye, EyeOff } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { PASSWORD_REQUIREMENTS, validatePassword } from "@/lib/password-policy";
+import { getPreferredAdminDestination } from "@/lib/gulera-experience";
 import { supabase } from "@/lib/supabase";
 import { useI18n } from "@/components/i18n-provider";
 
@@ -292,7 +293,7 @@ export default function LoginPage() {
       if (profile.role === "pending" && metadata.signup_kind === "company_admin") {
         try {
           await finishCompanySignup(session.access_token);
-          window.location.href = "/admin";
+          window.location.href = getPreferredAdminDestination();
           return;
         } catch (signupError) {
           const message = signupError instanceof Error ? signupError.message : "Could not finish account setup.";
@@ -322,7 +323,7 @@ export default function LoginPage() {
       }
 
 
-      window.location.href = destination;
+      window.location.href = destination === "/admin" ? getPreferredAdminDestination() : destination;
       return;
     } finally {
       setLoadingLogin(false);

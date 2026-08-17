@@ -1699,6 +1699,7 @@ export default function AdminPage() {
 
 
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [v2ExperienceAvailable, setV2ExperienceAvailable] = useState(false);
   const [currentPortalRole, setCurrentPortalRole] = useState<string | null>(null);
   const [currentAdminUserId, setCurrentAdminUserId] = useState<string | null>(null);
   const [currentAdminProfile, setCurrentAdminProfile] = useState<ProfileRow | null>(null);
@@ -2578,6 +2579,32 @@ export default function AdminPage() {
 
     void checkAuthAndRole();
   }, [router]);
+  useEffect(() => {
+    if (checkingAuth || typeof window === "undefined") return;
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void supabase.auth.getSession().then(async ({ data }) => {
+        if (!data.session || cancelled) return;
+
+        try {
+          const response = await fetch("/api/admin-v2/access", {
+            method: "GET",
+            headers: { Authorization: `Bearer ${data.session.access_token}` },
+            cache: "no-store",
+          });
+          if (!cancelled && response.ok) setV2ExperienceAvailable(true);
+        } catch {
+          // V2 is optional. Classic must remain fully usable if its preview is unavailable.
+        }
+      });
+    }, 1500);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [checkingAuth]);
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -29195,6 +29222,15 @@ This removes its linked members and deletes the grounds account.`
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-3">
+                {v2ExperienceAvailable ? (
+                  <button
+                    type="button"
+                    onClick={() => router.push("/choose-experience")}
+                    className="inline-flex items-center justify-center rounded-full border border-[#a7cdbb] bg-[#ecf7f1] px-5 py-2.5 text-sm font-medium text-[#245a45] shadow-sm transition hover:bg-white"
+                  >
+                    Choose experience
+                  </button>
+                ) : null}
                 {currentPortalRole === "platform_admin" ? (
                   <button
                     type="button"

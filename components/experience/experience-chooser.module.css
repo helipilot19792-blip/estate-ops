@@ -1,0 +1,359 @@
+.page,
+.loadingPage {
+  --ink: #17211c;
+  --muted: #637069;
+  --paper: #f7f4ec;
+  min-height: 100vh;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 10% 10%, rgba(233, 202, 128, 0.2), transparent 28rem),
+    radial-gradient(circle at 88% 30%, rgba(157, 198, 182, 0.28), transparent 32rem),
+    var(--paper);
+}
+
+.page {
+  position: relative;
+  overflow: hidden;
+  padding: 1.5rem clamp(1.25rem, 4vw, 4.5rem) 2rem;
+}
+
+.ambientOne,
+.ambientTwo {
+  position: absolute;
+  border-radius: 999px;
+  pointer-events: none;
+  filter: blur(1px);
+}
+
+.ambientOne {
+  width: 18rem;
+  height: 18rem;
+  right: -8rem;
+  top: 7rem;
+  border: 1px solid rgba(23, 33, 28, 0.08);
+}
+
+.ambientTwo {
+  width: 9rem;
+  height: 9rem;
+  left: -4rem;
+  bottom: 2rem;
+  background: rgba(218, 184, 105, 0.12);
+}
+
+.header,
+.intro,
+.choices,
+.footer {
+  position: relative;
+  z-index: 1;
+  width: min(70rem, 100%);
+  margin-inline: auto;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 1.35rem;
+  border-bottom: 1px solid rgba(23, 33, 28, 0.12);
+}
+
+.brand,
+.brand > span:last-child {
+  display: flex;
+}
+
+.brand {
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.brand > span:last-child {
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.brand strong {
+  font-size: 0.98rem;
+}
+
+.brand small {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.brandMark,
+.loadingMark {
+  display: grid;
+  place-items: center;
+  background: var(--ink);
+  color: #fffdf7;
+  font-weight: 800;
+}
+
+.brandMark {
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 0.85rem;
+}
+
+.securityNote,
+.statusPill,
+.stablePill,
+.previewPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.securityNote {
+  border: 1px solid rgba(23, 33, 28, 0.12);
+  background: rgba(255, 255, 255, 0.55);
+  padding: 0.62rem 0.85rem;
+}
+
+.intro {
+  max-width: 48rem;
+  margin-top: clamp(2.8rem, 7vw, 5.5rem);
+  text-align: center;
+}
+
+.eyebrow,
+.choiceEyebrow {
+  margin: 0;
+  color: #365d4d;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.intro h1,
+.loadingPage h1 {
+  margin: 0.65rem 0 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(2.5rem, 6vw, 4.8rem);
+  font-weight: 500;
+  letter-spacing: -0.055em;
+  line-height: 0.98;
+}
+
+.intro > p:last-child,
+.loadingPage > p:last-of-type {
+  max-width: 43rem;
+  margin: 1.25rem auto 0;
+  color: var(--muted);
+  font-size: clamp(0.95rem, 1.5vw, 1.08rem);
+  line-height: 1.7;
+}
+
+.choices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+  margin-top: clamp(2.5rem, 5vw, 4rem);
+}
+
+.choice {
+  display: flex;
+  min-height: 29rem;
+  flex-direction: column;
+  padding: clamp(1.5rem, 3vw, 2.35rem);
+  border: 1px solid rgba(23, 33, 28, 0.13);
+  border-radius: 2rem;
+  box-shadow: 0 22px 60px rgba(45, 52, 47, 0.08);
+}
+
+.classicChoice {
+  background: rgba(255, 253, 247, 0.88);
+}
+
+.v2Choice {
+  background: linear-gradient(145deg, #dcebe3, #eef0da 58%, #f4e8c9);
+}
+
+.choiceTopline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2.6rem;
+}
+
+.choiceNumber {
+  color: rgba(23, 33, 28, 0.48);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.05rem;
+}
+
+.stablePill,
+.previewPill {
+  padding: 0.48rem 0.7rem;
+}
+
+.stablePill {
+  border: 1px solid rgba(23, 33, 28, 0.11);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.previewPill {
+  background: var(--ink);
+  color: #fffdf7;
+}
+
+.choice h2 {
+  margin: 0.5rem 0 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(2rem, 4vw, 3.15rem);
+  font-weight: 500;
+  letter-spacing: -0.045em;
+}
+
+.choiceDescription {
+  margin: 1rem 0 0;
+  color: #526159;
+  line-height: 1.65;
+}
+
+.featureList {
+  display: grid;
+  gap: 0.7rem;
+  margin: 1.75rem 0 2rem;
+  padding: 0;
+  list-style: none;
+}
+
+.featureList li {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.88rem;
+  font-weight: 650;
+}
+
+.featureList svg {
+  flex: 0 0 auto;
+  color: #356650;
+}
+
+.classicAction,
+.v2Action,
+.classicFallback {
+  display: inline-flex;
+  min-height: 3.2rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  margin-top: auto;
+  border-radius: 999px;
+  padding: 0.8rem 1.2rem;
+  font-size: 0.86rem;
+  font-weight: 800;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.classicAction {
+  border: 1px solid rgba(23, 33, 28, 0.2);
+  background: transparent;
+  color: var(--ink);
+}
+
+.v2Action,
+.classicFallback {
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: #fffdf7;
+  box-shadow: 0 12px 24px rgba(23, 33, 28, 0.16);
+}
+
+.classicAction:hover,
+.v2Action:hover,
+.classicFallback:hover {
+  transform: translateY(-1px);
+}
+
+.footer {
+  display: flex;
+  justify-content: center;
+  gap: 0.7rem 1.5rem;
+  flex-wrap: wrap;
+  padding-top: 1.5rem;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.loadingPage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  padding: 2rem;
+  text-align: center;
+}
+
+.loadingMark {
+  width: 3.4rem;
+  height: 3.4rem;
+  margin-bottom: 1.35rem;
+  border-radius: 1rem;
+}
+
+.statusPill {
+  margin-bottom: 0.75rem;
+  background: #f1dfb1;
+  padding: 0.5rem 0.8rem;
+}
+
+.classicFallback {
+  margin-top: 1.5rem;
+}
+
+@media (max-width: 760px) {
+  .page {
+    padding: 1rem 1rem 1.5rem;
+  }
+
+  .securityNote {
+    display: none;
+  }
+
+  .intro {
+    margin-top: 3rem;
+    text-align: left;
+  }
+
+  .intro > p:last-child {
+    margin-inline: 0;
+  }
+
+  .choices {
+    grid-template-columns: 1fr;
+    margin-top: 2rem;
+  }
+
+  .choice {
+    min-height: auto;
+    border-radius: 1.5rem;
+  }
+
+  .choiceTopline {
+    margin-bottom: 1.8rem;
+  }
+
+  .classicAction,
+  .v2Action {
+    margin-top: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .classicAction,
+  .v2Action,
+  .classicFallback {
+    transition: none;
+  }
+}
