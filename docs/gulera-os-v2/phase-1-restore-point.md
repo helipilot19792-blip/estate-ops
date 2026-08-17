@@ -8,10 +8,12 @@ secret values, customer records, or database contents.
 
 The Git checkpoint, production deployment record, public visual baseline,
 environment-name inventory, build baseline, test baseline, and Git rollback
-checkout have been completed. Phase 1 is not complete until an authorized
-operator confirms the Supabase backup/PITR state and creates a current schema
-backup in secure storage. Owner, cleaner, and grounds screenshots plus an
-organization-isolation negative test also require authorized test sessions.
+checkout have been completed. The Supabase schema/data backup remains open
+because the Free plan has no managed backups and the original database password
+is unavailable. On 2026-08-17, the owner explicitly approved proceeding without
+that backup for now and accepted it as tracked recovery debt. Owner, cleaner,
+and grounds screenshots plus an organization-isolation negative test also
+require authorized test sessions.
 
 No application route, runtime component, package, deployment, Supabase object,
 or production record was changed while establishing this restore point.
@@ -193,6 +195,6 @@ that expose them.
 
 ## Phase boundary
 
-Phase 2 must not begin until the Supabase backup gate and authenticated access
-checks above are completed or explicitly waived by the owner, and Phase 2 is
-separately approved.
+The owner explicitly waived the outstanding Supabase backup gate for now and
+approved Phase 2 on 2026-08-17. The backup requirement remains open and must be
+completed before database migrations or write-capable V2 work are proposed.
