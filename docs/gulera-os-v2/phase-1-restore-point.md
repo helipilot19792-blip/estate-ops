@@ -49,6 +49,17 @@ The Vercel evidence came from the owner's supplied deployment screenshot and
 the local `.vercel/repo.json` project binding. No deployment was created,
 promoted, or changed.
 
+### Production-critical Vercel binding
+
+The owner has confirmed that production must remain on the existing
+`estate-ops-fw59` Vercel project and project ID
+`prj_28x6Bw3M5Psuwq31QuKYzgOzO8BU`. Previous attempts to change this binding
+caused working functionality to fail. Do not create a replacement Vercel
+project, relink this repository, rename the project, change its team binding,
+or move the production domain as part of Gulera OS 2.0. Future preview and
+production deployments must use this existing project unless the owner
+separately approves a fully audited migration plan.
+
 ## Supabase record and remaining gate
 
 - Project host: `dfnletmtdbzlcojbhvoi.supabase.co`

@@ -12,6 +12,11 @@ time they are performed.
 - Production domain at capture: `portal.estateofmindpm.com`
 - Vercel project: `estate-ops-fw59`
 
+The `estate-ops-fw59` project binding is a production invariant. Do not relink
+the repository to a new Vercel project, rename or replace the project, change
+its team binding, or move the production domain during rollback. Previous
+attempts to change this binding caused working functionality to fail.
+
 ## Preferred application rollback
 
 Preserve V2 history by creating a new rollback branch rather than resetting or
@@ -37,8 +42,9 @@ Expected SHA from the `git show` command:
 
 After review, push this rollback branch and deploy it through the normal Vercel
 review/production process. Confirm the deployment is bound to
-`portal.estateofmindpm.com` before promoting it. Do not force-push `main` and do
-not delete the V2 branch as part of rollback.
+the existing `estate-ops-fw59` project and `portal.estateofmindpm.com` before
+promoting it. Do not force-push `main` and do not delete the V2 branch as part
+of rollback.
 
 ## Fast V2-only containment
 
