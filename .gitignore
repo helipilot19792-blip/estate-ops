@@ -36,6 +36,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# Local restore artifacts may contain private production metadata or data.
+/.restore-artifacts/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
