@@ -732,6 +732,31 @@ export default function LoginPage() {
                 </div>
               </div>
 
+              <Link
+                href="/demo"
+                className="group mt-4 block rounded-[24px] border border-[#c9d8ca] bg-[linear-gradient(135deg,#edf5ed_0%,#fffaf0_100%)] p-5 shadow-[0_16px_34px_rgba(51,82,61,0.08)] transition hover:-translate-y-0.5 hover:border-[#89a68f] hover:shadow-[0_20px_42px_rgba(51,82,61,0.13)]"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <span className="inline-flex rounded-full border border-[#b7ccb9] bg-white/80 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#45644f]">
+                      {t("login.demoBadge")}
+                    </span>
+                    <h2 className="mt-3 text-xl font-semibold tracking-tight text-[#203026]">
+                      {t("login.demoTitle")}
+                    </h2>
+                    <p className="mt-1 text-sm leading-6 text-[#647067]">
+                      {t("login.demoBody")}
+                    </p>
+                  </div>
+                  <span className="mt-1 grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#203026] text-lg text-white transition group-hover:translate-x-0.5">
+                    →
+                  </span>
+                </div>
+                <span className="mt-4 inline-flex text-sm font-semibold text-[#31533d] underline decoration-[#9fb6a4] underline-offset-4">
+                  {t("login.demoButton")}
+                </span>
+              </Link>
+
               <div className="mt-6">
                 {authMode === "login" ? (
                   <section className="rounded-[28px] border border-[#e7ddd0] bg-[#fcfaf7] p-5 shadow-sm">
