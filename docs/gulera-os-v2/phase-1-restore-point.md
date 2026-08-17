@@ -66,21 +66,25 @@ separately approves a fully audited migration plan.
 - Inferred project reference: `dfnletmtdbzlcojbhvoi`
 - Local project link: not present
 - Global Supabase CLI: not installed
-- Dashboard access in the automation browser: redirected to Supabase sign-in
+- Supabase plan at capture: Free
+- Scheduled backups: unavailable on the current plan
+- PITR: unavailable/not configured on the current plan
 - Schema backup: **not yet created**
-- Data backup or PITR checkpoint: **not yet confirmed**
+- Data backup or PITR checkpoint: **not yet created**
+- Local dump tooling: neither Docker nor `pg_dump` is currently installed
 
-An authorized operator must complete both items below before Phase 1 is closed:
+The owner supplied a dashboard capture confirming that the Free plan does not
+include project backups. An authorized operator must complete both items below
+before Phase 1 is closed:
 
-1. Sign in to the Supabase dashboard, select project
-   `dfnletmtdbzlcojbhvoi`, open **Database > Backups**, and record the newest
-   successful backup time and retention window. If PITR is enabled, record its
-   earliest and latest recovery points. Do not start a restore.
-2. Create a current logical schema dump using an authorized database connection
-   and place it in encrypted/off-site storage. If a downloadable logical backup
-   is available, preserve it in the same secure location. If physical backups
-   or PITR are enabled, confirm the managed recovery point and use an authorized
-   `supabase db dump`/`pg_dump` workflow for the separate schema artifact.
+1. Install an approved PostgreSQL client or Docker/Supabase CLI toolchain, then
+   create current logical schema and data dumps using an authorized database
+   connection. Handle the database password locally; never place it in Git,
+   documentation, command output, or chat.
+2. Place the resulting dumps in encrypted/off-site storage and record their
+   capture time and checksums without recording their contents. Alternatively,
+   the owner may separately approve a paid Supabase plan with managed backups,
+   but enabling or purchasing that plan is outside this restore-point work.
 
 Supabase documents managed backups and PITR at
 <https://supabase.com/docs/guides/platform/backups> and the supported logical
@@ -134,6 +138,7 @@ Private local artifacts are excluded from Git by `/.restore-artifacts/`.
 | --- | ---: | --- |
 | `.restore-artifacts/screenshots/admin-classic-home-private.png` | 84592 | `37107F3ED7F431CE424BDBBA02040FC24B35CFB2651F1EA05EBCC7FD35F452CC` |
 | `.restore-artifacts/screenshots/portal-public-home.png` | 367169 | `1485015509F5E0A7B9E92C4BF243B31FE8C9EF943CD7979BF3836B5BDD6250BE` |
+| `.restore-artifacts/screenshots/supabase-free-plan-no-backups.png` | 151749 | `B52960F5205DEEB4C4955BCAF810DE9D1EDD089F68E14DB9A06C454B10FC19FC` |
 | `.restore-artifacts/screenshots/vercel-production-current.png` | 285870 | `0C013D1D13CC94DD1F3C8BE3AB93A7386AE024F4228CD85F6240BDC8C7EDC1E8` |
 
 The public home screenshot was captured directly from production. The Vercel
