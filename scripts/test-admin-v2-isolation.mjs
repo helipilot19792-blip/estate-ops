@@ -10,10 +10,12 @@ assert.equal(isGuleraOsV2Enabled("true"), true);
 assert.equal(isGuleraOsV2Enabled(" TRUE "), true);
 assert.equal(isGuleraOsV2Enabled("1"), true);
 
-const [classicPage, v2Page, v2Route, v2Shell, featureSource] = await Promise.all([
+const [classicPage, v2Page, v2Route, v2BriefingRoute, v2BriefingData, v2Shell, featureSource] = await Promise.all([
   readFile(new URL("../app/admin/page.tsx", import.meta.url), "utf8"),
   readFile(new URL("../app/admin-v2/page.tsx", import.meta.url), "utf8"),
   readFile(new URL("../app/api/admin-v2/access/route.ts", import.meta.url), "utf8"),
+  readFile(new URL("../app/api/admin-v2/briefing/route.ts", import.meta.url), "utf8"),
+  readFile(new URL("../lib/server/admin-v2/briefing.ts", import.meta.url), "utf8"),
   readFile(new URL("../components/admin-v2/admin-v2-shell.tsx", import.meta.url), "utf8"),
   readFile(new URL("../lib/server/admin-v2/feature.ts", import.meta.url), "utf8"),
 ]);
@@ -42,6 +44,21 @@ assert.equal(
   v2Route.includes("export async function POST"),
   false,
   "The first V2 API must remain read-only."
+);
+for (const source of [v2BriefingRoute, v2BriefingData]) {
+  for (const mutation of ["export async function POST", ".insert(", ".update(", ".upsert(", ".delete("]) {
+    assert.equal(source.includes(mutation), false, `Phase 3 must remain read-only (${mutation}).`);
+  }
+}
+assert.equal(
+  v2BriefingRoute.includes("isGuleraOsV2Enabled"),
+  true,
+  "The Phase 3 briefing must use the disabled-by-default V2 flag."
+);
+assert.equal(
+  v2BriefingData.includes("getAdminV2Access(token)"),
+  true,
+  "The Phase 3 briefing must reverify V2 access close to its data source."
 );
 assert.equal(
   v2Shell.includes('href="/admin"'),
