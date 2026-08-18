@@ -3450,6 +3450,7 @@ export default function AdminPage() {
     const nextJobSlots = (data.jobSlots ?? []) as JobSlot[];
     const nextGroundsJobs = (data.groundsJobs ?? []) as GroundsJob[];
     const nextGroundsJobSlots = (data.groundsJobSlots ?? []) as GroundsJobSlot[];
+    const nextPropertyBookingEvents = (data.propertyBookingEvents ?? []) as PropertyBookingEvent[];
     const nextTurnoverJobChecklistItems = (data.turnoverJobChecklistItems ?? []) as TurnoverJobChecklistItemRow[];
 
     setProperties((data.properties ?? []) as Property[]);
@@ -3462,7 +3463,9 @@ export default function AdminPage() {
     setGroundsJobs((current) => preserveFullWorkspace ? mergeById(current, nextGroundsJobs) : nextGroundsJobs);
     setGroundsJobSlots((current) => preserveFullWorkspace ? mergeById(current, nextGroundsJobSlots) : nextGroundsJobSlots);
     setStrandedJobs((data.strandedJobs ?? []) as StrandedJob[]);
-    setPropertyBookingEvents((data.propertyBookingEvents ?? []) as PropertyBookingEvent[]);
+    setPropertyBookingEvents((current) =>
+      preserveFullWorkspace ? mergeById(current, nextPropertyBookingEvents) : nextPropertyBookingEvents
+    );
     setMaintenanceFlags((data.maintenanceFlags ?? []) as MaintenanceFlagRow[]);
     setInspectionRules((data.inspectionRules ?? []) as PropertyInspectionRule[]);
     setStaffJobStatusEvents((data.staffJobStatusEvents ?? []) as StaffJobStatusEventRow[]);
