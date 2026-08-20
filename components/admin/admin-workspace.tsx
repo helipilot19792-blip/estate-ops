@@ -9917,18 +9917,6 @@ This removes its linked members and deletes the grounds account.`
     return map;
   }, [cleanerAccountMembers, profiles]);
 
-  const cleanerAssignedPropertyIdsByAccountId = useMemo(() => {
-    const map: Record<string, Set<string>> = {};
-    for (const assignment of assignments) {
-      if (!assignment.cleaner_account_id) continue;
-      if (!map[assignment.cleaner_account_id]) {
-        map[assignment.cleaner_account_id] = new Set<string>();
-      }
-      map[assignment.cleaner_account_id].add(assignment.property_id);
-    }
-    return map;
-  }, [assignments]);
-
   const groundsMembersByAccountId = useMemo(() => {
     const map: Record<string, ProfileRow[]> = {};
     for (const member of groundsAccountMembers) {
@@ -10680,10 +10668,6 @@ This removes its linked members and deletes the grounds account.`
   function adminCalendarBookingMatches(booking: PropertyBookingEvent) {
     if (!isAdminCalendarKindVisible("checkin")) return false;
     if (adminCalendarPropertyFilter !== "all" && booking.property_id !== adminCalendarPropertyFilter) return false;
-    if (adminCalendarCleanerFilter !== "all") {
-      const assignedPropertyIds = cleanerAssignedPropertyIdsByAccountId[adminCalendarCleanerFilter];
-      if (!assignedPropertyIds?.has(booking.property_id)) return false;
-    }
     if (adminCalendarAttentionOnly && !booking.admin_note_important) return false;
     if (adminCalendarSameDayOnly && !sameDayTurnoverKeySet.has(`${booking.property_id}:${booking.checkin_date}`)) {
       return false;
@@ -10700,7 +10684,6 @@ This removes its linked members and deletes the grounds account.`
     ) {
       return false;
     }
-    if (adminCalendarSameDayOnly) return false;
     return true;
   }
 
@@ -10738,11 +10721,9 @@ This removes its linked members and deletes the grounds account.`
     adminBookingEventsByDate,
     adminSelectedDate,
     adminCalendarPropertyFilter,
-    adminCalendarCleanerFilter,
     adminCalendarAttentionOnly,
     adminCalendarSameDayOnly,
     adminCalendarFilterMode,
-    cleanerAssignedPropertyIdsByAccountId,
     sameDayTurnoverKeySet,
   ]);
 
@@ -10754,7 +10735,6 @@ This removes its linked members and deletes the grounds account.`
     adminSelectedDate,
     adminCalendarPropertyFilter,
     adminCalendarCleanerFilter,
-    adminCalendarSameDayOnly,
     adminCalendarFilterMode,
   ]);
 
