@@ -16,7 +16,7 @@ type HelpMessage = {
 };
 
 const HELP_DIR = path.join(process.cwd(), "docs", "help");
-const HELP_FILES = ["assistant.md", "admin.md", "staff.md", "owners.md", "notifications.md"];
+const HELP_FILES = ["assistant.md", "admin.md", "ai.md", "staff.md", "owners.md", "notifications.md"];
 
 function normalizeQuestion(value: unknown) {
   return String(value || "").trim().slice(0, 1000);

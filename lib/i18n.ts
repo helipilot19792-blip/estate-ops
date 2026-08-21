@@ -35,7 +35,7 @@ export const dictionaries = {
     helpAssistant: {
       title: "AI Helper",
       heading: "Ask about this app",
-      intro: "Ask me how to use GuleraOS. I can help with setup, jobs, chat, invoices, alerts, and portals.",
+      intro: "Ask me how to use GuleraOS. I can help with setup, the daily dashboard, staffing, AI Supervisor, invoices, alerts, and portals.",
       close: "Close AI helper",
       thinking: "Thinking...",
       inputPlaceholder: "Ask a question...",
@@ -47,6 +47,7 @@ export const dictionaries = {
         stranded: "Why would a job be stranded?",
         alerts: "How do push alerts work?",
         invoices: "Where do owners see invoices?",
+        supervisor: "What can the AI Supervisor do?",
       },
     },
     myAccount: {
@@ -582,7 +583,7 @@ export const dictionaries = {
     helpAssistant: {
       title: "Assistant IA",
       heading: "Questions sur cette app",
-      intro: "Demandez-moi comment utiliser GuleraOS. Je peux aider avec la configuration, les travaux, le chat, les factures, les alertes et les portails.",
+      intro: "Demandez-moi comment utiliser GuleraOS. Je peux aider avec la configuration, le tableau quotidien, la dotation, le superviseur IA, les factures, les alertes et les portails.",
       close: "Fermer l'assistant IA",
       thinking: "Reflexion...",
       inputPlaceholder: "Posez une question...",
@@ -594,6 +595,7 @@ export const dictionaries = {
         stranded: "Pourquoi un travail serait-il bloque?",
         alerts: "Comment fonctionnent les alertes push?",
         invoices: "Ou les proprietaires voient-ils les factures?",
+        supervisor: "Que peut faire le superviseur IA?",
       },
     },
     myAccount: {
@@ -1041,7 +1043,7 @@ export const dictionaries = {
     helpAssistant: {
       title: "Asistente IA",
       heading: "Pregunta sobre esta app",
-      intro: "Preguntame como usar GuleraOS. Puedo ayudar con configuracion, trabajos, chat, facturas, alertas y portales.",
+      intro: "Preguntame como usar GuleraOS. Puedo ayudar con configuracion, el panel diario, personal, el Supervisor IA, facturas, alertas y portales.",
       close: "Cerrar asistente IA",
       thinking: "Pensando...",
       inputPlaceholder: "Haz una pregunta...",
@@ -1053,6 +1055,7 @@ export const dictionaries = {
         stranded: "Por que un trabajo quedaria varado?",
         alerts: "Como funcionan las alertas push?",
         invoices: "Donde ven las facturas los propietarios?",
+        supervisor: "Que puede hacer el Supervisor IA?",
       },
     },
     myAccount: {

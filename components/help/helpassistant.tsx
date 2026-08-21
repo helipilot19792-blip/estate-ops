@@ -15,6 +15,7 @@ const STARTER_KEYS = [
   "helpAssistant.starters.stranded",
   "helpAssistant.starters.alerts",
   "helpAssistant.starters.invoices",
+  "helpAssistant.starters.supervisor",
 ] as const;
 
 export default function HelpAssistant() {
