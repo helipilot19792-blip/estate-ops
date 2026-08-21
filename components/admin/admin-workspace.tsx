@@ -2092,6 +2092,7 @@ export default function AdminPage() {
   const [adminMenuSeenCounts, setAdminMenuSeenCounts] = useState<Partial<Record<AdminSection, number>>>({});
   const [adminMenuSeenCountsReady, setAdminMenuSeenCountsReady] = useState(false);
   const [showMobileWorkspaceStats, setShowMobileWorkspaceStats] = useState(false);
+  const [showVacantTodayProperties, setShowVacantTodayProperties] = useState(false);
   const [draggingAdminMenuKey, setDraggingAdminMenuKey] = useState<AdminSection | null>(null);
   const [supportSubject, setSupportSubject] = useState("");
   const [supportMessage, setSupportMessage] = useState("");
@@ -11144,6 +11145,40 @@ This removes its linked members and deletes the grounds account.`
       });
   }, [properties, propertyBookingEvents, todayYmd]);
 
+  const vacantTodayProperties = useMemo(() => {
+    return properties
+      .map((property) => {
+        const propertyEvents = propertyBookingEvents.filter((event) => event.property_id === property.id);
+        const hasGuestStayingTonight = propertyEvents.some(
+          (event) => event.checkin_date <= todayYmd && event.checkout_date > todayYmd
+        );
+        if (hasGuestStayingTonight) return null;
+
+        const checkoutToday = propertyEvents.find((event) => event.checkout_date === todayYmd) || null;
+        const nextArrival = propertyEvents
+          .filter((event) => event.checkin_date > todayYmd)
+          .sort((a, b) => a.checkin_date.localeCompare(b.checkin_date))[0] || null;
+
+        return {
+          id: property.id,
+          propertyName: property.name || property.address || "Unknown property",
+          city: getCityFromAddress(property.address),
+          vacancyStatus: checkoutToday ? "Vacant after checkout" : "Vacant all day",
+          checkoutTime: checkoutToday ? formatTimeLabel(property.default_checkout_time) : "",
+          departingGuest: checkoutToday
+            ? formatOccupiedBookingSummary(checkoutToday.summary, checkoutToday.guest_count)
+            : "",
+          departingSource: checkoutToday ? getBookingSourceLabel(checkoutToday.source) : "",
+          nextCheckinDate: nextArrival?.checkin_date || null,
+          nextCheckinTime: nextArrival ? formatTimeLabel(property.default_checkin_time) : "",
+          nextGuest: nextArrival?.summary?.trim() || "",
+          nextSource: nextArrival ? getBookingSourceLabel(nextArrival.source) : "",
+        };
+      })
+      .filter((property): property is NonNullable<typeof property> => property !== null)
+      .sort((a, b) => a.propertyName.localeCompare(b.propertyName));
+  }, [properties, propertyBookingEvents, todayYmd]);
+
   const bookingDirectoryItems = useMemo(() => {
     const propertyById = new Map(properties.map((property) => [property.id, property]));
 
@@ -14254,8 +14289,19 @@ This removes its linked members and deletes the grounds account.`
                     Properties with guests today
                   </h3>
                 </div>
-                <div className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-[#218552]">
-                  {occupiedTodayProperties.length} occupied
+                <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-center">
+                  <div className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-[#218552]">
+                    {occupiedTodayProperties.length} occupied
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowVacantTodayProperties((current) => !current)}
+                    aria-expanded={showVacantTodayProperties}
+                    aria-controls="vacant-today-properties"
+                    className="rounded-full border border-[#d8c7ab] bg-[#fffaf0] px-3 py-1 text-sm font-semibold text-[#7a5a23] transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#d8c7ab]"
+                  >
+                    {showVacantTodayProperties ? "Hide vacant" : `Show vacant (${vacantTodayProperties.length})`}
+                  </button>
                 </div>
               </div>
 
@@ -14423,6 +14469,68 @@ This removes its linked members and deletes the grounds account.`
                   ))
                 )}
               </div>
+
+              {showVacantTodayProperties ? (
+                <div id="vacant-today-properties" className="mt-4 rounded-[20px] border border-[#ecd5a6] bg-[#fff8eb] p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#8a6428]">Vacant today</p>
+                      <p className="mt-1 text-sm text-[#6d5c40]">Properties vacant all day or after today&apos;s checkout.</p>
+                    </div>
+                    <div className="shrink-0 rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#8a6428]">
+                      {vacantTodayProperties.length} vacant
+                    </div>
+                  </div>
+
+                  <div className="mt-3 space-y-2">
+                    {vacantTodayProperties.length === 0 ? (
+                      <div className="rounded-[16px] border border-dashed border-[#e3cda7] bg-white/80 px-4 py-3 text-sm text-[#6d5c40]">
+                        Every property has a guest stay scheduled today.
+                      </div>
+                    ) : (
+                      vacantTodayProperties.map((property) => (
+                        <div key={`vacant-${property.id}`} className="rounded-[16px] border border-[#e3cda7] bg-white px-4 py-3">
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between lg:flex-col">
+                            <div className="min-w-0">
+                              <div className="inline-flex items-center rounded-full bg-[#fef3c7] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#92400e]">
+                                {property.vacancyStatus}
+                              </div>
+                              <p className="mt-2 text-[15px] font-semibold text-[#453720]">{property.propertyName}</p>
+                              {property.city ? <p className="mt-0.5 text-sm text-[#7a6a50]">{property.city}</p> : null}
+                              {property.departingGuest ? (
+                                <div className="mt-3 text-sm text-[#6d5c40]">
+                                  <p className="font-semibold text-[#8a4b14]">
+                                    Guests until checkout{property.checkoutTime ? ` at ${property.checkoutTime}` : " today"}
+                                  </p>
+                                  <p className="mt-1 text-xs">
+                                    {[property.departingGuest, property.departingSource].filter(Boolean).join(" · ")}
+                                  </p>
+                                </div>
+                              ) : (
+                                <p className="mt-3 text-sm font-semibold text-[#7a5a23]">No guest stay scheduled today</p>
+                              )}
+                            </div>
+                            <div className="text-sm text-[#6d5c40]">
+                              {property.nextCheckinDate ? (
+                                <>
+                                  <p className="font-semibold text-[#7a5a23]">
+                                    Next arrival {formatDateLabel(property.nextCheckinDate)}{property.nextCheckinTime ? ` at ${property.nextCheckinTime}` : ""}
+                                  </p>
+                                  <p className="mt-1 text-xs">
+                                    {[property.nextGuest, property.nextSource].filter(Boolean).join(" · ") || "Booking details available in Calendar"}
+                                  </p>
+                                </>
+                              ) : (
+                                <p className="font-semibold text-[#7a5a23]">No upcoming arrival on the synced calendar</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              ) : null}
             </div>
 
           </div>

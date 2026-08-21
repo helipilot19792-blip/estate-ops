@@ -176,6 +176,7 @@ export default function DemoPage() {
 }
 
 function TodayView() {
+  const [showVacantProperties, setShowVacantProperties] = useState(false);
   const navigation = [
     ["Home", "blue"],
     ["Notifications", "amber"],
@@ -271,12 +272,25 @@ function TodayView() {
       checkout: "Daniel Brooks · 3 guests · out at 11:00 AM",
       source: "VRBO",
     },
+  ];
+  const vacant = [
+    {
+      property: "Maple Street Loft",
+      city: "Toronto",
+      status: "Vacant after checkout",
+      availability: "Guests until checkout at 11:00 AM",
+      departingGuest: "Daniel Brooks · 3 guests · Vrbo",
+      nextArrival: "Tuesday, August 25 at 3:00 PM",
+      guest: "S. Williams · 2 guests · Direct",
+    },
     {
       property: "Pine Ridge Cabin",
       city: "Muskoka",
-      status: "Guest in house",
-      checkin: "K. Thompson · 5 guests · leaves Aug 24",
-      source: "AIRBNB",
+      status: "Vacant all day",
+      availability: "No guest stay scheduled today",
+      departingGuest: "",
+      nextArrival: "Monday, August 24 at 4:00 PM",
+      guest: "K. Thompson · 5 guests · Airbnb",
     },
   ];
 
@@ -355,7 +369,18 @@ function TodayView() {
           <div className="rounded-[24px] border border-[#bde7cf] bg-[#effcf4] p-3 shadow-[0_10px_30px_rgba(22,163,74,0.07)] sm:p-4">
             <div className="flex items-start justify-between gap-3">
               <div><p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#15803d]">Occupied</p><h2 className="mt-1 text-lg font-semibold text-[#173d28]">Properties with guests today</h2></div>
-              <span className="shrink-0 rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#15803d]">4 occupied</span>
+              <div className="flex shrink-0 flex-col items-end gap-2">
+                <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#15803d]">{occupied.length} occupied</span>
+                <button
+                  type="button"
+                  onClick={() => setShowVacantProperties((current) => !current)}
+                  aria-expanded={showVacantProperties}
+                  aria-controls="demo-vacant-properties"
+                  className="rounded-full border border-[#d8c7ab] bg-[#fffaf0] px-3 py-1 text-xs font-semibold text-[#7a5a23] transition hover:bg-white"
+                >
+                  {showVacantProperties ? "Hide vacant" : `Show vacant (${vacant.length})`}
+                </button>
+              </div>
             </div>
             <div className="mt-3 space-y-2">
               {occupied.map((item) => (
@@ -374,6 +399,24 @@ function TodayView() {
                 </div>
               ))}
             </div>
+            {showVacantProperties ? (
+              <div id="demo-vacant-properties" className="mt-3 rounded-[18px] border border-[#ecd5a6] bg-[#fff8eb] p-3">
+                <div className="flex items-center justify-between gap-3"><div><p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#8a6428]">Vacant today</p><p className="mt-1 text-xs text-[#6d5c40]">Vacant all day or after today&apos;s checkout.</p></div><span className="rounded-full bg-white px-3 py-1 text-[10px] font-semibold text-[#8a6428]">{vacant.length} vacant</span></div>
+                <div className="mt-3 space-y-2">
+                  {vacant.map((item) => (
+                    <div key={item.property} className="rounded-[16px] border border-[#e3cda7] bg-white p-4">
+                      <span className="rounded-full bg-[#fef3c7] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#92400e]">{item.status}</span>
+                      <p className="mt-2 text-[15px] font-semibold text-[#453720]">{item.property}</p>
+                      <p className="mt-0.5 text-xs text-[#7a6a50]">{item.city}</p>
+                      <p className="mt-3 text-xs font-semibold text-[#8a4b14]">{item.availability}</p>
+                      {item.departingGuest ? <p className="mt-1 text-xs text-[#6d5c40]">{item.departingGuest}</p> : null}
+                      <p className="mt-3 text-xs font-semibold text-[#7a5a23]">Next arrival {item.nextArrival}</p>
+                      <p className="mt-1 text-xs text-[#6d5c40]">{item.guest}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
