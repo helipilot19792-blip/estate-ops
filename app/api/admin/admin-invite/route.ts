@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
+import {
+  assertWorkspaceBillingAccessForOrganization,
+  assertWorkspaceMemberCapacity,
+  getWorkspaceBillingErrorStatus,
+} from "@/lib/server/workspace-billing-status";
 
 type AdminInviteBody = {
   organizationId?: string;
@@ -160,6 +165,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: existingInviteError.message }, { status: 500 });
     }
 
+    await assertWorkspaceBillingAccessForOrganization(service, organizationId);
+    if (!existingInvite) {
+      await assertWorkspaceMemberCapacity(service, organizationId);
+    }
+
     const { data: invite, error: inviteError } = existingInvite
       ? await service
         .from("organization_invites")
@@ -214,7 +224,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Unexpected server error." },
-      { status: 500 }
+      { status: getWorkspaceBillingErrorStatus(error) }
     );
   }
 }

@@ -9,6 +9,7 @@ import { trackFeatureUsage } from "@/lib/feature-usage";
 import { useI18n } from "@/components/i18n-provider";
 import PortalLoadingScene from "@/components/portal/portal-loading-scene";
 import type { TranslationPath } from "@/lib/i18n";
+import { useStorageAssetUrls } from "@/lib/use-storage-asset-urls";
 
 const PortalChat = dynamic(() => import("@/components/chat/portalchat"));
 
@@ -981,6 +982,17 @@ export default function OwnerPage() {
   const [groundsJobs, setGroundsJobs] = useState<GroundsJob[]>([]);
   const [groundsRecurringRules, setGroundsRecurringRules] = useState<GroundsRecurringRule[]>([]);
   const [ownerInvoices, setOwnerInvoices] = useState<OwnerInvoice[]>([]);
+  const getStorageAssetUrl = useStorageAssetUrls(
+    supabase.storage,
+    [
+      ...properties.map((property) => property.cover_photo_url),
+      ...ownerInvoices.flatMap((invoice) => [
+        invoice.logo_url,
+        invoice.uploaded_invoice_url,
+        ...(invoice.line_items || []).flatMap((item) => item.receipt_urls || []),
+      ]),
+    ]
+  );
   const [ownerInvoiceHiddenItems, setOwnerInvoiceHiddenItems] = useState<OwnerInvoiceHiddenItem[]>([]);
   const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
   const [flags, setFlags] = useState<MaintenanceFlag[]>([]);
@@ -2287,7 +2299,7 @@ export default function OwnerPage() {
           {selectedProperty.cover_photo_url ? (
             <div className="relative h-64 overflow-hidden sm:h-80">
               <img
-                src={selectedProperty.cover_photo_url}
+                src={getStorageAssetUrl(selectedProperty.cover_photo_url)}
                 alt={selectedProperty.name || t("ownerPortal.hero.coverPhoto")}
                 className="h-full w-full object-cover"
               />
@@ -2446,7 +2458,7 @@ export default function OwnerPage() {
                   >
                     {property.cover_photo_url ? (
                       <img
-                        src={property.cover_photo_url}
+                        src={getStorageAssetUrl(property.cover_photo_url)}
                         alt={property.name || t("ownerPortal.hero.coverPhoto")}
                         className="h-32 w-full object-cover"
                       />
@@ -3103,7 +3115,7 @@ export default function OwnerPage() {
                         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                           <div>
                             {invoice.logo_url ? (
-                              <img src={invoice.logo_url} alt="" className="mb-3 max-h-14 max-w-[180px] object-contain" />
+                              <img src={getStorageAssetUrl(invoice.logo_url)} alt="" className="mb-3 max-h-14 max-w-[180px] object-contain" />
                             ) : null}
                             <div className="text-lg font-semibold text-[#f7f1e8]">
                               {invoice.company_name || t("ownerPortal.invoices.propertyInvoice")}
@@ -3200,7 +3212,7 @@ export default function OwnerPage() {
                                     {(item.receipt_urls || []).map((url, receiptIndex) => (
                                       <a
                                         key={`${url}-${receiptIndex}`}
-                                        href={url}
+                                        href={getStorageAssetUrl(url)}
                                         target="_blank"
                                         rel="noreferrer"
                                         className="rounded-full border border-[#b08b47]/25 bg-[#b08b47]/10 px-3 py-1 text-xs font-semibold text-[#f1d9a5]"

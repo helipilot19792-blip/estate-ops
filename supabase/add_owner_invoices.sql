@@ -18,7 +18,7 @@ create table if not exists public.organization_invoice_settings (
 );
 
 insert into storage.buckets (id, name, public)
-values ('invoice-assets', 'invoice-assets', true)
+values ('invoice-assets', 'invoice-assets', false)
 on conflict (id) do update set public = true;
 
 create table if not exists public.property_invoice_rates (

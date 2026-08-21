@@ -5,6 +5,14 @@ import { createInvoicePdfBuffer } from "@/lib/server/invoice-pdf";
 import { formatCurrency, normalizeCurrencyCode } from "@/lib/currency";
 import { sendStaffPushNotifications } from "@/lib/server/staff-push-notifications";
 import { recordOwnerInvoiceEvent } from "@/lib/server/owner-invoice-reminders";
+import {
+  createSignedStorageAssetUrl,
+  downloadStorageAsset,
+} from "@/lib/server/storage-assets";
+import {
+  assertWorkspaceBillingAccessForOrganization,
+  getWorkspaceBillingErrorStatus,
+} from "@/lib/server/workspace-billing-status";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const publicSupabaseKey =
@@ -202,6 +210,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    await assertWorkspaceBillingAccessForOrganization(service, invoice.organization_id);
+
     const { data: owner, error: ownerError } = invoice.owner_account_id
       ? await service
           .from("owner_accounts")
@@ -240,6 +250,23 @@ export async function POST(request: NextRequest) {
     const lineItems = Array.isArray(invoice.line_items)
       ? (invoice.line_items as InvoiceLineItem[]).filter((item) => !(getDocumentKind(invoice) === "quote" && item.included === false))
       : [];
+    const emailLogoUrl = await createSignedStorageAssetUrl(
+      service,
+      invoice.logo_url,
+      7 * 24 * 60 * 60
+    );
+    const emailLineItems = await Promise.all(
+      lineItems.map(async (item) => ({
+        ...item,
+        receipt_urls: await Promise.all(
+          (item.receipt_urls || []).map((url) =>
+            createSignedStorageAssetUrl(service, url, 7 * 24 * 60 * 60).then(
+              (signedUrl) => signedUrl || url
+            )
+          )
+        ),
+      }))
+    );
     const propertySnapshot =
       invoice.property_snapshot && typeof invoice.property_snapshot === "object"
         ? (invoice.property_snapshot as QuotePropertySnapshot)
@@ -277,7 +304,7 @@ export async function POST(request: NextRequest) {
     if (!recipientEmail && !owner?.profile_id) {
       return NextResponse.json({ error: `${documentLabel} recipient email is not configured.` }, { status: 400 });
     }
-    const rows = lineItems
+    const rows = emailLineItems
       .map((item) => {
         const quantity = Number(item.quantity || 0);
         const rate = Number(item.rate || 0);
@@ -333,7 +360,7 @@ export async function POST(request: NextRequest) {
 
     const html = `
       <div style="font-family:Arial,sans-serif;color:#241c15;line-height:1.5;padding:20px;">
-        ${invoice.logo_url ? `<img src="${escapeHtml(invoice.logo_url)}" alt="" style="max-height:72px;margin-bottom:16px;" />` : ""}
+        ${emailLogoUrl ? `<img src="${escapeHtml(emailLogoUrl)}" alt="" style="max-height:72px;margin-bottom:16px;" />` : ""}
         <h1 style="margin:0 0 4px;font-size:24px;">${escapeHtml(invoice.company_name || "Property invoice")}</h1>
         <p style="margin:0 0 16px;color:#6f6255;">${documentLabel} ${escapeHtml(invoice.invoice_number)}</p>
         ${correctionNotice ? `<p style="margin:0 0 18px;padding:10px 12px;border-left:4px solid #a05a1a;background:#fff7ed;color:#7c2d12;font-weight:700;">${escapeHtml(correctionNotice)}. Please use this replacement document and disregard the earlier invoice.</p>` : ""}
@@ -412,14 +439,33 @@ export async function POST(request: NextRequest) {
           total: Number(invoice.total || 0),
           lineItems,
         });
-    const receiptAttachments = lineItems.flatMap((item, itemIndex) =>
-      (item.receipt_urls || []).map((url, receiptIndex) => ({
-        filename:
-          item.receipt_names?.[receiptIndex]?.replace(/[^a-zA-Z0-9._-]/g, "_") ||
-          `receipt-${itemIndex + 1}-${receiptIndex + 1}`,
-        path: url,
-      }))
+    const receiptAttachments = await Promise.all(
+      lineItems.flatMap((item, itemIndex) =>
+        (item.receipt_urls || []).map(async (url, receiptIndex) => {
+          const asset = await downloadStorageAsset(service, url, {
+            accept: "application/pdf,image/*",
+            maxBytes: 10 * 1024 * 1024,
+            timeoutMs: 15_000,
+            userAgent: "gulera-invoice-email",
+          });
+          return {
+            filename:
+              item.receipt_names?.[receiptIndex]?.replace(/[^a-zA-Z0-9._-]/g, "_") ||
+              `receipt-${itemIndex + 1}-${receiptIndex + 1}`,
+            content: Buffer.from(asset.bytes),
+            contentType: asset.contentType,
+          };
+        })
+      )
     );
+    const uploadedInvoiceAttachment = isUploadedInvoice
+      ? await downloadStorageAsset(service, invoice.uploaded_invoice_url, {
+          accept: "application/pdf,image/*",
+          maxBytes: 20 * 1024 * 1024,
+          timeoutMs: 15_000,
+          userAgent: "gulera-invoice-email",
+        })
+      : null;
 
     const resend = new Resend(process.env.RESEND_API_KEY);
     const result = await resend.emails.send({
@@ -433,8 +479,11 @@ export async function POST(request: NextRequest) {
         isUploadedInvoice
           ? {
               filename: invoice.uploaded_invoice_name || `${invoice.invoice_number}.pdf`,
-              path: invoice.uploaded_invoice_url,
-              contentType: invoice.uploaded_invoice_content_type || "application/pdf",
+              content: Buffer.from(uploadedInvoiceAttachment!.bytes),
+              contentType:
+                invoice.uploaded_invoice_content_type ||
+                uploadedInvoiceAttachment!.contentType ||
+                "application/pdf",
             }
           : {
               filename: `${invoice.invoice_number}.pdf`,
@@ -521,6 +570,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: getWorkspaceBillingErrorStatus(error) });
   }
 }

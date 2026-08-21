@@ -3,6 +3,8 @@ type OrganizationBillingAccessRow = {
   trial_ends_at?: string | null;
   account_type?: string | null;
   plan_name?: string | null;
+  property_limit?: number | null;
+  member_limit?: number | null;
 };
 
 type WorkspaceBillingState = {
@@ -14,7 +16,7 @@ type WorkspaceBillingState = {
 };
 
 type WorkspaceBillingError = Error & {
-  code: "TRIAL_ENDED";
+  code: "WORKSPACE_BILLING_BLOCKED" | "WORKSPACE_LIMIT_REACHED";
 };
 
 export function getWorkspaceBillingState(
@@ -45,13 +47,26 @@ export function getWorkspaceBillingState(
 
 export function createWorkspaceBillingError(message: string): WorkspaceBillingError {
   return Object.assign(new Error(message), {
-    code: "TRIAL_ENDED" as const,
+    code: "WORKSPACE_BILLING_BLOCKED" as const,
   });
+}
+
+export function createWorkspaceLimitError(message: string): WorkspaceBillingError {
+  return Object.assign(new Error(message), {
+    code: "WORKSPACE_LIMIT_REACHED" as const,
+  });
+}
+
+export function getWorkspaceBillingErrorStatus(error: unknown) {
+  const code = (error as { code?: string } | null)?.code;
+  if (code === "WORKSPACE_BILLING_BLOCKED") return 402;
+  if (code === "WORKSPACE_LIMIT_REACHED") return 409;
+  return 500;
 }
 
 export function assertWorkspaceBillingAccess(
   organization: OrganizationBillingAccessRow | null | undefined,
-  options?: { now?: Date }
+  options?: { now?: Date; blockPastDue?: boolean }
 ) {
   const state = getWorkspaceBillingState(organization, options?.now);
 
@@ -67,5 +82,77 @@ export function assertWorkspaceBillingAccess(
     );
   }
 
+  if (options?.blockPastDue && state.subscriptionStatus === "past_due") {
+    throw createWorkspaceBillingError(
+      "This workspace has an overdue subscription. Update billing before making changes."
+    );
+  }
+
   return state;
+}
+
+export async function loadWorkspaceBillingOrganization(service: any, organizationId: string) {
+  const { data, error } = await service
+    .from("organizations")
+    .select(
+      "id,subscription_status,trial_ends_at,account_type,plan_name,property_limit,member_limit"
+    )
+    .eq("id", organizationId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("Organization not found.");
+  return data as OrganizationBillingAccessRow & { id: string };
+}
+
+export async function assertWorkspaceBillingAccessForOrganization(
+  service: any,
+  organizationId: string
+) {
+  const organization = await loadWorkspaceBillingOrganization(service, organizationId);
+  return {
+    organization,
+    state: assertWorkspaceBillingAccess(organization, { blockPastDue: true }),
+  };
+}
+
+export async function assertWorkspaceMemberCapacity(
+  service: any,
+  organizationId: string,
+  additionalMembers = 1
+) {
+  const { organization, state } = await assertWorkspaceBillingAccessForOrganization(
+    service,
+    organizationId
+  );
+
+  if (
+    state.isInternalWorkspace ||
+    organization.member_limit === null ||
+    organization.member_limit === undefined
+  ) {
+    return;
+  }
+
+  const [membersResult, invitesResult] = await Promise.all([
+    service
+      .from("organization_members")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", organizationId),
+    service
+      .from("organization_invites")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", organizationId)
+      .in("status", ["pending", "sent"]),
+  ]);
+
+  const countError = membersResult.error || invitesResult.error;
+  if (countError) throw new Error(countError.message);
+
+  const reservedSeats = (membersResult.count ?? 0) + (invitesResult.count ?? 0);
+  if (reservedSeats + Math.max(0, additionalMembers) > organization.member_limit) {
+    throw createWorkspaceLimitError(
+      `This workspace is at its ${organization.member_limit}-member plan limit.`
+    );
+  }
 }

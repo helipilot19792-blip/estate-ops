@@ -9,6 +9,7 @@ import {
 import { getCleanerOfferExpiresAtForDailySweep } from "@/lib/server/cleaner-offer-deadlines";
 import { detectSameDayCleanerConflicts } from "@/lib/server/same-day-cleaner-conflicts";
 import { prepareManualCleanerAssignment } from "@/lib/server/manual-cleaner-assignment";
+import { fetchPublicText } from "@/lib/server/safe-remote-fetch";
 
 export const dynamic = "force-dynamic";
 
@@ -677,21 +678,13 @@ async function deleteStaleUpcomingSyncedJobs(
 }
 
 async function getCalendarEvents(calendar: PropertyCalendarRow): Promise<ParsedEvent[]> {
-  const response = await fetch(calendar.ical_url, {
-    method: "GET",
-    cache: "no-store",
-    headers: {
-      "User-Agent": "estate-ops-calendar-sync",
-      Accept: "text/calendar,text/plain,*/*",
-    },
+  const response = await fetchPublicText(calendar.ical_url, {
+    maxBytes: 5 * 1024 * 1024,
+    timeoutMs: 15_000,
+    userAgent: "gulera-calendar-sync",
+    accept: "text/calendar,text/plain,*/*",
   });
-
-  if (!response.ok) {
-    throw new Error(`Calendar fetch failed with status ${response.status}`);
-  }
-
-  const icsText = await response.text();
-  return parseIcsEvents(icsText);
+  return parseIcsEvents(response.text);
 }
 
 async function upsertBookingEvent(

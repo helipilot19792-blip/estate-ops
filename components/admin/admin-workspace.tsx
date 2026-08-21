@@ -19,6 +19,8 @@ import { trackFeatureUsage } from "@/lib/feature-usage";
 import { TEAM_BULLETIN_CONTEXT_TYPE } from "@/lib/team-bulletin";
 import { useTeamBulletinSummary } from "@/lib/use-team-bulletin-summary";
 import { useI18n } from "@/components/i18n-provider";
+import { createStorageReference } from "@/lib/storage-reference";
+import { useStorageAssetUrls } from "@/lib/use-storage-asset-urls";
 
 import type { OnboardingStep } from "@/components/onboarding-checklist";
 
@@ -1929,6 +1931,21 @@ export default function AdminPage() {
   const [invoiceAutoGrounds, setInvoiceAutoGrounds] = useState(true);
   const [invoiceLineItems, setInvoiceLineItems] = useState<OwnerInvoiceLineItem[]>([
     { id: "custom-1", description: "", category: "expense", quantity: 1, rate: 0, taxable: true },
+  ]);
+  const getStorageAssetUrl = useStorageAssetUrls(supabase.storage, [
+    invoiceLogoUrl,
+    externalInvoiceUrl,
+    invoiceSettings?.logo_url,
+    ...invoiceLineItems.flatMap((item) => item.receipt_urls || []),
+    ...ownerInvoices.flatMap((invoice) => [
+      invoice.logo_url,
+      invoice.uploaded_invoice_url,
+      ...(invoice.line_items || []).flatMap((item) => item.receipt_urls || []),
+    ]),
+    ...properties.map((property) => property.cover_photo_url),
+    ...propertyKnowledgeImages.map((image) => image.image_url),
+    ...sopImages.map((image) => image.image_url),
+    ...inspectionPhotos.map((photo) => photo.image_url),
   ]);
   const [teamWorkflowTab, setTeamWorkflowTab] = useState<TeamWorkflowTab>("invites");
   const [teamInviteRole, setTeamInviteRole] = useState<TeamInviteRole>("admin");
@@ -4572,6 +4589,7 @@ export default function AdminPage() {
         },
         body: JSON.stringify({
           profileId: profile.id,
+          organizationId: currentOrganizationId,
         }),
       });
 
@@ -7770,16 +7788,13 @@ This removes its linked members and deletes the grounds account.`
 
       if (uploadError) throw uploadError;
 
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from("property-sop-images").getPublicUrl(filePath);
-
-      const updatedProperty = await savePropertyCoverPhotoUrl(publicUrl);
+      const storageReference = createStorageReference("property-sop-images", filePath);
+      const updatedProperty = await savePropertyCoverPhotoUrl(storageReference);
 
       setProperties((prev) =>
         prev.map((property) =>
           property.id === selectedPropertyId
-            ? { ...property, ...updatedProperty, cover_photo_url: publicUrl }
+            ? { ...property, ...updatedProperty, cover_photo_url: storageReference }
             : property
         )
       );
@@ -8143,13 +8158,10 @@ This removes its linked members and deletes the grounds account.`
           .from("property-sop-images")
           .upload(filePath, file, { cacheControl: "3600", upsert: false });
         if (uploadError) throw uploadError;
-        const {
-          data: { publicUrl },
-        } = supabase.storage.from("property-sop-images").getPublicUrl(filePath);
         const { error: photoError } = await supabase.from("property_inspection_photos").insert({
           organization_id: currentOrganizationId,
           inspection_log_id: insertedLog.id,
-          image_url: publicUrl,
+          image_url: createStorageReference("property-sop-images", filePath),
           sort_order: index,
         });
         if (photoError) throw photoError;
@@ -8581,16 +8593,12 @@ This removes its linked members and deletes the grounds account.`
 
         if (uploadError) throw uploadError;
 
-        const {
-          data: { publicUrl },
-        } = supabase.storage.from("property-sop-images").getPublicUrl(filePath);
-
         const { data: imageRow, error: imageInsertError } = await supabase
           .from("property_knowledge_images")
           .insert({
             organization_id: currentOrganizationId,
             property_id: selectedPropertyId,
-            image_url: publicUrl,
+            image_url: createStorageReference("property-sop-images", filePath),
             storage_path: filePath,
             category: knowledgeImageCategory,
             caption: knowledgeImageCaption.trim() || null,
@@ -8840,10 +8848,6 @@ This removes its linked members and deletes the grounds account.`
           return;
         }
 
-        const {
-          data: { publicUrl },
-        } = supabase.storage.from("property-sop-images").getPublicUrl(filePath);
-
         const imageResponse = await fetch("/api/admin/property-sop", {
           method: "POST",
           headers: {
@@ -8854,7 +8858,7 @@ This removes its linked members and deletes the grounds account.`
             action: "add-image",
             organizationId: currentOrganizationId,
             sopId: newSopId,
-            imageUrl: publicUrl,
+            imageUrl: createStorageReference("property-sop-images", filePath),
             caption: null,
             sortOrder: i,
           }),
@@ -16103,11 +16107,7 @@ This removes its linked members and deletes the grounds account.`
 
       if (uploadError) throw uploadError;
 
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from("invoice-assets").getPublicUrl(filePath);
-
-      setInvoiceLogoUrl(publicUrl);
+      setInvoiceLogoUrl(createStorageReference("invoice-assets", filePath));
       setInvoiceSettingsDirty(true);
       setActionMessage("Invoice logo uploaded. Save defaults to keep it.");
     } catch (err: unknown) {
@@ -16142,11 +16142,7 @@ This removes its linked members and deletes the grounds account.`
 
         if (uploadError) throw uploadError;
 
-        const {
-          data: { publicUrl },
-        } = supabase.storage.from("invoice-assets").getPublicUrl(filePath);
-
-        uploaded.push({ url: publicUrl, name: file.name });
+        uploaded.push({ url: createStorageReference("invoice-assets", filePath), name: file.name });
       }
 
       setInvoiceLineItems((items) =>
@@ -16197,11 +16193,7 @@ This removes its linked members and deletes the grounds account.`
 
       if (uploadError) throw uploadError;
 
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from("invoice-assets").getPublicUrl(filePath);
-
-      setExternalInvoiceUrl(publicUrl);
+      setExternalInvoiceUrl(createStorageReference("invoice-assets", filePath));
       setExternalInvoiceName(file.name);
       setExternalInvoiceContentType(file.type || "application/octet-stream");
       if (!externalInvoiceNumber.trim()) {
@@ -17468,7 +17460,8 @@ This removes its linked members and deletes the grounds account.`
 
   async function viewOwnerInvoicePdf(invoice: OwnerInvoiceRow) {
     if (invoice.uploaded_invoice_url) {
-      window.open(invoice.uploaded_invoice_url, "_blank", "noopener,noreferrer");
+      const assetUrl = getStorageAssetUrl(invoice.uploaded_invoice_url);
+      if (assetUrl) window.open(assetUrl, "_blank", "noopener,noreferrer");
       return;
     }
 
@@ -18379,7 +18372,7 @@ This removes its linked members and deletes the grounds account.`
                       <div className="flex items-center gap-3">
                         <div className="flex h-16 w-28 items-center justify-center overflow-hidden rounded-[14px] border border-[#eadfce] bg-[#fcfaf7]">
                           <img
-                            src={invoiceLogoUrl}
+                            src={getStorageAssetUrl(invoiceLogoUrl)}
                             alt="Invoice logo preview"
                             className="max-h-full max-w-full object-contain"
                           />
@@ -18853,7 +18846,7 @@ This removes its linked members and deletes the grounds account.`
 
               {externalInvoiceUrl ? (
                 <div className="md:col-span-2 flex flex-wrap items-center gap-2 rounded-[18px] border border-[#d4c2ea] bg-white px-4 py-3 text-sm text-[#5f5245]">
-                  <a href={externalInvoiceUrl} target="_blank" rel="noreferrer" className="font-semibold text-[#6f4b9a] underline">
+                  <a href={getStorageAssetUrl(externalInvoiceUrl)} target="_blank" rel="noreferrer" className="font-semibold text-[#6f4b9a] underline">
                     Preview uploaded invoice
                   </a>
                   <button
@@ -19966,7 +19959,7 @@ This removes its linked members and deletes the grounds account.`
                               </label>
                               {(item.receipt_urls || []).map((url, receiptIndex) => (
                                 <span key={`${url}-${receiptIndex}`} className="inline-flex items-center gap-2 rounded-full border border-[#d8c7ab] bg-[#fffdf8] px-3 py-1.5 text-xs text-[#5f4c3b]">
-                                  <a href={url} target="_blank" rel="noreferrer" className="underline">
+                                  <a href={getStorageAssetUrl(url)} target="_blank" rel="noreferrer" className="underline">
                                     {item.receipt_names?.[receiptIndex] || `Receipt ${receiptIndex + 1}`}
                                   </a>
                                   <button
@@ -20021,7 +20014,7 @@ This removes its linked members and deletes the grounds account.`
               <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[#8a7b68]">Preview</div>
               <div className="mt-3 rounded-[18px] border border-[#eadfce] bg-white p-4">
                 {invoiceLogoUrl ? (
-                  <img src={invoiceLogoUrl} alt="" className="mb-3 max-h-16 max-w-[180px] object-contain" />
+                  <img src={getStorageAssetUrl(invoiceLogoUrl)} alt="" className="mb-3 max-h-16 max-w-[180px] object-contain" />
                 ) : null}
                 <div className="text-lg font-semibold text-[#241c15]">{invoiceCompanyName || "Company name"}</div>
                 <p className="mt-2 text-sm leading-6 text-[#6f6255]">{invoiceHeaderText || "Invoice header"}</p>
@@ -26124,7 +26117,7 @@ This removes its linked members and deletes the grounds account.`
                       <div>
                         <div className="relative bg-[#1f1812]">
                           <img
-                            src={selectedProperty.cover_photo_url}
+                            src={getStorageAssetUrl(selectedProperty.cover_photo_url)}
                             alt={selectedProperty.name || "Property cover photo"}
                             className="h-72 w-full object-cover"
                           />
@@ -26636,9 +26629,9 @@ This removes its linked members and deletes the grounds account.`
                     <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                       {selectedPropertyKnowledgeImages.map((image) => (
                         <div key={image.id} className="overflow-hidden rounded-[20px] border border-[#bfdded] bg-[#f8fcff]">
-                          <a href={image.image_url} target="_blank" rel="noreferrer" className="block">
+                          <a href={getStorageAssetUrl(image.image_url)} target="_blank" rel="noreferrer" className="block">
                             <img
-                              src={image.image_url}
+                              src={getStorageAssetUrl(image.image_url)}
                               alt={image.caption || getKnowledgeImageCategoryLabel(image.category)}
                               className="h-44 w-full object-cover"
                             />
@@ -27084,8 +27077,8 @@ This removes its linked members and deletes the grounds account.`
                           {images.length > 0 ? (
                             <div className="mt-4 grid gap-3 sm:grid-cols-2">
                               {images.map((image) => (
-                                <a key={image.id} href={image.image_url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] transition hover:shadow-md">
-                                  <img src={image.image_url} alt={image.caption || s.title || "SOP image"} className="h-44 w-full cursor-zoom-in object-cover" />
+                                <a key={image.id} href={getStorageAssetUrl(image.image_url)} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] transition hover:shadow-md">
+                                  <img src={getStorageAssetUrl(image.image_url)} alt={image.caption || s.title || "SOP image"} className="h-44 w-full cursor-zoom-in object-cover" />
                                   {image.caption ? <div className="px-3 py-2 text-sm text-[#6f6255]">{image.caption}</div> : null}
                                 </a>
                               ))}
@@ -27445,11 +27438,11 @@ This removes its linked members and deletes the grounds account.`
                                     <button
                                       key={image.id}
                                       type="button"
-                                      onClick={() => setExpandedImage(image.image_url)}
+                                      onClick={() => setExpandedImage(getStorageAssetUrl(image.image_url))}
                                       className="block overflow-hidden rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] text-left transition hover:shadow-md"
                                     >
                                       <img
-                                        src={image.image_url}
+                                        src={getStorageAssetUrl(image.image_url)}
                                         alt={image.caption || "Maintenance image"}
                                         className="h-40 w-full object-cover"
                                       />
@@ -28623,8 +28616,8 @@ This removes its linked members and deletes the grounds account.`
                     {photos.length > 0 ? (
                       <div className="mt-3 flex flex-wrap gap-2">
                         {photos.map((photo) => (
-                          <a key={photo.id} href={photo.image_url} target="_blank" rel="noreferrer" className="overflow-hidden rounded-[14px] border border-[#eadfce] bg-white">
-                            <img src={photo.image_url} alt={photo.caption || log.inspection_title} className="h-20 w-28 object-cover" />
+                          <a key={photo.id} href={getStorageAssetUrl(photo.image_url)} target="_blank" rel="noreferrer" className="overflow-hidden rounded-[14px] border border-[#eadfce] bg-white">
+                            <img src={getStorageAssetUrl(photo.image_url)} alt={photo.caption || log.inspection_title} className="h-20 w-28 object-cover" />
                           </a>
                         ))}
                       </div>

@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  assertWorkspaceBillingAccessForOrganization,
+  getWorkspaceBillingErrorStatus,
+} from "@/lib/server/workspace-billing-status";
 
 export const dynamic = "force-dynamic";
 
@@ -135,6 +139,8 @@ export async function POST(request: NextRequest) {
     if (!property) {
       return NextResponse.json({ error: "Property not found in this organization." }, { status: 404 });
     }
+
+    await assertWorkspaceBillingAccessForOrganization(serviceClient, organizationId);
 
     const tables = getTables(kind);
     let accountId: string | null = null;
@@ -281,7 +287,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Could not save assignment." },
-      { status: 500 }
+      { status: getWorkspaceBillingErrorStatus(error) }
     );
   }
 }

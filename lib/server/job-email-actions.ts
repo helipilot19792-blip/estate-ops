@@ -6,7 +6,7 @@ export type JobEmailAction = "accept" | "decline" | "calendar";
 
 type ServiceClient = any;
 
-type SlotDetails = {
+export type SlotDetails = {
   slotId: string;
   jobId: string;
   accountId: string;

@@ -92,16 +92,20 @@ on storage.objects
 for insert
 with check (
   bucket_id = 'document-vault'
-  and exists (
-    select 1
-    from public.profiles
-    left join public.organization_members
-      on organization_members.profile_id = profiles.id
-    where profiles.id = auth.uid()
-      and (
-        profiles.role = 'platform_admin'
-        or organization_members.role = 'admin'
-      )
+  and (
+    exists (
+      select 1
+      from public.profiles
+      where profiles.id = auth.uid()
+        and profiles.role = 'platform_admin'
+    )
+    or exists (
+      select 1
+      from public.organization_members
+      where organization_members.profile_id = auth.uid()
+        and organization_members.role = 'admin'
+        and organization_members.organization_id::text = (storage.foldername(name))[1]
+    )
   )
 );
 
@@ -111,16 +115,20 @@ on storage.objects
 for select
 using (
   bucket_id = 'document-vault'
-  and exists (
-    select 1
-    from public.profiles
-    left join public.organization_members
-      on organization_members.profile_id = profiles.id
-    where profiles.id = auth.uid()
-      and (
-        profiles.role = 'platform_admin'
-        or organization_members.role = 'admin'
-      )
+  and (
+    exists (
+      select 1
+      from public.profiles
+      where profiles.id = auth.uid()
+        and profiles.role = 'platform_admin'
+    )
+    or exists (
+      select 1
+      from public.organization_members
+      where organization_members.profile_id = auth.uid()
+        and organization_members.role = 'admin'
+        and organization_members.organization_id::text = (storage.foldername(name))[1]
+    )
   )
 );
 
@@ -130,15 +138,19 @@ on storage.objects
 for delete
 using (
   bucket_id = 'document-vault'
-  and exists (
-    select 1
-    from public.profiles
-    left join public.organization_members
-      on organization_members.profile_id = profiles.id
-    where profiles.id = auth.uid()
-      and (
-        profiles.role = 'platform_admin'
-        or organization_members.role = 'admin'
-      )
+  and (
+    exists (
+      select 1
+      from public.profiles
+      where profiles.id = auth.uid()
+        and profiles.role = 'platform_admin'
+    )
+    or exists (
+      select 1
+      from public.organization_members
+      where organization_members.profile_id = auth.uid()
+        and organization_members.role = 'admin'
+        and organization_members.organization_id::text = (storage.foldername(name))[1]
+    )
   )
 );

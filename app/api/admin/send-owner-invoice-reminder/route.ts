@@ -4,6 +4,10 @@ import {
   getOwnerInvoiceReminderServiceClient,
   sendOwnerInvoiceReminderEmail,
 } from "@/lib/server/owner-invoice-reminders";
+import {
+  assertWorkspaceBillingAccessForOrganization,
+  getWorkspaceBillingErrorStatus,
+} from "@/lib/server/workspace-billing-status";
 
 export async function POST(request: NextRequest) {
   try {
@@ -90,6 +94,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    await assertWorkspaceBillingAccessForOrganization(service, invoice.organization_id);
+
     const result = await sendOwnerInvoiceReminderEmail({
       service,
       invoiceId,
@@ -103,7 +109,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Could not send invoice reminder." },
-      { status: 500 }
+      { status: getWorkspaceBillingErrorStatus(error) }
     );
   }
 }

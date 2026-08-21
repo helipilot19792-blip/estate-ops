@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  assertWorkspaceBillingAccessForOrganization,
+  getWorkspaceBillingErrorStatus,
+} from "@/lib/server/workspace-billing-status";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const publicSupabaseKey =
@@ -227,6 +231,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (profile.role !== "platform_admin") {
+      const { data: membership, error: membershipError } = await serviceClient
+        .from("organization_members")
+        .select("role")
+        .eq("organization_id", property.organization_id)
+        .eq("profile_id", user.id)
+        .eq("role", "admin")
+        .maybeSingle();
+
+      if (membershipError) {
+        return NextResponse.json({ error: membershipError.message }, { status: 500 });
+      }
+
+      if (!membership) {
+        return NextResponse.json(
+          { error: "You do not have admin access to this property's organization." },
+          { status: 403 }
+        );
+      }
+    }
+
+    await assertWorkspaceBillingAccessForOrganization(
+      serviceClient,
+      property.organization_id
+    );
+
     const csvText = await file.text();
     const csvRows = parseCsv(csvText);
     const importRows = buildImportRows(csvRows);
@@ -281,6 +311,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: getWorkspaceBillingErrorStatus(error) });
   }
 }

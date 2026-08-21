@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 import { formatCurrency, normalizeCurrencyCode } from "@/lib/currency";
+import { createSignedStorageAssetUrl } from "@/lib/server/storage-assets";
 
 // Supabase generated types are not available for this project's new optional tables yet.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -148,9 +149,14 @@ export async function sendOwnerInvoiceReminderEmail(options: {
   const propertyLine = property?.name || property?.address || "All linked properties";
   const companyName = invoice.company_name || "your property manager";
   const currencyCode = normalizeCurrencyCode(invoice.currency_code);
+  const emailLogoUrl = await createSignedStorageAssetUrl(
+    service,
+    invoice.logo_url,
+    7 * 24 * 60 * 60
+  );
   const html = `
     <div style="font-family:Arial,sans-serif;color:#241c15;line-height:1.5;padding:20px;">
-      ${invoice.logo_url ? `<img src="${escapeHtml(invoice.logo_url)}" alt="" style="max-height:72px;margin-bottom:16px;" />` : ""}
+      ${emailLogoUrl ? `<img src="${escapeHtml(emailLogoUrl)}" alt="" style="max-height:72px;margin-bottom:16px;" />` : ""}
       <h1 style="margin:0 0 8px;font-size:24px;">Invoice reminder</h1>
       <p style="margin:0 0 18px;color:#5f5245;">This is a friendly reminder that invoice ${escapeHtml(invoice.invoice_number)} is still outstanding.</p>
       <div style="margin-bottom:18px;padding:14px;border:1px solid #eadfce;border-radius:14px;background:#fcfaf7;">

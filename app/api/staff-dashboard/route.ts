@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { createSignedStorageAssetUrl } from "@/lib/server/storage-assets";
 
 export const dynamic = "force-dynamic";
 
@@ -212,7 +213,14 @@ async function loadPropertySupport(propertyIds: string[]) {
       .order("sort_order", { ascending: true });
 
     if (error) throw new Error(error.message);
-    sopImages = data ?? [];
+    sopImages = await Promise.all(
+      (data ?? []).map(async (image: any) => ({
+        ...image,
+        image_url:
+          (await createSignedStorageAssetUrl(serviceClient, image.image_url, 60 * 60)) ||
+          image.image_url,
+      }))
+    );
   }
 
   const properties = propertiesRes.data ?? [];

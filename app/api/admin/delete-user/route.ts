@@ -58,10 +58,15 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json().catch(() => null);
-    const profileId = body?.profileId as string | undefined;
+    const profileId = typeof body?.profileId === "string" ? body.profileId.trim() : "";
+    const organizationId =
+      typeof body?.organizationId === "string" ? body.organizationId.trim() : "";
 
-    if (!profileId) {
-      return NextResponse.json({ error: "Missing profileId." }, { status: 400 });
+    if (!profileId || !organizationId) {
+      return NextResponse.json(
+        { error: "Missing profileId or organizationId." },
+        { status: 400 }
+      );
     }
 
     if (profileId === user.id) {
@@ -71,9 +76,145 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const adminCountRes = await service
-      .from("profiles")
+    const { data: callerMembership, error: callerMembershipError } = await service
+      .from("organization_members")
+      .select("role")
+      .eq("organization_id", organizationId)
+      .eq("profile_id", user.id)
+      .maybeSingle();
+
+    if (callerMembershipError) {
+      return NextResponse.json({ error: callerMembershipError.message }, { status: 500 });
+    }
+
+    if (currentProfile.role !== "platform_admin" && callerMembership?.role !== "admin") {
+      return NextResponse.json(
+        { error: "You do not have admin access to this organization." },
+        { status: 403 }
+      );
+    }
+
+    const { data: targetMembership, error: targetMembershipError } = await service
+      .from("organization_members")
+      .select("role")
+      .eq("organization_id", organizationId)
+      .eq("profile_id", profileId)
+      .maybeSingle();
+
+    if (targetMembershipError) {
+      return NextResponse.json({ error: targetMembershipError.message }, { status: 500 });
+    }
+
+    if (!targetMembership) {
+      return NextResponse.json(
+        { error: "User is not a member of this organization." },
+        { status: 404 }
+      );
+    }
+
+    const { count: otherOrganizationCount, error: otherOrganizationError } = await service
+      .from("organization_members")
       .select("id", { count: "exact", head: true })
+      .eq("profile_id", profileId)
+      .neq("organization_id", organizationId);
+
+    if (otherOrganizationError) {
+      return NextResponse.json({ error: otherOrganizationError.message }, { status: 500 });
+    }
+
+    const [ownerLinks, cleanerMemberships, groundsMemberships] = await Promise.all([
+      service
+        .from("owner_accounts")
+        .select("id")
+        .eq("profile_id", profileId)
+        .neq("organization_id", organizationId)
+        .limit(1),
+      service
+        .from("cleaner_account_members")
+        .select("cleaner_account_id")
+        .eq("profile_id", profileId),
+      service
+        .from("grounds_account_members")
+        .select("grounds_account_id")
+        .eq("profile_id", profileId),
+    ]);
+
+    const relatedLookupError =
+      ownerLinks.error || cleanerMemberships.error || groundsMemberships.error;
+    if (relatedLookupError) {
+      return NextResponse.json({ error: relatedLookupError.message }, { status: 500 });
+    }
+
+    const cleanerAccountIds = (cleanerMemberships.data || [])
+      .map((row) => row.cleaner_account_id)
+      .filter(Boolean);
+    const groundsAccountIds = (groundsMemberships.data || [])
+      .map((row) => row.grounds_account_id)
+      .filter(Boolean);
+
+    const [outsideCleanerAccounts, outsideGroundsAccounts] = await Promise.all([
+      cleanerAccountIds.length > 0
+        ? service
+            .from("cleaner_accounts")
+            .select("id")
+            .in("id", cleanerAccountIds)
+            .neq("organization_id", organizationId)
+            .limit(1)
+        : Promise.resolve({ data: [], error: null }),
+      groundsAccountIds.length > 0
+        ? service
+            .from("grounds_accounts")
+            .select("id")
+            .in("id", groundsAccountIds)
+            .neq("organization_id", organizationId)
+            .limit(1)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+    const outsideAccountError = outsideCleanerAccounts.error || outsideGroundsAccounts.error;
+    if (outsideAccountError) {
+      return NextResponse.json({ error: outsideAccountError.message }, { status: 500 });
+    }
+
+    const hasOutsideOrganizationLinks =
+      (otherOrganizationCount ?? 0) > 0 ||
+      (ownerLinks.data?.length ?? 0) > 0 ||
+      (outsideCleanerAccounts.data?.length ?? 0) > 0 ||
+      (outsideGroundsAccounts.data?.length ?? 0) > 0;
+
+    if (hasOutsideOrganizationLinks && currentProfile.role !== "platform_admin") {
+      return NextResponse.json(
+        {
+          error:
+            "This user also belongs to another organization and cannot be permanently deleted here.",
+        },
+        { status: 409 }
+      );
+    }
+
+    if (targetMembership.role === "admin" && currentProfile.role !== "platform_admin") {
+      const { data: organization, error: organizationError } = await service
+        .from("organizations")
+        .select("created_by")
+        .eq("id", organizationId)
+        .maybeSingle();
+
+      if (organizationError) {
+        return NextResponse.json({ error: organizationError.message }, { status: 500 });
+      }
+
+      if (organization?.created_by !== user.id) {
+        return NextResponse.json(
+          { error: "Only the primary admin can permanently delete another admin." },
+          { status: 403 }
+        );
+      }
+    }
+
+    const adminCountRes = await service
+      .from("organization_members")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", organizationId)
       .eq("role", "admin");
 
     if (adminCountRes.error) {
@@ -93,7 +234,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "User profile not found." }, { status: 404 });
     }
 
-    if (targetProfile.role === "admin" && (adminCountRes.count ?? 0) <= 1) {
+    if (targetMembership.role === "admin" && (adminCountRes.count ?? 0) <= 1) {
       return NextResponse.json(
         { error: "You cannot delete the last admin." },
         { status: 400 }

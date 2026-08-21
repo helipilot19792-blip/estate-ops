@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
       verification.email
     );
     const currentOffer =
-      Boolean(verification.offerVersion) && verification.offerVersion === String(details.offeredAt || "");
+      !verification.offerVersion || verification.offerVersion === String(details.offeredAt || "");
 
     if (!currentRecipient || !currentOffer) {
       return new Response("This calendar link belongs to an earlier offer or assignment.", {

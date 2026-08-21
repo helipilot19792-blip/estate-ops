@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { signOwnerEmail } from "@/lib/server/owner-link-signature";
 import { writeAuditLog } from "@/lib/server/audit-log";
+import {
+  assertWorkspaceBillingAccessForOrganization,
+  getWorkspaceBillingErrorStatus,
+} from "@/lib/server/workspace-billing-status";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const publicSupabaseKey =
@@ -151,6 +155,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    await assertWorkspaceBillingAccessForOrganization(
+      serviceClient,
+      property.organization_id
+    );
+
     let ownerAccountId: string | null = null;
 
     const { data: existingOwner, error: existingOwnerError } = await serviceClient
@@ -287,6 +296,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: getWorkspaceBillingErrorStatus(error) });
   }
 }

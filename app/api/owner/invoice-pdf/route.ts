@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { downloadStorageAsset } from "@/lib/server/storage-assets";
 import { createInvoicePdfBuffer, type InvoicePdfLineItem } from "@/lib/server/invoice-pdf";
 import { normalizeCurrencyCode } from "@/lib/currency";
 
@@ -107,15 +108,21 @@ export async function POST(request: NextRequest) {
     }
 
     if (invoice.invoice_source === "uploaded" && invoice.uploaded_invoice_url) {
-      const uploadedResponse = await fetch(invoice.uploaded_invoice_url, { cache: "no-store" });
-      if (!uploadedResponse.ok) {
+      let uploadedResponse;
+      try {
+        uploadedResponse = await downloadStorageAsset(service, invoice.uploaded_invoice_url, {
+          accept: "application/pdf,image/*",
+          maxBytes: 20 * 1024 * 1024,
+          timeoutMs: 15_000,
+          userAgent: "gulera-owner-invoice",
+        });
+      } catch {
         return NextResponse.json({ error: "Uploaded invoice file could not be downloaded." }, { status: 502 });
       }
 
-      const bytes = await uploadedResponse.arrayBuffer();
-      return new NextResponse(bytes, {
+      return new NextResponse(uploadedResponse.bytes.buffer as ArrayBuffer, {
         headers: {
-          "Content-Type": invoice.uploaded_invoice_content_type || uploadedResponse.headers.get("content-type") || "application/pdf",
+          "Content-Type": invoice.uploaded_invoice_content_type || uploadedResponse.contentType || "application/pdf",
           "Content-Disposition": `attachment; filename="${invoice.uploaded_invoice_name || `${invoice.invoice_number}.pdf`}"`,
         },
       });

@@ -45,7 +45,11 @@ export function useTeamBulletinSummary(params: {
   }, [enabled, organizationId, portal]);
 
   useEffect(() => {
-    void loadSummary();
+    const timeout = window.setTimeout(() => {
+      void loadSummary();
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
   }, [loadSummary]);
 
   useEffect(() => {

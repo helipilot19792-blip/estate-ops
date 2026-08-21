@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
+import {
+  assertWorkspaceBillingAccessForOrganization,
+  getWorkspaceBillingErrorStatus,
+} from "@/lib/server/workspace-billing-status";
 
 export const dynamic = "force-dynamic";
 
@@ -116,6 +120,7 @@ export async function POST(request: NextRequest) {
 
     const admin = await requireAdmin(request, organizationId);
     if ("response" in admin) return admin.response;
+    await assertWorkspaceBillingAccessForOrganization(admin.serviceClient, organizationId);
 
     const { data: property, error: propertyError } = await admin.serviceClient
       .from("properties")
@@ -157,7 +162,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Could not create maintenance flag." },
-      { status: 500 }
+      { status: getWorkspaceBillingErrorStatus(error) }
     );
   }
 }
@@ -175,6 +180,7 @@ export async function PATCH(request: NextRequest) {
 
     const admin = await requireAdmin(request, organizationId);
     if ("response" in admin) return admin.response;
+    await assertWorkspaceBillingAccessForOrganization(admin.serviceClient, organizationId);
 
     if (action === "update") {
       const category = String(body?.category || "").trim();
@@ -351,7 +357,7 @@ export async function PATCH(request: NextRequest) {
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Could not resolve maintenance flag." },
-      { status: 500 }
+      { status: getWorkspaceBillingErrorStatus(error) }
     );
   }
 }
@@ -370,6 +376,7 @@ export async function DELETE(request: NextRequest) {
 
     const admin = await requireAdmin(request, organizationId);
     if ("response" in admin) return admin.response;
+    await assertWorkspaceBillingAccessForOrganization(admin.serviceClient, organizationId);
 
     const { error: imageError } = await admin.serviceClient
       .from("property_maintenance_flag_images")
@@ -394,7 +401,7 @@ export async function DELETE(request: NextRequest) {
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Could not delete maintenance flags." },
-      { status: 500 }
+      { status: getWorkspaceBillingErrorStatus(error) }
     );
   }
 }

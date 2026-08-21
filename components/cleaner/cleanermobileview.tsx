@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import OnboardingChecklist, { type OnboardingStep } from "@/components/onboarding-checklist";
 import { reportStaffMaintenanceIssue } from "@/lib/staff-maintenance-report";
+import { supabase } from "@/lib/supabase";
 import type { CleanerJob, CleanerViewProps } from "@/components/cleaner/cleanershell";
 
 const MAINTENANCE_CATEGORIES = [
@@ -389,6 +390,8 @@ export default function CleanerMobileView({
   const [nearbyAccessOpen, setNearbyAccessOpen] = useState(false);
   const [arrivingSlotIds, setArrivingSlotIds] = useState<Set<string>>(() => new Set());
   const [arrivedSlotIds, setArrivedSlotIds] = useState<Set<string>>(() => new Set());
+  const [calendarDownloadingJobId, setCalendarDownloadingJobId] = useState("");
+  const [calendarError, setCalendarError] = useState("");
   const reportableProperties = useMemo(() => properties, [properties]);
 
   function normalizeJobDate(value: string | null | undefined) {
@@ -642,8 +645,40 @@ export default function CleanerMobileView({
     setSelectedDate(null);
   }
 
-  function getCalendarUrl(jobId: string) {
-    return `/api/cleaner-calendar-event?jobId=${encodeURIComponent(jobId)}`;
+  async function downloadCalendar(jobId: string) {
+    setCalendarDownloadingJobId(jobId);
+    setCalendarError("");
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error("Please sign in again to download this calendar event.");
+
+      const response = await fetch(
+        `/api/cleaner-calendar-event?jobId=${encodeURIComponent(jobId)}`,
+        {
+          cache: "no-store",
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        }
+      );
+      if (!response.ok) {
+        throw new Error((await response.text().catch(() => "")) || "Could not download calendar event.");
+      }
+
+      const blobUrl = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = `cleaning-${jobId}.ics`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      setCalendarError(error instanceof Error ? error.message : "Could not download calendar event.");
+    } finally {
+      setCalendarDownloadingJobId("");
+    }
   }
 
   async function openNearbyAccess() {
@@ -1020,12 +1055,19 @@ export default function CleanerMobileView({
                 ) : null}
 
                 {isAccepted(selectedCleanerJob.slot.status) || isInProgress(selectedCleanerJob.slot.status) ? (
-                  <a
-                    href={getCalendarUrl(selectedCleanerJob.job.id)}
+                  <button
+                    type="button"
+                    onClick={() => void downloadCalendar(selectedCleanerJob.job.id)}
+                    disabled={calendarDownloadingJobId === selectedCleanerJob.job.id}
                     className="min-h-[46px] rounded-full border border-[#b08b47]/40 bg-[#b08b47]/15 px-4 py-3 text-sm font-semibold text-[#f5efe4] transition hover:bg-[#b08b47]/25"
                   >
-                    Add to Calendar
-                  </a>
+                    {calendarDownloadingJobId === selectedCleanerJob.job.id
+                      ? "Preparing Calendar..."
+                      : "Add to Calendar"}
+                  </button>
+                ) : null}
+                {calendarError ? (
+                  <p className="text-sm text-[#efbd65]">{calendarError}</p>
                 ) : null}
 
                 <button

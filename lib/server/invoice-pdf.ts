@@ -1,4 +1,5 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { downloadStorageAssetWithServiceRole } from "@/lib/server/storage-assets";
 import { DEFAULT_CURRENCY_CODE, formatCurrency as formatDocumentCurrency, normalizeCurrencyCode, type CurrencyCode } from "../currency";
 
 export type InvoicePdfLineItem = {
@@ -101,12 +102,13 @@ async function fetchLogoBytes(logoUrl: string | null) {
   if (!logoUrl) return null;
 
   try {
-    const response = await fetch(logoUrl);
-    if (!response.ok) return null;
-
-    const contentType = response.headers.get("content-type") || "";
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    return { bytes, contentType };
+    const response = await downloadStorageAssetWithServiceRole(logoUrl, {
+      accept: "image/png,image/jpeg",
+      maxBytes: 5 * 1024 * 1024,
+      timeoutMs: 10_000,
+      userAgent: "gulera-invoice-pdf",
+    });
+    return { bytes: response.bytes, contentType: response.contentType };
   } catch {
     return null;
   }

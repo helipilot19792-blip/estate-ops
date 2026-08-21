@@ -1,5 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  assertWorkspaceBillingAccessForOrganization,
+  getWorkspaceBillingErrorStatus,
+} from "@/lib/server/workspace-billing-status";
+import {
+  getOrganizationAccessErrorStatus,
+  requireOrganizationAdmin,
+} from "@/lib/server/organization-access";
 
 export const dynamic = "force-dynamic";
 
@@ -10,35 +18,6 @@ const publicSupabaseKey =
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 const allowedSources = new Set(["airbnb", "vrbo"]);
-
-async function verifyAdmin(serviceClient: any, userId: string, organizationId: string) {
-  const { data: profile, error: profileError } = await serviceClient
-    .from("profiles")
-    .select("id, role")
-    .eq("id", userId)
-    .maybeSingle();
-
-  if (profileError) throw profileError;
-
-  if (!profile || (profile.role !== "admin" && profile.role !== "platform_admin")) {
-    return false;
-  }
-
-  if (profile.role === "platform_admin") {
-    return true;
-  }
-
-  const { data: membership, error: membershipError } = await serviceClient
-    .from("organization_members")
-    .select("role")
-    .eq("organization_id", organizationId)
-    .eq("profile_id", userId)
-    .eq("role", "admin")
-    .maybeSingle();
-
-  if (membershipError) throw membershipError;
-  return !!membership;
-}
 
 export async function POST(request: NextRequest) {
   if (!supabaseUrl || !publicSupabaseKey || !serviceRoleKey) {
@@ -83,10 +62,7 @@ export async function POST(request: NextRequest) {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    const isAdmin = await verifyAdmin(serviceClient, user.id, organizationId);
-    if (!isAdmin) {
-      return NextResponse.json({ error: "Admin access required." }, { status: 403 });
-    }
+    await requireOrganizationAdmin(serviceClient, user.id, organizationId);
 
     const { data: property, error: propertyError } = await serviceClient
       .from("properties")
@@ -102,6 +78,8 @@ export async function POST(request: NextRequest) {
     if (!property) {
       return NextResponse.json({ error: "Property not found in this organization." }, { status: 404 });
     }
+
+    await assertWorkspaceBillingAccessForOrganization(serviceClient, organizationId);
 
     const normalizedRows = rows
       .map((row: any) => ({
@@ -121,6 +99,17 @@ export async function POST(request: NextRequest) {
       }
       if (!row.ical_url) {
         return NextResponse.json({ error: "Each calendar row needs an iCal URL." }, { status: 400 });
+      }
+      try {
+        const calendarUrl = new URL(row.ical_url);
+        if (calendarUrl.protocol !== "https:" || calendarUrl.username || calendarUrl.password) {
+          throw new Error("invalid");
+        }
+      } catch {
+        return NextResponse.json(
+          { error: "Each iCal URL must be a valid HTTPS address." },
+          { status: 400 }
+        );
       }
     }
 
@@ -193,9 +182,13 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ ok: true, calendars: savedCalendars || [] });
   } catch (error) {
+    const accessStatus = getOrganizationAccessErrorStatus(error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Could not save property calendars." },
-      { status: 500 }
+      {
+        status:
+          accessStatus !== 500 ? accessStatus : getWorkspaceBillingErrorStatus(error),
+      }
     );
   }
 }

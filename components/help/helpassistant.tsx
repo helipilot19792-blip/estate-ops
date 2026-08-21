@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useI18n } from "@/components/i18n-provider";
+import { supabase } from "@/lib/supabase";
 
 type HelpMessage = {
   role: "user" | "assistant";
@@ -57,9 +58,19 @@ export default function HelpAssistant() {
     setLoading(true);
 
     try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error("Please sign in to use the help assistant.");
+      }
+
       const response = await fetch("/api/help-assistant", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           question: trimmed,
           history: nextMessages.slice(-8),

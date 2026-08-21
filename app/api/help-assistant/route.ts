@@ -1,6 +1,11 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { NextRequest, NextResponse } from "next/server";
+import { consumeHelpAssistantQuota } from "@/lib/server/help-assistant-rate-limit";
+import {
+  authenticateBearerRequest,
+  createServiceRoleClient,
+} from "@/lib/server/request-auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -100,6 +105,16 @@ function extractOutputText(data: any) {
 
 export async function POST(request: NextRequest) {
   try {
+    const declaredLength = Number(request.headers.get("content-length") || "0");
+    if (Number.isFinite(declaredLength) && declaredLength > 20_000) {
+      return NextResponse.json({ ok: false, error: "Request is too large." }, { status: 413 });
+    }
+
+    const auth = await authenticateBearerRequest(request);
+    if (!auth.ok) {
+      return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
+    }
+
     const body = await request.json().catch(() => null);
     const question = normalizeQuestion(body?.question);
     const history = normalizeHistory(body?.history);
@@ -121,14 +136,31 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const quota = await consumeHelpAssistantQuota(
+      createServiceRoleClient(),
+      request,
+      auth.user.id
+    );
+    if (!quota.allowed) {
+      return NextResponse.json(
+        { ok: false, error: "Help assistant limit reached. Please try again shortly." },
+        {
+          status: 429,
+          headers: { "Retry-After": String(quota.retryAfterSeconds) },
+        }
+      );
+    }
+
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
+      signal: AbortSignal.timeout(25_000),
       body: JSON.stringify({
         model: process.env.OPENAI_HELP_MODEL || "gpt-5-mini",
+        max_output_tokens: 500,
         instructions:
           "You are the Gulera OS in-app help assistant. Answer using only the provided help files and conversation context. Be concise, practical, and honest. If the help files do not cover the answer, say that and suggest the closest place to check in the app. Do not invent app features. Answer in the requested locale when possible.",
         input: [

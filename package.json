@@ -7,21 +7,26 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run test:ai-supervisor && npm run test:ai-turnover-rescue && npm run test:cleaner-offer-deadlines && npm run test:cleaner-offer-eligibility && npm run test:job-email-signatures && npm run test:workspace-billing && npm run test:storage-references",
     "test:ai-supervisor": "node --experimental-strip-types scripts/test-ai-supervisor-anomalies.mjs",
     "test:ai-turnover-rescue": "node --experimental-strip-types scripts/test-ai-turnover-rescue.mjs",
     "test:cleaner-offer-deadlines": "node --experimental-strip-types scripts/test-cleaner-offer-deadlines.mjs",
-    "test:cleaner-offer-eligibility": "node --experimental-strip-types scripts/test-cleaner-offer-eligibility.mjs"
+    "test:cleaner-offer-eligibility": "node --experimental-strip-types scripts/test-cleaner-offer-eligibility.mjs",
+    "test:job-email-signatures": "node --experimental-strip-types scripts/test-job-email-signatures.mjs",
+    "test:workspace-billing": "node --experimental-strip-types scripts/test-workspace-billing.mjs",
+    "test:storage-references": "node --experimental-strip-types scripts/test-storage-references.mjs"
   },
   "dependencies": {
     "@supabase/auth-helpers-nextjs": "^0.15.0",
     "@supabase/ssr": "^0.10.0",
     "@supabase/supabase-js": "^2.100.1",
     "lucide-react": "^1.17.0",
-    "next": "16.2.1",
+    "next": "16.3.2",
     "pdf-lib": "^1.17.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "resend": "^6.11.0",
+    "resend": "^6.21.0",
     "stripe": "^22.3.0",
     "web-push": "^3.6.7"
   },
@@ -32,7 +37,7 @@
     "@types/react-dom": "^19",
     "@types/web-push": "^3.6.4",
     "eslint": "^9",
-    "eslint-config-next": "16.2.1",
+    "eslint-config-next": "16.3.2",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

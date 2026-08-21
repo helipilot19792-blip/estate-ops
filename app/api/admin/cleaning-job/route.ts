@@ -7,6 +7,10 @@ import {
 import { getCleanerOfferExpiresAtForDailySweep } from "@/lib/server/cleaner-offer-deadlines";
 import { sendJobOfferEmailsForSlots } from "@/lib/server/job-notifications";
 import { prepareManualCleanerAssignment } from "@/lib/server/manual-cleaner-assignment";
+import {
+  assertWorkspaceBillingAccessForOrganization,
+  getWorkspaceBillingErrorStatus,
+} from "@/lib/server/workspace-billing-status";
 
 export const dynamic = "force-dynamic";
 
@@ -238,6 +242,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { user, profile } = await requireAdminAccess(token, organizationId);
+    await assertWorkspaceBillingAccessForOrganization(service, organizationId);
 
     const { data: property, error: propertyError } = await service
       .from("properties")
@@ -359,7 +364,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Could not create cleaning job." },
-      { status: 500 }
+      { status: getWorkspaceBillingErrorStatus(error) }
     );
   }
 }

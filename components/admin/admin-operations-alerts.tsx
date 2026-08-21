@@ -27,32 +27,30 @@ export default function AdminOperationsAlerts({
   const storageKey = `${DISMISS_STORAGE_PREFIX}:${organizationId || "default"}`;
 
   useEffect(() => {
-    const savedUntil = Number(window.localStorage.getItem(storageKey) || 0);
+    const timeout = window.setTimeout(() => {
+      const savedUntil = Number(window.localStorage.getItem(storageKey) || 0);
 
-    if (Number.isFinite(savedUntil) && savedUntil > Date.now()) {
-      setHiddenUntil(savedUntil);
-    } else {
-      window.localStorage.removeItem(storageKey);
-      setHiddenUntil(null);
-    }
+      if (Number.isFinite(savedUntil) && savedUntil > Date.now()) {
+        setHiddenUntil(savedUntil);
+      } else {
+        window.localStorage.removeItem(storageKey);
+        setHiddenUntil(null);
+      }
 
-    setDismissalReady(true);
+      setDismissalReady(true);
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
   }, [storageKey]);
 
   useEffect(() => {
     if (!hiddenUntil) return;
 
     const remainingMs = hiddenUntil - Date.now();
-    if (remainingMs <= 0) {
-      window.localStorage.removeItem(storageKey);
-      setHiddenUntil(null);
-      return;
-    }
-
     const timeout = window.setTimeout(() => {
       window.localStorage.removeItem(storageKey);
       setHiddenUntil(null);
-    }, remainingMs);
+    }, Math.max(0, remainingMs));
 
     return () => window.clearTimeout(timeout);
   }, [hiddenUntil, storageKey]);

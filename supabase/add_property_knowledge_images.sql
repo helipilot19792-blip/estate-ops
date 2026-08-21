@@ -1,5 +1,5 @@
 insert into storage.buckets (id, name, public)
-values ('property-sop-images', 'property-sop-images', true)
+values ('property-sop-images', 'property-sop-images', false)
 on conflict (id) do nothing;
 
 create table if not exists public.property_knowledge_images (
