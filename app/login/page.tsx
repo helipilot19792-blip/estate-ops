@@ -2,7 +2,17 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Eye, EyeOff } from "lucide-react";
+import {
+  ArrowRight,
+  Building2,
+  CalendarDays,
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  ReceiptText,
+  Sparkles,
+  Wrench,
+} from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { PASSWORD_REQUIREMENTS, validatePassword } from "@/lib/password-policy";
 import { supabase } from "@/lib/supabase";
@@ -192,6 +202,10 @@ export default function LoginPage() {
     const hasRecoveryQuery =
       queryType === "recovery" &&
       Boolean(url.searchParams.get("code") || url.searchParams.get("token_hash"));
+
+    if (url.searchParams.get("mode") === "company") {
+      setAuthMode("company");
+    }
 
     if (hasRecoveryHash) {
       window.location.replace(`/auth/reset${window.location.hash}`);
@@ -581,17 +595,19 @@ export default function LoginPage() {
 
   return (
     <main className="min-h-screen bg-[#f7f3ee] pb-32 text-[#241c15] md:pb-0">
-      <div className="mx-auto flex min-h-screen max-w-6xl items-start p-4 pt-6 md:items-center md:p-6 md:pt-0">
-        <div className="grid w-full overflow-hidden rounded-[34px] border border-[#e7ddd0] bg-white shadow-[0_30px_70px_rgba(0,0,0,0.08)] lg:grid-cols-[0.95fr_1.05fr]">
-          <section className="bg-[linear-gradient(135deg,#1f1812_0%,#2a2119_55%,#3a2c1d_100%)] px-6 py-8 text-white md:px-10 md:py-12">
-            <div className="max-w-md">
-              <div className="mb-6 rounded-[22px] bg-white px-5 py-5 shadow-[0_12px_28px_rgba(0,0,0,0.18)]">
+      <div className="mx-auto flex min-h-screen max-w-7xl items-start p-4 pt-6 md:items-center md:p-6 md:pt-0">
+        <div className="grid w-full overflow-hidden rounded-[34px] border border-[#e7ddd0] bg-white shadow-[0_30px_70px_rgba(0,0,0,0.08)] lg:grid-cols-[1.08fr_0.92fr]">
+          <section className="relative overflow-hidden bg-[radial-gradient(circle_at_12%_5%,rgba(206,166,98,0.24),transparent_30%),linear-gradient(145deg,#17110d_0%,#261c15_55%,#3b2b1d_100%)] px-6 py-8 text-white md:px-10 md:py-10">
+            <div className="pointer-events-none absolute -bottom-24 -right-24 h-72 w-72 rounded-full border border-white/10" />
+            <div className="pointer-events-none absolute -bottom-12 -right-12 h-44 w-44 rounded-full border border-[#d7b779]/20" />
+            <div className="relative max-w-md">
+              <div className="mb-8 inline-flex rounded-[18px] bg-white px-4 py-3 shadow-[0_12px_28px_rgba(0,0,0,0.2)]">
                 <Image
                   src="/guleraoslogo.png"
                   alt="Gulera OS"
                   width={420}
                   height={180}
-                  className="mx-auto h-auto w-full max-w-[300px]"
+                  className="h-auto w-[190px]"
                   priority
                 />
               </div>
@@ -600,94 +616,86 @@ export default function LoginPage() {
                 {t("login.eyebrow")}
               </div>
 
-              <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">
-                {t("login.title")}
+              <h1 className="max-w-lg text-4xl font-semibold leading-[1.08] tracking-[-0.035em] md:text-5xl">
+                Run every property from one calm workspace.
               </h1>
 
-              <p className="mt-4 text-sm leading-7 text-[#e7dccb] md:text-base">
-                {t("login.intro")}
+              <p className="mt-5 max-w-lg text-base leading-7 text-[#e7dccb]">
+                Bookings, turnovers, staff, maintenance, owner updates, invoices, and property knowledge—organized for operators managing a growing portfolio.
               </p>
 
-              <div className="mt-8 grid gap-3">
-                <div className="rounded-[20px] border border-white/10 bg-white/5 px-4 py-4">
-                  <div className="text-sm font-semibold text-white">{t("login.adminTitle")}</div>
-                  <div className="mt-1 text-sm text-[#e7dccb]">
-                    {t("login.adminBody")}
+              <div className="mt-7 flex flex-wrap gap-3">
+                <Link
+                  href="/demo"
+                  className="inline-flex items-center gap-2 rounded-full bg-[#f4d99f] px-5 py-3 text-sm font-semibold text-[#2b2017] shadow-[0_12px_30px_rgba(0,0,0,0.22)] transition hover:-translate-y-0.5 hover:bg-[#ffe8b9]"
+                >
+                  <Sparkles size={16} aria-hidden="true" />
+                  Explore the 4-property demo
+                  <ArrowRight size={16} aria-hidden="true" />
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setAuthMode("company")}
+                  className="inline-flex items-center rounded-full border border-white/20 bg-white/7 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/12"
+                >
+                  Start a 30-day trial
+                </button>
+              </div>
+
+              <div className="mt-9 rounded-[26px] border border-white/12 bg-white/[0.07] p-5 shadow-[0_20px_50px_rgba(0,0,0,0.2)] backdrop-blur-sm">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[#d8c7ab]">Today across 4 properties</div>
+                    <div className="mt-1 text-lg font-semibold">Your portfolio at a glance</div>
                   </div>
+                  <span className="inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-1.5 text-xs font-medium text-emerald-100">
+                    <span className="h-2 w-2 rounded-full bg-emerald-300" /> Live
+                  </span>
                 </div>
 
-                <div className="rounded-[20px] border border-white/10 bg-white/5 px-4 py-4">
-                  <div className="text-sm font-semibold text-white">{t("login.teamTitle")}</div>
-                  <div className="mt-1 text-sm text-[#e7dccb]">
-                    {t("login.teamBody")}
-                  </div>
+                <div className="mt-5 grid grid-cols-3 gap-2">
+                  {[
+                    ["4", "Properties"],
+                    ["3", "Turns this week"],
+                    ["1", "Needs attention"],
+                  ].map(([value, label]) => (
+                    <div key={label} className="rounded-[18px] border border-white/10 bg-black/10 px-3 py-3">
+                      <div className="text-2xl font-semibold text-[#f9e8c4]">{value}</div>
+                      <div className="mt-1 text-[11px] leading-4 text-[#d8c7ab]">{label}</div>
+                    </div>
+                  ))}
                 </div>
 
-                <div className="rounded-[20px] border border-white/10 bg-white/5 px-4 py-4">
-                  <div className="text-sm font-semibold text-white">{t("login.returningTitle")}</div>
-                  <div className="mt-1 text-sm text-[#e7dccb]">
-                    {t("login.returningBody")}
+                <div className="mt-3 space-y-2">
+                  <div className="flex items-center gap-3 rounded-[18px] border border-white/10 bg-[#f8f1e5] px-4 py-3 text-[#2b2118]">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-[#ead8b6] text-[#704e1b]">
+                      <CalendarDays size={19} aria-hidden="true" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-semibold">Lake House turnover</div>
+                      <div className="mt-0.5 text-xs text-[#756656]">Tomorrow · Maria assigned · checklist ready</div>
+                    </div>
+                    <CheckCircle2 size={18} className="text-emerald-600" aria-hidden="true" />
                   </div>
-                </div>
-
-                <div className="rounded-[20px] border border-[#d8c7ab]/35 bg-[#f2e6d1]/10 px-4 py-4">
-                  <div className="text-sm font-semibold text-white">{t("login.ownerTitle")}</div>
-                  <div className="mt-1 text-sm text-[#e7dccb]">
-                    {t("login.ownerBody")}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="rounded-[18px] border border-white/10 bg-black/10 px-4 py-3">
+                      <div className="flex items-center gap-2 text-xs text-[#d8c7ab]"><Wrench size={15} /> Maintenance</div>
+                      <div className="mt-2 text-sm font-semibold">1 open issue</div>
+                    </div>
+                    <div className="rounded-[18px] border border-white/10 bg-black/10 px-4 py-3">
+                      <div className="flex items-center gap-2 text-xs text-[#d8c7ab]"><ReceiptText size={15} /> Owner billing</div>
+                      <div className="mt-2 text-sm font-semibold">2 invoices ready</div>
+                    </div>
                   </div>
-                  <Link
-                    href="/owner/login"
-                    className="mt-3 inline-flex items-center rounded-full border border-[#d8c7ab] px-4 py-2 text-sm font-medium text-[#f7e5bf] transition hover:bg-white/10"
-                  >
-                    {t("login.ownerLink")}
-                  </Link>
                 </div>
               </div>
 
-              <div className="mt-8 rounded-[26px] border border-[#d8c7ab]/30 bg-[linear-gradient(180deg,rgba(255,248,232,0.14)_0%,rgba(255,255,255,0.04)_100%)] p-5 shadow-[0_18px_40px_rgba(0,0,0,0.18)]">
-                <div className="flex flex-wrap items-center gap-3">
-                  <span className="rounded-full border border-[#f5deb3]/40 bg-[#f2d39a]/14 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-[#f7e5bf]">
-                    Launch Pricing
-                  </span>
-                  <span className="text-sm text-[#d8c7ab]">Built for small operators who need more than spreadsheets.</span>
-                </div>
-
-                <div className="mt-4 grid gap-3">
-                  <div className="rounded-[22px] border border-[#f1d7aa]/35 bg-[#fff8ea] px-5 py-5 text-[#241c15]">
-                    <div className="text-sm font-semibold uppercase tracking-[0.18em] text-[#8a6a35]">Starter</div>
-                    <div className="mt-3 flex items-end gap-2">
-                      <div className="text-4xl font-semibold tracking-tight">$20</div>
-                      <div className="pb-1 text-sm text-[#6f6255]">CAD / month</div>
-                    </div>
-                    <div className="mt-2 text-sm font-medium text-[#4d4033]">Up to 10 properties</div>
-                    <div className="mt-3 text-sm leading-6 text-[#5f5245]">
-                      Admin, owner, cleaner, and grounds portals in one operating system.
-                    </div>
-                    <div className="mt-4 flex flex-wrap gap-2 text-xs text-[#6f6255]">
-                      <span className="rounded-full border border-[#ead8b5] bg-white px-3 py-1">30-day free trial</span>
-                      <span className="rounded-full border border-[#ead8b5] bg-white px-3 py-1">Bulletin Board + chat</span>
-                      <span className="rounded-full border border-[#ead8b5] bg-white px-3 py-1">Jobs, invoices, access, SOPs</span>
-                    </div>
-                  </div>
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-[20px] border border-white/10 bg-white/5 px-4 py-4">
-                      <div className="text-sm font-semibold text-white">Growth</div>
-                      <div className="mt-2 text-2xl font-semibold text-[#f7e5bf]">$40 CAD</div>
-                      <div className="mt-1 text-sm text-[#d8c7ab]">Up to 25 properties</div>
-                    </div>
-
-                    <div className="rounded-[20px] border border-white/10 bg-white/5 px-4 py-4">
-                      <div className="text-sm font-semibold text-white">Custom</div>
-                      <div className="mt-2 text-2xl font-semibold text-[#f7e5bf]">26+ properties</div>
-                      <div className="mt-1 text-sm text-[#d8c7ab]">Contact us for larger portfolios</div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-[20px] border border-emerald-300/18 bg-emerald-400/10 px-4 py-4 text-sm leading-6 text-[#e8f6eb]">
-                    Founding annual option: <span className="font-semibold text-white">$200 CAD / year</span> for the Starter plan.
-                  </div>
-                </div>
+              <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-[#d8c7ab]">
+                <span className="inline-flex items-center gap-2"><Building2 size={15} /> From $20 CAD/month</span>
+                <span className="hidden h-1 w-1 rounded-full bg-[#8c7963] sm:block" />
+                <span>Up to 10 properties</span>
+                <span className="hidden h-1 w-1 rounded-full bg-[#8c7963] sm:block" />
+                <span>30-day free trial</span>
               </div>
             </div>
           </section>
@@ -811,6 +819,26 @@ export default function LoginPage() {
                         </button>
                       </div>
                     </form>
+
+                    <div className="mt-6 overflow-hidden rounded-[22px] border border-[#d8c7ab] bg-[linear-gradient(135deg,#fffaf1_0%,#f6ead4_100%)] p-4">
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[15px] bg-[#241c15] text-[#f4d99f]">
+                          <Sparkles size={19} aria-hidden="true" />
+                        </div>
+                        <div>
+                          <div className="text-sm font-semibold text-[#241c15]">See how it works before signing up</div>
+                          <p className="mt-1 text-sm leading-6 text-[#6f6255]">
+                            Tour a realistic four-property portfolio with bookings, turnovers, maintenance, team coverage, and owner billing.
+                          </p>
+                          <Link
+                            href="/demo"
+                            className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-[#744f18] underline decoration-[#c7a66e] underline-offset-4"
+                          >
+                            Open the guided demo <ArrowRight size={15} aria-hidden="true" />
+                          </Link>
+                        </div>
+                      </div>
+                    </div>
                   </section>
                 ) : null}
 
