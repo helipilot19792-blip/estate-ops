@@ -366,11 +366,11 @@ function TodayView() {
             </div>
           </div>
 
-          <div className="rounded-[24px] border border-[#bde7cf] bg-[#effcf4] p-3 shadow-[0_10px_30px_rgba(22,163,74,0.07)] sm:p-4">
+          <div className={`rounded-[24px] border p-3 sm:p-4 ${showVacantProperties ? "border-[#ecd5a6] bg-[#fff8eb] shadow-[0_10px_30px_rgba(180,83,9,0.07)]" : "border-[#bde7cf] bg-[#effcf4] shadow-[0_10px_30px_rgba(22,163,74,0.07)]"}`}>
             <div className="flex items-start justify-between gap-3">
-              <div><p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#15803d]">Occupied</p><h2 className="mt-1 text-lg font-semibold text-[#173d28]">Properties with guests today</h2></div>
+              <div><p className={`text-[11px] font-semibold uppercase tracking-[0.24em] ${showVacantProperties ? "text-[#8a6428]" : "text-[#15803d]"}`}>{showVacantProperties ? "Vacant" : "Occupied"}</p><h2 className={`mt-1 text-lg font-semibold ${showVacantProperties ? "text-[#453720]" : "text-[#173d28]"}`}>{showVacantProperties ? "Properties vacant today" : "Properties with guests today"}</h2>{showVacantProperties ? <p className="mt-1 text-xs text-[#6d5c40]">Vacant all day or after today&apos;s checkout.</p> : null}</div>
               <div className="flex shrink-0 flex-col items-end gap-2">
-                <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#15803d]">{occupied.length} occupied</span>
+                <span className={`rounded-full bg-white px-3 py-1 text-xs font-semibold ${showVacantProperties ? "text-[#8a6428]" : "text-[#15803d]"}`}>{showVacantProperties ? `${vacant.length} vacant` : `${occupied.length} occupied`}</span>
                 <button
                   type="button"
                   onClick={() => setShowVacantProperties((current) => !current)}
@@ -378,11 +378,11 @@ function TodayView() {
                   aria-controls="demo-vacant-properties"
                   className="rounded-full border border-[#d8c7ab] bg-[#fffaf0] px-3 py-1 text-xs font-semibold text-[#7a5a23] transition hover:bg-white"
                 >
-                  {showVacantProperties ? "Hide vacant" : `Show vacant (${vacant.length})`}
+                  {showVacantProperties ? "Show occupied" : `Show vacant (${vacant.length})`}
                 </button>
               </div>
             </div>
-            <div className="mt-3 space-y-2">
+            <div className={showVacantProperties ? "hidden" : "mt-3 space-y-2"}>
               {occupied.map((item) => (
                 <div key={item.property} className="rounded-[18px] border border-[#bde7cf] bg-white p-4">
                   <div className="flex flex-wrap items-center gap-2">
@@ -400,9 +400,7 @@ function TodayView() {
               ))}
             </div>
             {showVacantProperties ? (
-              <div id="demo-vacant-properties" className="mt-3 rounded-[18px] border border-[#ecd5a6] bg-[#fff8eb] p-3">
-                <div className="flex items-center justify-between gap-3"><div><p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#8a6428]">Vacant today</p><p className="mt-1 text-xs text-[#6d5c40]">Vacant all day or after today&apos;s checkout.</p></div><span className="rounded-full bg-white px-3 py-1 text-[10px] font-semibold text-[#8a6428]">{vacant.length} vacant</span></div>
-                <div className="mt-3 space-y-2">
+              <div id="demo-vacant-properties" className="mt-3 space-y-2">
                   {vacant.map((item) => (
                     <div key={item.property} className="rounded-[16px] border border-[#e3cda7] bg-white p-4">
                       <span className="rounded-full bg-[#fef3c7] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#92400e]">{item.status}</span>
@@ -414,7 +412,6 @@ function TodayView() {
                       <p className="mt-1 text-xs text-[#6d5c40]">{item.guest}</p>
                     </div>
                   ))}
-                </div>
               </div>
             ) : null}
           </div>

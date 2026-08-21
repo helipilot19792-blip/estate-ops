@@ -14279,19 +14279,20 @@ This removes its linked members and deletes the grounds account.`
               </div>
             </div>
 
-            <div className="rounded-[24px] border border-[#bde7cf] bg-[#eefcf3] p-4 shadow-[0_10px_30px_rgba(22,163,74,0.10)]">
+            <div className={`rounded-[24px] border p-4 ${showVacantTodayProperties ? "border-[#ecd5a6] bg-[#fff8eb] shadow-[0_10px_30px_rgba(180,83,9,0.08)]" : "border-[#bde7cf] bg-[#eefcf3] shadow-[0_10px_30px_rgba(22,163,74,0.10)]"}`}>
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#2f6b2f]">
-                    Occupied
+                  <p className={`text-xs font-semibold uppercase tracking-[0.24em] ${showVacantTodayProperties ? "text-[#8a6428]" : "text-[#2f6b2f]"}`}>
+                    {showVacantTodayProperties ? "Vacant" : "Occupied"}
                   </p>
-                  <h3 className="mt-1 text-lg font-semibold text-[#20432f]">
-                    Properties with guests today
+                  <h3 className={`mt-1 text-lg font-semibold ${showVacantTodayProperties ? "text-[#453720]" : "text-[#20432f]"}`}>
+                    {showVacantTodayProperties ? "Properties vacant today" : "Properties with guests today"}
                   </h3>
+                  {showVacantTodayProperties ? <p className="mt-1 text-xs text-[#6d5c40]">Vacant all day or after today&apos;s checkout.</p> : null}
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-center">
-                  <div className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-[#218552]">
-                    {occupiedTodayProperties.length} occupied
+                  <div className={`rounded-full bg-white px-3 py-1 text-sm font-semibold ${showVacantTodayProperties ? "text-[#8a6428]" : "text-[#218552]"}`}>
+                    {showVacantTodayProperties ? `${vacantTodayProperties.length} vacant` : `${occupiedTodayProperties.length} occupied`}
                   </div>
                   <button
                     type="button"
@@ -14300,12 +14301,12 @@ This removes its linked members and deletes the grounds account.`
                     aria-controls="vacant-today-properties"
                     className="rounded-full border border-[#d8c7ab] bg-[#fffaf0] px-3 py-1 text-sm font-semibold text-[#7a5a23] transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#d8c7ab]"
                   >
-                    {showVacantTodayProperties ? "Hide vacant" : `Show vacant (${vacantTodayProperties.length})`}
+                    {showVacantTodayProperties ? "Show occupied" : `Show vacant (${vacantTodayProperties.length})`}
                   </button>
                 </div>
               </div>
 
-              <div className="mt-3 space-y-2">
+              <div className={showVacantTodayProperties ? "hidden" : "mt-3 space-y-2"}>
                 {occupiedTodayProperties.length === 0 ? (
                   <div className="rounded-[16px] border border-dashed border-[#bde7cf] bg-white/80 px-4 py-3 text-sm text-[#5d7767]">
                     {occupiedEmptyCopy}
@@ -14471,18 +14472,7 @@ This removes its linked members and deletes the grounds account.`
               </div>
 
               {showVacantTodayProperties ? (
-                <div id="vacant-today-properties" className="mt-4 rounded-[20px] border border-[#ecd5a6] bg-[#fff8eb] p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#8a6428]">Vacant today</p>
-                      <p className="mt-1 text-sm text-[#6d5c40]">Properties vacant all day or after today&apos;s checkout.</p>
-                    </div>
-                    <div className="shrink-0 rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#8a6428]">
-                      {vacantTodayProperties.length} vacant
-                    </div>
-                  </div>
-
-                  <div className="mt-3 space-y-2">
+                <div id="vacant-today-properties" className="mt-3 space-y-2">
                     {vacantTodayProperties.length === 0 ? (
                       <div className="rounded-[16px] border border-dashed border-[#e3cda7] bg-white/80 px-4 py-3 text-sm text-[#6d5c40]">
                         Every property has a guest stay scheduled today.
@@ -14528,7 +14518,6 @@ This removes its linked members and deletes the grounds account.`
                         </div>
                       ))
                     )}
-                  </div>
                 </div>
               ) : null}
             </div>
