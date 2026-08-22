@@ -1166,7 +1166,7 @@ export async function POST(request: Request) {
 
           const { data: offerSlots, error: offerSlotsError } = await supabase
             .from("turnover_job_slots")
-            .select("id")
+            .select("id, offered_at")
             .eq("job_id", insertedJob.id)
             .eq("status", "offered")
             .not("cleaner_account_id", "is", null);
@@ -1181,6 +1181,26 @@ export async function POST(request: Request) {
             if (alignExpiryError) {
               resultBucket.errors.push(
                 `Job created but its cleaner offer deadline could not be aligned to the daily sweep: ${alignExpiryError.message}`
+              );
+            }
+
+            const firstOfferedAt = (offerSlots ?? [])
+              .map((slot) => slot.offered_at)
+              .filter(Boolean)
+              .sort()[0] || new Date().toISOString();
+            const { error: offeredJobStatusError } = await supabase
+              .from("turnover_jobs")
+              .update({
+                status: "offered",
+                staffing_status: "partially_filled",
+                offered_at: firstOfferedAt,
+                accepted_at: null,
+              })
+              .eq("id", insertedJob.id);
+
+            if (offeredJobStatusError) {
+              resultBucket.errors.push(
+                `Job offer was created but its staffing summary could not be refreshed: ${offeredJobStatusError.message}`
               );
             }
 
@@ -1240,8 +1260,8 @@ export async function POST(request: Request) {
           seenExternalUids
         );
         resultBucket.removed_missing_future_jobs = staleJobCleanup.removed;
-        resultBucket.cancellation_notifications_sent = staleJobCleanup.notificationSent;
-        resultBucket.cancellation_push_notifications_sent = staleJobCleanup.pushSent;
+        resultBucket.cancellation_notifications_sent += staleJobCleanup.notificationSent;
+        resultBucket.cancellation_push_notifications_sent += staleJobCleanup.pushSent;
         if (staleJobCleanup.notificationErrors.length > 0) {
           resultBucket.errors.push(
             `Cancellation notification issue: ${staleJobCleanup.notificationErrors.join("; ")}`
