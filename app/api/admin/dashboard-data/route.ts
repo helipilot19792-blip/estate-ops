@@ -241,7 +241,17 @@ export async function GET(request: Request) {
         .from("audit_logs")
         .select("id, organization_id, action_type, target_type, target_id, metadata, created_at")
         .eq("organization_id", organizationId)
-        .in("action_type", ["admin.reassign_cleaner_slot", "admin.send_job_offer_notifications"])
+        .in("action_type", [
+          "admin.reassign_cleaner_slot",
+          "admin.send_job_offer_notifications",
+          "admin.accept_cleaner_job_on_behalf",
+          "admin.decline_cleaner_job_on_behalf",
+          "cleaner.portal_job_accept",
+          "cleaner.portal_job_decline",
+          "cleaner.email_job_accept",
+          "cleaner.email_job_decline",
+          "calendar.cleaning_date_changed",
+        ])
         .order("created_at", { ascending: false })
         .limit(500) : emptyResult(),
       includeOperations ? serviceClient.from("turnover_job_checklist_items").select("*").eq("organization_id", organizationId).order("sort_order", { ascending: true }) : emptyResult(),

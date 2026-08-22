@@ -10,6 +10,8 @@ import { getCleanerOfferExpiresAtForDailySweep } from "@/lib/server/cleaner-offe
 import { detectSameDayCleanerConflicts } from "@/lib/server/same-day-cleaner-conflicts";
 import { prepareManualCleanerAssignment } from "@/lib/server/manual-cleaner-assignment";
 import { fetchPublicText } from "@/lib/server/safe-remote-fetch";
+import { writeAuditLog } from "@/lib/server/audit-log";
+import { getSyncedCleanerScheduleChange } from "@/lib/server/synced-cleaner-schedule";
 
 export const dynamic = "force-dynamic";
 
@@ -466,7 +468,7 @@ async function findSyncedJob(
   if (bookingEventId) {
     const { data, error } = await supabase
       .from("turnover_jobs")
-      .select("id, property_id, booking_event_id, notes, scheduled_for, status")
+      .select("id, organization_id, property_id, booking_event_id, notes, scheduled_for, status")
       .eq("property_id", propertyId)
       .eq("booking_event_id", bookingEventId)
       .maybeSingle();
@@ -477,7 +479,7 @@ async function findSyncedJob(
 
   const { data, error } = await supabase
     .from("turnover_jobs")
-    .select("id, property_id, booking_event_id, notes, scheduled_for, status")
+    .select("id, organization_id, property_id, booking_event_id, notes, scheduled_for, status")
     .eq("property_id", propertyId)
     .limit(200);
 
@@ -516,6 +518,156 @@ async function updateSyncedJobIfChanged(
 
   if (error) throw error;
   return true;
+}
+
+async function archiveNotifyAndDeleteSyncedJobs(
+  jobs: TurnoverJobRow[],
+  options: {
+    source: string;
+    origin: string;
+    reason: "booking_cancelled" | "date_changed";
+    replacementScheduledFor?: string | null;
+    bookingUidById?: Map<string, string>;
+  }
+) {
+  const jobIds = jobs.map((job) => job.id).filter(Boolean);
+  if (jobIds.length === 0) {
+    return {
+      removed: 0,
+      notificationSent: 0,
+      pushSent: 0,
+      notificationErrors: [] as string[],
+      cancelledAt: null as string | null,
+    };
+  }
+
+  const { data: slots, error: slotsError } = await supabase
+    .from("turnover_job_slots")
+    .select("id, job_id, slot_number, cleaner_account_id, status, offered_at, accepted_at, declined_at, expires_at, accepted_by_profile_id, declined_by_profile_id")
+    .in("job_id", jobIds);
+
+  if (slotsError) throw slotsError;
+
+  const cleanerAccountIds = [
+    ...new Set((slots ?? []).map((slot) => slot.cleaner_account_id).filter(Boolean) as string[]),
+  ];
+  const cleanerNameById = new Map<string, string>();
+
+  if (cleanerAccountIds.length > 0) {
+    const { data: cleanerRows, error: cleanerRowsError } = await supabase
+      .from("cleaner_accounts")
+      .select("id, display_name, email")
+      .in("id", cleanerAccountIds);
+
+    if (cleanerRowsError) throw cleanerRowsError;
+
+    for (const cleaner of cleanerRows ?? []) {
+      cleanerNameById.set(
+        cleaner.id,
+        String(cleaner.display_name || cleaner.email || "Cleaner").trim()
+      );
+    }
+  }
+
+  const cancelledAt = new Date().toISOString();
+  const cancellationRows = jobs.flatMap((job) => {
+    const scheduledFor = job.scheduled_for || getCheckoutDateFromNotes(job.notes);
+    if (!job.organization_id || !scheduledFor) return [];
+
+    const jobSlots = (slots ?? []).filter((slot) => slot.job_id === job.id);
+    const assignedCleanerAccountIds = [
+      ...new Set(jobSlots.map((slot) => slot.cleaner_account_id).filter(Boolean) as string[]),
+    ];
+    const bookingUid = job.booking_event_id
+      ? options.bookingUidById?.get(job.booking_event_id)
+      : null;
+
+    return [{
+      organization_id: job.organization_id,
+      property_id: job.property_id,
+      original_job_id: job.id,
+      booking_event_id: job.booking_event_id || null,
+      scheduled_for: scheduledFor,
+      source: options.source,
+      guest_summary: bookingUid || getSyncMarkerUid(job.notes, options.source),
+      job_notes: job.notes,
+      assigned_cleaner_account_ids: assignedCleanerAccountIds,
+      assigned_cleaner_names: assignedCleanerAccountIds.map((id) => cleanerNameById.get(id) || "Cleaner"),
+      assignment_snapshot: jobSlots,
+      cancelled_at: cancelledAt,
+    }];
+  });
+
+  if (cancellationRows.length > 0) {
+    const { error: cancellationHistoryError } = await supabase
+      .from("cancelled_turnover_jobs")
+      .upsert(cancellationRows, { onConflict: "original_job_id" });
+
+    if (cancellationHistoryError) throw cancellationHistoryError;
+  }
+
+  const notificationResult = await sendJobCancellationNotificationsForJobs(
+    "cleaner",
+    jobIds,
+    options.origin,
+    {
+      context: {
+        reason: options.reason,
+        replacementJobDate: options.replacementScheduledFor || null,
+      },
+    }
+  );
+
+  const auditErrors: string[] = [];
+  for (const job of jobs) {
+    const jobSlots = (slots ?? []).filter((slot) => slot.job_id === job.id);
+    try {
+      await writeAuditLog(supabase, {
+        actorRole: "system",
+        organizationId: job.organization_id || null,
+        actionType: options.reason === "date_changed"
+          ? "calendar.cleaning_date_cancelled"
+          : "calendar.cleaning_job_cancelled",
+        targetType: "turnover_job",
+        targetId: job.id,
+        metadata: {
+          property_id: job.property_id,
+          booking_event_id: job.booking_event_id || null,
+          previous_scheduled_for: job.scheduled_for || getCheckoutDateFromNotes(job.notes),
+          replacement_scheduled_for: options.replacementScheduledFor || null,
+          reason: options.reason,
+          assignment_snapshot: jobSlots,
+          notification_sent: notificationResult.sent,
+          push_sent: notificationResult.pushSent,
+          notification_errors: notificationResult.errors,
+        },
+      });
+    } catch (auditError) {
+      auditErrors.push(auditError instanceof Error ? auditError.message : "Could not audit cleaning cancellation.");
+    }
+  }
+
+  const { error: slotDeleteError } = await supabase
+    .from("turnover_job_slots")
+    .delete()
+    .in("job_id", jobIds);
+
+  if (slotDeleteError) throw slotDeleteError;
+
+  const { error: jobDeleteError } = await supabase
+    .from("turnover_jobs")
+    .delete()
+    .in("id", jobIds);
+
+  if (jobDeleteError) throw jobDeleteError;
+
+  return {
+    removed: jobIds.length,
+    notificationSent: notificationResult.sent,
+    pushSent: notificationResult.pushSent,
+    notificationErrors: [...notificationResult.errors, ...auditErrors],
+    cancelledAt,
+  };
 }
 
 function hasManualBookingEdits(existingBookingEvent: ExistingBookingEventRow | null) {
@@ -586,95 +738,12 @@ async function deleteStaleUpcomingSyncedJobs(
     };
   }
 
-  const { data: staleSlots, error: staleSlotsError } = await supabase
-    .from("turnover_job_slots")
-    .select("job_id, cleaner_account_id, status, offered_at, accepted_at")
-    .in("job_id", staleJobIds)
-    .not("cleaner_account_id", "is", null);
-
-  if (staleSlotsError) throw staleSlotsError;
-
-  const cleanerAccountIds = [
-    ...new Set((staleSlots ?? []).map((slot) => slot.cleaner_account_id).filter(Boolean) as string[]),
-  ];
-  const cleanerNameById = new Map<string, string>();
-
-  if (cleanerAccountIds.length > 0) {
-    const { data: cleanerRows, error: cleanerRowsError } = await supabase
-      .from("cleaner_accounts")
-      .select("id, display_name, email")
-      .in("id", cleanerAccountIds);
-
-    if (cleanerRowsError) throw cleanerRowsError;
-
-    for (const cleaner of cleanerRows ?? []) {
-      cleanerNameById.set(
-        cleaner.id,
-        String(cleaner.display_name || cleaner.email || "Cleaner").trim()
-      );
-    }
-  }
-
-  const cancellationRows = staleJobs.flatMap((job) => {
-    const scheduledFor = job.scheduled_for || getCheckoutDateFromNotes(job.notes);
-    if (!job.organization_id || !scheduledFor) return [];
-
-    const jobSlots = (staleSlots ?? []).filter((slot) => slot.job_id === job.id);
-    const assignedCleanerAccountIds = [
-      ...new Set(jobSlots.map((slot) => slot.cleaner_account_id).filter(Boolean) as string[]),
-    ];
-    const bookingUid = job.booking_event_id ? linkedBookingUidById.get(job.booking_event_id) : null;
-
-    return [{
-      organization_id: job.organization_id,
-      property_id: job.property_id,
-      original_job_id: job.id,
-      booking_event_id: job.booking_event_id || null,
-      scheduled_for: scheduledFor,
-      source,
-      guest_summary: bookingUid || null,
-      job_notes: job.notes,
-      assigned_cleaner_account_ids: assignedCleanerAccountIds,
-      assigned_cleaner_names: assignedCleanerAccountIds.map((id) => cleanerNameById.get(id) || "Cleaner"),
-      assignment_snapshot: jobSlots,
-      cancelled_at: new Date().toISOString(),
-    }];
+  return archiveNotifyAndDeleteSyncedJobs(staleJobs, {
+    source,
+    origin,
+    reason: "booking_cancelled",
+    bookingUidById: linkedBookingUidById,
   });
-
-  if (cancellationRows.length > 0) {
-    const { error: cancellationHistoryError } = await supabase
-      .from("cancelled_turnover_jobs")
-      .upsert(cancellationRows, { onConflict: "original_job_id" });
-
-    if (cancellationHistoryError) throw cancellationHistoryError;
-  }
-
-  const notificationResult = await sendJobCancellationNotificationsForJobs(
-    "cleaner",
-    staleJobIds,
-    origin
-  );
-
-  const { error: slotDeleteError } = await supabase
-    .from("turnover_job_slots")
-    .delete()
-    .in("job_id", staleJobIds);
-
-  if (slotDeleteError) throw slotDeleteError;
-
-  const { error: jobDeleteError } = await supabase
-    .from("turnover_jobs")
-    .delete()
-    .in("id", staleJobIds);
-
-  if (jobDeleteError) throw jobDeleteError;
-
-  return {
-    removed: staleJobIds.length,
-    notificationSent: notificationResult.sent,
-    pushSent: notificationResult.pushSent,
-    notificationErrors: notificationResult.errors,
-  };
 }
 
 async function getCalendarEvents(calendar: PropertyCalendarRow): Promise<ParsedEvent[]> {
@@ -888,6 +957,7 @@ export async function POST(request: Request) {
       removed_missing_future_jobs: number;
       cancellation_notifications_sent: number;
       cancellation_push_notifications_sent: number;
+      rescheduled_jobs: number;
       updated_jobs: number;
       created_dates: string[];
       existing_dates: string[];
@@ -912,6 +982,7 @@ export async function POST(request: Request) {
         removed_missing_future_jobs: 0,
         cancellation_notifications_sent: 0,
         cancellation_push_notifications_sent: 0,
+        rescheduled_jobs: 0,
         updated_jobs: 0,
         created_dates: [] as string[],
         existing_dates: [] as string[],
@@ -955,7 +1026,55 @@ export async function POST(request: Request) {
 
           const marker = buildSyncMarker(calendar.source, uid);
           const notes = buildAutoSyncNotes(calendar, propertyName, event, marker);
-          const existingJob = await findSyncedJob(calendar.property_id, marker, bookingEventId);
+          let existingJob = await findSyncedJob(calendar.property_id, marker, bookingEventId);
+          let replacedJob: {
+            id: string;
+            scheduledFor: string;
+            notificationSent: number;
+            pushSent: number;
+            notificationErrors: string[];
+            cancelledAt: string | null;
+          } | null = null;
+
+          const scheduleChange = existingJob
+            ? getSyncedCleanerScheduleChange(existingJob, event.checkoutDate)
+            : null;
+          const existingScheduledFor = scheduleChange?.previousScheduledFor || null;
+
+          if (existingJob && scheduleChange?.changed && existingScheduledFor) {
+            try {
+              const cancellationResult = await archiveNotifyAndDeleteSyncedJobs([existingJob], {
+                source: calendar.source,
+                origin: new URL(request.url).origin,
+                reason: "date_changed",
+                replacementScheduledFor: event.checkoutDate,
+                bookingUidById: bookingEventId ? new Map([[bookingEventId, uid]]) : undefined,
+              });
+
+              replacedJob = {
+                id: existingJob.id,
+                scheduledFor: existingScheduledFor,
+                notificationSent: cancellationResult.notificationSent,
+                pushSent: cancellationResult.pushSent,
+                notificationErrors: cancellationResult.notificationErrors,
+                cancelledAt: cancellationResult.cancelledAt,
+              };
+              resultBucket.cancellation_notifications_sent += cancellationResult.notificationSent;
+              resultBucket.cancellation_push_notifications_sent += cancellationResult.pushSent;
+              resultBucket.rescheduled_jobs += 1;
+              if (cancellationResult.notificationErrors.length > 0) {
+                resultBucket.errors.push(
+                  `Date-change cancellation notification issue for ${event.summary || "reservation"} on ${existingScheduledFor}: ${cancellationResult.notificationErrors.join("; ")}`
+                );
+              }
+              existingJob = null;
+            } catch (dateChangeError: unknown) {
+              resultBucket.errors.push(
+                `Failed to cancel and restart the moved cleaning from ${existingScheduledFor} to ${event.checkoutDate}: ${dateChangeError instanceof Error ? dateChangeError.message : "Unknown date-change error"}`
+              );
+              continue;
+            }
+          }
 
           if (existingJob) {
             try {
@@ -1078,6 +1197,34 @@ export async function POST(request: Request) {
             }
           }
 
+          if (replacedJob) {
+            try {
+              await writeAuditLog(supabase, {
+                actorRole: "system",
+                organizationId: property.organization_id,
+                actionType: "calendar.cleaning_date_changed",
+                targetType: "turnover_job",
+                targetId: insertedJob.id,
+                metadata: {
+                  property_id: calendar.property_id,
+                  booking_event_id: bookingEventId,
+                  previous_job_id: replacedJob.id,
+                  replacement_job_id: insertedJob.id,
+                  previous_scheduled_for: replacedJob.scheduledFor,
+                  replacement_scheduled_for: event.checkoutDate,
+                  cancellation_notification_sent: replacedJob.notificationSent,
+                  cancellation_push_sent: replacedJob.pushSent,
+                  cancellation_notification_errors: replacedJob.notificationErrors,
+                  date_changed_at: replacedJob.cancelledAt,
+                },
+              });
+            } catch (dateChangeAuditError: unknown) {
+              resultBucket.errors.push(
+                `New cleaning was created but the date change audit could not be recorded: ${dateChangeAuditError instanceof Error ? dateChangeAuditError.message : "Unknown audit error"}`
+              );
+            }
+          }
+
           resultBucket.created += 1;
           resultBucket.created_dates.push(event.checkoutDate);
         }
@@ -1120,6 +1267,7 @@ export async function POST(request: Request) {
         acc.removed_missing_future_jobs += item.removed_missing_future_jobs;
         acc.cancellation_notifications_sent += item.cancellation_notifications_sent;
         acc.cancellation_push_notifications_sent += item.cancellation_push_notifications_sent;
+        acc.rescheduled_jobs += item.rescheduled_jobs;
         acc.updated_jobs += item.updated_jobs;
         acc.errors += item.errors.length;
         return acc;
@@ -1134,6 +1282,7 @@ export async function POST(request: Request) {
         removed_missing_future_jobs: 0,
         cancellation_notifications_sent: 0,
         cancellation_push_notifications_sent: 0,
+        rescheduled_jobs: 0,
         updated_jobs: 0,
         errors: 0,
       }

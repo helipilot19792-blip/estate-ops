@@ -58,6 +58,11 @@ type JobCancellationBundle = {
   recipients: Recipient[];
 };
 
+export type JobCancellationContext = {
+  reason?: "booking_cancelled" | "date_changed";
+  replacementJobDate?: string | null;
+};
+
 function getServiceClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -982,7 +987,11 @@ async function sendNotificationPush(
   };
 }
 
-async function sendCancellationEmail(bundle: JobCancellationBundle, origin: string) {
+async function sendCancellationEmail(
+  bundle: JobCancellationBundle,
+  origin: string,
+  context?: JobCancellationContext
+) {
   const resend = getResendClient();
   const portalUrl = getPortalUrl(bundle.kind, origin);
   const dateLabel = formatDateLabel(bundle.jobDate);
@@ -991,6 +1000,10 @@ async function sendCancellationEmail(bundle: JobCancellationBundle, origin: stri
     ? `${bundle.propertyName} - ${bundle.propertyAddress}`
     : bundle.propertyName;
   const accountLine = bundle.accountLabels.length > 0 ? bundle.accountLabels.join(", ") : "Assigned team";
+  const replacementDateLabel = context?.replacementJobDate
+    ? formatDateLabel(context.replacementJobDate)
+    : null;
+  const dateChanged = context?.reason === "date_changed" && Boolean(replacementDateLabel);
 
   let successCount = 0;
   const failures: string[] = [];
@@ -1005,7 +1018,11 @@ async function sendCancellationEmail(bundle: JobCancellationBundle, origin: stri
         ${bundle.organizationName ? `<p style="margin: 0 0 8px;"><strong>Organization:</strong> ${bundle.organizationName}</p>` : ""}
         <p style="margin: 0 0 8px;"><strong>Original scheduled date:</strong> ${dateLabel}</p>
         <p style="margin: 0 0 16px;"><strong>Team / account:</strong> ${accountLine}</p>
-        <p style="margin: 0 0 16px;">This usually happens when a booking is cancelled, moved, or replaced by a new reservation.</p>
+        <p style="margin: 0 0 16px;">${
+          dateChanged
+            ? `The reservation dates changed. You are no longer assigned to the cleaning on ${dateLabel}. A new cleaning for ${replacementDateLabel} will follow the property's normal offer order, so a previous acceptance does not carry over.`
+            : "This usually happens when a booking is cancelled, moved, or replaced by a new reservation."
+        }</p>
         <a href="${portalUrl}" style="display:inline-block;padding:10px 16px;background:#241c15;color:#ffffff;border-radius:999px;text-decoration:none;margin-top:8px;">
           Open portal
         </a>
@@ -1016,7 +1033,7 @@ async function sendCancellationEmail(bundle: JobCancellationBundle, origin: stri
     const result = await resend.emails.send({
       from: process.env.INVITE_FROM_EMAIL!,
       to: recipient.email,
-      subject: `${bundle.detailLabel} removed: ${bundle.propertyName} on ${dateLabel}`,
+      subject: `${bundle.detailLabel} ${dateChanged ? "date changed" : "removed"}: ${bundle.propertyName} on ${dateLabel}`,
       html,
     });
 
@@ -1031,9 +1048,17 @@ async function sendCancellationEmail(bundle: JobCancellationBundle, origin: stri
   return { successCount, failures };
 }
 
-async function sendCancellationPush(bundle: JobCancellationBundle, origin: string) {
+async function sendCancellationPush(
+  bundle: JobCancellationBundle,
+  origin: string,
+  context?: JobCancellationContext
+) {
   const portalUrl = getPortalUrl(bundle.kind, origin);
   const dateLabel = formatDateLabel(bundle.jobDate);
+  const replacementDateLabel = context?.replacementJobDate
+    ? formatDateLabel(context.replacementJobDate)
+    : null;
+  const dateChanged = context?.reason === "date_changed" && Boolean(replacementDateLabel);
   const profileIds = bundle.recipients
     .map((recipient) => recipient.profileId)
     .filter((profileId): profileId is string => Boolean(profileId));
@@ -1043,8 +1068,10 @@ async function sendCancellationPush(bundle: JobCancellationBundle, origin: strin
   }
 
   const result = await sendStaffPushNotifications(bundle.kind, profileIds, {
-    title: `${bundle.detailLabel} removed`,
-    body: `${bundle.organizationName ? `${bundle.organizationName}: ` : ""}${bundle.propertyName} - ${dateLabel}`,
+    title: `${bundle.detailLabel} ${dateChanged ? "date changed" : "removed"}`,
+    body: dateChanged
+      ? `${bundle.propertyName}: ${dateLabel} was cancelled. A new ${replacementDateLabel} cleaning will be offered separately.`
+      : `${bundle.organizationName ? `${bundle.organizationName}: ` : ""}${bundle.propertyName} - ${dateLabel}`,
     url: portalUrl,
     tag: `${bundle.kind}-canceled-${bundle.jobId}`,
   });
@@ -1234,6 +1261,7 @@ export async function sendJobCancellationNotificationsForJobs(
   origin: string,
   options?: {
     allowedOrganizationIds?: Set<string> | null;
+    context?: JobCancellationContext;
   }
 ) {
   const service = getServiceClient();
@@ -1260,11 +1288,11 @@ export async function sendJobCancellationNotificationsForJobs(
         continue;
       }
 
-      const emailResult = await sendCancellationEmail(bundle, origin);
+      const emailResult = await sendCancellationEmail(bundle, origin, options?.context);
       sent += emailResult.successCount;
       errors.push(...emailResult.failures);
 
-      const pushResult = await sendCancellationPush(bundle, origin);
+      const pushResult = await sendCancellationPush(bundle, origin, options?.context);
       pushSent += pushResult.successCount;
       errors.push(...pushResult.failures);
     } catch (error) {

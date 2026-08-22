@@ -1102,7 +1102,7 @@ type StaffJobStatusEventRow = {
 type JobOfferAuditLogRow = {
   id: string;
   organization_id: string;
-  action_type: "admin.reassign_cleaner_slot" | "admin.send_job_offer_notifications";
+  action_type: string;
   target_type?: string | null;
   target_id?: string | null;
   metadata?: Record<string, unknown> | null;
@@ -9899,6 +9899,22 @@ This removes its linked members and deletes the grounds account.`
     return map;
   }, [jobOfferAuditLogs]);
 
+  const jobOfferAuditLogsByJobId = useMemo(() => {
+    const map: Record<string, JobOfferAuditLogRow[]> = {};
+    for (const log of jobOfferAuditLogs) {
+      const metadataJobId = String(log.metadata?.job_id || "").trim();
+      const targetJobId = log.target_type === "turnover_job" ? String(log.target_id || "").trim() : "";
+      const jobId = metadataJobId || targetJobId;
+      if (!jobId) continue;
+      if (!map[jobId]) map[jobId] = [];
+      map[jobId].push(log);
+    }
+    for (const key of Object.keys(map)) {
+      map[key].sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
+    }
+    return map;
+  }, [jobOfferAuditLogs]);
+
   const groundsJobSlotsByJobId = useMemo(() => {
     const map: Record<string, GroundsJobSlot[]> = {};
     for (const slot of groundsJobSlots) {
@@ -12271,15 +12287,35 @@ This removes its linked members and deletes the grounds account.`
     );
   }
 
+  type StaffingHistoryEntry = {
+    id: string;
+    tone: "current" | "previous" | "notice";
+    text: string;
+    occurredAt?: string | null;
+  };
+
+  function getCleanerResponseSource(slot: JobSlot, action: "accept" | "decline") {
+    const matchingLog = (jobOfferAuditLogsBySlotId[slot.id] ?? []).find((log) =>
+      log.action_type.endsWith(`job_${action}`) ||
+      log.action_type === `admin.${action}_cleaner_job_on_behalf`
+    );
+    if (!matchingLog) return "";
+    if (matchingLog.action_type.startsWith("cleaner.portal_")) return " via cleaner portal";
+    if (matchingLog.action_type.startsWith("cleaner.email_")) return " from the email link";
+    if (matchingLog.action_type.startsWith("admin.")) return " by an admin on the cleaner's behalf";
+    return "";
+  }
+
   function getSlotOfferHistory(slot: JobSlot) {
-    const history: Array<{ id: string; tone: "current" | "previous" | "notice"; text: string }> = [];
+    const history: StaffingHistoryEntry[] = [];
     const cleanerName = getCleanerAccountName(slot.cleaner_account_id);
 
-    if (slot.status === "offered" && cleanerName !== "Unassigned") {
+    if (slot.offered_at && cleanerName !== "Unassigned") {
       history.push({
         id: `current-${slot.id}`,
         tone: "current",
-        text: `Offered to ${cleanerName}${slot.offered_at ? ` on ${formatDateTime(slot.offered_at)}` : ""}`,
+        text: `Offered to ${cleanerName} on ${formatDateTime(slot.offered_at)}`,
+        occurredAt: slot.offered_at,
       });
     }
 
@@ -12287,7 +12323,17 @@ This removes its linked members and deletes the grounds account.`
       history.push({
         id: `declined-${slot.id}`,
         tone: "previous",
-        text: `${cleanerName} declined${slot.declined_at ? ` on ${formatDateTime(slot.declined_at)}` : ""}`,
+        text: `${cleanerName} declined${getCleanerResponseSource(slot, "decline")}${slot.declined_at ? ` on ${formatDateTime(slot.declined_at)}` : ""}`,
+        occurredAt: slot.declined_at,
+      });
+    }
+
+    if (["accepted", "in_progress", "completed"].includes(String(slot.status || "").toLowerCase()) && cleanerName !== "Unassigned") {
+      history.push({
+        id: `accepted-${slot.id}`,
+        tone: "current",
+        text: `${cleanerName} accepted${getCleanerResponseSource(slot, "accept")}${slot.accepted_at ? ` on ${formatDateTime(slot.accepted_at)}` : ""}`,
+        occurredAt: slot.accepted_at,
       });
     }
 
@@ -12300,6 +12346,7 @@ This removes its linked members and deletes the grounds account.`
           id: log.id,
           tone: "notice",
           text: `Notifications sent${log.created_at ? ` on ${formatDateTime(log.created_at)}` : ""}: ${sent} email, ${pushSent} push${skipped ? `, ${skipped} skipped` : ""}`,
+          occurredAt: log.created_at,
         });
         continue;
       }
@@ -12309,22 +12356,77 @@ This removes its linked members and deletes the grounds account.`
       if (!previousCleanerName) continue;
       const previousStatus = String(log.metadata?.previous_status || "").trim().toLowerCase();
       const reassignSource = String(log.metadata?.reassign_source || "").trim().toLowerCase();
-      const suffix =
-        reassignSource === "training_rotation_expired"
-          ? "expired before this re-offer"
-          : previousStatus === "offered"
-          ? "went stale before reassignment"
-          : previousStatus === "declined"
-            ? "declined before reassignment"
-            : "was reassigned";
+      const previousOfferedAt = String(log.metadata?.previous_offered_at || "").trim() || null;
+      const previousDeclinedAt = String(log.metadata?.previous_declined_at || "").trim() || null;
+      if (previousOfferedAt) {
+        history.push({
+          id: `${log.id}-offered`,
+          tone: "previous",
+          text: `Offered to ${previousCleanerName} on ${formatDateTime(previousOfferedAt)}`,
+          occurredAt: previousOfferedAt,
+        });
+      }
+      const wasDeclined = previousStatus === "declined" || reassignSource.endsWith("_declined");
+      const wasExpired = reassignSource.endsWith("_expired") || reassignSource === "training_rotation_expired";
+      const suffix = wasDeclined ? "declined" : wasExpired ? "offer expired" : "was reassigned";
+      const outcomeAt = previousDeclinedAt || log.created_at || null;
       history.push({
-        id: log.id,
+        id: `${log.id}-outcome`,
         tone: "previous",
-        text: `${previousCleanerName} ${suffix}${log.created_at ? ` on ${formatDateTime(log.created_at)}` : ""}`,
+        text: `${previousCleanerName} ${suffix}${outcomeAt ? ` on ${formatDateTime(outcomeAt)}` : ""}`,
+        occurredAt: outcomeAt,
       });
     }
 
-    return history;
+    return history.sort((a, b) => new Date(a.occurredAt || 0).getTime() - new Date(b.occurredAt || 0).getTime());
+  }
+
+  function getJobDateChangeHistory(jobId: string) {
+    return (jobOfferAuditLogsByJobId[jobId] ?? [])
+      .filter((log) => log.action_type === "calendar.cleaning_date_changed")
+      .map((log): StaffingHistoryEntry => {
+        const previousDate = String(log.metadata?.previous_scheduled_for || "").trim();
+        const replacementDate = String(log.metadata?.replacement_scheduled_for || "").trim();
+        const emailSent = Number(log.metadata?.cancellation_notification_sent || 0);
+        const pushSent = Number(log.metadata?.cancellation_push_sent || 0);
+        return {
+          id: log.id,
+          tone: "notice",
+          text: `Cleaning moved from ${formatScheduledFor(previousDate)} to ${formatScheduledFor(replacementDate)}. The old assignment was cancelled; notices sent: ${emailSent} email, ${pushSent} push. The offer order restarted.`,
+          occurredAt: String(log.metadata?.date_changed_at || "").trim() || log.created_at,
+        };
+      });
+  }
+
+  function renderCleanerStaffingHistory(jobId: string, slots: JobSlot[]) {
+    const history = [
+      ...getJobDateChangeHistory(jobId),
+      ...slots.flatMap((slot) => getSlotOfferHistory(slot)),
+    ].sort((a, b) => new Date(a.occurredAt || 0).getTime() - new Date(b.occurredAt || 0).getTime());
+
+    if (history.length === 0) return null;
+
+    return (
+      <div className="mt-4 rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3 text-sm text-[#5f5245]">
+        <div className="text-[11px] uppercase tracking-[0.16em] text-[#8a7b68]">Staffing history</div>
+        <div className="mt-3 space-y-2">
+          {history.map((entry) => (
+            <div key={entry.id} className="flex items-start gap-2">
+              <span
+                className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${
+                  entry.tone === "current"
+                    ? "bg-[#236b30]"
+                    : entry.tone === "notice"
+                      ? "bg-[#b08b47]"
+                      : "bg-[#9b8b78]"
+                }`}
+              />
+              <span>{entry.text}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   function getCleanerPayoutTypeLabel(value: string | null | undefined) {
@@ -24935,10 +25037,11 @@ This removes its linked members and deletes the grounds account.`
                   <div className="rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3 text-sm text-[#5f5245]">
                     <div className="text-[11px] uppercase tracking-[0.16em] text-[#8a7b68]">Staffing</div>
                     <div className="mt-2">Accepted: {acceptedCount}/{job.cleaner_units_needed}</div>
-                    <div className="mt-1">Offered: {offeredCount}</div>
+                    <div className="mt-1">Currently awaiting response: {offeredCount}</div>
                     <div className="mt-1">Stranded: {strandedCount}</div>
                   </div>
                 </div>
+                {renderCleanerStaffingHistory(job.id, slots)}
                 <div className="mt-4 rounded-[18px] border border-[#eadfce] bg-[#fffaf0] px-4 py-3 text-sm text-[#5f5245]">
                   <div className="text-[11px] uppercase tracking-[0.16em] text-[#8a7b68]">Stay summary</div>
                   {linkedBooking ? (
@@ -25324,10 +25427,12 @@ This removes its linked members and deletes the grounds account.`
                   <div className="rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3 text-sm text-[#5f5245]">
                     <div className="text-[11px] uppercase tracking-[0.16em] text-[#8a7b68]">Staffing</div>
                     <div className="mt-2">Accepted: {acceptedCount}/{job.cleaner_units_needed}</div>
-                    <div className="mt-1">Offered: {offeredCount}</div>
+                    <div className="mt-1">Currently awaiting response: {offeredCount}</div>
                     <div className="mt-1">Stranded: {strandedCount}</div>
                   </div>
                 </div>
+
+                {renderCleanerStaffingHistory(job.id, slots)}
 
                 {job.notes ? (
                   <div className="mt-4 rounded-[18px] border border-[#eadfce] bg-[#fffaf0] px-4 py-3 text-sm text-[#5f5245]">
