@@ -3,7 +3,7 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 import { createClient } from "@supabase/supabase-js";
-import { reconcileAllPropertyCleanerOfferHolds } from "@/lib/server/cleaner-job-activation";
+import { reconcileCleanerOfferHoldForJob } from "@/lib/server/cleaner-job-activation";
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
@@ -25,8 +25,21 @@ export async function GET(request: Request) {
   const service = createClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
-  const origin = new URL(request.url).origin;
-  const holdReconciliation = await reconcileAllPropertyCleanerOfferHolds(service, origin);
+  const requestUrl = new URL(request.url);
+  const organizationId = requestUrl.searchParams.get("organizationId")?.trim() || "";
+  const jobId = requestUrl.searchParams.get("jobId")?.trim() || "";
+  if (!organizationId || !jobId) {
+    return Response.json(
+      { ok: false, error: "organizationId and jobId are required." },
+      { status: 400 }
+    );
+  }
+
+  const holdReconciliation = await reconcileCleanerOfferHoldForJob(service, {
+    organizationId,
+    jobId,
+    origin: requestUrl.origin,
+  });
 
   return Response.json({
     ok: holdReconciliation.errors.length === 0,

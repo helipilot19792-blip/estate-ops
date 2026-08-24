@@ -437,6 +437,126 @@ export async function reconcileAllPropertyCleanerOfferHolds(
   return total;
 }
 
+export async function reconcileCleanerOfferHoldForJob(
+  service: ServiceClient,
+  params: {
+    jobId: string;
+    organizationId: string;
+    origin: string;
+  }
+) {
+  const { data: job, error: jobError } = await service
+    .from("turnover_jobs")
+    .select("id, organization_id, property_id, scheduled_for, status, staffing_status")
+    .eq("id", params.jobId)
+    .eq("organization_id", params.organizationId)
+    .maybeSingle();
+  if (jobError) throw new Error(jobError.message);
+  if (!job) throw new Error("Cleaning job was not found in this organization.");
+
+  const { data: property, error: propertyError } = await service
+    .from("properties")
+    .select("id, organization_id, cleaner_offer_lead_days")
+    .eq("id", job.property_id)
+    .eq("organization_id", params.organizationId)
+    .maybeSingle();
+  if (propertyError) throw new Error(propertyError.message);
+  if (!property) throw new Error("Cleaning job property was not found in this organization.");
+
+  const leadDays = normalizePropertyCleanerOfferLeadDays(property.cleaner_offer_lead_days);
+  const decision = getCleanerOfferHoldDecision(job.scheduled_for, leadDays);
+  const { data: slots, error: slotsError } = await service
+    .from("turnover_job_slots")
+    .select("id, status")
+    .eq("job_id", job.id);
+  if (slotsError) throw new Error(slotsError.message);
+
+  const hasAcceptedWork = (slots ?? []).some((slot) =>
+    ["accepted", "in_progress", "completed"].includes(String(slot.status || "").toLowerCase())
+  );
+  if (hasAcceptedWork) {
+    return {
+      jobId: job.id,
+      held: false,
+      preservedAccepted: true,
+      offerEligibleAt: decision.offerEligibleAt,
+      notificationsSent: 0,
+      pushSent: 0,
+      errors: [] as string[],
+    };
+  }
+
+  if (!decision.held) {
+    const { error: metadataError } = await service
+      .from("turnover_jobs")
+      .update({
+        cleaner_offer_lead_days: leadDays,
+        cleaner_offer_uses_property_default: true,
+        offer_eligible_at: decision.offerEligibleAt,
+      })
+      .eq("id", job.id)
+      .eq("organization_id", params.organizationId);
+    if (metadataError) throw new Error(metadataError.message);
+    return {
+      jobId: job.id,
+      held: false,
+      preservedAccepted: false,
+      offerEligibleAt: decision.offerEligibleAt,
+      notificationsSent: 0,
+      pushSent: 0,
+      errors: [] as string[],
+    };
+  }
+
+  const hasCleanerOffer = (slots ?? []).some(
+    (slot) => String(slot.status || "").toLowerCase() === "offered"
+  );
+  const notification = hasCleanerOffer
+    ? await sendJobCancellationNotificationsForJobs("cleaner", [job.id], params.origin, {
+        allowedOrganizationIds: new Set([params.organizationId]),
+        context: {
+          reason: "offer_deferred",
+          offerEligibleAt: decision.offerEligibleAt,
+        },
+      })
+    : { sent: 0, pushSent: 0, skipped: 1, errors: [] as string[] };
+
+  if ((slots ?? []).length > 0) {
+    const { error: deleteSlotsError } = await service
+      .from("turnover_job_slots")
+      .delete()
+      .eq("job_id", job.id);
+    if (deleteSlotsError) throw new Error(deleteSlotsError.message);
+  }
+
+  const { error: holdError } = await service
+    .from("turnover_jobs")
+    .update({
+      status: "pending",
+      staffing_status: "held",
+      cleaner_offer_lead_days: leadDays,
+      cleaner_offer_uses_property_default: true,
+      offer_eligible_at: decision.offerEligibleAt,
+      offer_held_at: new Date().toISOString(),
+      offer_released_at: null,
+      offered_at: null,
+      accepted_at: null,
+    })
+    .eq("id", job.id)
+    .eq("organization_id", params.organizationId);
+  if (holdError) throw new Error(holdError.message);
+
+  return {
+    jobId: job.id,
+    held: true,
+    preservedAccepted: false,
+    offerEligibleAt: decision.offerEligibleAt,
+    notificationsSent: notification.sent,
+    pushSent: notification.pushSent,
+    errors: notification.errors,
+  };
+}
+
 export async function activateDueHeldCleanerJobs(
   service: ServiceClient,
   origin: string
