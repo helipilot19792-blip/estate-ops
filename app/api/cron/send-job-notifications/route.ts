@@ -7,7 +7,6 @@ import { sendScheduledJobNotificationEmails } from "@/lib/server/job-notificatio
 import { createClient } from "@supabase/supabase-js";
 import {
   activateDueHeldCleanerJobs,
-  reconcileAllPropertyCleanerOfferHolds,
 } from "@/lib/server/cleaner-job-activation";
 
 export async function GET(request: Request) {
@@ -28,7 +27,6 @@ export async function GET(request: Request) {
   const service = createClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
-  const holdReconciliation = await reconcileAllPropertyCleanerOfferHolds(service, origin);
   const heldJobActivations = await activateDueHeldCleanerJobs(service, origin);
   const [jobNotifications, guestRegistrationReminders] = await Promise.all([
     sendScheduledJobNotificationEmails(origin),
@@ -40,7 +38,6 @@ export async function GET(request: Request) {
     payload: {
       jobNotifications,
       guestRegistrationReminders,
-      holdReconciliation,
       heldJobActivations,
     },
   });
