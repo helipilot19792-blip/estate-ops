@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { geocodePropertyAddress } from "@/lib/server/property-geocoding";
+import { buildPropertyDetailsUpdatePayload } from "@/lib/server/property-details-update";
 
 export const dynamic = "force-dynamic";
 
@@ -9,20 +10,6 @@ const publicSupabaseKey =
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-function normalizeOptionalTime(value: unknown) {
-  const text = String(value || "").trim();
-  if (!text) return null;
-  return /^([01]\d|2[0-3]):[0-5]\d$/.test(text) ? text : "";
-}
-
-function normalizeOptionalCoordinate(value: unknown, min: number, max: number) {
-  const text = String(value ?? "").trim();
-  if (!text) return null;
-  const parsed = Number(text);
-  if (!Number.isFinite(parsed) || parsed < min || parsed > max) return "";
-  return parsed;
-}
 
 function normalizeCleanerAssignmentMode(value: unknown) {
   const text = String(value || "").trim();
@@ -112,25 +99,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const updatePayload = {
-      wifi_network: String(body?.wifiNetwork || "").trim() || null,
-      wifi_password: String(body?.wifiPassword || "").trim() || null,
-      guest_device_welcome_message: String(body?.guestDeviceWelcomeMessage || "").trim() || null,
-      guest_device_local_info: String(body?.guestDeviceLocalInfo || "").trim() || null,
-      garbage_day: String(body?.garbageDay || "").trim() || null,
-      garbage_notes: String(body?.garbageNotes || "").trim() || null,
-      garbage_pickup_weekday:
-        body?.garbagePickupWeekday === "" || body?.garbagePickupWeekday === null || body?.garbagePickupWeekday === undefined
-          ? null
-          : Number(body.garbagePickupWeekday),
-      garbage_rotation_anchor_date: String(body?.garbageRotationAnchorDate || "").trim() || null,
-      garbage_week_a_label: String(body?.garbageWeekALabel || "").trim() || "Garbage + recycling",
-      garbage_week_b_label: String(body?.garbageWeekBLabel || "").trim() || "Recycling only",
-      latitude: normalizeOptionalCoordinate(body?.latitude, -90, 90),
-      longitude: normalizeOptionalCoordinate(body?.longitude, -180, 180),
-      default_checkin_time: normalizeOptionalTime(body?.defaultCheckinTime),
-      default_checkout_time: normalizeOptionalTime(body?.defaultCheckoutTime),
-    } as Record<string, unknown>;
+    // This endpoint serves several focused property forms. Only mutate fields the
+    // caller actually sent so a staffing-only save cannot clear access, waste,
+    // location, or stay-time settings.
+    const updatePayload = buildPropertyDetailsUpdatePayload(body || {});
     const defaultCleanerUnitsNeeded = body?.defaultCleanerUnitsNeeded;
     const cleanerUnitsRequiredStrict = body?.cleanerUnitsRequiredStrict;
     const showTeamStatusToCleaners = body?.showTeamStatusToCleaners;

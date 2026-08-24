@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "npm run test:ai-supervisor && npm run test:ai-turnover-rescue && npm run test:cleaner-offer-deadlines && npm run test:cleaner-offer-eligibility && npm run test:synced-cleaner-schedule && npm run test:job-email-signatures && npm run test:workspace-billing && npm run test:storage-references",
+    "test": "npm run test:ai-supervisor && npm run test:ai-turnover-rescue && npm run test:cleaner-offer-deadlines && npm run test:cleaner-offer-eligibility && npm run test:synced-cleaner-schedule && npm run test:job-email-signatures && npm run test:workspace-billing && npm run test:storage-references && npm run test:property-details-update",
     "test:ai-supervisor": "node --experimental-strip-types scripts/test-ai-supervisor-anomalies.mjs",
     "test:ai-turnover-rescue": "node --experimental-strip-types scripts/test-ai-turnover-rescue.mjs",
     "test:cleaner-offer-deadlines": "node --experimental-strip-types scripts/test-cleaner-offer-deadlines.mjs",
@@ -16,7 +16,8 @@
     "test:synced-cleaner-schedule": "node --experimental-strip-types scripts/test-synced-cleaner-schedule.mjs",
     "test:job-email-signatures": "node --experimental-strip-types scripts/test-job-email-signatures.mjs",
     "test:workspace-billing": "node --experimental-strip-types scripts/test-workspace-billing.mjs",
-    "test:storage-references": "node --experimental-strip-types scripts/test-storage-references.mjs"
+    "test:storage-references": "node --experimental-strip-types scripts/test-storage-references.mjs",
+    "test:property-details-update": "node --experimental-strip-types scripts/test-property-details-update.mjs"
   },
   "dependencies": {
     "@supabase/auth-helpers-nextjs": "^0.15.0",
