@@ -319,6 +319,9 @@ export async function POST(request: NextRequest) {
           : 1,
       cleaner_units_required_strict: !!body?.cleanerUnitsRequiredStrict,
       show_team_status_to_cleaners: body?.showTeamStatusToCleaners !== false,
+      cleaner_offer_lead_days: [60, 90, 180].includes(Number(body?.cleanerOfferLeadDays))
+        ? Number(body.cleanerOfferLeadDays)
+        : 90,
     };
 
     let geocodeWarning: string | null = null;

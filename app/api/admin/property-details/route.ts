@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { geocodePropertyAddress } from "@/lib/server/property-geocoding";
 import { buildPropertyDetailsUpdatePayload } from "@/lib/server/property-details-update";
+import { reconcilePropertyCleanerOfferHolds } from "@/lib/server/cleaner-job-activation";
+import { CLEANER_OFFER_LEAD_DAY_OPTIONS } from "@/lib/server/cleaner-offer-hold";
 
 export const dynamic = "force-dynamic";
 
@@ -109,6 +111,7 @@ export async function POST(request: NextRequest) {
     const defaultTurnoverPayout = normalizeOptionalCurrency(body?.defaultTurnoverPayout);
     const cleanerAssignmentMode = normalizeCleanerAssignmentMode(body?.cleanerAssignmentMode);
     const cleanerRotationNextCleanerAccountId = String(body?.cleanerRotationNextCleanerAccountId || "").trim() || null;
+    const cleanerOfferLeadDays = Number(body?.cleanerOfferLeadDays);
     let geocodeWarning: string | null = null;
 
     if (updatePayload.default_checkin_time === "" || updatePayload.default_checkout_time === "") {
@@ -125,6 +128,13 @@ export async function POST(request: NextRequest) {
 
     if (cleanerAssignmentMode === "") {
       return NextResponse.json({ error: "Cleaner assignment mode must be priority, training_rotation, or manual." }, { status: 400 });
+    }
+
+    if (
+      body?.cleanerOfferLeadDays !== undefined &&
+      !CLEANER_OFFER_LEAD_DAY_OPTIONS.includes(cleanerOfferLeadDays as 60 | 90 | 180)
+    ) {
+      return NextResponse.json({ error: "Cleaner offer timing must be 60, 90, or 180 days." }, { status: 400 });
     }
 
     const { data: existingProperty, error: existingPropertyError } = await serviceClient
@@ -182,6 +192,10 @@ export async function POST(request: NextRequest) {
       updatePayload.default_turnover_payout = defaultTurnoverPayout;
     }
 
+    if (body?.cleanerOfferLeadDays !== undefined) {
+      updatePayload.cleaner_offer_lead_days = cleanerOfferLeadDays;
+    }
+
     const { data: property, error: updateError } = await serviceClient
       .from("properties")
       .update(updatePayload)
@@ -194,7 +208,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: updateError.message }, { status: 500 });
     }
 
-    return NextResponse.json({ ok: true, property, geocodeWarning });
+    const holdReconciliation = body?.cleanerOfferLeadDays !== undefined
+      ? await reconcilePropertyCleanerOfferHolds(serviceClient, {
+          propertyId,
+          organizationId,
+          origin: request.nextUrl.origin,
+          leadDays: cleanerOfferLeadDays,
+        })
+      : null;
+
+    return NextResponse.json({ ok: true, property, geocodeWarning, holdReconciliation });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Could not save property details." },

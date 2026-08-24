@@ -59,8 +59,9 @@ type JobCancellationBundle = {
 };
 
 export type JobCancellationContext = {
-  reason?: "booking_cancelled" | "date_changed";
+  reason?: "booking_cancelled" | "date_changed" | "offer_deferred";
   replacementJobDate?: string | null;
+  offerEligibleAt?: string | null;
 };
 
 function getServiceClient() {
@@ -1004,6 +1005,10 @@ async function sendCancellationEmail(
     ? formatDateLabel(context.replacementJobDate)
     : null;
   const dateChanged = context?.reason === "date_changed" && Boolean(replacementDateLabel);
+  const offerDeferred = context?.reason === "offer_deferred";
+  const offerEligibleDateLabel = context?.offerEligibleAt
+    ? formatDateLabel(context.offerEligibleAt)
+    : null;
 
   let successCount = 0;
   const failures: string[] = [];
@@ -1013,13 +1018,19 @@ async function sendCancellationEmail(
     const html = `
       <div style="font-family: Arial, sans-serif; padding: 20px; color: #241c15;">
         <p style="margin: 0 0 12px;">${greeting}</p>
-        <h2 style="margin: 0 0 12px;">This ${bundle.detailLabel.toLowerCase()} was removed from the schedule.</h2>
+        <h2 style="margin: 0 0 12px;">${
+          offerDeferred
+            ? "This cleaning offer is being scheduled closer to the service date."
+            : `This ${bundle.detailLabel.toLowerCase()} was removed from the schedule.`
+        }</h2>
         <p style="margin: 0 0 8px;"><strong>Property:</strong> ${propertyLine}</p>
         ${bundle.organizationName ? `<p style="margin: 0 0 8px;"><strong>Organization:</strong> ${bundle.organizationName}</p>` : ""}
         <p style="margin: 0 0 8px;"><strong>Original scheduled date:</strong> ${dateLabel}</p>
         <p style="margin: 0 0 16px;"><strong>Team / account:</strong> ${accountLine}</p>
         <p style="margin: 0 0 16px;">${
-          dateChanged
+          offerDeferred
+            ? `The cleaning is still scheduled for ${dateLabel}, but you no longer need to respond now. The job may be offered again${offerEligibleDateLabel ? ` around ${offerEligibleDateLabel}` : " closer to the service date"}.`
+            : dateChanged
             ? `The reservation dates changed. You are no longer assigned to the cleaning on ${dateLabel}. A new cleaning for ${replacementDateLabel} will follow the property's normal offer order, so a previous acceptance does not carry over.`
             : "This usually happens when a booking is cancelled, moved, or replaced by a new reservation."
         }</p>
@@ -1033,7 +1044,7 @@ async function sendCancellationEmail(
     const result = await resend.emails.send({
       from: process.env.INVITE_FROM_EMAIL!,
       to: recipient.email,
-      subject: `${bundle.detailLabel} ${dateChanged ? "date changed" : "removed"}: ${bundle.propertyName} on ${dateLabel}`,
+      subject: `${offerDeferred ? "Cleaning offer deferred" : `${bundle.detailLabel} ${dateChanged ? "date changed" : "removed"}`}: ${bundle.propertyName} on ${dateLabel}`,
       html,
     });
 
@@ -1059,6 +1070,10 @@ async function sendCancellationPush(
     ? formatDateLabel(context.replacementJobDate)
     : null;
   const dateChanged = context?.reason === "date_changed" && Boolean(replacementDateLabel);
+  const offerDeferred = context?.reason === "offer_deferred";
+  const offerEligibleDateLabel = context?.offerEligibleAt
+    ? formatDateLabel(context.offerEligibleAt)
+    : null;
   const profileIds = bundle.recipients
     .map((recipient) => recipient.profileId)
     .filter((profileId): profileId is string => Boolean(profileId));
@@ -1068,12 +1083,16 @@ async function sendCancellationPush(
   }
 
   const result = await sendStaffPushNotifications(bundle.kind, profileIds, {
-    title: `${bundle.detailLabel} ${dateChanged ? "date changed" : "removed"}`,
-    body: dateChanged
+    title: offerDeferred
+      ? "Cleaning offer deferred"
+      : `${bundle.detailLabel} ${dateChanged ? "date changed" : "removed"}`,
+    body: offerDeferred
+      ? `${bundle.propertyName}: the ${dateLabel} cleaning is still scheduled and may be offered again${offerEligibleDateLabel ? ` around ${offerEligibleDateLabel}` : " closer to the date"}.`
+      : dateChanged
       ? `${bundle.propertyName}: ${dateLabel} was cancelled. A new ${replacementDateLabel} cleaning will be offered separately.`
       : `${bundle.organizationName ? `${bundle.organizationName}: ` : ""}${bundle.propertyName} - ${dateLabel}`,
     url: portalUrl,
-    tag: `${bundle.kind}-canceled-${bundle.jobId}`,
+    tag: `${bundle.kind}-${offerDeferred ? "deferred" : "canceled"}-${bundle.jobId}`,
   });
 
   return {

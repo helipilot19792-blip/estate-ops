@@ -1,14 +1,13 @@
 import { createClient } from "@supabase/supabase-js";
 import {
   sendJobCancellationNotificationsForJobs,
-  sendJobOfferEmailsForSlots,
 } from "@/lib/server/job-notifications";
+import { activateCleanerJobOffer } from "@/lib/server/cleaner-job-activation";
 import {
-  applyCleanerTrainingRotationToJob as applyServerCleanerTrainingRotationToJob,
-} from "@/lib/server/cleaner-training-rotation";
-import { getCleanerOfferExpiresAtForDailySweep } from "@/lib/server/cleaner-offer-deadlines";
+  getCleanerOfferHoldDecision,
+  normalizePropertyCleanerOfferLeadDays,
+} from "@/lib/server/cleaner-offer-hold";
 import { detectSameDayCleanerConflicts } from "@/lib/server/same-day-cleaner-conflicts";
-import { prepareManualCleanerAssignment } from "@/lib/server/manual-cleaner-assignment";
 import { fetchPublicText } from "@/lib/server/safe-remote-fetch";
 import { writeAuditLog } from "@/lib/server/audit-log";
 import { getSyncedCleanerScheduleChange } from "@/lib/server/synced-cleaner-schedule";
@@ -31,6 +30,7 @@ type PropertyRow = {
   default_turnover_payout?: number | null;
   cleaner_assignment_mode?: string | null;
   cleaner_rotation_next_cleaner_account_id?: string | null;
+  cleaner_offer_lead_days?: number | null;
 };
 
 type TurnoverJobRow = {
@@ -41,6 +41,9 @@ type TurnoverJobRow = {
   notes: string | null;
   scheduled_for: string | null;
   status: string | null;
+  staffing_status?: string | null;
+  cleaner_offer_lead_days?: number | null;
+  offer_eligible_at?: string | null;
 };
 
 type ParsedEvent = {
@@ -437,29 +440,6 @@ async function loadPropertiesMap(organizationIds?: string[] | null) {
   return map;
 }
 
-async function applyCleanerTrainingRotationToJob(jobId: string, property: PropertyRow) {
-  if (property.cleaner_assignment_mode !== "training_rotation") return;
-  await applyServerCleanerTrainingRotationToJob(supabase, jobId);
-}
-
-async function seedTurnoverSlotPayouts(jobId: string, defaultTurnoverPayout: number | null | undefined) {
-  const { error } = await supabase
-    .from("turnover_job_slots")
-    .update({
-      payout_type: "standard",
-      expected_payout_amount: Number(defaultTurnoverPayout || 0),
-      payment_status: "unpaid",
-      paid_amount: null,
-      payout_notes: null,
-      payment_notes: null,
-      paid_at: null,
-      payment_recorded_by_profile_id: null,
-    })
-    .eq("job_id", jobId);
-
-  if (error) throw error;
-}
-
 async function findSyncedJob(
   propertyId: string,
   marker: string,
@@ -468,7 +448,7 @@ async function findSyncedJob(
   if (bookingEventId) {
     const { data, error } = await supabase
       .from("turnover_jobs")
-      .select("id, organization_id, property_id, booking_event_id, notes, scheduled_for, status")
+      .select("id, organization_id, property_id, booking_event_id, notes, scheduled_for, status, staffing_status, cleaner_offer_lead_days, offer_eligible_at")
       .eq("property_id", propertyId)
       .eq("booking_event_id", bookingEventId)
       .maybeSingle();
@@ -479,7 +459,7 @@ async function findSyncedJob(
 
   const { data, error } = await supabase
     .from("turnover_jobs")
-    .select("id, organization_id, property_id, booking_event_id, notes, scheduled_for, status")
+    .select("id, organization_id, property_id, booking_event_id, notes, scheduled_for, status, staffing_status, cleaner_offer_lead_days, offer_eligible_at")
     .eq("property_id", propertyId)
     .limit(200);
 
@@ -1079,6 +1059,20 @@ export async function POST(request: Request) {
           if (existingJob) {
             try {
               const updated = await updateSyncedJobIfChanged(existingJob, event, notes, bookingEventId);
+              if (String(existingJob.staffing_status || "").toLowerCase() === "held") {
+                const existingLeadDays = normalizePropertyCleanerOfferLeadDays(
+                  existingJob.cleaner_offer_lead_days ?? property?.cleaner_offer_lead_days
+                );
+                const existingHold = getCleanerOfferHoldDecision(event.checkoutDate, existingLeadDays);
+                const { error: holdUpdateError } = await supabase
+                  .from("turnover_jobs")
+                  .update({
+                    cleaner_offer_lead_days: existingLeadDays,
+                    offer_eligible_at: existingHold.offerEligibleAt,
+                  })
+                  .eq("id", existingJob.id);
+                if (holdUpdateError) throw holdUpdateError;
+              }
               if (updated) {
                 resultBucket.updated_jobs += 1;
                 resultBucket.updated_dates.push(event.checkoutDate);
@@ -1098,6 +1092,9 @@ export async function POST(request: Request) {
             continue;
           }
 
+          const offerLeadDays = normalizePropertyCleanerOfferLeadDays(property.cleaner_offer_lead_days);
+          const holdDecision = getCleanerOfferHoldDecision(event.checkoutDate, offerLeadDays);
+
           const { data: insertedJob, error: insertError } = await supabase
             .from("turnover_jobs")
             .insert({
@@ -1112,6 +1109,11 @@ export async function POST(request: Request) {
               cleaner_units_needed: 1,
               cleaner_units_required_strict: false,
               show_team_status_to_cleaners: true,
+              staffing_status: holdDecision.held ? "held" : "unfilled",
+              cleaner_offer_lead_days: offerLeadDays,
+              cleaner_offer_uses_property_default: true,
+              offer_eligible_at: holdDecision.offerEligibleAt,
+              offer_held_at: holdDecision.held ? new Date().toISOString() : null,
             })
             .select("id")
             .single();
@@ -1123,96 +1125,21 @@ export async function POST(request: Request) {
             continue;
           }
 
-          const { error: slotError } = await supabase.rpc("create_slots_for_job", {
-            p_job_id: insertedJob.id,
-          });
-
-          if (slotError) {
-            resultBucket.errors.push(
-              `Job created but slot creation failed for ${event.summary || "reservation"} on ${event.checkoutDate}: ${slotError.message}`
-            );
-            continue;
-          }
-
-          try {
-            await seedTurnoverSlotPayouts(insertedJob.id, property?.default_turnover_payout);
-          } catch (payoutError: any) {
-            resultBucket.errors.push(
-              `Job created but payout defaults failed for ${event.summary || "reservation"} on ${event.checkoutDate}: ${payoutError?.message || "Unknown payout error"}`
-            );
-          }
-
-          try {
-            await applyCleanerTrainingRotationToJob(insertedJob.id, property);
-          } catch (rotationError: any) {
-            resultBucket.errors.push(
-              `Job created but Training Rotation failed for ${event.summary || "reservation"} on ${event.checkoutDate}: ${rotationError?.message || "Unknown rotation error"}`
-            );
-          }
-
-          try {
-            await prepareManualCleanerAssignment(supabase, {
-              jobId: insertedJob.id,
-              organizationId: property.organization_id,
-              property,
-              scheduledFor: event.checkoutDate,
-              origin: new URL(request.url).origin,
-            });
-          } catch (manualAssignmentError: unknown) {
-            resultBucket.errors.push(
-              `Job created but manual cleaner assignment setup failed for ${event.summary || "reservation"} on ${event.checkoutDate}: ${manualAssignmentError instanceof Error ? manualAssignmentError.message : "Unknown manual assignment error"}`
-            );
-          }
-
-          const { data: offerSlots, error: offerSlotsError } = await supabase
-            .from("turnover_job_slots")
-            .select("id, offered_at")
-            .eq("job_id", insertedJob.id)
-            .eq("status", "offered")
-            .not("cleaner_account_id", "is", null);
-
-          if (!offerSlotsError && (offerSlots ?? []).length > 0) {
-            const offerSlotIds = (offerSlots ?? []).map((slot) => slot.id);
-            const { error: alignExpiryError } = await supabase
-              .from("turnover_job_slots")
-              .update({ expires_at: getCleanerOfferExpiresAtForDailySweep(event.checkoutDate) })
-              .in("id", offerSlotIds);
-
-            if (alignExpiryError) {
+          if (!holdDecision.held) {
+            try {
+              const activation = await activateCleanerJobOffer(supabase, {
+                jobId: insertedJob.id,
+                origin: new URL(request.url).origin,
+                allowedOrganizationIds: new Set([property.organization_id]),
+              });
+              if (activation.notification.errors.length > 0) {
+                resultBucket.errors.push(
+                  `Job offer notification issue for ${event.summary || "reservation"} on ${event.checkoutDate}: ${activation.notification.errors.join("; ")}`
+                );
+              }
+            } catch (activationError: unknown) {
               resultBucket.errors.push(
-                `Job created but its cleaner offer deadline could not be aligned to the daily sweep: ${alignExpiryError.message}`
-              );
-            }
-
-            const firstOfferedAt = (offerSlots ?? [])
-              .map((slot) => slot.offered_at)
-              .filter(Boolean)
-              .sort()[0] || new Date().toISOString();
-            const { error: offeredJobStatusError } = await supabase
-              .from("turnover_jobs")
-              .update({
-                status: "offered",
-                staffing_status: "partially_filled",
-                offered_at: firstOfferedAt,
-                accepted_at: null,
-              })
-              .eq("id", insertedJob.id);
-
-            if (offeredJobStatusError) {
-              resultBucket.errors.push(
-                `Job offer was created but its staffing summary could not be refreshed: ${offeredJobStatusError.message}`
-              );
-            }
-
-            const notificationResult = await sendJobOfferEmailsForSlots(
-              "cleaner",
-              offerSlotIds,
-              new URL(request.url).origin
-            );
-
-            if (notificationResult.errors.length > 0) {
-              resultBucket.errors.push(
-                `Job offer email notification issue for ${event.summary || "reservation"} on ${event.checkoutDate}: ${notificationResult.errors.join("; ")}`
+                `Job created but cleaner offer setup failed for ${event.summary || "reservation"} on ${event.checkoutDate}: ${activationError instanceof Error ? activationError.message : "Unknown cleaner offer error"}`
               );
             }
           }

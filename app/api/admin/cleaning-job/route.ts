@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { writeAuditLog } from "@/lib/server/audit-log";
+import { activateCleanerJobOffer } from "@/lib/server/cleaner-job-activation";
 import {
-  applyCleanerTrainingRotationToJob,
-} from "@/lib/server/cleaner-training-rotation";
-import { getCleanerOfferExpiresAtForDailySweep } from "@/lib/server/cleaner-offer-deadlines";
-import { sendJobOfferEmailsForSlots } from "@/lib/server/job-notifications";
-import { prepareManualCleanerAssignment } from "@/lib/server/manual-cleaner-assignment";
+  getCleanerOfferHoldDecision,
+  normalizeManualCleanerOfferLeadDays,
+} from "@/lib/server/cleaner-offer-hold";
 import {
   assertWorkspaceBillingAccessForOrganization,
   getWorkspaceBillingErrorStatus,
@@ -52,131 +51,6 @@ function normalizeBoolean(value: unknown, fallback: boolean) {
 function normalizeDate(value: unknown) {
   const text = String(value || "").trim();
   return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : "";
-}
-
-async function seedTurnoverSlotPayouts(jobId: string, defaultTurnoverPayout: number | null | undefined) {
-  const { error } = await service
-    .from("turnover_job_slots")
-    .update({
-      payout_type: "standard",
-      expected_payout_amount: Number(defaultTurnoverPayout || 0),
-      payment_status: "unpaid",
-      paid_amount: null,
-      payout_notes: null,
-      payment_notes: null,
-      paid_at: null,
-      payment_recorded_by_profile_id: null,
-    })
-    .eq("job_id", jobId);
-
-  if (error) throw new Error(error.message);
-}
-
-async function ensureManualCleaningJobHasOfferedSlots(params: {
-  jobId: string;
-  propertyId: string;
-  scheduledFor: string | null;
-}) {
-  const { data: existingOfferedSlots, error: existingOfferedError } = await service
-    .from("turnover_job_slots")
-    .select("id")
-    .eq("job_id", params.jobId)
-    .eq("status", "offered")
-    .not("cleaner_account_id", "is", null);
-
-  if (existingOfferedError) throw new Error(existingOfferedError.message);
-  if ((existingOfferedSlots ?? []).length > 0) {
-    const existingOfferedSlotIds = (existingOfferedSlots ?? []).map((slot) => slot.id).filter(Boolean);
-    const { error: alignExpiryError } = await service
-      .from("turnover_job_slots")
-      .update({ expires_at: getCleanerOfferExpiresAtForDailySweep(params.scheduledFor) })
-      .in("id", existingOfferedSlotIds);
-
-    if (alignExpiryError) throw new Error(alignExpiryError.message);
-    return existingOfferedSlotIds;
-  }
-
-  const { data: slots, error: slotsError } = await service
-    .from("turnover_job_slots")
-    .select("id, slot_number")
-    .eq("job_id", params.jobId)
-    .order("slot_number", { ascending: true });
-
-  if (slotsError) throw new Error(slotsError.message);
-  if ((slots ?? []).length === 0) return [];
-
-  const { data: assignments, error: assignmentsError } = await service
-    .from("property_cleaner_account_assignments")
-    .select("id, cleaner_account_id, priority")
-    .eq("property_id", params.propertyId)
-    .order("priority", { ascending: true })
-    .order("created_at", { ascending: true });
-
-  if (assignmentsError) throw new Error(assignmentsError.message);
-
-  const cleanerAccountIds = [...new Set((assignments ?? []).map((assignment) => assignment.cleaner_account_id).filter(Boolean))];
-  if (cleanerAccountIds.length === 0) return [];
-
-  const { data: accounts, error: accountsError } = await service
-    .from("cleaner_accounts")
-    .select("id, active")
-    .in("id", cleanerAccountIds);
-
-  if (accountsError) throw new Error(accountsError.message);
-
-  const activeAccountIds = new Set((accounts ?? []).filter((account) => account.active !== false).map((account) => account.id));
-  const activeAssignments = (assignments ?? []).filter((assignment) => activeAccountIds.has(assignment.cleaner_account_id));
-  if (activeAssignments.length === 0) return [];
-
-  const now = new Date();
-  const offeredAt = now.toISOString();
-  const expiresAt = getCleanerOfferExpiresAtForDailySweep(params.scheduledFor, now);
-  const offeredSlotIds: string[] = [];
-  const assignableCount = Math.min((slots ?? []).length, activeAssignments.length);
-
-  for (let index = 0; index < assignableCount; index += 1) {
-    const slot = slots![index];
-    const assignment = activeAssignments[index];
-    const { data: updatedSlot, error: updateError } = await service
-      .from("turnover_job_slots")
-      .update({
-        cleaner_account_id: assignment.cleaner_account_id,
-        status: "offered",
-        offered_at: offeredAt,
-        expires_at: expiresAt,
-        accepted_at: null,
-        declined_at: null,
-        accepted_by_profile_id: null,
-        declined_by_profile_id: null,
-        offer_email_sent_at: null,
-        offer_reminder_sent_at: null,
-        day_of_reminder_sent_at: null,
-        offer_push_sent_at: null,
-        offer_reminder_push_sent_at: null,
-        day_of_reminder_push_sent_at: null,
-      })
-      .eq("id", slot.id)
-      .select("id")
-      .maybeSingle();
-
-    if (updateError) throw new Error(updateError.message);
-    if (updatedSlot?.id) offeredSlotIds.push(updatedSlot.id);
-  }
-
-  if (offeredSlotIds.length > 0) {
-    const { error: jobUpdateError } = await service
-      .from("turnover_jobs")
-      .update({
-        status: "offered",
-        staffing_status: "partially_filled",
-        offered_at: offeredAt,
-      })
-      .eq("id", params.jobId);
-
-    if (jobUpdateError) throw new Error(jobUpdateError.message);
-  }
-
-  return offeredSlotIds;
 }
 
 async function requireAdminAccess(token: string, organizationId: string) {
@@ -246,7 +120,7 @@ export async function POST(request: NextRequest) {
 
     const { data: property, error: propertyError } = await service
       .from("properties")
-      .select("id, organization_id, name, address, default_turnover_payout, cleaner_assignment_mode")
+      .select("id, organization_id, name, address, default_turnover_payout, cleaner_assignment_mode, cleaner_offer_lead_days")
       .eq("id", propertyId)
       .eq("organization_id", organizationId)
       .maybeSingle();
@@ -267,6 +141,12 @@ export async function POST(request: NextRequest) {
       cleanersRequiredStrict
     );
     const showTeamStatusToCleaners = normalizeBoolean(body?.showTeamStatusToCleaners, true);
+    const usesPropertyDefault = body?.offerLeadDays === undefined || body?.offerLeadDays === null || body?.offerLeadDays === "property";
+    const offerLeadDays = normalizeManualCleanerOfferLeadDays(
+      usesPropertyDefault ? property.cleaner_offer_lead_days : body?.offerLeadDays,
+      property.cleaner_offer_lead_days
+    );
+    const holdDecision = getCleanerOfferHoldDecision(scheduledFor, offerLeadDays);
 
     const { data: insertedJob, error: insertError } = await service
       .from("turnover_jobs")
@@ -280,6 +160,12 @@ export async function POST(request: NextRequest) {
         show_team_status_to_cleaners: showTeamStatusToCleaners,
         notes,
         scheduled_for: scheduledFor,
+        status: "pending",
+        staffing_status: holdDecision.held ? "held" : "unfilled",
+        cleaner_offer_lead_days: offerLeadDays,
+        cleaner_offer_uses_property_default: usesPropertyDefault,
+        offer_eligible_at: holdDecision.offerEligibleAt,
+        offer_held_at: holdDecision.held ? new Date().toISOString() : null,
       })
       .select("id")
       .single();
@@ -288,52 +174,20 @@ export async function POST(request: NextRequest) {
       throw new Error(insertError?.message || "Could not create job.");
     }
 
-    const { error: slotError } = await service.rpc("create_slots_for_job", {
-      p_job_id: insertedJob.id,
-    });
-
-    if (slotError) {
-      return NextResponse.json(
-        {
-          error: `Job created, but slot creation failed: ${slotError.message}`,
+    const activation = holdDecision.held
+      ? null
+      : await activateCleanerJobOffer(service, {
           jobId: insertedJob.id,
-        },
-        { status: 500 }
-      );
-    }
-
-    await seedTurnoverSlotPayouts(insertedJob.id, property.default_turnover_payout);
-
-    await applyCleanerTrainingRotationToJob(service, insertedJob.id);
-
-    const manualAssignment = await prepareManualCleanerAssignment(service, {
-      jobId: insertedJob.id,
-      organizationId,
-      property,
-      scheduledFor,
-      origin: request.nextUrl.origin,
-    });
-
-    const offerSlotIds = manualAssignment.manual
-        ? []
-        : await ensureManualCleaningJobHasOfferedSlots({
-          jobId: insertedJob.id,
-          propertyId,
-          scheduledFor,
+          origin: request.nextUrl.origin,
+          allowedOrganizationIds: new Set([organizationId]),
         });
-    const notificationResult =
-      offerSlotIds.length > 0
-        ? await sendJobOfferEmailsForSlots("cleaner", offerSlotIds, request.nextUrl.origin, {
-            allowedOrganizationIds: new Set([organizationId]),
-          })
-        : {
-            sent: 0,
-            pushSent: 0,
-            skipped: 0,
-            errors: manualAssignment.manual
-              ? []
-              : ["No active cleaner assignment was available to offer this job."],
-          };
+    const offerSlotIds = activation?.offeredSlotIds ?? [];
+    const notificationResult = activation?.notification ?? {
+      sent: 0,
+      pushSent: 0,
+      skipped: 0,
+      errors: [],
+    };
 
     await writeAuditLog(service, {
       actorProfileId: profile.id,
@@ -351,7 +205,11 @@ export async function POST(request: NextRequest) {
         notifications_sent: notificationResult.sent,
         push_sent: notificationResult.pushSent,
         notification_error_count: notificationResult.errors.length,
-        manual_assignment: manualAssignment.manual,
+        manual_assignment: activation?.manual ?? property.cleaner_assignment_mode === "manual",
+        offer_held: holdDecision.held,
+        offer_lead_days: offerLeadDays,
+        offer_eligible_at: holdDecision.offerEligibleAt,
+        offer_uses_property_default: usesPropertyDefault,
       },
     });
 
@@ -359,7 +217,10 @@ export async function POST(request: NextRequest) {
       ok: true,
       jobId: insertedJob.id,
       notification: notificationResult,
-      manualAssignment: manualAssignment.manual,
+      manualAssignment: activation?.manual ?? false,
+      held: holdDecision.held,
+      offerLeadDays,
+      offerEligibleAt: holdDecision.offerEligibleAt,
     });
   } catch (error) {
     return NextResponse.json(

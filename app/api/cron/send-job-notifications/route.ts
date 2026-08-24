@@ -4,6 +4,11 @@ export const maxDuration = 60;
 
 import { sendScheduledGuestRegistrationReminders } from "@/lib/server/guest-registration-reminders";
 import { sendScheduledJobNotificationEmails } from "@/lib/server/job-notifications";
+import { createClient } from "@supabase/supabase-js";
+import {
+  activateDueHeldCleanerJobs,
+  reconcileAllPropertyCleanerOfferHolds,
+} from "@/lib/server/cleaner-job-activation";
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
@@ -14,6 +19,17 @@ export async function GET(request: Request) {
   }
 
   const origin = new URL(request.url).origin;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceRoleKey) {
+    return Response.json({ ok: false, error: "Missing Supabase server environment variables." }, { status: 500 });
+  }
+
+  const service = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const holdReconciliation = await reconcileAllPropertyCleanerOfferHolds(service, origin);
+  const heldJobActivations = await activateDueHeldCleanerJobs(service, origin);
   const [jobNotifications, guestRegistrationReminders] = await Promise.all([
     sendScheduledJobNotificationEmails(origin),
     sendScheduledGuestRegistrationReminders(origin),
@@ -24,6 +40,8 @@ export async function GET(request: Request) {
     payload: {
       jobNotifications,
       guestRegistrationReminders,
+      holdReconciliation,
+      heldJobActivations,
     },
   });
 }

@@ -155,6 +155,7 @@ const CLEANER_PAYMENT_STATUS_OPTIONS = [
   { value: "partial", label: "Partially paid" },
   { value: "paid", label: "Paid" },
 ] as const;
+const CLEANER_OFFER_LEAD_DAY_OPTIONS = [60, 90, 180] as const;
 const PROPERTY_TIME_OPTIONS = Array.from({ length: 29 }, (_, index) => {
   const totalMinutes = 6 * 60 + index * 30;
   const hours = Math.floor(totalMinutes / 60);
@@ -194,6 +195,7 @@ type Property = {
   show_team_status_to_cleaners: boolean;
   cleaner_assignment_mode?: "priority" | "training_rotation" | "manual" | null;
   cleaner_rotation_next_cleaner_account_id?: string | null;
+  cleaner_offer_lead_days?: number | null;
 };
 
 type CleanerAccount = {
@@ -234,6 +236,11 @@ type Job = {
   schedule_conflict_at?: string | null;
   schedule_conflict_recommended?: boolean | null;
   schedule_conflict_reason?: string | null;
+  cleaner_offer_lead_days?: number | null;
+  cleaner_offer_uses_property_default?: boolean | null;
+  offer_eligible_at?: string | null;
+  offer_held_at?: string | null;
+  offer_released_at?: string | null;
 };
 
 type PropertyBookingEvent = {
@@ -2084,6 +2091,7 @@ export default function AdminPage() {
 
   const [jobPropertyId, setJobPropertyId] = useState("");
   const [jobScheduledFor, setJobScheduledFor] = useState("");
+  const [jobCleanerOfferLeadChoice, setJobCleanerOfferLeadChoice] = useState("property");
   const [showSupport, setShowSupport] = useState(false);
   const [showAdminNav, setShowAdminNav] = useState(false);
   const [expandedTodayProgressIds, setExpandedTodayProgressIds] = useState<Set<string>>(() => new Set());
@@ -2143,6 +2151,7 @@ export default function AdminPage() {
   const [selectedPropertyUnitsStrict, setSelectedPropertyUnitsStrict] = useState(false);
   const [selectedPropertyShowTeamStatus, setSelectedPropertyShowTeamStatus] = useState(true);
   const [selectedPropertyDefaultTurnoverPayout, setSelectedPropertyDefaultTurnoverPayout] = useState("");
+  const [selectedPropertyCleanerOfferLeadDays, setSelectedPropertyCleanerOfferLeadDays] = useState("90");
   const [selectedPropertyWifiNetwork, setSelectedPropertyWifiNetwork] = useState("");
   const [selectedPropertyWifiPassword, setSelectedPropertyWifiPassword] = useState("");
   const [selectedPropertyGarbageDay, setSelectedPropertyGarbageDay] = useState("");
@@ -2976,6 +2985,7 @@ export default function AdminPage() {
       setSelectedPropertyLatitude("");
       setSelectedPropertyLongitude("");
       setSelectedPropertyDefaultTurnoverPayout("");
+      setSelectedPropertyCleanerOfferLeadDays("90");
       applyPropertyKnowledgeDraft(EMPTY_PROPERTY_KNOWLEDGE);
       setAccessDirty(false);
       setPropertyDefaultsDirty(false);
@@ -3024,6 +3034,9 @@ export default function AdminPage() {
         selectedProperty?.default_turnover_payout !== null && selectedProperty?.default_turnover_payout !== undefined
           ? String(selectedProperty.default_turnover_payout)
           : ""
+      );
+      setSelectedPropertyCleanerOfferLeadDays(
+        String(selectedProperty?.cleaner_offer_lead_days || 90)
       );
     }
 
@@ -6185,6 +6198,7 @@ export default function AdminPage() {
         showTeamStatusToCleaners: payload.show_team_status_to_cleaners,
         notes: payload.notes,
         scheduledFor: payload.scheduled_for,
+        offerLeadDays: jobCleanerOfferLeadChoice,
       }),
     });
 
@@ -6213,12 +6227,15 @@ export default function AdminPage() {
 
     setJobPropertyId("");
     setJobScheduledFor("");
+    setJobCleanerOfferLeadChoice("property");
     setJobNotes("");
     setJobOverrideUnitsEnabled(false);
     setJobUnitsNeeded("1");
     setJobUnitsStrict(false);
     setJobShowTeamStatus(true);
-    const creationMessage = result.manualAssignment
+    const creationMessage = result.held
+      ? `Cleaning job created. The cleaner offer is held until ${formatDateLabel(result.offerEligibleAt)}.`
+      : result.manualAssignment
       ? "Cleaning job created. Choose a cleaner from this property's eligible cleaner list to send the offer."
       : `Cleaning job created.${notificationNote}`.trim();
     setActionMessage(creationMessage);
@@ -7573,6 +7590,7 @@ This removes its linked members and deletes the grounds account.`
           cleanerUnitsRequiredStrict: selectedPropertyUnitsStrict,
           showTeamStatusToCleaners: selectedPropertyShowTeamStatus,
           defaultTurnoverPayout: normalizedTurnoverPayout,
+          cleanerOfferLeadDays: Number(selectedPropertyCleanerOfferLeadDays),
         }),
       });
       const payload = await response.json().catch(() => null);
@@ -7593,8 +7611,13 @@ This removes its linked members and deletes the grounds account.`
         )
       );
       setSelectedPropertyDefaultTurnoverPayout(String(updatedProperty.default_turnover_payout ?? normalizedTurnoverPayout));
+      setSelectedPropertyCleanerOfferLeadDays(String(updatedProperty.cleaner_offer_lead_days ?? 90));
       setPropertyDefaultsDirty(false);
-      setActionMessage("Property defaults saved.");
+      const holdResult = payload.holdReconciliation;
+      const holdNote = holdResult
+        ? ` ${Number(holdResult.held || 0)} future job${Number(holdResult.held || 0) === 1 ? "" : "s"} held, ${Number(holdResult.released || 0)} released, and ${Number(holdResult.preservedAccepted || 0)} accepted job${Number(holdResult.preservedAccepted || 0) === 1 ? "" : "s"} preserved.`
+        : "";
+      setActionMessage(`Property defaults saved.${holdNote}`);
       await loadData();
     } catch (err: any) {
       setError(err?.message || "Could not save property staffing defaults.");
@@ -10157,6 +10180,11 @@ This removes its linked members and deletes the grounds account.`
   }
 
   function getJobDisplayStatus(job: Job, slots: JobSlot[]) {
+    if (["held", "releasing"].includes(String(job.staffing_status || "").toLowerCase())) {
+      return job.offer_eligible_at
+        ? `Offer held until ${formatDateLabel(job.offer_eligible_at)}`
+        : "Cleaner offer held";
+    }
     const needed = job.cleaner_units_needed || Math.max(slots.length, 1);
     const accepted = slots.filter((slot) =>
       ["accepted", "in_progress", "completed"].includes(String(slot.status || "").toLowerCase())
@@ -11365,8 +11393,11 @@ This removes its linked members and deletes the grounds account.`
         const offered = slots.some((slot) => slot.status === "offered");
         const progress = getCleaningProgressSummary(job.id, slots);
         const progressChecklistItems = getCleaningChecklistItemsForJob(job.id);
+        const offerHeld = ["held", "releasing"].includes(String(job.staffing_status || "").toLowerCase());
         const cleanerDetail = acceptedCleanerNames.length > 0
           ? `Cleaner: ${acceptedCleanerNames.join(", ")}`
+          : offerHeld
+            ? `OFFER OPENS ${job.offer_eligible_at ? labelDate(job.offer_eligible_at).toUpperCase() : "CLOSER TO THE DATE"}`
           : stranded
             ? "UNASSIGNED"
             : offered
@@ -11378,7 +11409,7 @@ This removes its linked members and deletes the grounds account.`
           dateYmd,
           sortKey: `${dateYmd}-10-${property?.name || job.property_id}`,
           kind: "Cleaning",
-          tone: acceptedCleanerNames.length > 0 ? "blue" as const : "red" as const,
+          tone: acceptedCleanerNames.length > 0 || offerHeld ? "blue" as const : "red" as const,
           label: labelDate(dateYmd),
           title: property?.name || property?.address || "Unknown property",
           detail: [city, cleanerDetail].filter(Boolean).join(" - "),
@@ -22741,6 +22772,28 @@ This removes its linked members and deletes the grounds account.`
               onChange={(e) => setJobScheduledFor(e.target.value)}
             />
 
+            <div className="rounded-[20px] border border-[#eadfce] bg-[#fcfaf7] p-4">
+              <label className="mb-2 block text-sm font-medium text-[#5f5245]">When to send cleaner offers</label>
+              <select
+                className="w-full rounded-[16px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                value={jobCleanerOfferLeadChoice}
+                onChange={(e) => setJobCleanerOfferLeadChoice(e.target.value)}
+              >
+                <option value="property">Use property setting ({selectedPropertyDefaults?.cleaner_offer_lead_days || 90} days)</option>
+                <option value="0">Send now</option>
+                {CLEANER_OFFER_LEAD_DAY_OPTIONS.map((days) => (
+                  <option key={days} value={days}>Hold until {days} days before cleaning</option>
+                ))}
+              </select>
+              <p className="mt-2 text-xs leading-5 text-[#8a7b68]">
+                {jobCleanerOfferLeadChoice === "0"
+                  ? "The assigned cleaner will receive the offer as soon as this job is created."
+                  : jobScheduledFor
+                    ? `The job appears immediately, but the cleaner offer waits until ${formatDateLabel(toYmd(addDays(ymdToLocalDate(jobScheduledFor), -Number(jobCleanerOfferLeadChoice === "property" ? selectedPropertyDefaults?.cleaner_offer_lead_days || 90 : jobCleanerOfferLeadChoice))))}.`
+                    : "The job appears immediately; its cleaner offer waits until it enters the selected scheduling window."}
+              </p>
+            </div>
+
             <textarea className="min-h-[120px] w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]" placeholder="Job notes. Optional. You can still include a checkout date here if needed." value={jobNotes} onChange={(e) => setJobNotes(e.target.value)} />
 
             <button type="button" className="inline-flex items-center justify-center rounded-full bg-[#241c15] px-5 py-2.5 text-sm font-medium text-[#f8f2e8] transition hover:bg-[#352a21]" onClick={() => void createJob()}>
@@ -26183,7 +26236,7 @@ This removes its linked members and deletes the grounds account.`
                       </button>
                     </div>
 
-                    <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                    <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
                       <div>
                         <label className="mb-2 block text-sm font-medium text-[#5f5245]">Cleaner units needed</label>
                         <select
@@ -26220,6 +26273,25 @@ This removes its linked members and deletes the grounds account.`
                         </p>
                       </div>
 
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-[#5f5245]">Cleaner offer window</label>
+                        <select
+                          className="w-full rounded-[18px] border border-[#d9ccbb] bg-white px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
+                          value={selectedPropertyCleanerOfferLeadDays}
+                          onChange={(e) => {
+                            setSelectedPropertyCleanerOfferLeadDays(e.target.value);
+                            setPropertyDefaultsDirty(true);
+                          }}
+                        >
+                          {CLEANER_OFFER_LEAD_DAY_OPTIONS.map((days) => (
+                            <option key={days} value={days}>{days} days before cleaning</option>
+                          ))}
+                        </select>
+                        <p className="mt-2 text-xs leading-5 text-[#8a7b68]">
+                          Bookings and jobs appear immediately. Cleaner offers wait until the cleaning enters this window.
+                        </p>
+                      </div>
+
                       <label className="flex items-center gap-2 rounded-[18px] border border-[#eadfce] bg-white px-4 py-3 text-sm text-[#6f6255]">
                         <input
                           type="checkbox"
@@ -26243,6 +26315,10 @@ This removes its linked members and deletes the grounds account.`
                         />
                         Show team status to cleaners
                       </label>
+                    </div>
+
+                    <div className="mt-4 rounded-[18px] border border-[#d8c7ab] bg-[#fffaf2] px-4 py-3 text-sm leading-6 text-[#6f6255]">
+                      <span className="font-semibold text-[#5f4c3b]">Example:</span> With {selectedPropertyCleanerOfferLeadDays} days selected, a July 15 cleaning appears on the admin schedule immediately, but its cleaner offer waits until about {formatDateLabel(toYmd(addDays(ymdToLocalDate("2027-07-15"), -Number(selectedPropertyCleanerOfferLeadDays))))}. Accepted jobs are never withdrawn.
                     </div>
 
                     <div className="mt-4">
