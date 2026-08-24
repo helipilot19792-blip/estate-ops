@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/send-invoice-reminders",
       "schedule": "0 13 * * *"
+    },
+    {
+      "path": "/api/cron/reconcile-cleaner-offer-holds?organizationId=52b17363-253e-4f0f-add0-949049542a3e&jobId=e35903eb-514d-414f-9fd4-4813197e7fd5",
+      "schedule": "2 14 * * *"
     }
   ]
 }
