@@ -90,6 +90,24 @@ type FeatureUsageTopFeature = {
   last_used_at: string | null;
 };
 
+type PublicFunnelCounts = {
+  signup_view: number;
+  signup_attempt: number;
+  signup_account_created: number;
+  trial_created: number;
+  demo_view: number;
+  demo_interaction: number;
+};
+
+type PublicFunnelSummary = {
+  available: boolean;
+  today: PublicFunnelCounts;
+  last_7_days: PublicFunnelCounts;
+  last_30_days: PublicFunnelCounts;
+  signup_conversion_rate: number | null;
+  truncated: boolean;
+};
+
 const PORTAL_PREVIEW_LINKS = [
   {
     label: "Admin portal",
@@ -185,6 +203,7 @@ export default function PlatformPage() {
   const [auditLogs, setAuditLogs] = useState<PlatformAuditLog[]>([]);
   const [auditLogAvailable, setAuditLogAvailable] = useState(true);
   const [featureUsage, setFeatureUsage] = useState<FeatureUsageSummary | null>(null);
+  const [publicFunnel, setPublicFunnel] = useState<PublicFunnelSummary | null>(null);
   const [platformSettings, setPlatformSettings] = useState<PlatformSettings | null>(null);
   const [error, setError] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
@@ -231,6 +250,7 @@ export default function PlatformPage() {
     setAuditLogs((payload.auditLogs || []) as PlatformAuditLog[]);
     setAuditLogAvailable(payload.auditLogAvailable !== false);
     setFeatureUsage((payload.featureUsage || null) as FeatureUsageSummary | null);
+    setPublicFunnel((payload.publicFunnel || null) as PublicFunnelSummary | null);
     setPlatformSettings((payload.platformSettings || null) as PlatformSettings | null);
     setLoading(false);
   });
@@ -260,6 +280,15 @@ export default function PlatformPage() {
       { organizations: 0, properties: 0, jobs: 0, members: 0 }
     );
   }, [organizations]);
+
+  const publicFunnelCards = [
+    { key: "signup_view", label: "Signup visitors", detail: "Opened the company signup form" },
+    { key: "demo_view", label: "Demo visitors", detail: "Opened the guided demo" },
+    { key: "demo_interaction", label: "Demo explorers", detail: "Interacted with a demo section" },
+    { key: "signup_attempt", label: "Signup attempts", detail: "Submitted the signup form" },
+    { key: "signup_account_created", label: "Accounts created", detail: "Created an authentication account" },
+    { key: "trial_created", label: "Trials created", detail: "Finished creating a company workspace" },
+  ] as const;
 
   const filteredOrganizations = useMemo(() => {
     const query = organizationSearch.trim().toLowerCase();
@@ -328,6 +357,7 @@ export default function PlatformPage() {
       setAuditLogs((payload.auditLogs || []) as PlatformAuditLog[]);
       setAuditLogAvailable(payload.auditLogAvailable !== false);
       setFeatureUsage((payload.featureUsage || null) as FeatureUsageSummary | null);
+      setPublicFunnel((payload.publicFunnel || null) as PublicFunnelSummary | null);
       setPlatformSettings((payload.platformSettings || null) as PlatformSettings | null);
       setStatusMessage(message);
       return true;
@@ -376,6 +406,7 @@ export default function PlatformPage() {
       setAuditLogs((payload.auditLogs || []) as PlatformAuditLog[]);
       setAuditLogAvailable(payload.auditLogAvailable !== false);
       setFeatureUsage((payload.featureUsage || null) as FeatureUsageSummary | null);
+      setPublicFunnel((payload.publicFunnel || null) as PublicFunnelSummary | null);
       setPlatformSettings((payload.platformSettings || null) as PlatformSettings | null);
       setCleaningAdminPreviewOrganization(demoOrganization);
       setStatusMessage("Cleaning company demo opened as its own isolated organization.");
@@ -661,6 +692,67 @@ export default function PlatformPage() {
               ) : null}
             </div>
           </div>
+        </section>
+
+        <section className="mt-6 rounded-[28px] border border-[#e0d4ea] bg-[linear-gradient(135deg,#fffaff_0%,#f8fbff_100%)] p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#76558a]">Public Funnel</div>
+              <h2 className="mt-2 text-xl font-semibold tracking-tight text-[#352242]">Signup and demo interest</h2>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-[#72617d]">
+                Unique browsers that visit the signup flow or try the guided demo. Counts are first-party and do not store names, emails, or raw IP addresses.
+              </p>
+            </div>
+            <span className="w-fit rounded-full border border-[#d8c7e3] bg-white/80 px-3 py-1 text-xs font-semibold text-[#654678]">
+              Last 30 days
+            </span>
+          </div>
+
+          {publicFunnel?.available === false ? (
+            <div className="mt-5 rounded-[22px] border border-[#ecd7a8] bg-[#fff8e8] px-4 py-5 text-sm text-[#8a6112]">
+              Funnel counters are ready in the app, but the database table is missing. Run{" "}
+              <span className="font-mono">supabase/add_public_funnel_events.sql</span> in Supabase SQL Editor.
+            </div>
+          ) : (
+            <>
+              <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {publicFunnelCards.map((card) => (
+                  <div key={card.key} className="rounded-[22px] border border-[#dfd2e8] bg-white/85 px-4 py-4 shadow-sm">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-[#836d91]">{card.label}</div>
+                    <div className="mt-2 text-3xl font-semibold text-[#352242]">
+                      {publicFunnel?.last_30_days[card.key] || 0}
+                    </div>
+                    <div className="mt-1 text-xs leading-5 text-[#83738d]">{card.detail}</div>
+                    <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-medium text-[#654678]">
+                      <span className="rounded-full border border-[#e5dbea] bg-[#fbf8fd] px-2.5 py-1">
+                        Today {publicFunnel?.today[card.key] || 0}
+                      </span>
+                      <span className="rounded-full border border-[#e5dbea] bg-[#fbf8fd] px-2.5 py-1">
+                        7 days {publicFunnel?.last_7_days[card.key] || 0}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 flex flex-col gap-2 rounded-[20px] border border-[#dfd2e8] bg-white/75 px-4 py-4 text-sm text-[#72617d] sm:flex-row sm:items-center sm:justify-between">
+                <span>
+                  Signup-to-trial conversion compares unique signup visitors with completed company workspaces.
+                </span>
+                <span className="shrink-0 rounded-full border border-[#d8c7e3] bg-[#f7f0fb] px-3 py-1.5 font-semibold text-[#654678]">
+                  {publicFunnel?.signup_conversion_rate === null || publicFunnel?.signup_conversion_rate === undefined
+                    ? "No conversion data yet"
+                    : `${publicFunnel.signup_conversion_rate}% conversion`}
+                </span>
+              </div>
+
+              {publicFunnel?.truncated ? (
+                <div className="mt-3 text-xs text-[#8a6112]">
+                  The 30-day event limit was reached, so these counts may be understated.
+                </div>
+              ) : null}
+            </>
+          )}
         </section>
 
         <section className="mt-6 rounded-[28px] border border-[#d8deea] bg-[linear-gradient(135deg,#f8fbff_0%,#fffdf8_100%)] p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">

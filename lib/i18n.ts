@@ -30,7 +30,7 @@ export const dictionaries = {
     legalConsent: {
       title: "Privacy and cookies",
       body:
-        "Gulera OS uses essential cookies and local browser storage for login, security, and core portal features. If analytics or optional tools are added during testing, they should only run after consent.",
+        "Gulera OS uses essential storage for login, security, and core portal features. With your consent, privacy-friendly analytics count signup and demo interest without storing names, emails, or raw IP addresses.",
     },
     helpAssistant: {
       title: "AI Helper",
@@ -693,7 +693,7 @@ export const dictionaries = {
     legalConsent: {
       title: "Confidentialite et témoins",
       body:
-        "Gulera OS utilise des témoins essentiels et le stockage local du navigateur pour la connexion, la securite et les fonctions principales du portail. Si des analyses ou des outils facultatifs sont ajoutes pendant les essais, ils ne devraient fonctionner qu'apres consentement.",
+        "Gulera OS utilise le stockage essentiel pour la connexion, la securite et les fonctions principales du portail. Avec votre consentement, des analyses respectueuses de la vie privee mesurent l'interet pour l'inscription et la demonstration sans conserver de noms, d'adresses courriel ou d'adresses IP brutes.",
     },
     welcome: {
       title: "Bienvenue dans Gulera OS",
@@ -1202,7 +1202,7 @@ export const dictionaries = {
     legalConsent: {
       title: "Privacidad y cookies",
       body:
-        "Gulera OS usa cookies esenciales y almacenamiento local del navegador para el inicio de sesion, la seguridad y las funciones principales del portal. Si se agregan analiticas o herramientas opcionales durante las pruebas, solo deberian funcionar despues del consentimiento.",
+        "Gulera OS usa almacenamiento esencial para el inicio de sesion, la seguridad y las funciones principales del portal. Con tu consentimiento, analiticas respetuosas de la privacidad cuentan el interes en el registro y la demostracion sin guardar nombres, correos electronicos ni direcciones IP sin procesar.",
     },
     welcome: {
       title: "Bienvenido a Gulera OS",

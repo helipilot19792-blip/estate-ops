@@ -124,6 +124,34 @@ type FeatureUsageSummary = {
   >;
 };
 
+const PUBLIC_FUNNEL_EVENT_KEYS = [
+  "signup_view",
+  "signup_attempt",
+  "signup_account_created",
+  "trial_created",
+  "demo_view",
+  "demo_interaction",
+] as const;
+
+type PublicFunnelEventKey = (typeof PUBLIC_FUNNEL_EVENT_KEYS)[number];
+
+type PublicFunnelEventRow = {
+  created_at: string;
+  visitor_id: string;
+  event_key: PublicFunnelEventKey;
+};
+
+type PublicFunnelCounts = Record<PublicFunnelEventKey, number>;
+
+type PublicFunnelSummary = {
+  available: boolean;
+  today: PublicFunnelCounts;
+  last_7_days: PublicFunnelCounts;
+  last_30_days: PublicFunnelCounts;
+  signup_conversion_rate: number | null;
+  truncated: boolean;
+};
+
 type PlatformSettingsRow = {
   id: boolean;
   ai_copilot_enabled?: boolean | null;
@@ -447,6 +475,72 @@ async function loadFeatureUsageSummary(serviceClient: ReturnType<typeof getClien
   }
 
   return summarizeFeatureUsage((data ?? []) as FeatureUsageEventRow[]);
+}
+
+function summarizePublicFunnel(events: PublicFunnelEventRow[]): PublicFunnelSummary {
+  const now = new Date();
+  const todayStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const sevenDayStart = todayStart - 6 * 86400000;
+  const thirtyDayStart = todayStart - 29 * 86400000;
+  const periods = {
+    today: Object.fromEntries(PUBLIC_FUNNEL_EVENT_KEYS.map((key) => [key, new Set<string>()])),
+    last_7_days: Object.fromEntries(PUBLIC_FUNNEL_EVENT_KEYS.map((key) => [key, new Set<string>()])),
+    last_30_days: Object.fromEntries(PUBLIC_FUNNEL_EVENT_KEYS.map((key) => [key, new Set<string>()])),
+  } as Record<"today" | "last_7_days" | "last_30_days", Record<PublicFunnelEventKey, Set<string>>>;
+
+  for (const event of events) {
+    if (!PUBLIC_FUNNEL_EVENT_KEYS.includes(event.event_key)) continue;
+    const createdAt = new Date(event.created_at).getTime();
+    if (!Number.isFinite(createdAt)) continue;
+
+    if (createdAt >= thirtyDayStart) periods.last_30_days[event.event_key].add(event.visitor_id);
+    if (createdAt >= sevenDayStart) periods.last_7_days[event.event_key].add(event.visitor_id);
+    if (createdAt >= todayStart) periods.today[event.event_key].add(event.visitor_id);
+  }
+
+  const toCounts = (period: Record<PublicFunnelEventKey, Set<string>>) =>
+    Object.fromEntries(PUBLIC_FUNNEL_EVENT_KEYS.map((key) => [key, period[key].size])) as PublicFunnelCounts;
+  const today = toCounts(periods.today);
+  const last7Days = toCounts(periods.last_7_days);
+  const last30Days = toCounts(periods.last_30_days);
+  const signupConversionRate = last30Days.signup_view
+    ? Math.round((last30Days.trial_created / last30Days.signup_view) * 1000) / 10
+    : null;
+
+  return {
+    available: true,
+    today,
+    last_7_days: last7Days,
+    last_30_days: last30Days,
+    signup_conversion_rate: signupConversionRate,
+    truncated: events.length >= 20000,
+  };
+}
+
+async function loadPublicFunnelSummary(serviceClient: ReturnType<typeof getClients>["serviceClient"]) {
+  const since = new Date();
+  since.setUTCDate(since.getUTCDate() - 30);
+
+  const { data, error } = await serviceClient
+    .from("public_funnel_events")
+    .select("created_at,visitor_id,event_key")
+    .gte("created_at", since.toISOString())
+    .order("created_at", { ascending: false })
+    .limit(20000);
+
+  if (error) {
+    const tableMissing = error.code === "42P01" || error.message.includes("public_funnel_events");
+    if (tableMissing) {
+      return {
+        ...summarizePublicFunnel([]),
+        available: false,
+      };
+    }
+
+    throw new Error(error.message);
+  }
+
+  return summarizePublicFunnel((data ?? []) as PublicFunnelEventRow[]);
 }
 
 function isMissingPlatformSettingsError(error: { code?: string | null; message?: string | null } | null | undefined) {
@@ -1029,6 +1123,7 @@ export async function GET(req: NextRequest) {
     const organizations = await loadOrganizationOverview(serviceClient);
     const auditLogState = await loadRecentAuditLogs(serviceClient);
     const featureUsage = await loadFeatureUsageSummary(serviceClient);
+    const publicFunnel = await loadPublicFunnelSummary(serviceClient);
     const platformSettings = await loadPlatformSettings(serviceClient);
 
     return NextResponse.json({
@@ -1042,6 +1137,7 @@ export async function GET(req: NextRequest) {
       auditLogs: auditLogState.entries,
       auditLogAvailable: auditLogState.available,
       featureUsage,
+      publicFunnel,
       platformSettings,
     });
   } catch (error) {
@@ -1450,6 +1546,7 @@ export async function POST(req: NextRequest) {
     const organizations = await loadOrganizationOverview(serviceClient);
     const auditLogState = await loadRecentAuditLogs(serviceClient);
     const featureUsage = await loadFeatureUsageSummary(serviceClient);
+    const publicFunnel = await loadPublicFunnelSummary(serviceClient);
     const platformSettings = await loadPlatformSettings(serviceClient);
     return NextResponse.json({
       ok: true,
@@ -1458,6 +1555,7 @@ export async function POST(req: NextRequest) {
       auditLogs: auditLogState.entries,
       auditLogAvailable: auditLogState.available,
       featureUsage,
+      publicFunnel,
       platformSettings,
     });
   } catch (error) {

@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { PASSWORD_REQUIREMENTS, validatePassword } from "@/lib/password-policy";
+import { trackPublicFunnelEvent } from "@/lib/public-funnel";
 import { supabase } from "@/lib/supabase";
 import { useI18n } from "@/components/i18n-provider";
 
@@ -218,6 +219,12 @@ export default function LoginPage() {
   }, []);
 
   useEffect(() => {
+    if (authMode === "company") {
+      trackPublicFunnelEvent("signup_view");
+    }
+  }, [authMode]);
+
+  useEffect(() => {
     let active = true;
 
     async function loadSignupAvailability() {
@@ -306,6 +313,7 @@ export default function LoginPage() {
       if (profile.role === "pending" && metadata.signup_kind === "company_admin") {
         try {
           await finishCompanySignup(session.access_token);
+          trackPublicFunnelEvent("trial_created");
           window.location.href = "/admin";
           return;
         } catch (signupError) {
@@ -378,6 +386,8 @@ export default function LoginPage() {
   async function handleCompanySignup(e?: FormEvent) {
     e?.preventDefault();
 
+    trackPublicFunnelEvent("signup_attempt");
+
     setError("");
     setMessage("");
 
@@ -449,6 +459,8 @@ export default function LoginPage() {
         return;
       }
 
+      trackPublicFunnelEvent("signup_account_created");
+
       const userId = data.user?.id;
       setPendingSignupUserId(userId || "");
       const accessToken =
@@ -474,6 +486,7 @@ export default function LoginPage() {
           companyName: companyName.trim(),
           organizationType,
         });
+        trackPublicFunnelEvent("trial_created");
       } catch (signupError) {
         const message = signupError instanceof Error ? signupError.message : "Failed to create your workspace.";
         setError(message);

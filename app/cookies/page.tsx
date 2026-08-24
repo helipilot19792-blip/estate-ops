@@ -6,7 +6,7 @@ export default function CookiesPage() {
       <article className="mx-auto max-w-3xl rounded-[28px] border border-[#e7ddd0] bg-white p-6 shadow-[0_24px_70px_rgba(36,28,21,0.08)] sm:p-8">
         <div className="text-xs uppercase tracking-[0.24em] text-[#8a6a35]">Gulera OS</div>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight">Cookie Notice</h1>
-        <p className="mt-2 text-sm text-[#7f7263]">Testing-phase draft. Last updated May 4, 2026.</p>
+        <p className="mt-2 text-sm text-[#7f7263]">Testing-phase draft. Last updated August 24, 2026.</p>
 
         <div className="mt-8 space-y-6 text-sm leading-7 text-[#4f4338]">
           <section>
@@ -20,8 +20,10 @@ export default function CookiesPage() {
           <section>
             <h2 className="text-lg font-semibold text-[#241c15]">Optional Tools</h2>
             <p className="mt-2">
-              Optional analytics, marketing, or tracking tools should not be enabled unless the user has
-              consented. During testing, this notice is designed to support that separation.
+              If you select Accept, Gulera OS uses a random first-party browser identifier to count
+              unique visits to the signup flow and guided demo, signup attempts, and completed trials.
+              These analytics do not store names, email addresses, form contents, or raw IP addresses.
+              Selecting Essential only leaves these counters disabled for your browser.
             </p>
           </section>
 

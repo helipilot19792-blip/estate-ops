@@ -29,6 +29,7 @@ export default function LegalConsentBanner() {
         version: 1,
       })
     );
+    window.dispatchEvent(new CustomEvent("gulera-cookie-consent", { detail: { choice } }));
     setVisible(false);
   }
 

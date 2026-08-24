@@ -6,7 +6,7 @@ export default function PrivacyPage() {
       <article className="mx-auto max-w-3xl rounded-[28px] border border-[#e7ddd0] bg-white p-6 shadow-[0_24px_70px_rgba(36,28,21,0.08)] sm:p-8">
         <div className="text-xs uppercase tracking-[0.24em] text-[#8a6a35]">Gulera OS</div>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight">Privacy Policy</h1>
-        <p className="mt-2 text-sm text-[#7f7263]">Testing-phase draft. Last updated July 1, 2026.</p>
+        <p className="mt-2 text-sm text-[#7f7263]">Testing-phase draft. Last updated August 24, 2026.</p>
 
         <div className="mt-8 space-y-6 text-sm leading-7 text-[#4f4338]">
           <section>
@@ -24,6 +24,16 @@ export default function PrivacyPage() {
               Information is used to provide property operations tools, send invites and notifications,
               coordinate cleaning or grounds work, manage owner communication, generate invoices, and
               improve reliability during testing.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="text-lg font-semibold text-[#241c15]">Optional Product Analytics</h2>
+            <p className="mt-2">
+              With consent, Gulera OS uses a random first-party identifier to count unique signup and
+              demo activity and measure whether a trial was created. These events do not include names,
+              email addresses, signup form contents, or raw IP addresses. Selecting Essential only
+              disables this analytics tracking for your browser.
             </p>
           </section>
 

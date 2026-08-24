@@ -21,7 +21,8 @@ import {
   Users,
   Wrench,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { trackPublicFunnelEvent } from "@/lib/public-funnel";
 
 type DemoView = "today" | "properties" | "owners";
 
@@ -52,6 +53,15 @@ function StatusDot({ tone }: { tone: string }) {
 
 export default function DemoPage() {
   const [view, setView] = useState<DemoView>("today");
+
+  useEffect(() => {
+    trackPublicFunnelEvent("demo_view");
+  }, []);
+
+  function selectDemoView(nextView: DemoView) {
+    setView(nextView);
+    trackPublicFunnelEvent("demo_interaction", { section: nextView });
+  }
 
   return (
     <main className="min-h-screen bg-[#eee8df] text-[#241c15]">
@@ -111,7 +121,7 @@ export default function DemoPage() {
                 <button
                   key={item.id}
                   type="button"
-                  onClick={() => setView(item.id)}
+                  onClick={() => selectDemoView(item.id)}
                   className={`flex items-center gap-3 rounded-[16px] px-3 py-3 text-left text-sm transition ${
                     active ? "bg-[#f2d69e] font-semibold text-[#241c15]" : "text-[#e8ded1] hover:bg-white/8"
                   }`}
