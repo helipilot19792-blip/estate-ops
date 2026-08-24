@@ -22,6 +22,21 @@ alter table public.turnover_jobs
   add constraint turnover_jobs_cleaner_offer_lead_days_check
   check (cleaner_offer_lead_days in (0, 60, 90, 180));
 
+alter table public.turnover_jobs
+  drop constraint if exists turnover_jobs_staffing_status_check;
+
+alter table public.turnover_jobs
+  add constraint turnover_jobs_staffing_status_check
+  check (staffing_status in (
+    'unfilled',
+    'partially_filled',
+    'ready',
+    'fully_staffed',
+    'stranded',
+    'held',
+    'releasing'
+  ));
+
 create index if not exists turnover_jobs_held_offer_release_idx
   on public.turnover_jobs (offer_eligible_at, property_id)
   where staffing_status = 'held';
