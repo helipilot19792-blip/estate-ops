@@ -1869,6 +1869,7 @@ export default function AdminPage() {
   const latestHomeLoadIdRef = useRef(0);
   const latestDataLoadIdRef = useRef<Partial<Record<DashboardDataScope, number>>>({});
   const adminDataLoadedRef = useRef(false);
+  const hiddenTodayCleaningsLoadedKeyRef = useRef<string | null>(null);
   const [invoiceOwnerId, setInvoiceOwnerId] = useState("");
   const [invoicePropertyId, setInvoicePropertyId] = useState("");
   const [invoiceIssueDate, setInvoiceIssueDate] = useState(() => getTodayYmd());
@@ -2098,6 +2099,7 @@ export default function AdminPage() {
   const [showSupport, setShowSupport] = useState(false);
   const [showAdminNav, setShowAdminNav] = useState(false);
   const [expandedTodayProgressIds, setExpandedTodayProgressIds] = useState<Set<string>>(() => new Set());
+  const [hiddenTodayCleaningIds, setHiddenTodayCleaningIds] = useState<Set<string>>(() => new Set());
   const [adminMenuOrientation, setAdminMenuOrientation] = useState<AdminMenuOrientation>("side");
   const [adminMenuOrder, setAdminMenuOrder] = useState<AdminSection[]>([]);
   const [adminMenuSeenCounts, setAdminMenuSeenCounts] = useState<Partial<Record<AdminSection, number>>>({});
@@ -2416,6 +2418,40 @@ export default function AdminPage() {
     const interval = window.setInterval(() => setNow(new Date()), 60_000);
     return () => window.clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !currentOrganizationId) {
+      hiddenTodayCleaningsLoadedKeyRef.current = null;
+      setHiddenTodayCleaningIds(new Set());
+      return;
+    }
+
+    const storageKey = `admin-hidden-today-cleanings:${currentOrganizationId}`;
+    hiddenTodayCleaningsLoadedKeyRef.current = storageKey;
+
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem(storageKey) || "null");
+      const savedIds =
+        parsed?.date === todayYmd && Array.isArray(parsed?.ids)
+          ? parsed.ids.filter((value: unknown): value is string => typeof value === "string")
+          : [];
+      setHiddenTodayCleaningIds(new Set(savedIds));
+    } catch {
+      window.localStorage.removeItem(storageKey);
+      setHiddenTodayCleaningIds(new Set());
+    }
+  }, [currentOrganizationId, todayYmd]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !currentOrganizationId) return;
+    const storageKey = `admin-hidden-today-cleanings:${currentOrganizationId}`;
+    if (hiddenTodayCleaningsLoadedKeyRef.current !== storageKey) return;
+
+    window.localStorage.setItem(
+      storageKey,
+      JSON.stringify({ date: todayYmd, ids: Array.from(hiddenTodayCleaningIds) })
+    );
+  }, [currentOrganizationId, hiddenTodayCleaningIds, todayYmd]);
 
   useEffect(() => {
     if (!adminExpandedCalendarDate) return;
@@ -10918,6 +10954,25 @@ This removes its linked members and deletes the grounds account.`
     });
   }
 
+  function hideCleaningFromToday(itemId: string, propertyName: string) {
+    const confirmed = window.confirm(
+      `Hide the cleaning at ${propertyName} from Today?\n\nThis only removes it from your admin Today list. It does not mark the job complete or change what the cleaner sees.`
+    );
+    if (!confirmed) return;
+
+    setHiddenTodayCleaningIds((current) => {
+      const next = new Set(current);
+      next.add(itemId);
+      return next;
+    });
+    setExpandedTodayProgressIds((current) => {
+      const next = new Set(current);
+      next.delete(itemId);
+      return next;
+    });
+    setActionMessage(`${propertyName} cleaning hidden from Today on this device.`);
+  }
+
   function renderTodayProgress(item: {
     id: string;
     kind: string;
@@ -10992,6 +11047,23 @@ This removes its linked members and deletes the grounds account.`
     );
   }
 
+  function renderHideCleaningFromToday(item: { id: string; kind: string; title: string }) {
+    if (item.kind !== "Cleaning") return null;
+
+    return (
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          hideCleaningFromToday(item.id, item.title);
+        }}
+        className="mt-2 inline-flex items-center rounded-full border border-[#c8d7ef] bg-[#f8fbff] px-3 py-1.5 text-xs font-semibold text-[#45658f] transition hover:border-[#9bb7e5] hover:bg-[#eef5ff] focus:outline-none focus:ring-2 focus:ring-[#b9d1fb]"
+      >
+        Hide from Today
+      </button>
+    );
+  }
+
   function openCleanerPayoutSection() {
     setActiveSection("jobs");
     setJobWorkflowTab("active");
@@ -11039,7 +11111,11 @@ This removes its linked members and deletes the grounds account.`
     const cleaningItems = jobs
       .filter((job) => {
         const jobDate = job.scheduled_for || extractCheckoutDate(job.notes);
-        return jobDate === todayYmd;
+        return (
+          jobDate === todayYmd &&
+          String(job.status || "").toLowerCase() !== "completed" &&
+          !hiddenTodayCleaningIds.has(`cleaning-${job.id}`)
+        );
       })
       .map((job) => {
         const property = propertyById.get(job.property_id) || null;
@@ -11116,7 +11192,7 @@ This removes its linked members and deletes the grounds account.`
     return [...cleaningItems, ...groundsItems].sort((a, b) =>
       a.sortDate.localeCompare(b.sortDate) || a.propertyName.localeCompare(b.propertyName)
     );
-  }, [jobs, groundsJobs, properties, todayYmd, jobSlotsByJobId, turnoverChecklistItemsByJobId, staffJobStatusEventsByJobId, groundsJobSlots, cleanerAccounts, cleanerMembersByAccountId, groundsAccounts, groundsMembersByAccountId]);
+  }, [jobs, groundsJobs, properties, todayYmd, hiddenTodayCleaningIds, jobSlotsByJobId, turnoverChecklistItemsByJobId, staffJobStatusEventsByJobId, groundsJobSlots, cleanerAccounts, cleanerMembersByAccountId, groundsAccounts, groundsMembersByAccountId]);
 
   const occupiedTodayProperties = useMemo(() => {
     const propertyById = new Map(properties.map((property) => [property.id, property]));
@@ -11409,6 +11485,7 @@ This removes its linked members and deletes the grounds account.`
     };
 
     const cleaningItems = jobs
+      .filter((job) => String(job.status || "").toLowerCase() !== "completed")
       .map((job) => {
         const dateYmd = job.scheduled_for || extractCheckoutDate(job.notes) || "";
         const property = propertyById.get(job.property_id);
@@ -11609,8 +11686,13 @@ This removes its linked members and deletes the grounds account.`
   ]);
 
   const todaysHomeHappenings = useMemo(
-    () => upcomingHomeHappenings.filter((item) => item.dateYmd === todayYmd),
-    [upcomingHomeHappenings, todayYmd]
+    () =>
+      upcomingHomeHappenings.filter(
+        (item) =>
+          item.dateYmd === todayYmd &&
+          (item.kind !== "Cleaning" || !hiddenTodayCleaningIds.has(item.id))
+      ),
+    [hiddenTodayCleaningIds, upcomingHomeHappenings, todayYmd]
   );
 
   const futureHomeHappenings = useMemo(
@@ -14233,6 +14315,7 @@ This removes its linked members and deletes the grounds account.`
                               </div>
                             ) : null}
                             {renderTodayProgress(item)}
+                            {renderHideCleaningFromToday(item)}
                           </div>
                           <div className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${dateClass}`}>
                             {item.label}
