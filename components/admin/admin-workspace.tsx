@@ -134,6 +134,8 @@ const QUIRKY_SYNCING_COPY = [
 const SHOW_ADMIN_TOP_BANNER = false;
 const MAINTENANCE_FLAG_SNOOZE_DAYS = 3;
 const SHOW_ADMIN_TOP_OVERVIEW = false;
+const ADMIN_HOME_RETRYABLE_STATUS_CODES = new Set([502, 503, 504]);
+const ADMIN_HOME_RETRY_DELAY_MS = 750;
 
 function reportAdminLoadTiming(kind: "home" | "workspace", response: Response, startedAt: number) {
   if (typeof window === "undefined" || !window.performance) return;
@@ -1778,6 +1780,7 @@ export default function AdminPage() {
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
 
   const [error, setError] = useState("");
+  const [homeLoadFailedMessage, setHomeLoadFailedMessage] = useState("");
   const [savingRoleId, setSavingRoleId] = useState<string | null>(null);
   const [actingOnProfileId, setActingOnProfileId] = useState<string | null>(null);
   const [savingCalendars, setSavingCalendars] = useState(false);
@@ -3566,11 +3569,18 @@ export default function AdminPage() {
 
   async function loadHomeData() {
     const requestId = ++latestHomeLoadIdRef.current;
-    const startedAt = typeof window !== "undefined" ? window.performance.now() : 0;
     setError("");
+    setHomeLoadFailedMessage("");
+
+    const isCurrentRequest = () => requestId === latestHomeLoadIdRef.current;
+    const showHomeLoadError = (message: string) => {
+      if (!isCurrentRequest()) return;
+      setHomeLoadFailedMessage(message);
+      setError(message);
+    };
 
     if (!currentOrganizationId) {
-      setError("No organization selected.");
+      showHomeLoadError("No organization selected.");
       return false;
     }
 
@@ -3579,33 +3589,52 @@ export default function AdminPage() {
     } = await supabase.auth.getSession();
 
     if (!session?.access_token) {
-      setError("No active admin session was found.");
+      showHomeLoadError("No active admin session was found.");
       return false;
     }
 
-    const response = await fetch(
-      `/api/admin/home-data?organizationId=${encodeURIComponent(currentOrganizationId)}&priority=1`,
-      {
-        cache: "no-store",
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
+    const requestUrl = `/api/admin/home-data?organizationId=${encodeURIComponent(currentOrganizationId)}&priority=1`;
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const startedAt = typeof window !== "undefined" ? window.performance.now() : 0;
+
+      try {
+        const response = await fetch(requestUrl, {
+          cache: "no-store",
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        });
+        const payload = await response.json().catch(() => null);
+        reportAdminLoadTiming("home", response, startedAt);
+
+        if (!isCurrentRequest()) return false;
+
+        if (response.ok && payload?.ok) {
+          applyAdminHomePayload(payload.data || {});
+          setHomeLoadFailedMessage("");
+          return true;
+        }
+
+        const shouldRetry = attempt === 0 && ADMIN_HOME_RETRYABLE_STATUS_CODES.has(response.status);
+        if (!shouldRetry) {
+          showHomeLoadError(payload?.error || "Could not load admin home data.");
+          return false;
+        }
+      } catch {
+        if (!isCurrentRequest()) return false;
+
+        if (attempt === 1) {
+          showHomeLoadError("Could not load admin home data after retrying.");
+          return false;
+        }
       }
-    );
-    const payload = await response.json().catch(() => null);
-    reportAdminLoadTiming("home", response, startedAt);
 
-    if (!response.ok || !payload?.ok) {
-      setError(payload?.error || "Could not load admin home data.");
-      return false;
+      await new Promise((resolve) => window.setTimeout(resolve, ADMIN_HOME_RETRY_DELAY_MS));
+      if (!isCurrentRequest()) return false;
     }
 
-    if (requestId !== latestHomeLoadIdRef.current) {
-      return false;
-    }
-
-    applyAdminHomePayload(payload.data || {});
-    return true;
+    return false;
   }
 
   async function redirectToStripeCheckout(planKey: BillingPlanKey) {
@@ -30148,16 +30177,37 @@ This removes its linked members and deletes the grounds account.`
               </div>
               <div className="mt-1 leading-5">{error || actionMessage}</div>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                if (error) setError("");
-                if (actionMessage) setActionMessage("");
-              }}
-              className="rounded-full border border-current/20 px-3 py-1 text-xs font-semibold opacity-80 transition hover:opacity-100"
-            >
-              Close
-            </button>
+            <div className="flex shrink-0 items-center gap-2">
+              {error && homeLoadFailedMessage && error === homeLoadFailedMessage ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void (async () => {
+                      const loadedHome = await loadHomeData();
+                      if (loadedHome) {
+                        void loadData({ background: true, scope: "attention" });
+                      }
+                    })();
+                  }}
+                  className="rounded-full border border-current/20 bg-white/50 px-3 py-1 text-xs font-semibold transition hover:bg-white/80"
+                >
+                  Retry
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => {
+                  if (error) {
+                    setError("");
+                    setHomeLoadFailedMessage("");
+                  }
+                  if (actionMessage) setActionMessage("");
+                }}
+                className="rounded-full border border-current/20 px-3 py-1 text-xs font-semibold opacity-80 transition hover:opacity-100"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
