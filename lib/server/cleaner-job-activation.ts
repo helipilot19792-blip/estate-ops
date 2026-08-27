@@ -62,7 +62,7 @@ async function ensurePriorityOffersHaveDeadlines(
     .not("cleaner_account_id", "is", null);
 
   if (offerSlotsError) throw new Error(offerSlotsError.message);
-  let offeredSlotIds = (offerSlots ?? []).map((slot) => slot.id).filter(Boolean);
+  const offeredSlotIds = (offerSlots ?? []).map((slot) => slot.id).filter(Boolean);
 
   if (offeredSlotIds.length === 0) {
     const { data: slots, error: slotsError } = await service
