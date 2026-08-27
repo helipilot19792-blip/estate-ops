@@ -2,8 +2,6 @@ import { createClient } from "@supabase/supabase-js";
 import { assertWorkspaceBillingAccess } from "@/lib/server/workspace-billing-status";
 
 export const dynamic = "force-dynamic";
-export const runtime = "edge";
-export const preferredRegion = "global";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const anonKey =
@@ -53,12 +51,10 @@ function normalizeDashboardScope(value: string | null): DashboardScope {
 
 async function requireAdminAccess(token: string, organizationId: string) {
   const authClient = createAuthClient(token);
-  const {
-    data: { user },
-    error: userError,
-  } = await authClient.auth.getUser();
+  const { data: claimsData, error: claimsError } = await authClient.auth.getClaims(token);
+  const userId = typeof claimsData?.claims?.sub === "string" ? claimsData.claims.sub : "";
 
-  if (userError || !user) {
+  if (claimsError || !userId) {
     throw new Error("Not authenticated.");
   }
 
@@ -66,13 +62,13 @@ async function requireAdminAccess(token: string, organizationId: string) {
     serviceClient
       .from("profiles")
       .select("id,email,full_name,phone,role")
-      .eq("id", user.id)
+      .eq("id", userId)
       .single(),
     serviceClient
       .from("organization_members")
       .select("role")
       .eq("organization_id", organizationId)
-      .eq("profile_id", user.id)
+      .eq("profile_id", userId)
       .maybeSingle(),
   ]);
 
@@ -83,7 +79,7 @@ async function requireAdminAccess(token: string, organizationId: string) {
   }
 
   if (profile.role === "platform_admin") {
-    return { user, profile };
+    return { user: { id: userId }, profile };
   }
 
   const { data: membership, error: membershipError } = membershipResult;
@@ -92,7 +88,7 @@ async function requireAdminAccess(token: string, organizationId: string) {
     throw new Error("Admin access required for this organization.");
   }
 
-  return { user, profile };
+  return { user: { id: userId }, profile };
 }
 
 async function requireWorkspaceBillingAccess(organizationId: string) {

@@ -20,6 +20,11 @@ function AdminWorkspaceFallback() {
 
 const AdminWorkspace = dynamic(() => import("@/components/admin/admin-workspace"), {
   loading: AdminWorkspaceFallback,
+  // The authenticated workspace cannot render useful content on the server: it
+  // starts in an auth/loading state and then fetches the selected organization in
+  // the browser. Avoid loading and evaluating the 1MB+ workspace module in the
+  // server render path as well as in the browser.
+  ssr: false,
 });
 
 export default function AdminPage() {

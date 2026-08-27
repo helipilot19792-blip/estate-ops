@@ -2,8 +2,6 @@ import { createClient } from "@supabase/supabase-js";
 import { assertWorkspaceBillingAccess } from "@/lib/server/workspace-billing-status";
 
 export const dynamic = "force-dynamic";
-export const runtime = "edge";
-export const preferredRegion = "global";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const anonKey =
@@ -45,12 +43,10 @@ function emptyResult<T = unknown>() {
 
 async function requireAdminAccess(token: string, organizationId: string) {
   const authClient = createAuthClient(token);
-  const {
-    data: { user },
-    error: userError,
-  } = await authClient.auth.getUser();
+  const { data: claimsData, error: claimsError } = await authClient.auth.getClaims(token);
+  const userId = typeof claimsData?.claims?.sub === "string" ? claimsData.claims.sub : "";
 
-  if (userError || !user) {
+  if (claimsError || !userId) {
     throw new Error("Not authenticated.");
   }
 
@@ -58,13 +54,13 @@ async function requireAdminAccess(token: string, organizationId: string) {
     serviceClient
       .from("profiles")
       .select("id,role")
-      .eq("id", user.id)
+      .eq("id", userId)
       .single(),
     serviceClient
       .from("organization_members")
       .select("role")
       .eq("organization_id", organizationId)
-      .eq("profile_id", user.id)
+      .eq("profile_id", userId)
       .maybeSingle(),
   ]);
 
@@ -75,7 +71,7 @@ async function requireAdminAccess(token: string, organizationId: string) {
   }
 
   if (profile.role === "platform_admin") {
-    return { user, profile };
+    return { user: { id: userId }, profile };
   }
 
   const { data: membership, error: membershipError } = membershipResult;
@@ -84,7 +80,7 @@ async function requireAdminAccess(token: string, organizationId: string) {
     throw new Error("Admin access required for this organization.");
   }
 
-  return { user, profile };
+  return { user: { id: userId }, profile };
 }
 
 async function requireWorkspaceBillingAccess(organizationId: string) {
@@ -134,12 +130,12 @@ export async function GET(request: Request) {
       : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const jobsQuery = serviceClient
       .from("turnover_jobs")
-      .select("*")
+      .select("*,turnover_job_slots(*)")
       .eq("organization_id", organizationId)
       .order("scheduled_for", { ascending: true });
     const groundsJobsQuery = serviceClient
       .from("grounds_jobs")
-      .select("*")
+      .select("*,grounds_job_slots(*)")
       .eq("organization_id", organizationId)
       .order("scheduled_for", { ascending: true });
 
@@ -171,13 +167,13 @@ export async function GET(request: Request) {
         .order("created_at", { ascending: false }),
       serviceClient
         .from("cleaner_accounts")
-        .select("*")
+        .select("*,cleaner_account_members(*)")
         .eq("organization_id", organizationId)
         .order("created_at", { ascending: false }),
       jobsQuery,
       serviceClient
         .from("grounds_accounts")
-        .select("*")
+        .select("*,grounds_account_members(*)")
         .eq("organization_id", organizationId)
         .order("created_at", { ascending: false }),
       groundsJobsQuery,
@@ -232,82 +228,42 @@ export async function GET(request: Request) {
 
     const properties = propertiesRes.data ?? [];
     const propertyIds = properties.map((property: { id: string }) => property.id);
-    const cleanerAccountIds = ((cleanerAccountsRes.data ?? []) as Array<{ id: string }>).map((account) => account.id);
-    const groundsAccountIds = ((groundsAccountsRes.data ?? []) as Array<{ id: string }>).map((account) => account.id);
-    const jobIds = ((jobsRes.data ?? []) as Array<{ id: string }>).map((job) => job.id);
-    const groundsJobIds = ((groundsJobsRes.data ?? []) as Array<{ id: string }>).map((job) => job.id);
-
-    const [
-      cleanerAccountMembersRes,
-      jobSlotsRes,
-      groundsAccountMembersRes,
-      groundsJobSlotsRes,
-      strandedJobsRes,
-    ] = await Promise.all([
-      cleanerAccountIds.length > 0
-        ? serviceClient
-            .from("cleaner_account_members")
-            .select("*")
-            .in("cleaner_account_id", cleanerAccountIds)
-            .order("created_at", { ascending: false })
-        : emptyResult(),
-      jobIds.length > 0
-        ? serviceClient
-            .from("turnover_job_slots")
-            .select("*")
-            .in("job_id", jobIds)
-            .order("job_id", { ascending: true })
-        : emptyResult(),
-      groundsAccountIds.length > 0
-        ? serviceClient
-            .from("grounds_account_members")
-            .select("*")
-            .in("grounds_account_id", groundsAccountIds)
-            .order("created_at", { ascending: false })
-        : emptyResult(),
-      groundsJobIds.length > 0
-        ? serviceClient
-            .from("grounds_job_slots")
-            .select("*")
-            .in("job_id", groundsJobIds)
-            .order("job_id", { ascending: true })
-        : emptyResult(),
-      propertyIds.length > 0
-        ? serviceClient
-            .from("admin_stranded_jobs")
-            .select("*")
-            .in("property_id", propertyIds)
-            .order("created_at", { ascending: true })
-        : emptyResult(),
-    ]);
+    const strandedJobsRes = propertyIds.length > 0
+      ? await serviceClient
+          .from("admin_stranded_jobs")
+          .select("*")
+          .in("property_id", propertyIds)
+          .order("created_at", { ascending: true })
+      : await emptyResult();
     const childQueriesFinishedAt = Date.now();
 
-    const childRequiredResponses = [
-      cleanerAccountMembersRes,
-      jobSlotsRes,
-      groundsAccountMembersRes,
-      groundsJobSlotsRes,
-      strandedJobsRes,
-    ];
-
-    for (const response of childRequiredResponses) {
-      if (response.error) {
-        throw new Error(response.error.message);
-      }
+    if (strandedJobsRes.error) {
+      throw new Error(strandedJobsRes.error.message);
     }
+
+    type WithRelation<T extends string> = Record<string, unknown> & Record<T, unknown[]>;
+    const cleanerAccountRows = (cleanerAccountsRes.data ?? []) as WithRelation<"cleaner_account_members">[];
+    const jobRows = (jobsRes.data ?? []) as WithRelation<"turnover_job_slots">[];
+    const groundsAccountRows = (groundsAccountsRes.data ?? []) as WithRelation<"grounds_account_members">[];
+    const groundsJobRows = (groundsJobsRes.data ?? []) as WithRelation<"grounds_job_slots">[];
+    const withoutRelation = <T extends string>(row: WithRelation<T>, relation: T) => {
+      const rest: Record<string, unknown> = { ...row };
+      delete rest[relation];
+      return rest;
+    };
 
     const response = Response.json({
       ok: true,
       data: {
         properties,
-        cleanerAccounts: cleanerAccountsRes.data ?? [],
-        cleanerAccountMembers: cleanerAccountMembersRes.data ?? [],
-        jobs: jobsRes.data ?? [],
-        jobSlots: jobSlotsRes.data ?? [],
-        groundsAccounts: groundsAccountsRes.data ?? [],
-        groundsAccountMembers: groundsAccountMembersRes.data ?? [],
-        groundsJobs: groundsJobsRes.data ?? [],
-        groundsJobSlots: groundsJobSlotsRes.data ?? [],
+        cleanerAccounts: cleanerAccountRows.map((row) => withoutRelation(row, "cleaner_account_members")),
+        cleanerAccountMembers: cleanerAccountRows.flatMap((row) => row.cleaner_account_members ?? []),
+        jobs: jobRows.map((row) => withoutRelation(row, "turnover_job_slots")),
+        jobSlots: jobRows.flatMap((row) => row.turnover_job_slots ?? []),
+        groundsAccounts: groundsAccountRows.map((row) => withoutRelation(row, "grounds_account_members")),
+        groundsAccountMembers: groundsAccountRows.flatMap((row) => row.grounds_account_members ?? []),
+        groundsJobs: groundsJobRows.map((row) => withoutRelation(row, "grounds_job_slots")),
+        groundsJobSlots: groundsJobRows.flatMap((row) => row.grounds_job_slots ?? []),
         strandedJobs: strandedJobsRes.data ?? [],
         propertyBookingEvents:
           propertyBookingEventsRes.error && isOptionalTableError(propertyBookingEventsRes.error)
