@@ -204,14 +204,14 @@ export async function POST(request: NextRequest) {
 
     let slotResult = await service
       .from("turnover_job_slots")
-      .select("id, job_id, cleaner_account_id, status, started_at, started_by_profile_id")
+      .select("id, job_id, cleaner_account_id, status, offered_at, started_at, started_by_profile_id")
       .eq("id", slotId)
       .maybeSingle();
 
     if (slotResult.error?.code === "42703") {
       slotResult = await service
         .from("turnover_job_slots")
-        .select("id, job_id, cleaner_account_id, status")
+        .select("id, job_id, cleaner_account_id, status, offered_at")
         .eq("id", slotId)
         .maybeSingle();
     }
@@ -233,6 +233,13 @@ export async function POST(request: NextRequest) {
 
     const now = new Date().toISOString();
     const currentSlotStatus = String(slot.status || "").toLowerCase().trim();
+
+    if ((action === "accept" || action === "decline") && currentSlotStatus !== "offered") {
+      return NextResponse.json(
+        { error: "This cleaner offer has already changed. Refresh the jobs list to see its current status." },
+        { status: 409 }
+      );
+    }
 
     if ((action === "start" || action === "finish") && !["accepted", "in_progress", "completed"].includes(currentSlotStatus)) {
       return NextResponse.json({ error: "Accept the job before using progress buttons." }, { status: 409 });
@@ -518,11 +525,16 @@ export async function POST(request: NextRequest) {
                 started_by_profile_id: slot.started_by_profile_id || user.id,
               };
 
-    const { data: updatedSlot, error: updateError } = await service
+    let updateQuery = service
       .from("turnover_job_slots")
       .update(slotUpdate)
       .eq("id", slotId)
       .eq("cleaner_account_id", slot.cleaner_account_id)
+      .eq("status", slot.status);
+    updateQuery = slot.offered_at
+      ? updateQuery.eq("offered_at", slot.offered_at)
+      : updateQuery.is("offered_at", null);
+    const { data: updatedSlot, error: updateError } = await updateQuery
       .select("id, job_id, status, cleaner_account_id")
       .maybeSingle();
 
@@ -537,7 +549,10 @@ export async function POST(request: NextRequest) {
     }
 
     if (!updatedSlot) {
-      return NextResponse.json({ error: "Job slot could not be updated." }, { status: 409 });
+      return NextResponse.json(
+        { error: "This cleaner offer changed while your response was being saved. Refresh the jobs list to see its current status." },
+        { status: 409 }
+      );
     }
 
     const { data: auditJob } = await service

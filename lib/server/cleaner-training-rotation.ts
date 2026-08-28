@@ -8,6 +8,10 @@ import {
   rotateCleanerAssignments,
   type CleanerAssignmentMode,
 } from "@/lib/server/cleaner-offer-eligibility";
+import {
+  shouldReofferCleanerSlot,
+  type CleanerOfferSlotSnapshot,
+} from "@/lib/server/cleaner-offer-transition";
 
 type ServiceClient = any;
 
@@ -16,13 +20,6 @@ type TrainingRotationResult = {
   expiredSlotIds?: string[];
   strandedSlotIds?: string[];
   errors?: string[];
-};
-
-type ExpiredOfferSnapshot = {
-  cleanerAccountId: string | null;
-  status: string | null;
-  offeredAt: string | null;
-  expiresAt: string | null;
 };
 
 function extractCheckoutDate(notes: string | null): string | null {
@@ -283,7 +280,7 @@ export async function reofferExpiredCleanerTrainingSlot(
   service: ServiceClient,
   slotId: string,
   declinedByProfileId: string | null = null,
-  expectedExpiredOffer?: ExpiredOfferSnapshot
+  expectedExpiredOffer?: CleanerOfferSlotSnapshot
 ): Promise<TrainingRotationResult> {
   const { data: slot, error: slotError } = await service
     .from("turnover_job_slots")
@@ -293,18 +290,7 @@ export async function reofferExpiredCleanerTrainingSlot(
 
   if (slotError) throw new Error(slotError.message);
   if (!slot?.job_id) return { offeredSlotIds: [] };
-  if (expectedExpiredOffer) {
-    const expiresAtMs = new Date(String(slot.expires_at || "")).getTime();
-    const snapshotStillMatches =
-      String(slot.status || "").toLowerCase() === "offered" &&
-      slot.cleaner_account_id === expectedExpiredOffer.cleanerAccountId &&
-      String(slot.status || "") === String(expectedExpiredOffer.status || "") &&
-      String(slot.offered_at || "") === String(expectedExpiredOffer.offeredAt || "") &&
-      String(slot.expires_at || "") === String(expectedExpiredOffer.expiresAt || "") &&
-      Number.isFinite(expiresAtMs) &&
-      expiresAtMs <= Date.now();
-    if (!snapshotStillMatches) return { offeredSlotIds: [] };
-  }
+  if (!shouldReofferCleanerSlot(slot, expectedExpiredOffer)) return { offeredSlotIds: [] };
 
   const { data: job, error: jobError } = await service
     .from("turnover_jobs")

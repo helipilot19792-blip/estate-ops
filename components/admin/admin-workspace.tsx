@@ -23838,8 +23838,8 @@ This removes its linked members and deletes the grounds account.`
                             ) : null}
                           </div>
                           {expandedNotificationSlotIds.has(slot.id) ? renderSlotNotificationDetails(slot) : null}
-                          <div>Accepted: {formatDateTime(slot.accepted_at)}</div>
-                          <div>Declined: {formatDateTime(slot.declined_at)}</div>
+                          {slot.accepted_at ? <div>Accepted: {formatDateTime(slot.accepted_at)}</div> : null}
+                          {slot.declined_at ? <div>Declined: {formatDateTime(slot.declined_at)}</div> : null}
 
                           <div
                             className="mt-3 text-[#5f5245]"
