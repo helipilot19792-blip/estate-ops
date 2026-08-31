@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { trackFeatureUsage } from "@/lib/feature-usage";
+import { getCleanerOfferTimeRemainingMs } from "@/lib/cleaner-offer-countdown";
 import PushNotificationControl from "@/components/cleaner/pushnotificationcontrol";
 import { useTeamBulletinSummary } from "@/lib/use-team-bulletin-summary";
 
@@ -446,34 +447,24 @@ function formatDateTimeLabel(dateString: string | null | undefined) {
   if (!dateString) return "—";
   const d = new Date(dateString);
   if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString();
-}
-
-function getResponseWindowHours(jobDate: string | null, now: Date) {
-  if (!jobDate) return 8;
-
-  const job = new Date(`${jobDate}T12:00:00`);
-  const diffHours = (job.getTime() - now.getTime()) / (1000 * 60 * 60);
-
-  if (diffHours > 24 * 7) return 48;
-  if (diffHours > 48) return 8;
-  return 2;
-}
-
-function getDeadline(item: CleanerJob, now: Date) {
-  if (!item.slot.offered_at) return null;
-
-  const offered = new Date(item.slot.offered_at);
-  if (Number.isNaN(offered.getTime())) return null;
-
-  const hours = getResponseWindowHours(item.jobDate, now);
-  return new Date(offered.getTime() + hours * 60 * 60 * 1000);
+  return d.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function getTimeRemainingMs(item: CleanerJob, now: Date) {
-  const deadline = getDeadline(item, now);
-  if (!deadline) return null;
-  return deadline.getTime() - now.getTime();
+  return getCleanerOfferTimeRemainingMs(
+    {
+      expiresAt: item.slot.expires_at,
+      offeredAt: item.slot.offered_at,
+      jobDate: item.jobDate,
+    },
+    now
+  );
 }
 
 function formatRemaining(ms: number) {

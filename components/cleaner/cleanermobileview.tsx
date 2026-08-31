@@ -740,6 +740,9 @@ export default function CleanerMobileView({
       const propertyAddress = itemProperty?.address || "No property address";
       const organizationName = itemProperty?.organization_name || null;
       const parsedNotes = getParsedNotes(item.job.notes);
+      const deadlineLabel = item.slot.expires_at
+        ? formatDateTimeLabel(item.slot.expires_at)
+        : null;
 
       return (
         <div
@@ -792,7 +795,9 @@ export default function CleanerMobileView({
               <p className={`mt-3 text-sm font-semibold ${countdownTone}`}>
                 {remainingMs < 0
                   ? `Overdue by ${formatRemaining(remainingMs)}`
-                  : `Accept within ${formatRemaining(remainingMs)}`}
+                  : deadlineLabel
+                    ? `Respond by ${deadlineLabel} · ${formatRemaining(remainingMs)} left`
+                    : `Accept within ${formatRemaining(remainingMs)}`}
               </p>
             ) : null}
           </button>
@@ -842,7 +847,9 @@ export default function CleanerMobileView({
                   <div className={`rounded-2xl border border-current/15 bg-[#100d0a] px-3 py-3 font-semibold ${countdownTone}`}>
                     {remainingMs < 0
                       ? `Overdue by ${formatRemaining(remainingMs)}`
-                      : `Accept within ${formatRemaining(remainingMs)}`}
+                      : deadlineLabel
+                        ? `Respond by ${deadlineLabel} · ${formatRemaining(remainingMs)} left`
+                        : `Accept within ${formatRemaining(remainingMs)}`}
                   </div>
                 ) : null}
 

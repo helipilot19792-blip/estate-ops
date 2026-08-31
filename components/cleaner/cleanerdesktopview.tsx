@@ -383,6 +383,9 @@ function JobCard({
   const isAccepted = selectedStatus === "accepted";
   const isInProgress = selectedStatus === "in_progress";
   const isCompleted = selectedStatus === "completed";
+  const deadlineLabel = item.slot.expires_at
+    ? formatDateTimeLabel(item.slot.expires_at)
+    : null;
 
   return (
     <div
@@ -428,7 +431,9 @@ function JobCard({
               <p className={`mt-2 text-sm font-semibold ${countdownTone}`}>
                 {remainingMs < 0
                   ? `Overdue by ${formatRemaining(remainingMs)}`
-                  : `Accept within ${formatRemaining(remainingMs)}`}
+                  : deadlineLabel
+                    ? `Respond by ${deadlineLabel} · ${formatRemaining(remainingMs)} left`
+                    : `Accept within ${formatRemaining(remainingMs)}`}
               </p>
             )}
           </div>
@@ -495,7 +500,9 @@ function JobCard({
                 <div className={`mt-3 text-sm font-semibold ${countdownTone}`}>
                   {remainingMs < 0
                     ? `Overdue by ${formatRemaining(remainingMs)}`
-                    : `Accept within ${formatRemaining(remainingMs)}`}
+                    : deadlineLabel
+                      ? `Respond by ${deadlineLabel} · ${formatRemaining(remainingMs)} left`
+                      : `Accept within ${formatRemaining(remainingMs)}`}
                 </div>
               )}
             </div>

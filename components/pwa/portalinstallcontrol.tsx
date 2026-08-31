@@ -235,7 +235,15 @@ export default function PortalInstallControl({
             Notification.permission === "granted" &&
             rememberedKey !== publicKey;
 
-          if (active && shouldRefreshExistingSubscription) {
+          if (active && existing && Notification.permission !== "granted") {
+            setStatus("ready");
+            setMessage(
+              Notification.permission === "denied"
+                ? "Phone or browser notifications are blocked. Allow notifications for this app, then tap Enable alerts."
+                : "Tap Enable alerts to allow phone notifications for this app."
+            );
+            resolvedStatus = true;
+          } else if (active && shouldRefreshExistingSubscription) {
             await existing.unsubscribe().catch(() => undefined);
             const refreshedSubscription = await registration.pushManager.subscribe({
               userVisibleOnly: true,
