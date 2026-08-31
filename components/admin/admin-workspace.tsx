@@ -1869,7 +1869,7 @@ export default function AdminPage() {
   const latestHomeLoadIdRef = useRef(0);
   const latestDataLoadIdRef = useRef<Partial<Record<DashboardDataScope, number>>>({});
   const adminDataLoadedRef = useRef(false);
-  const hiddenTodayCleaningsLoadedKeyRef = useRef<string | null>(null);
+  const hiddenTodayItemsLoadedKeyRef = useRef<string | null>(null);
   const [invoiceOwnerId, setInvoiceOwnerId] = useState("");
   const [invoicePropertyId, setInvoicePropertyId] = useState("");
   const [invoiceIssueDate, setInvoiceIssueDate] = useState(() => getTodayYmd());
@@ -2099,7 +2099,7 @@ export default function AdminPage() {
   const [showSupport, setShowSupport] = useState(false);
   const [showAdminNav, setShowAdminNav] = useState(false);
   const [expandedTodayProgressIds, setExpandedTodayProgressIds] = useState<Set<string>>(() => new Set());
-  const [hiddenTodayCleaningIds, setHiddenTodayCleaningIds] = useState<Set<string>>(() => new Set());
+  const [hiddenTodayItemIds, setHiddenTodayItemIds] = useState<Set<string>>(() => new Set());
   const [adminMenuOrientation, setAdminMenuOrientation] = useState<AdminMenuOrientation>("side");
   const [adminMenuOrder, setAdminMenuOrder] = useState<AdminSection[]>([]);
   const [adminMenuSeenCounts, setAdminMenuSeenCounts] = useState<Partial<Record<AdminSection, number>>>({});
@@ -2421,37 +2421,42 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (typeof window === "undefined" || !currentOrganizationId) {
-      hiddenTodayCleaningsLoadedKeyRef.current = null;
-      setHiddenTodayCleaningIds(new Set());
+      hiddenTodayItemsLoadedKeyRef.current = null;
+      setHiddenTodayItemIds(new Set());
       return;
     }
 
-    const storageKey = `admin-hidden-today-cleanings:${currentOrganizationId}`;
-    hiddenTodayCleaningsLoadedKeyRef.current = storageKey;
+    const storageKey = `admin-hidden-today-items:${currentOrganizationId}`;
+    const legacyStorageKey = `admin-hidden-today-cleanings:${currentOrganizationId}`;
+    hiddenTodayItemsLoadedKeyRef.current = storageKey;
 
     try {
-      const parsed = JSON.parse(window.localStorage.getItem(storageKey) || "null");
+      const parsed = JSON.parse(
+        window.localStorage.getItem(storageKey) ||
+          window.localStorage.getItem(legacyStorageKey) ||
+          "null"
+      );
       const savedIds =
         parsed?.date === todayYmd && Array.isArray(parsed?.ids)
           ? parsed.ids.filter((value: unknown): value is string => typeof value === "string")
           : [];
-      setHiddenTodayCleaningIds(new Set(savedIds));
+      setHiddenTodayItemIds(new Set(savedIds));
     } catch {
       window.localStorage.removeItem(storageKey);
-      setHiddenTodayCleaningIds(new Set());
+      setHiddenTodayItemIds(new Set());
     }
   }, [currentOrganizationId, todayYmd]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !currentOrganizationId) return;
-    const storageKey = `admin-hidden-today-cleanings:${currentOrganizationId}`;
-    if (hiddenTodayCleaningsLoadedKeyRef.current !== storageKey) return;
+    const storageKey = `admin-hidden-today-items:${currentOrganizationId}`;
+    if (hiddenTodayItemsLoadedKeyRef.current !== storageKey) return;
 
     window.localStorage.setItem(
       storageKey,
-      JSON.stringify({ date: todayYmd, ids: Array.from(hiddenTodayCleaningIds) })
+      JSON.stringify({ date: todayYmd, ids: Array.from(hiddenTodayItemIds) })
     );
-  }, [currentOrganizationId, hiddenTodayCleaningIds, todayYmd]);
+  }, [currentOrganizationId, hiddenTodayItemIds, todayYmd]);
 
   useEffect(() => {
     if (!adminExpandedCalendarDate) return;
@@ -10954,23 +10959,41 @@ This removes its linked members and deletes the grounds account.`
     });
   }
 
-  function hideCleaningFromToday(itemId: string, propertyName: string) {
+  function hideItemFromToday(item: {
+    id: string;
+    kind: string;
+    title: string;
+    wasteItems?: Array<{ id: string }>;
+  }) {
+    const isWaste = item.kind === "Waste";
+    const hiddenIds = isWaste && item.wasteItems?.length
+      ? item.wasteItems.map((wasteItem) => wasteItem.id)
+      : [item.id];
+    const subject = isWaste
+      ? item.wasteItems?.length
+        ? "today's waste reminders"
+        : `the waste pickup at ${item.title}`
+      : `the cleaning at ${item.title}`;
     const confirmed = window.confirm(
-      `Hide the cleaning at ${propertyName} from Today?\n\nThis only removes it from your admin Today list. It does not mark the job complete or change what the cleaner sees.`
+      `Hide ${subject} from Today?\n\nThis only removes ${isWaste ? "the reminder" : "the job"} from your admin Today list. It does not ${isWaste ? "change any property waste schedules" : "mark the job complete or change what the cleaner sees"}.`
     );
     if (!confirmed) return;
 
-    setHiddenTodayCleaningIds((current) => {
+    setHiddenTodayItemIds((current) => {
       const next = new Set(current);
-      next.add(itemId);
+      hiddenIds.forEach((id) => next.add(id));
       return next;
     });
     setExpandedTodayProgressIds((current) => {
       const next = new Set(current);
-      next.delete(itemId);
+      hiddenIds.forEach((id) => next.delete(id));
       return next;
     });
-    setActionMessage(`${propertyName} cleaning hidden from Today on this device.`);
+    setActionMessage(
+      isWaste
+        ? "Waste reminders hidden from Today on this device."
+        : `${item.title} cleaning hidden from Today on this device.`
+    );
   }
 
   function renderTodayProgress(item: {
@@ -11047,15 +11070,20 @@ This removes its linked members and deletes the grounds account.`
     );
   }
 
-  function renderHideCleaningFromToday(item: { id: string; kind: string; title: string }) {
-    if (item.kind !== "Cleaning") return null;
+  function renderHideItemFromToday(item: {
+    id: string;
+    kind: string;
+    title: string;
+    wasteItems?: Array<{ id: string }>;
+  }) {
+    if (item.kind !== "Cleaning" && item.kind !== "Waste") return null;
 
     return (
       <button
         type="button"
         onClick={(event) => {
           event.stopPropagation();
-          hideCleaningFromToday(item.id, item.title);
+          hideItemFromToday(item);
         }}
         className="mt-2 inline-flex items-center rounded-full border border-[#c8d7ef] bg-[#f8fbff] px-3 py-1.5 text-xs font-semibold text-[#45658f] transition hover:border-[#9bb7e5] hover:bg-[#eef5ff] focus:outline-none focus:ring-2 focus:ring-[#b9d1fb]"
       >
@@ -11114,7 +11142,7 @@ This removes its linked members and deletes the grounds account.`
         return (
           jobDate === todayYmd &&
           String(job.status || "").toLowerCase() !== "completed" &&
-          !hiddenTodayCleaningIds.has(`cleaning-${job.id}`)
+          !hiddenTodayItemIds.has(`cleaning-${job.id}`)
         );
       })
       .map((job) => {
@@ -11192,7 +11220,7 @@ This removes its linked members and deletes the grounds account.`
     return [...cleaningItems, ...groundsItems].sort((a, b) =>
       a.sortDate.localeCompare(b.sortDate) || a.propertyName.localeCompare(b.propertyName)
     );
-  }, [jobs, groundsJobs, properties, todayYmd, hiddenTodayCleaningIds, jobSlotsByJobId, turnoverChecklistItemsByJobId, staffJobStatusEventsByJobId, groundsJobSlots, cleanerAccounts, cleanerMembersByAccountId, groundsAccounts, groundsMembersByAccountId]);
+  }, [jobs, groundsJobs, properties, todayYmd, hiddenTodayItemIds, jobSlotsByJobId, turnoverChecklistItemsByJobId, staffJobStatusEventsByJobId, groundsJobSlots, cleanerAccounts, cleanerMembersByAccountId, groundsAccounts, groundsMembersByAccountId]);
 
   const occupiedTodayProperties = useMemo(() => {
     const propertyById = new Map(properties.map((property) => [property.id, property]));
@@ -11690,9 +11718,9 @@ This removes its linked members and deletes the grounds account.`
       upcomingHomeHappenings.filter(
         (item) =>
           item.dateYmd === todayYmd &&
-          (item.kind !== "Cleaning" || !hiddenTodayCleaningIds.has(item.id))
+          ((item.kind !== "Cleaning" && item.kind !== "Waste") || !hiddenTodayItemIds.has(item.id))
       ),
-    [hiddenTodayCleaningIds, upcomingHomeHappenings, todayYmd]
+    [hiddenTodayItemIds, upcomingHomeHappenings, todayYmd]
   );
 
   const futureHomeHappenings = useMemo(
@@ -14315,7 +14343,7 @@ This removes its linked members and deletes the grounds account.`
                               </div>
                             ) : null}
                             {renderTodayProgress(item)}
-                            {renderHideCleaningFromToday(item)}
+                            {renderHideItemFromToday(item)}
                           </div>
                           <div className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${dateClass}`}>
                             {item.label}
