@@ -33,6 +33,7 @@ type InvoiceRow = {
   property_id: string | null;
   status: string | null;
   due_date: string | null;
+  sent_at: string | null;
   total: number | null;
   currency_code?: string | null;
   last_reminder_sent_at?: string | null;
@@ -233,6 +234,16 @@ function daysBetween(startYmd: string, endYmd: string) {
   const start = new Date(`${startYmd}T00:00:00`).getTime();
   const end = new Date(`${endYmd}T00:00:00`).getTime();
   return Math.round((end - start) / (1000 * 60 * 60 * 24));
+}
+
+const MIN_INVOICE_REMINDER_DAYS_AFTER_SENT = 15;
+
+function hasInvoiceReminderGracePeriodElapsed(sentAt: string | null, nowMs = Date.now()) {
+  if (!sentAt) return false;
+  const sentAtMs = new Date(sentAt).getTime();
+  if (Number.isNaN(sentAtMs)) return false;
+
+  return nowMs - sentAtMs >= MIN_INVOICE_REMINDER_DAYS_AFTER_SENT * 24 * 60 * 60 * 1000;
 }
 
 function formatShortDate(dateYmd: string) {
@@ -443,7 +454,7 @@ async function generateActions(organizationId: string, token: string, origin: st
   ] = await Promise.all([
     serviceClient
       .from("owner_invoices")
-      .select("id,invoice_number,owner_account_id,property_id,status,due_date,total,currency_code,last_reminder_sent_at,reminder_count,company_name,payment_instructions")
+      .select("id,invoice_number,owner_account_id,property_id,status,due_date,sent_at,total,currency_code,last_reminder_sent_at,reminder_count,company_name,payment_instructions")
       .eq("organization_id", organizationId)
       .eq("status", "sent")
       .order("due_date", { ascending: true })
@@ -671,6 +682,7 @@ async function generateActions(organizationId: string, token: string, origin: st
 
   for (const invoice of (invoicesRes.data ?? []) as InvoiceRow[]) {
     if (!invoice.due_date) continue;
+    if (!hasInvoiceReminderGracePeriodElapsed(invoice.sent_at)) continue;
     const overdueDays = daysBetween(invoice.due_date, todayYmd);
     if (overdueDays < 0) continue;
 
