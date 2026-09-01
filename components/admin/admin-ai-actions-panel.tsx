@@ -117,6 +117,7 @@ type ProposedAction =
 type Props = {
   organizationId: string;
   visible?: boolean;
+  assistantRow?: boolean;
 };
 
 type DailyBrief = {
@@ -135,7 +136,7 @@ async function getAccessToken() {
   return session?.access_token || "";
 }
 
-export default function AdminAiActionsPanel({ organizationId, visible = true }: Props) {
+export default function AdminAiActionsPanel({ organizationId, visible = true, assistantRow = false }: Props) {
   const [actions, setActions] = useState<ProposedAction[]>([]);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [selectedCandidates, setSelectedCandidates] = useState<Record<string, string>>({});
@@ -391,7 +392,7 @@ export default function AdminAiActionsPanel({ organizationId, visible = true }: 
 
   if (!expanded) {
     return (
-      <div className="mb-6 flex justify-end">
+      <div className={assistantRow ? "flex justify-end" : "mb-6 flex justify-end"}>
         <button
           type="button"
           onClick={() => setExpanded(true)}
@@ -417,7 +418,7 @@ export default function AdminAiActionsPanel({ organizationId, visible = true }: 
   }
 
   return (
-    <section className="mb-6 rounded-[28px] border border-[#dbeafe] bg-[#f8fbff] p-5 shadow-[0_18px_45px_rgba(15,23,42,0.06)]">
+    <section className={`${assistantRow ? "w-full" : "mb-6"} rounded-[28px] border border-[#dbeafe] bg-[#f8fbff] p-5 shadow-[0_18px_45px_rgba(15,23,42,0.06)]`}>
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
           <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#3563a8]">AI Actions</div>

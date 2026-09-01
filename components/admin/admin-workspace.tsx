@@ -14144,8 +14144,6 @@ This removes its linked members and deletes the grounds account.`
           steps={adminOnboardingSteps}
         />
 
-        {currentOrganizationId ? <BookingGapWatch organizationId={currentOrganizationId} /> : null}
-
         <div className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
@@ -29999,7 +29997,10 @@ This removes its linked members and deletes the grounds account.`
         ) : null}
 
         {activeSection === "home" && currentOrganizationId ? (
-          <AdminAiActionsPanel organizationId={currentOrganizationId} />
+          <div className="mb-6 flex flex-wrap items-start justify-end gap-3">
+            <AdminAiActionsPanel organizationId={currentOrganizationId} assistantRow />
+            <BookingGapWatch organizationId={currentOrganizationId} assistantRow />
+          </div>
         ) : null}
 
         {currentOrganizationBilling && !isInternalWorkspace ? (

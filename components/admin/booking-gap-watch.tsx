@@ -35,7 +35,13 @@ function getUrgencyClasses(urgency: BookingGapSuggestion["urgency"]) {
   return "border-[#cfe1ff] bg-[#f3f8ff] text-[#3563a8]";
 }
 
-export default function BookingGapWatch({ organizationId }: { organizationId: string }) {
+export default function BookingGapWatch({
+  organizationId,
+  assistantRow = false,
+}: {
+  organizationId: string;
+  assistantRow?: boolean;
+}) {
   const [payload, setPayload] = useState<BookingGapWatchPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -159,7 +165,7 @@ export default function BookingGapWatch({ organizationId }: { organizationId: st
   }
 
   return (
-    <section className="overflow-hidden rounded-[30px] border border-[#dcc9a7] bg-[#fffdf8] shadow-[0_18px_45px_rgba(96,67,31,0.07)]">
+    <section className={`${assistantRow ? "w-full" : ""} overflow-hidden rounded-[30px] border border-[#dcc9a7] bg-[#fffdf8] shadow-[0_18px_45px_rgba(96,67,31,0.07)]`}>
       <div className="border-b border-[#eadfce] bg-[linear-gradient(135deg,#fff8e8_0%,#f8fbff_100%)] px-5 py-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-3">
