@@ -30,6 +30,7 @@ const TeamBulletinBoard = dynamic(() => import("@/components/team/team-bulletin"
 const AdminAiActionsPanel = dynamic(() => import("@/components/admin/admin-ai-actions-panel"), { ssr: false });
 const AdminBillingBanner = dynamic(() => import("@/components/admin/admin-billing-banner"), { ssr: false });
 const AdminOperationsAlerts = dynamic(() => import("@/components/admin/admin-operations-alerts"), { ssr: false });
+const BookingGapWatch = dynamic(() => import("@/components/admin/booking-gap-watch"), { ssr: false });
 
 function getCityFromAddress(address?: string | null) {
   if (!address) return "";
@@ -14142,6 +14143,8 @@ This removes its linked members and deletes the grounds account.`
           description="Work through these once for a new organization. Each step opens the area where the setup happens, and you can hide or dismiss this card anytime."
           steps={adminOnboardingSteps}
         />
+
+        {currentOrganizationId ? <BookingGapWatch organizationId={currentOrganizationId} /> : null}
 
         <div className="rounded-[30px] border border-[#e7ddd0] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.05)]">
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
