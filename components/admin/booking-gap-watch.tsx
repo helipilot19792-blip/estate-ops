@@ -42,10 +42,12 @@ export default function BookingGapWatch({ organizationId }: { organizationId: st
   const [actingKey, setActingKey] = useState("");
   const [message, setMessage] = useState("");
   const [expanded, setExpanded] = useState(false);
+  const [showEmptyDetails, setShowEmptyDetails] = useState(false);
 
   const loadSuggestions = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     setError("");
+    setMessage("");
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData.session?.access_token;
@@ -60,6 +62,7 @@ export default function BookingGapWatch({ organizationId }: { organizationId: st
         throw new Error(nextPayload?.error || "Could not scan booking gaps.");
       }
       setPayload(nextPayload);
+      setShowEmptyDetails(false);
     } catch (loadError) {
       if ((loadError as { name?: string })?.name === "AbortError") return;
       setError(loadError instanceof Error ? loadError.message : "Could not scan booking gaps.");
@@ -105,6 +108,7 @@ export default function BookingGapWatch({ organizationId }: { organizationId: st
         ...(current ?? { ok: true }),
         suggestions: (current?.suggestions ?? []).filter((item) => item.key !== suggestion.key),
       }));
+      setShowEmptyDetails(false);
       setMessage(
         action === "snoozed"
           ? "Suggestion snoozed for 7 days."
@@ -124,6 +128,35 @@ export default function BookingGapWatch({ organizationId }: { organizationId: st
     () => (expanded ? suggestions : suggestions.slice(0, 3)),
     [expanded, suggestions]
   );
+
+  if (payload && suggestions.length === 0 && !loading && !error && !showEmptyDetails) {
+    const compactStatus = message
+      ? message
+      : payload.seasonality?.isSlowSeason
+        ? "Slow-season mode · no urgent suggestions"
+        : "No promotion suggestions right now";
+
+    return (
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => setShowEmptyDetails(true)}
+          className="group inline-flex max-w-full items-center gap-3 rounded-full border border-[#d8c7ab] bg-white/96 px-4 py-2.5 text-left shadow-[0_14px_35px_rgba(36,28,21,0.08)] transition hover:-translate-y-0.5 hover:bg-[#fcfaf7]"
+        >
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#fff8e8] text-[#9a6b24] ring-1 ring-[#ddc99f]">
+            <Lightbulb size={18} />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold text-[#241c15]">Booking Gap Watch</span>
+            <span className="block truncate text-xs text-[#7f7263]">{compactStatus}</span>
+          </span>
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#f0fbf4] text-[#2f6b3f]">
+            <Check size={15} />
+          </span>
+        </button>
+      </div>
+    );
+  }
 
   return (
     <section className="overflow-hidden rounded-[30px] border border-[#dcc9a7] bg-[#fffdf8] shadow-[0_18px_45px_rgba(96,67,31,0.07)]">
@@ -145,15 +178,26 @@ export default function BookingGapWatch({ organizationId }: { organizationId: st
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => void loadSuggestions()}
-            disabled={loading}
-            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-semibold text-[#5f4c3b] transition hover:bg-[#fcfaf7] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
-            {loading ? "Scanning" : "Scan again"}
-          </button>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            {payload && suggestions.length === 0 ? (
+              <button
+                type="button"
+                onClick={() => setShowEmptyDetails(false)}
+                className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-semibold text-[#5f4c3b] transition hover:bg-[#fcfaf7]"
+              >
+                Minimize
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => void loadSuggestions()}
+              disabled={loading}
+              className="inline-flex items-center justify-center gap-2 rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-semibold text-[#5f4c3b] transition hover:bg-[#fcfaf7] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
+              {loading ? "Scanning" : "Scan again"}
+            </button>
+          </div>
         </div>
       </div>
 
