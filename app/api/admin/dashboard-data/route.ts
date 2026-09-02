@@ -239,6 +239,9 @@ export async function GET(request: Request) {
         .eq("organization_id", organizationId)
         .in("action_type", [
           "admin.reassign_cleaner_slot",
+          "admin.assign_self_cleaner",
+          "admin.release_cleaner_future_job_stranded",
+          "admin.approve_cleaner_release_request",
           "admin.send_job_offer_notifications",
           "admin.accept_cleaner_job_on_behalf",
           "admin.decline_cleaner_job_on_behalf",
@@ -246,6 +249,9 @@ export async function GET(request: Request) {
           "cleaner.portal_job_decline",
           "cleaner.email_job_accept",
           "cleaner.email_job_decline",
+          "cleaner.release_cleaner_slot",
+          "cleaner.release_cleaner_slot_stranded",
+          "ai.supervisor.turnover_rescue_approved",
           "calendar.cleaning_date_changed",
         ])
         .order("created_at", { ascending: false })

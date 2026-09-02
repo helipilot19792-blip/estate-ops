@@ -158,6 +158,7 @@ export async function GET(request: Request) {
       maintenanceFlagsRes,
       inspectionRulesRes,
       staffJobStatusEventsRes,
+      jobOfferAuditLogsRes,
       turnoverJobChecklistItemsRes,
     ] = await Promise.all([
       serviceClient
@@ -200,6 +201,29 @@ export async function GET(request: Request) {
         .eq("organization_id", organizationId)
         .order("created_at", { ascending: false })
         .limit(priorityOnly ? 25 : 100),
+      serviceClient
+        .from("audit_logs")
+        .select("id, organization_id, action_type, target_type, target_id, metadata, created_at")
+        .eq("organization_id", organizationId)
+        .in("action_type", [
+          "admin.reassign_cleaner_slot",
+          "admin.assign_self_cleaner",
+          "admin.release_cleaner_future_job_stranded",
+          "admin.approve_cleaner_release_request",
+          "admin.send_job_offer_notifications",
+          "admin.accept_cleaner_job_on_behalf",
+          "admin.decline_cleaner_job_on_behalf",
+          "cleaner.portal_job_accept",
+          "cleaner.portal_job_decline",
+          "cleaner.email_job_accept",
+          "cleaner.email_job_decline",
+          "cleaner.release_cleaner_slot",
+          "cleaner.release_cleaner_slot_stranded",
+          "ai.supervisor.turnover_rescue_approved",
+          "calendar.cleaning_date_changed",
+        ])
+        .order("created_at", { ascending: false })
+        .limit(500),
       priorityOnly
         ? emptyResult()
         : serviceClient
@@ -275,6 +299,10 @@ export async function GET(request: Request) {
           staffJobStatusEventsRes.error && isOptionalTableError(staffJobStatusEventsRes.error)
             ? []
             : staffJobStatusEventsRes.data ?? [],
+        jobOfferAuditLogs:
+          jobOfferAuditLogsRes.error && isOptionalTableError(jobOfferAuditLogsRes.error)
+            ? []
+            : jobOfferAuditLogsRes.data ?? [],
         turnoverJobChecklistItems:
           turnoverJobChecklistItemsRes.error && isOptionalTableError(turnoverJobChecklistItemsRes.error)
             ? []

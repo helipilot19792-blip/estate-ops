@@ -14,6 +14,7 @@ export type SlotDetails = {
   kind: JobNotificationKind;
   status: string | null;
   offeredAt: string | null;
+  expiresAt: string | null;
   jobDate: string | null;
   jobNotes: string | null;
   jobType: string | null;
@@ -200,7 +201,7 @@ export async function loadJobEmailSlotDetails(
 
   const { data: slot, error: slotError } = await (service
     .from(slotTable as any)
-    .select(`id, job_id, ${accountIdColumn}, status, offered_at`)
+    .select(`id, job_id, ${accountIdColumn}, status, offered_at, expires_at`)
     .eq("id", slotId)
     .maybeSingle()) as any;
 
@@ -244,6 +245,7 @@ export async function loadJobEmailSlotDetails(
     kind,
     status: slot.status || null,
     offeredAt: slot.offered_at || null,
+    expiresAt: slot.expires_at || null,
     jobDate: kind === "cleaner" ? getCleanerJobDate(job) : job.scheduled_for || null,
     jobNotes: job.notes || null,
     jobType: job.job_type || null,

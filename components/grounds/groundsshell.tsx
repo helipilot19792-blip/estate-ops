@@ -1158,18 +1158,26 @@ export default function GroundsShell({ mode }: GroundsShellProps) {
     setSelectionDismissed(false);
 
     try {
-      const { error } = await supabase
+      let acceptQuery = supabase
         .from("grounds_job_slots")
         .update({
           status: "accepted",
           accepted_at: new Date().toISOString(),
           declined_at: null,
+          expires_at: null,
           accepted_by_profile_id: profile.id,
           declined_by_profile_id: null,
         })
-        .eq("id", acceptedSlotId);
+        .eq("id", acceptedSlotId)
+        .eq("status", selectedGroundsJob.slot.status)
+        .eq("grounds_account_id", selectedGroundsJob.slot.grounds_account_id);
+      acceptQuery = selectedGroundsJob.slot.offered_at
+        ? acceptQuery.eq("offered_at", selectedGroundsJob.slot.offered_at)
+        : acceptQuery.is("offered_at", null);
+      const { data: acceptedSlot, error } = await acceptQuery.select("id").maybeSingle();
 
       if (error) throw error;
+      if (!acceptedSlot) throw new Error("This grounds offer changed before it was accepted. Refresh and try again.");
 
       await refreshGroundsJobStaffing(selectedGroundsJob.job.id);
       await refreshGroundsJobs();
@@ -1193,18 +1201,26 @@ export default function GroundsShell({ mode }: GroundsShellProps) {
     setActionLoading("decline");
 
     try {
-      const { error } = await supabase
+      let declineQuery = supabase
         .from("grounds_job_slots")
         .update({
           status: "declined",
           declined_at: new Date().toISOString(),
           accepted_at: null,
+          expires_at: null,
           declined_by_profile_id: profile.id,
           accepted_by_profile_id: null,
         })
-        .eq("id", selectedGroundsJob.slot.id);
+        .eq("id", selectedGroundsJob.slot.id)
+        .eq("status", selectedGroundsJob.slot.status)
+        .eq("grounds_account_id", selectedGroundsJob.slot.grounds_account_id);
+      declineQuery = selectedGroundsJob.slot.offered_at
+        ? declineQuery.eq("offered_at", selectedGroundsJob.slot.offered_at)
+        : declineQuery.is("offered_at", null);
+      const { data: declinedSlot, error } = await declineQuery.select("id").maybeSingle();
 
       if (error) throw error;
+      if (!declinedSlot) throw new Error("This grounds offer changed before it was declined. Refresh and try again.");
 
       const declinedSlotId = selectedGroundsJob.slot.id;
       await refreshGroundsJobStaffing(selectedGroundsJob.job.id);

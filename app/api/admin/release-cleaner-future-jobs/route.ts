@@ -2,7 +2,12 @@ import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { writeAuditLog } from "@/lib/server/audit-log";
 import { sendJobOfferDigestEmailForSlots, sendJobOfferEmailsForSlots } from "@/lib/server/job-notifications";
-import { getCleanerOfferExpiresAtForDailySweep } from "@/lib/server/cleaner-offer-deadlines";
+import {
+  getCleanerOfferExpiresAtForDailySweep,
+  isCleanerJobDatePast,
+} from "@/lib/server/cleaner-offer-deadlines";
+import { loadPreviouslyDeclinedCleanerIds } from "@/lib/server/cleaner-training-rotation";
+import { refreshJobStaffing } from "@/lib/server/job-email-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -16,11 +21,6 @@ const supabase = createClient(
 
 type ReleaseMode = "reoffer_to_backups" | "leave_unassigned";
 type NotifyMode = "digest" | "immediate" | "none";
-
-function getTodayYmd() {
-  const d = new Date();
-  return d.toISOString().slice(0, 10);
-}
 
 function extractCheckoutDate(notes: string | null): string | null {
   if (!notes) return null;
@@ -95,19 +95,32 @@ export async function POST(req: NextRequest) {
 
     const jobIds = [...new Set(slots.map((s) => s.job_id))];
 
-    const { data: jobs } = await supabase
+    const { data: jobs, error: jobsError } = await supabase
       .from("turnover_jobs")
       .select("id, property_id, scheduled_for, notes")
       .in("id", jobIds);
+    if (jobsError) throw jobsError;
 
     const jobsMap = new Map(jobs?.map((j) => [j.id, j]) || []);
 
-    const today = getTodayYmd();
+    const { data: siblingSlots, error: siblingSlotsError } = await supabase
+      .from("turnover_job_slots")
+      .select("id, job_id, cleaner_account_id, status")
+      .in("job_id", jobIds);
+    if (siblingSlotsError) throw siblingSlotsError;
+    const unavailableCleanerIdsByJobId = new Map<string, Set<string>>();
+    for (const siblingSlot of siblingSlots ?? []) {
+      if (!["offered", "accepted", "in_progress", "completed"].includes(String(siblingSlot.status || "").toLowerCase())) continue;
+      if (!siblingSlot.cleaner_account_id) continue;
+      const unavailableCleanerIds = unavailableCleanerIdsByJobId.get(siblingSlot.job_id) ?? new Set<string>();
+      unavailableCleanerIds.add(siblingSlot.cleaner_account_id);
+      unavailableCleanerIdsByJobId.set(siblingSlot.job_id, unavailableCleanerIds);
+    }
 
     const futureSlots = slots.filter((slot) => {
       const job = jobsMap.get(slot.job_id);
       const jobDate = job ? getJobDate(job) : null;
-      return jobDate && jobDate >= today;
+      return jobDate && !isCleanerJobDatePast(jobDate);
     });
 
     if (futureSlots.length === 0) {
@@ -160,25 +173,33 @@ export async function POST(req: NextRequest) {
 
     const propertyIds = [...new Set(futureSlots.map((s) => jobsMap.get(s.job_id)?.property_id))];
 
-    const { data: assignments } = await supabase
+    const { data: assignments, error: assignmentsError } = await supabase
       .from("property_cleaner_account_assignments")
       .select("*")
       .in("property_id", propertyIds)
       .order("priority", { ascending: true });
+    if (assignmentsError) throw assignmentsError;
 
     const assignmentCleanerIds = [
       ...new Set((assignments || []).map((assignment) => assignment.cleaner_account_id).filter(Boolean)),
     ];
-    const { data: assignmentCleanerAccounts } = assignmentCleanerIds.length
-      ? await supabase.from("cleaner_accounts").select("id, display_name").in("id", assignmentCleanerIds)
-      : { data: [] };
+    const { data: assignmentCleanerAccounts, error: assignmentCleanerAccountsError } = assignmentCleanerIds.length
+      ? await supabase.from("cleaner_accounts").select("id, display_name, active").in("id", assignmentCleanerIds)
+      : { data: [], error: null };
+    if (assignmentCleanerAccountsError) throw assignmentCleanerAccountsError;
     const cleanerNameById = new Map(
       (assignmentCleanerAccounts || []).map((account) => [account.id, account.display_name || null])
+    );
+    const activeCleanerIds = new Set(
+      (assignmentCleanerAccounts || [])
+        .filter((account) => account.active !== false)
+        .map((account) => account.id)
     );
 
     const assignmentMap = new Map<string, any[]>();
 
     for (const a of assignments || []) {
+      if (!activeCleanerIds.has(a.cleaner_account_id)) continue;
       if (!assignmentMap.has(a.property_id)) {
         assignmentMap.set(a.property_id, []);
       }
@@ -187,7 +208,9 @@ export async function POST(req: NextRequest) {
 
     let reoffered = 0;
     let stranded = 0;
+    let skippedBecauseChanged = 0;
     const reofferedSlotIds: string[] = [];
+    const changedJobIds = new Set<string>();
 
     for (const slot of futureSlots) {
       const job = jobsMap.get(slot.job_id);
@@ -199,9 +222,15 @@ export async function POST(req: NextRequest) {
 
       if (mode === "reoffer_to_backups") {
         const assignmentsForProperty = assignmentMap.get(job.property_id) || [];
+        const previouslyDeclinedCleanerIds = await loadPreviouslyDeclinedCleanerIds(supabase, slot.job_id);
+        const unavailableCleanerIds = unavailableCleanerIdsByJobId.get(slot.job_id) ?? new Set<string>();
 
         for (const a of assignmentsForProperty) {
-          if (a.cleaner_account_id !== cleanerAccountId) {
+          if (
+            a.cleaner_account_id !== cleanerAccountId &&
+            !previouslyDeclinedCleanerIds.has(a.cleaner_account_id) &&
+            !unavailableCleanerIds.has(a.cleaner_account_id)
+          ) {
             replacementCleanerId = a.cleaner_account_id;
             break;
           }
@@ -210,14 +239,17 @@ export async function POST(req: NextRequest) {
 
       if (replacementCleanerId) {
         const replacementCleanerName = cleanerNameById.get(replacementCleanerId) || null;
+        const now = new Date();
+        const offeredAt = now.toISOString();
+        const expiresAt = getCleanerOfferExpiresAtForDailySweep(jobDate, now);
 
-        await supabase
+        const { data: updatedSlot, error: updateError } = await supabase
           .from("turnover_job_slots")
           .update({
             cleaner_account_id: replacementCleanerId,
             status: "offered",
-            offered_at: new Date().toISOString(),
-            expires_at: getCleanerOfferExpiresAtForDailySweep(jobDate),
+            offered_at: offeredAt,
+            expires_at: expiresAt,
             accepted_at: null,
             declined_at: null,
             accepted_by_profile_id: null,
@@ -229,7 +261,16 @@ export async function POST(req: NextRequest) {
             offer_reminder_push_sent_at: null,
             day_of_reminder_push_sent_at: null,
           })
-          .eq("id", slot.id);
+          .eq("id", slot.id)
+          .eq("cleaner_account_id", cleanerAccountId)
+          .eq("status", "accepted")
+          .select("id")
+          .maybeSingle();
+        if (updateError) throw updateError;
+        if (!updatedSlot) {
+          skippedBecauseChanged += 1;
+          continue;
+        }
 
         await writeAuditLog(supabase, {
           actorProfileId: currentProfile.id,
@@ -247,30 +288,77 @@ export async function POST(req: NextRequest) {
             previous_cleaner_name: cleanerAccount.display_name || null,
             previous_status: slot.status,
             previous_offered_at: slot.offered_at,
+            previous_expires_at: slot.expires_at,
             previous_accepted_at: slot.accepted_at,
             previous_declined_at: slot.declined_at,
             new_cleaner_account_id: replacementCleanerId,
             new_cleaner_name: replacementCleanerName,
+            new_offered_at: offeredAt,
+            new_expires_at: expiresAt,
           },
         });
 
         reoffered++;
         reofferedSlotIds.push(slot.id);
+        changedJobIds.add(slot.job_id);
       } else {
-        await supabase
+        const { data: updatedSlot, error: updateError } = await supabase
           .from("turnover_job_slots")
           .update({
             cleaner_account_id: null,
             status: "stranded",
+            offered_at: null,
+            expires_at: null,
             accepted_at: null,
             declined_at: null,
             accepted_by_profile_id: null,
             declined_by_profile_id: null,
+            offer_email_sent_at: null,
+            offer_reminder_sent_at: null,
+            day_of_reminder_sent_at: null,
+            offer_push_sent_at: null,
+            offer_reminder_push_sent_at: null,
+            day_of_reminder_push_sent_at: null,
           })
-          .eq("id", slot.id);
+          .eq("id", slot.id)
+          .eq("cleaner_account_id", cleanerAccountId)
+          .eq("status", "accepted")
+          .select("id")
+          .maybeSingle();
+        if (updateError) throw updateError;
+        if (!updatedSlot) {
+          skippedBecauseChanged += 1;
+          continue;
+        }
+
+        await writeAuditLog(supabase, {
+          actorProfileId: currentProfile.id,
+          actorEmail: currentProfile.email || user.email || null,
+          actorRole: currentProfile.role,
+          organizationId: cleanerAccount.organization_id,
+          actionType: "admin.release_cleaner_future_job_stranded",
+          targetType: "turnover_job_slot",
+          targetId: slot.id,
+          metadata: {
+            job_id: slot.job_id,
+            slot_number: slot.slot_number,
+            previous_cleaner_account_id: cleanerAccount.id,
+            previous_cleaner_name: cleanerAccount.display_name || null,
+            previous_status: slot.status,
+            previous_offered_at: slot.offered_at,
+            previous_expires_at: slot.expires_at,
+            previous_accepted_at: slot.accepted_at,
+            release_source: "release_cleaner_future_jobs",
+          },
+        });
 
         stranded++;
+        changedJobIds.add(slot.job_id);
       }
+    }
+
+    for (const changedJobId of changedJobIds) {
+      await refreshJobStaffing(supabase, "cleaner", changedJobId);
     }
 
     let notificationResult: Awaited<ReturnType<typeof sendJobOfferEmailsForSlots>> | Awaited<ReturnType<typeof sendJobOfferDigestEmailForSlots>> | null = null;
@@ -292,9 +380,10 @@ export async function POST(req: NextRequest) {
 
     return Response.json({
       ok: true,
-      affected: futureSlots.length,
+      affected: reoffered + stranded,
       reoffered,
       stranded,
+      skippedBecauseChanged,
       notifyMode,
       notificationResult,
       notificationErrors: notificationResult?.errors ?? [],

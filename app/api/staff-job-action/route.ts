@@ -2,8 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendAdminJobStatusPush } from "@/lib/server/admin-job-status-notifications";
 import { sendJobOfferEmailsForSlots } from "@/lib/server/job-notifications";
-import { reofferExpiredCleanerTrainingSlot } from "@/lib/server/cleaner-training-rotation";
-import { getCleanerOfferExpiresAtForDailySweep } from "@/lib/server/cleaner-offer-deadlines";
+import {
+  loadPreviouslyDeclinedCleanerIds,
+  reofferExpiredCleanerTrainingSlot,
+} from "@/lib/server/cleaner-training-rotation";
+import {
+  getCleanerOfferExpiresAtForDailySweep,
+  isCleanerJobDatePast,
+} from "@/lib/server/cleaner-offer-deadlines";
 import { writeAuditLog } from "@/lib/server/audit-log";
 import { detectSameDayCleanerConflicts } from "@/lib/server/same-day-cleaner-conflicts";
 
@@ -204,14 +210,14 @@ export async function POST(request: NextRequest) {
 
     let slotResult = await service
       .from("turnover_job_slots")
-      .select("id, job_id, cleaner_account_id, status, offered_at, started_at, started_by_profile_id")
+      .select("id, job_id, cleaner_account_id, status, offered_at, expires_at, started_at, started_by_profile_id")
       .eq("id", slotId)
       .maybeSingle();
 
     if (slotResult.error?.code === "42703") {
       slotResult = await service
         .from("turnover_job_slots")
-        .select("id, job_id, cleaner_account_id, status, offered_at")
+        .select("id, job_id, cleaner_account_id, status, offered_at, expires_at")
         .eq("id", slotId)
         .maybeSingle();
     }
@@ -319,8 +325,7 @@ export async function POST(request: NextRequest) {
       }
 
       const jobDate = getJobDate(job);
-      const today = new Date().toISOString().slice(0, 10);
-      if (!jobDate || jobDate < today) {
+      if (!jobDate || isCleanerJobDatePast(jobDate)) {
         return NextResponse.json(
           { error: "Only today's or future accepted jobs can be released to a backup cleaner." },
           { status: 409 }
@@ -337,7 +342,49 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: assignmentsError.message }, { status: 500 });
       }
 
-      const replacementCleanerId = pickNextBackupCleaner(assignments || [], slot.cleaner_account_id);
+      const assignmentCleanerIds = (assignments ?? [])
+        .map((assignment) => assignment.cleaner_account_id)
+        .filter((cleanerAccountId): cleanerAccountId is string => Boolean(cleanerAccountId));
+      const [
+        { data: assignmentAccounts, error: assignmentAccountsError },
+        previouslyDeclinedCleanerIds,
+        { data: siblingSlots, error: siblingSlotsError },
+      ] = await Promise.all([
+        assignmentCleanerIds.length > 0
+          ? service.from("cleaner_accounts").select("id, active").in("id", assignmentCleanerIds)
+          : Promise.resolve({ data: [], error: null }),
+        loadPreviouslyDeclinedCleanerIds(service, slot.job_id),
+        service
+          .from("turnover_job_slots")
+          .select("id, cleaner_account_id, status")
+          .eq("job_id", slot.job_id)
+          .neq("id", slot.id),
+      ]);
+      if (assignmentAccountsError) {
+        return NextResponse.json({ error: assignmentAccountsError.message }, { status: 500 });
+      }
+      if (siblingSlotsError) {
+        return NextResponse.json({ error: siblingSlotsError.message }, { status: 500 });
+      }
+      const activeCleanerIds = new Set(
+        (assignmentAccounts ?? [])
+          .filter((account) => account.active !== false)
+          .map((account) => account.id)
+      );
+      const unavailableCleanerIds = new Set(
+        (siblingSlots ?? [])
+          .filter((sibling) => ["offered", "accepted", "in_progress", "completed"].includes(String(sibling.status || "").toLowerCase()))
+          .map((sibling) => sibling.cleaner_account_id)
+          .filter((cleanerAccountId): cleanerAccountId is string => Boolean(cleanerAccountId))
+      );
+      const eligibleAssignments = (assignments ?? []).filter((assignment) =>
+        assignment.cleaner_account_id === slot.cleaner_account_id ||
+        (Boolean(assignment.cleaner_account_id) &&
+          activeCleanerIds.has(assignment.cleaner_account_id!) &&
+          !previouslyDeclinedCleanerIds.has(assignment.cleaner_account_id!) &&
+          !unavailableCleanerIds.has(assignment.cleaner_account_id!))
+      );
+      const replacementCleanerId = pickNextBackupCleaner(eligibleAssignments, slot.cleaner_account_id);
       if (!replacementCleanerId) {
         const { data: strandedSlot, error: strandError } = await service
           .from("turnover_job_slots")
@@ -386,6 +433,8 @@ export async function POST(request: NextRequest) {
             job_id: slot.job_id,
             previous_cleaner_account_id: slot.cleaner_account_id,
             previous_status: slot.status,
+            previous_offered_at: slot.offered_at,
+            previous_expires_at: slot.expires_at,
             released_by_profile_id: user.id,
             reason: "no_backup_cleaner",
           },
@@ -448,6 +497,7 @@ export async function POST(request: NextRequest) {
         })
         .eq("id", slot.id)
         .eq("cleaner_account_id", slot.cleaner_account_id)
+        .eq("status", "accepted")
         .select("id, job_id, status, cleaner_account_id")
         .maybeSingle();
 
@@ -476,7 +526,10 @@ export async function POST(request: NextRequest) {
           new_cleaner_account_id: replacementCleaner.id,
           new_cleaner_name: replacementCleaner.display_name || null,
           previous_status: slot.status,
+          previous_offered_at: slot.offered_at,
+          previous_expires_at: slot.expires_at,
           released_by_profile_id: user.id,
+          reassign_source: "cleaner_release_to_backup",
         },
       });
 
@@ -574,6 +627,8 @@ export async function POST(request: NextRequest) {
           property_id: auditJob.property_id || null,
           scheduled_for: auditJob.scheduled_for || null,
           cleaner_account_id: updatedSlot.cleaner_account_id || slot.cleaner_account_id || null,
+          previous_offered_at: slot.offered_at || null,
+          previous_expires_at: slot.expires_at || null,
           previous_status: slot.status || null,
           resulting_status: updatedSlot.status || null,
         },

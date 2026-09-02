@@ -275,7 +275,7 @@ export async function POST(request: NextRequest) {
 
     const { data: slot, error: slotError } = await service
       .from("turnover_job_slots")
-      .select("id, slot_number")
+      .select("id, slot_number, cleaner_account_id, status, offered_at, expires_at, accepted_at, declined_at")
       .eq("job_id", jobId)
       .not("status", "in", "(accepted,in_progress,completed)")
       .order("slot_number", { ascending: true })
@@ -288,7 +288,7 @@ export async function POST(request: NextRequest) {
     }
 
     const now = new Date().toISOString();
-    const { data: updatedSlot, error: updateSlotError } = await service
+    let updateSlotQuery = service
       .from("turnover_job_slots")
       .update({
         cleaner_account_id: cleanerAccountId,
@@ -301,11 +301,22 @@ export async function POST(request: NextRequest) {
         declined_by_profile_id: null,
       })
       .eq("id", slot.id)
+      .eq("status", slot.status);
+    updateSlotQuery = slot.cleaner_account_id
+      ? updateSlotQuery.eq("cleaner_account_id", slot.cleaner_account_id)
+      : updateSlotQuery.is("cleaner_account_id", null);
+    updateSlotQuery = slot.offered_at
+      ? updateSlotQuery.eq("offered_at", slot.offered_at)
+      : updateSlotQuery.is("offered_at", null);
+    const { data: updatedSlot, error: updateSlotError } = await updateSlotQuery
       .select("id")
-      .single();
+      .maybeSingle();
 
     if (updateSlotError || !updatedSlot) {
-      return NextResponse.json({ error: updateSlotError?.message || "Could not assign you to this job." }, { status: 500 });
+      return NextResponse.json(
+        { error: updateSlotError?.message || "The cleaner slot changed before you were assigned. Refresh and try again." },
+        { status: updateSlotError ? 500 : 409 }
+      );
     }
 
     await updateJobStaffing(jobId);
@@ -316,10 +327,21 @@ export async function POST(request: NextRequest) {
       actorRole: profile.role,
       organizationId,
       actionType: "admin.assign_self_cleaner",
-      targetType: "turnover_job",
-      targetId: jobId,
+      targetType: "turnover_job_slot",
+      targetId: slot.id,
       metadata: {
+        job_id: jobId,
+        slot_number: slot.slot_number,
+        reassign_source: "admin_assign_self",
+        previous_cleaner_account_id: slot.cleaner_account_id,
+        previous_status: slot.status,
+        previous_offered_at: slot.offered_at,
+        previous_expires_at: slot.expires_at,
+        previous_accepted_at: slot.accepted_at,
+        previous_declined_at: slot.declined_at,
         cleaner_account_id: cleanerAccountId,
+        new_cleaner_account_id: cleanerAccountId,
+        new_offered_at: now,
         slot_id: updatedSlot.id,
         organization_type: organization.organization_type,
       },

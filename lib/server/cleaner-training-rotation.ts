@@ -163,7 +163,7 @@ async function getCleanerDisplayName(service: ServiceClient, cleanerAccountId?: 
   return data?.display_name || null;
 }
 
-async function loadPreviouslyDeclinedCleanerIds(service: ServiceClient, jobId: string) {
+export async function loadPreviouslyDeclinedCleanerIds(service: ServiceClient, jobId: string) {
   const declinedCleanerIds = new Set<string>();
   const { data, error } = await service
     .from("audit_logs")
@@ -183,6 +183,13 @@ async function loadPreviouslyDeclinedCleanerIds(service: ServiceClient, jobId: s
 
     if (actionType === "cleaner.email_job_decline") {
       const cleanerAccountId = String(metadata.offered_account_id || "").trim();
+      if (cleanerAccountId) declinedCleanerIds.add(cleanerAccountId);
+    }
+
+    if (actionType === "admin.decline_cleaner_job_on_behalf") {
+      const cleanerAccountId = String(
+        metadata.cleaner_account_id || metadata.offered_account_id || ""
+      ).trim();
       if (cleanerAccountId) declinedCleanerIds.add(cleanerAccountId);
     }
 
@@ -227,13 +234,19 @@ export async function applyCleanerTrainingRotationToJob(
   const rotationOrder = rotateAssignments(activeAssignments, property.cleaner_rotation_next_cleaner_account_id);
   const { data: slots, error: slotsError } = await service
     .from("turnover_job_slots")
-    .select("id, slot_number")
+    .select("id, slot_number, status, cleaner_account_id")
     .eq("job_id", jobId)
     .order("slot_number", { ascending: true });
 
   if (slotsError) throw new Error(slotsError.message);
 
   const slotRows = slots ?? [];
+  const existingOfferedSlotIds = slotRows
+    .filter((slot: any) => slot.status === "offered" && slot.cleaner_account_id)
+    .map((slot: any) => slot.id);
+  if (existingOfferedSlotIds.length > 0) {
+    return { offeredSlotIds: existingOfferedSlotIds };
+  }
   const assignedCount = Math.min(slotRows.length, rotationOrder.length);
   if (assignedCount === 0) return { offeredSlotIds: [] };
 
@@ -241,9 +254,11 @@ export async function applyCleanerTrainingRotationToJob(
   const nowIso = now.toISOString();
   const expiresAt = getCleanerOfferExpiresAtForDailySweep(getCleanerJobDate(job), now);
   const offeredSlotIds: string[] = [];
+  let successfulAssignments = 0;
 
   for (let index = 0; index < assignedCount; index += 1) {
-    const { data: updatedSlot, error: slotUpdateError } = await service
+    const slot = slotRows[index];
+    let slotUpdateQuery = service
       .from("turnover_job_slots")
       .update({
         cleaner_account_id: rotationOrder[index].cleaner_account_id,
@@ -261,15 +276,23 @@ export async function applyCleanerTrainingRotationToJob(
         offer_reminder_push_sent_at: null,
         day_of_reminder_push_sent_at: null,
       })
-      .eq("id", slotRows[index].id)
+      .eq("id", slot.id)
+      .eq("status", slot.status);
+    slotUpdateQuery = slot.cleaner_account_id
+      ? slotUpdateQuery.eq("cleaner_account_id", slot.cleaner_account_id)
+      : slotUpdateQuery.is("cleaner_account_id", null);
+    const { data: updatedSlot, error: slotUpdateError } = await slotUpdateQuery
       .select("id")
       .maybeSingle();
 
     if (slotUpdateError) throw new Error(slotUpdateError.message);
-    if (updatedSlot?.id) offeredSlotIds.push(updatedSlot.id);
+    if (updatedSlot?.id) {
+      offeredSlotIds.push(updatedSlot.id);
+      successfulAssignments += 1;
+    }
   }
 
-  const nextAssignment = rotationOrder[assignedCount % rotationOrder.length];
+  const nextAssignment = rotationOrder[successfulAssignments % rotationOrder.length];
   await updateNextCleanerPointer(service, property, nextAssignment?.cleaner_account_id || null);
   await refreshCleanerJobStaffing(service, jobId);
 
@@ -477,6 +500,7 @@ export async function reofferExpiredCleanerTrainingSlot(
         previous_cleaner_name: previousCleanerName,
         previous_status: slot.status,
         previous_offered_at: slot.offered_at,
+        previous_expires_at: slot.expires_at,
         previous_accepted_at: slot.accepted_at,
         previous_declined_at: slot.declined_at,
         new_cleaner_account_id: nextAssignment.cleaner_account_id,

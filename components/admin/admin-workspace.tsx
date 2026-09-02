@@ -21,6 +21,11 @@ import { useTeamBulletinSummary } from "@/lib/use-team-bulletin-summary";
 import { useI18n } from "@/components/i18n-provider";
 import { createStorageReference } from "@/lib/storage-reference";
 import { useStorageAssetUrls } from "@/lib/use-storage-asset-urls";
+import {
+  getUnrepresentedCleanerDeclines,
+  isCleanerReassignmentAuditAction,
+  isCleanerReleaseToStrandedAuditAction,
+} from "@/lib/cleaner-offer-history";
 
 import type { OnboardingStep } from "@/components/onboarding-checklist";
 
@@ -1786,6 +1791,7 @@ export default function AdminPage() {
   const [actingOnProfileId, setActingOnProfileId] = useState<string | null>(null);
   const [savingCalendars, setSavingCalendars] = useState(false);
   const [uploadingSop, setUploadingSop] = useState(false);
+  const [arrivalsExpanded, setArrivalsExpanded] = useState(false);
   const [jobsExpanded, setJobsExpanded] = useState(false);
   const [jobsListFilter, setJobsListFilter] = useState<JobsListFilter>("all");
   const [expandedNotificationSlotIds, setExpandedNotificationSlotIds] = useState<Set<string>>(() => new Set());
@@ -3545,7 +3551,11 @@ export default function AdminPage() {
     setMaintenanceFlags((data.maintenanceFlags ?? []) as MaintenanceFlagRow[]);
     setInspectionRules((data.inspectionRules ?? []) as PropertyInspectionRule[]);
     setStaffJobStatusEvents((data.staffJobStatusEvents ?? []) as StaffJobStatusEventRow[]);
-    setJobOfferAuditLogs((data.jobOfferAuditLogs ?? []) as JobOfferAuditLogRow[]);
+    if (Array.isArray(data.jobOfferAuditLogs)) {
+      setJobOfferAuditLogs(data.jobOfferAuditLogs as JobOfferAuditLogRow[]);
+    } else if (!preserveFullWorkspace) {
+      setJobOfferAuditLogs([]);
+    }
     setTurnoverJobChecklistItems((current) =>
       preserveFullWorkspace ? mergeById(current, nextTurnoverJobChecklistItems) : nextTurnoverJobChecklistItems
     );
@@ -12466,10 +12476,16 @@ This removes its linked members and deletes the grounds account.`
   };
 
   function getCleanerResponseSource(slot: JobSlot, action: "accept" | "decline") {
-    const matchingLog = (jobOfferAuditLogsBySlotId[slot.id] ?? []).find((log) =>
-      log.action_type.endsWith(`job_${action}`) ||
-      log.action_type === `admin.${action}_cleaner_job_on_behalf`
-    );
+    const matchingLog = (jobOfferAuditLogsBySlotId[slot.id] ?? []).find((log) => {
+      const isMatchingAction =
+        log.action_type.endsWith(`job_${action}`) ||
+        log.action_type === `admin.${action}_cleaner_job_on_behalf`;
+      if (!isMatchingAction) return false;
+      const respondingCleanerAccountId = String(
+        log.metadata?.cleaner_account_id || log.metadata?.offered_account_id || ""
+      ).trim();
+      return !respondingCleanerAccountId || respondingCleanerAccountId === slot.cleaner_account_id;
+    });
     if (!matchingLog) return "";
     if (matchingLog.action_type.startsWith("cleaner.portal_")) return " via cleaner portal";
     if (matchingLog.action_type.startsWith("cleaner.email_")) return " from the email link";
@@ -12480,6 +12496,7 @@ This removes its linked members and deletes the grounds account.`
   function getSlotOfferHistory(slot: JobSlot) {
     const history: StaffingHistoryEntry[] = [];
     const cleanerName = getCleanerAccountName(slot.cleaner_account_id);
+    const auditLogs = jobOfferAuditLogsBySlotId[slot.id] ?? [];
 
     if (slot.offered_at && cleanerName !== "Unassigned") {
       history.push({
@@ -12508,7 +12525,7 @@ This removes its linked members and deletes the grounds account.`
       });
     }
 
-    for (const log of jobOfferAuditLogsBySlotId[slot.id] ?? []) {
+    for (const log of auditLogs) {
       if (log.action_type === "admin.send_job_offer_notifications") {
         const sent = Number(log.metadata?.sent || 0);
         const pushSent = Number(log.metadata?.push_sent || 0);
@@ -12522,12 +12539,18 @@ This removes its linked members and deletes the grounds account.`
         continue;
       }
 
-      if (log.action_type !== "admin.reassign_cleaner_slot") continue;
-      const previousCleanerName = String(log.metadata?.previous_cleaner_name || "").trim();
-      if (!previousCleanerName) continue;
+      const isReassignment = isCleanerReassignmentAuditAction(log.action_type);
+      const isReleaseToStranded = isCleanerReleaseToStrandedAuditAction(log.action_type);
+      if (!isReassignment && !isReleaseToStranded) continue;
+      const previousCleanerAccountId = String(log.metadata?.previous_cleaner_account_id || "").trim();
+      const previousCleanerName =
+        String(log.metadata?.previous_cleaner_name || "").trim() ||
+        getCleanerAccountName(previousCleanerAccountId);
+      if (!previousCleanerAccountId && previousCleanerName === "Unassigned") continue;
       const previousStatus = String(log.metadata?.previous_status || "").trim().toLowerCase();
       const reassignSource = String(log.metadata?.reassign_source || "").trim().toLowerCase();
       const previousOfferedAt = String(log.metadata?.previous_offered_at || "").trim() || null;
+      const previousExpiresAt = String(log.metadata?.previous_expires_at || "").trim() || null;
       const previousDeclinedAt = String(log.metadata?.previous_declined_at || "").trim() || null;
       if (previousOfferedAt) {
         history.push({
@@ -12539,13 +12562,48 @@ This removes its linked members and deletes the grounds account.`
       }
       const wasDeclined = previousStatus === "declined" || reassignSource.endsWith("_declined");
       const wasExpired = reassignSource.endsWith("_expired") || reassignSource === "training_rotation_expired";
-      const suffix = wasDeclined ? "declined" : wasExpired ? "offer expired" : "was reassigned";
-      const outcomeAt = previousDeclinedAt || log.created_at || null;
+      const suffix = wasDeclined
+        ? "declined"
+        : wasExpired
+          ? "offer expired"
+          : isReleaseToStranded || log.action_type === "cleaner.release_cleaner_slot"
+            ? "released the job"
+            : "was reassigned";
+      const outcomeAt = previousDeclinedAt || (wasExpired ? previousExpiresAt : null) || log.created_at || null;
       history.push({
         id: `${log.id}-outcome`,
         tone: "previous",
         text: `${previousCleanerName} ${suffix}${outcomeAt ? ` on ${formatDateTime(outcomeAt)}` : ""}`,
         occurredAt: outcomeAt,
+      });
+    }
+
+    for (const decline of getUnrepresentedCleanerDeclines(auditLogs, {
+      cleanerAccountId: slot.cleaner_account_id,
+      status: slot.status,
+    })) {
+      const declinedCleanerName = getCleanerAccountName(decline.cleanerAccountId);
+      const source =
+        decline.source === "portal"
+          ? " via cleaner portal"
+          : decline.source === "email"
+            ? " from the email link"
+            : " by an admin on the cleaner's behalf";
+
+      if (decline.offeredAt) {
+        history.push({
+          id: `${decline.id}-offered`,
+          tone: "previous",
+          text: `Offered to ${declinedCleanerName} on ${formatDateTime(decline.offeredAt)}`,
+          occurredAt: decline.offeredAt,
+        });
+      }
+
+      history.push({
+        id: `${decline.id}-declined`,
+        tone: "previous",
+        text: `${declinedCleanerName} declined${source}${decline.declinedAt ? ` on ${formatDateTime(decline.declinedAt)}` : ""}`,
+        occurredAt: decline.declinedAt,
       });
     }
 
@@ -23491,47 +23549,60 @@ This removes its linked members and deletes the grounds account.`
         <>
         {recentCleanerArrivalEvents.length > 0 ? (
           <section className="rounded-[24px] border border-[#d9eadb] bg-[#f7fcf8] p-4 shadow-[0_12px_28px_rgba(35,107,48,0.06)]">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="text-[11px] uppercase tracking-[0.2em] text-[#3e7a4a]">Arrivals</div>
                 <h3 className="mt-1 text-base font-semibold text-[#234f2d]">Recent cleaner arrivals</h3>
               </div>
-              <span className="w-fit rounded-full border border-[#bbdfc0] bg-white px-3 py-1 text-xs font-medium text-[#236b30]">
-                {recentCleanerArrivalEvents.length}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="w-fit rounded-full border border-[#bbdfc0] bg-white px-3 py-1 text-xs font-medium text-[#236b30]">
+                  {recentCleanerArrivalEvents.length}
+                </span>
+                <button
+                  type="button"
+                  aria-expanded={arrivalsExpanded}
+                  aria-controls="recent-cleaner-arrivals-list"
+                  onClick={() => setArrivalsExpanded((current) => !current)}
+                  className="rounded-full border border-[#bbdfc0] bg-white px-3 py-1.5 text-xs font-semibold text-[#236b30] transition hover:bg-[#f0fbf2]"
+                >
+                  {arrivalsExpanded ? "Collapse" : "Expand"}
+                </button>
+              </div>
             </div>
 
-            <div className="mt-3 divide-y divide-[#d9eadb] rounded-[18px] border border-[#d9eadb] bg-white">
-              {recentCleanerArrivalEvents.map((event) => {
-                const propertyName = String(event.metadata?.property_name || "Property");
-                const accountName = String(event.metadata?.account_name || "Cleaner");
-                return (
-                  <div key={event.id} className="flex flex-col gap-2 px-3 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
-                    <div className="min-w-0">
-                      <div className="font-medium text-[#234f2d]">{accountName}</div>
-                      <div className="mt-0.5 text-[#5f7563]">
-                        {propertyName} - {formatDateTime(event.created_at)}
+            {arrivalsExpanded ? (
+              <div id="recent-cleaner-arrivals-list" className="mt-3 divide-y divide-[#d9eadb] rounded-[18px] border border-[#d9eadb] bg-white">
+                {recentCleanerArrivalEvents.map((event) => {
+                  const propertyName = String(event.metadata?.property_name || "Property");
+                  const accountName = String(event.metadata?.account_name || "Cleaner");
+                  return (
+                    <div key={event.id} className="flex flex-col gap-2 px-3 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="font-medium text-[#234f2d]">{accountName}</div>
+                        <div className="mt-0.5 text-[#5f7563]">
+                          {propertyName} - {formatDateTime(event.created_at)}
+                        </div>
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setJobsExpanded(true);
+                          setHighlightedJobId(event.job_id);
+                          setTimeout(() => {
+                            document
+                              .getElementById(`job-${event.job_id}`)
+                              ?.scrollIntoView({ behavior: "smooth", block: "center" });
+                          }, 50);
+                        }}
+                        className="w-fit rounded-full border border-[#bbdfc0] bg-[#f0fbf2] px-3 py-1.5 text-xs font-semibold text-[#236b30] transition hover:bg-[#e4f7e8]"
+                      >
+                        View job
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setJobsExpanded(true);
-                        setHighlightedJobId(event.job_id);
-                        setTimeout(() => {
-                          document
-                            .getElementById(`job-${event.job_id}`)
-                            ?.scrollIntoView({ behavior: "smooth", block: "center" });
-                        }, 50);
-                      }}
-                      className="w-fit rounded-full border border-[#bbdfc0] bg-[#f0fbf2] px-3 py-1.5 text-xs font-semibold text-[#236b30] transition hover:bg-[#e4f7e8]"
-                    >
-                      View job
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            ) : null}
           </section>
         ) : null}
 

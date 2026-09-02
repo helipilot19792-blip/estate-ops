@@ -169,6 +169,7 @@ export async function POST(request: NextRequest) {
         cleaner_account_id,
         status,
         offered_at,
+        expires_at,
         accepted_at,
         declined_at
       `)
@@ -205,7 +206,7 @@ export async function POST(request: NextRequest) {
 
     const { data: cleanerAccount, error: cleanerAccountError } = await service
       .from("cleaner_accounts")
-      .select("id, display_name")
+      .select("id, display_name, active")
       .eq("id", cleanerAccountId)
       .eq("organization_id", organizationId)
       .maybeSingle();
@@ -214,7 +215,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: cleanerAccountError.message }, { status: 500 });
     }
 
-    if (!cleanerAccount) {
+    if (!cleanerAccount || cleanerAccount.active === false) {
       return NextResponse.json({ error: "Cleaner account not found." }, { status: 404 });
     }
 
@@ -234,6 +235,22 @@ export async function POST(request: NextRequest) {
         { error: "That cleaner is not assigned to this property. Add them on the Assignments tab first." },
         { status: 400 }
       );
+    }
+
+    const { data: existingActiveSlot, error: existingActiveSlotError } = await service
+      .from("turnover_job_slots")
+      .select("id")
+      .eq("job_id", jobId)
+      .eq("cleaner_account_id", cleanerAccountId)
+      .in("status", ["offered", "accepted", "in_progress", "completed"])
+      .neq("id", slot.id)
+      .limit(1)
+      .maybeSingle();
+    if (existingActiveSlotError) {
+      return NextResponse.json({ error: existingActiveSlotError.message }, { status: 500 });
+    }
+    if (existingActiveSlot) {
+      return NextResponse.json({ error: "That cleaner is already assigned to another slot for this job." }, { status: 409 });
     }
 
     const previousCleanerId = slot.cleaner_account_id || null;
@@ -322,6 +339,7 @@ export async function POST(request: NextRequest) {
         previous_cleaner_name: previousCleanerName,
         previous_status: slot.status,
         previous_offered_at: slot.offered_at,
+        previous_expires_at: slot.expires_at,
         previous_accepted_at: slot.accepted_at,
         previous_declined_at: slot.declined_at,
         new_cleaner_account_id: cleanerAccount.id,

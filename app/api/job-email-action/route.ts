@@ -263,6 +263,8 @@ export async function POST(request: NextRequest) {
         metadata: {
           job_id: updatedSlot.job_id,
           offered_account_id: details.accountId,
+          previous_offered_at: details.offeredAt,
+          previous_expires_at: details.expiresAt,
           resulting_account_id: updatedSlot[accountIdColumn] || null,
           resulting_status: updatedSlot.status || null,
           offer_version: verification.offerVersion,

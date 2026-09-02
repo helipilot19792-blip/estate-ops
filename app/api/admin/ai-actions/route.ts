@@ -5,6 +5,7 @@ import { sendDirectProfileChatMessage } from "@/lib/server/direct-profile-chat";
 import { sendStaffPushNotifications } from "@/lib/server/staff-push-notifications";
 import { sendJobOfferEmailsForSlots } from "@/lib/server/job-notifications";
 import { getCleanerOfferExpiresAtForDailySweep } from "@/lib/server/cleaner-offer-deadlines";
+import { loadPreviouslyDeclinedCleanerIds } from "@/lib/server/cleaner-training-rotation";
 import { isMissingAuditLogTableError, writeAuditLog } from "@/lib/server/audit-log";
 import { formatCurrency, normalizeCurrencyCode } from "@/lib/currency";
 import {
@@ -1071,7 +1072,7 @@ export async function POST(request: NextRequest) {
           .maybeSingle(),
         serviceClient
           .from("turnover_job_slots")
-          .select("id,job_id,cleaner_account_id,status,offered_at,accepted_at,declined_at")
+          .select("id,job_id,cleaner_account_id,status,offered_at,expires_at,accepted_at,declined_at")
           .eq("id", slotId)
           .eq("job_id", jobId)
           .maybeSingle(),
@@ -1087,7 +1088,7 @@ export async function POST(request: NextRequest) {
       const [
         { data: cleaner, error: cleanerError },
         { data: assignment, error: assignmentError },
-        { data: priorDecline, error: priorDeclineError },
+        previouslyDeclinedCleanerIds,
       ] = await Promise.all([
         serviceClient
           .from("cleaner_accounts")
@@ -1101,22 +1102,14 @@ export async function POST(request: NextRequest) {
           .eq("property_id", job.property_id)
           .eq("cleaner_account_id", selectedCandidateAccountId)
           .maybeSingle(),
-        serviceClient
-          .from("turnover_job_slots")
-          .select("id")
-          .eq("job_id", jobId)
-          .eq("cleaner_account_id", selectedCandidateAccountId)
-          .eq("status", "declined")
-          .limit(1)
-          .maybeSingle(),
+        loadPreviouslyDeclinedCleanerIds(serviceClient, jobId),
       ]);
       if (cleanerError) throw new Error(cleanerError.message);
       if (assignmentError) throw new Error(assignmentError.message);
-      if (priorDeclineError) throw new Error(priorDeclineError.message);
       if (!cleaner || cleaner.active === false || !assignment) {
         return NextResponse.json({ ok: false, error: "That cleaner is no longer an active assignment for this property." }, { status: 409 });
       }
-      if (priorDecline) {
+      if (previouslyDeclinedCleanerIds.has(selectedCandidateAccountId)) {
         return NextResponse.json({ ok: false, error: "That cleaner already declined this turnover. Refresh for the next candidate." }, { status: 409 });
       }
 
@@ -1149,7 +1142,7 @@ export async function POST(request: NextRequest) {
       const expiresAt = getCleanerOfferExpiresAtForDailySweep(job.scheduled_for, now);
       const previousCleanerAccountId = slot.cleaner_account_id || null;
       const previousStatus = slot.status || null;
-      const { data: updatedSlot, error: updateError } = await serviceClient
+      let updateQuery = serviceClient
         .from("turnover_job_slots")
         .update({
           cleaner_account_id: selectedCandidateAccountId,
@@ -1169,7 +1162,14 @@ export async function POST(request: NextRequest) {
         })
         .eq("id", slotId)
         .eq("job_id", jobId)
-        .not("status", "in", "(accepted,in_progress,completed)")
+        .eq("status", slot.status);
+      updateQuery = slot.cleaner_account_id
+        ? updateQuery.eq("cleaner_account_id", slot.cleaner_account_id)
+        : updateQuery.is("cleaner_account_id", null);
+      updateQuery = slot.offered_at
+        ? updateQuery.eq("offered_at", slot.offered_at)
+        : updateQuery.is("offered_at", null);
+      const { data: updatedSlot, error: updateError } = await updateQuery
         .select("id")
         .maybeSingle();
       if (updateError) throw new Error(updateError.message);
@@ -1194,8 +1194,17 @@ export async function POST(request: NextRequest) {
           scheduled_for: job.scheduled_for,
           previous_cleaner_account_id: previousCleanerAccountId,
           previous_status: previousStatus,
+          previous_offered_at: slot.offered_at,
+          previous_expires_at: slot.expires_at,
+          previous_accepted_at: slot.accepted_at,
+          previous_declined_at: slot.declined_at,
+          reassign_source: "ai_supervisor_turnover_rescue",
           selected_cleaner_account_id: selectedCandidateAccountId,
           selected_cleaner_name: cleaner.display_name || null,
+          new_cleaner_account_id: selectedCandidateAccountId,
+          new_cleaner_name: cleaner.display_name || null,
+          new_offered_at: offeredAt,
+          new_expires_at: expiresAt,
           assignment_priority: assignment.priority ?? null,
           offer_expires_at: expiresAt,
           notification_result: notificationResult,

@@ -213,7 +213,7 @@ export async function POST(request: NextRequest) {
 
     const { data: slot, error: slotError } = await service
       .from("turnover_job_slots")
-      .select("id, job_id, cleaner_account_id, status, slot_number, accepted_at")
+      .select("id, job_id, cleaner_account_id, status, slot_number, offered_at, expires_at, accepted_at")
       .eq("id", slotId)
       .eq("job_id", jobId)
       .maybeSingle();
@@ -320,6 +320,9 @@ export async function POST(request: NextRequest) {
         slot_number: slot.slot_number,
         previous_cleaner_account_id: slot.cleaner_account_id,
         previous_status: slot.status,
+        previous_offered_at: slot.offered_at,
+        previous_expires_at: slot.expires_at,
+        previous_accepted_at: slot.accepted_at,
         source_request_event_id: requestEvent.id,
       },
     });

@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { writeAuditLog } from "@/lib/server/audit-log";
 import { sendJobCancellationNotificationsForJobs, sendJobOfferEmailsForSlots } from "@/lib/server/job-notifications";
 import { getCleanerOfferExpiresAtForDailySweep } from "@/lib/server/cleaner-offer-deadlines";
+import { loadPreviouslyDeclinedCleanerIds } from "@/lib/server/cleaner-training-rotation";
 
 export const dynamic = "force-dynamic";
 
@@ -211,7 +212,7 @@ export async function POST(request: NextRequest) {
 
     const { data: account, error: accountError } = await service
       .from("cleaner_accounts")
-      .select("id")
+      .select("id, active")
       .eq("id", cleanerAccountId)
       .eq("organization_id", organizationId)
       .maybeSingle();
@@ -220,7 +221,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: accountError.message }, { status: 500 });
     }
 
-    if (!account) {
+    if (!account || account.active === false) {
       return NextResponse.json({ error: "Cleaner account was not found in this organization." }, { status: 404 });
     }
 
@@ -240,6 +241,27 @@ export async function POST(request: NextRequest) {
         { error: "That cleaner is not assigned to this property. Add them on the Assignments tab first." },
         { status: 400 }
       );
+    }
+
+    const [{ data: existingActiveSlot, error: existingActiveSlotError }, previouslyDeclinedCleanerIds] = await Promise.all([
+      service
+        .from("turnover_job_slots")
+        .select("id")
+        .eq("job_id", jobId)
+        .eq("cleaner_account_id", cleanerAccountId)
+        .in("status", ["offered", "accepted", "in_progress", "completed"])
+        .limit(1)
+        .maybeSingle(),
+      loadPreviouslyDeclinedCleanerIds(service, jobId),
+    ]);
+    if (existingActiveSlotError) {
+      return NextResponse.json({ error: existingActiveSlotError.message }, { status: 500 });
+    }
+    if (existingActiveSlot) {
+      return NextResponse.json({ error: "That cleaner is already assigned to another slot for this job." }, { status: 409 });
+    }
+    if (previouslyDeclinedCleanerIds.has(cleanerAccountId)) {
+      return NextResponse.json({ error: "That cleaner already declined this job. Choose another cleaner." }, { status: 409 });
     }
 
     const { data: slot, error: slotError } = await service
@@ -279,6 +301,7 @@ export async function POST(request: NextRequest) {
         day_of_reminder_push_sent_at: null,
       })
       .eq("id", slot.id)
+      .or("status.eq.stranded,cleaner_account_id.is.null")
       .select("id")
       .maybeSingle();
 

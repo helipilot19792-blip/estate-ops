@@ -56,7 +56,7 @@ async function ensurePriorityOffersHaveDeadlines(
 ) {
   const { data: offerSlots, error: offerSlotsError } = await service
     .from("turnover_job_slots")
-    .select("id, offered_at")
+    .select("id, offered_at, expires_at")
     .eq("job_id", jobId)
     .eq("status", "offered")
     .not("cleaner_account_id", "is", null);
@@ -67,7 +67,7 @@ async function ensurePriorityOffersHaveDeadlines(
   if (offeredSlotIds.length === 0) {
     const { data: slots, error: slotsError } = await service
       .from("turnover_job_slots")
-      .select("id, slot_number")
+      .select("id, slot_number, status, cleaner_account_id, offered_at")
       .eq("job_id", jobId)
       .order("slot_number", { ascending: true });
     if (slotsError) throw new Error(slotsError.message);
@@ -101,7 +101,8 @@ async function ensurePriorityOffersHaveDeadlines(
       const expiresAt = getCleanerOfferExpiresAtForDailySweep(scheduledFor);
 
       for (let index = 0; index < assignableCount; index += 1) {
-        const { data: updatedSlot, error: updateError } = await service
+        const slot = slots![index];
+        let assignmentQuery = service
           .from("turnover_job_slots")
           .update({
             cleaner_account_id: activeAssignments[index].cleaner_account_id,
@@ -119,7 +120,15 @@ async function ensurePriorityOffersHaveDeadlines(
             offer_reminder_push_sent_at: null,
             day_of_reminder_push_sent_at: null,
           })
-          .eq("id", slots![index].id)
+          .eq("id", slot.id)
+          .eq("status", slot.status);
+        assignmentQuery = slot.cleaner_account_id
+          ? assignmentQuery.eq("cleaner_account_id", slot.cleaner_account_id)
+          : assignmentQuery.is("cleaner_account_id", null);
+        assignmentQuery = slot.offered_at
+          ? assignmentQuery.eq("offered_at", slot.offered_at)
+          : assignmentQuery.is("offered_at", null);
+        const { data: updatedSlot, error: updateError } = await assignmentQuery
           .select("id")
           .maybeSingle();
         if (updateError) throw new Error(updateError.message);
@@ -130,12 +139,20 @@ async function ensurePriorityOffersHaveDeadlines(
 
   if (offeredSlotIds.length === 0) return [];
 
-  const { error: alignExpiryError } = await service
-    .from("turnover_job_slots")
-    .update({ expires_at: getCleanerOfferExpiresAtForDailySweep(scheduledFor) })
-    .in("id", offeredSlotIds);
+  for (const offerSlot of offerSlots ?? []) {
+    if (offerSlot.expires_at) continue;
 
-  if (alignExpiryError) throw new Error(alignExpiryError.message);
+    const offeredAtDate = offerSlot.offered_at ? new Date(offerSlot.offered_at) : new Date();
+    const deadlineBase = Number.isNaN(offeredAtDate.getTime()) ? new Date() : offeredAtDate;
+    const { error: deadlineError } = await service
+      .from("turnover_job_slots")
+      .update({ expires_at: getCleanerOfferExpiresAtForDailySweep(scheduledFor, deadlineBase) })
+      .eq("id", offerSlot.id)
+      .eq("status", "offered")
+      .is("expires_at", null);
+
+    if (deadlineError) throw new Error(deadlineError.message);
+  }
 
   const firstOfferedAt = (offerSlots ?? [])
     .map((slot) => slot.offered_at)
