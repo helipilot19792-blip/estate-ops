@@ -14,6 +14,8 @@ type BookingGapWatchPayload = {
   seasonality?: BookingSeasonalitySignal;
   seasonallyConsolidatedCount?: number;
   actionsSupported?: boolean;
+  enabled?: boolean;
+  settingsSupported?: boolean;
 };
 
 function formatDateRange(startDate: string, endDate: string) {
@@ -35,6 +37,34 @@ function getUrgencyClasses(urgency: BookingGapSuggestion["urgency"]) {
   return "border-[#cfe1ff] bg-[#f3f8ff] text-[#3563a8]";
 }
 
+function GapWatchSwitch({
+  enabled,
+  disabled,
+  onToggle,
+}: {
+  enabled: boolean;
+  disabled: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={enabled}
+      aria-label={enabled ? "Turn Booking Gap Watch off" : "Turn Booking Gap Watch on"}
+      title={enabled ? "Turn Booking Gap Watch off" : "Turn Booking Gap Watch on"}
+      onClick={onToggle}
+      disabled={disabled}
+      className="inline-flex items-center gap-2 rounded-full border border-[#d8c7ab] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#5f4c3b] transition hover:bg-[#fcfaf7] disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      <span>{enabled ? "On" : "Off"}</span>
+      <span className={`relative h-5 w-9 rounded-full transition ${enabled ? "bg-[#2f7d4a]" : "bg-[#c9c2b8]"}`}>
+        <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition ${enabled ? "left-[18px]" : "left-0.5"}`} />
+      </span>
+    </button>
+  );
+}
+
 export default function BookingGapWatch({
   organizationId,
   assistantRow = false,
@@ -49,6 +79,7 @@ export default function BookingGapWatch({
   const [message, setMessage] = useState("");
   const [expanded, setExpanded] = useState(false);
   const [showEmptyDetails, setShowEmptyDetails] = useState(false);
+  const [updatingEnabled, setUpdatingEnabled] = useState(false);
 
   const loadSuggestions = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -129,6 +160,50 @@ export default function BookingGapWatch({
     }
   }
 
+  const watchEnabled = payload?.enabled !== false;
+
+  async function toggleWatch() {
+    const nextEnabled = !watchEnabled;
+    setUpdatingEnabled(true);
+    setError("");
+    setMessage("");
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) throw new Error("Please sign in again to update Booking Gap Watch.");
+
+      const response = await fetch("/api/admin/booking-gap-suggestions", {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ organizationId, action: "set_enabled", enabled: nextEnabled }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.ok) {
+        throw new Error(result?.error || "Could not update Booking Gap Watch.");
+      }
+
+      if (nextEnabled) {
+        await loadSuggestions();
+        setMessage("Booking Gap Watch turned on.");
+      } else {
+        setPayload((current) => ({
+          ...(current ?? { ok: true }),
+          enabled: false,
+          suggestions: [],
+          seasonality: undefined,
+          seasonallyConsolidatedCount: 0,
+          analyzedPropertyCount: 0,
+        }));
+        setShowEmptyDetails(false);
+        setMessage("Booking Gap Watch turned off.");
+      }
+    } catch (toggleError) {
+      setError(toggleError instanceof Error ? toggleError.message : "Could not update Booking Gap Watch.");
+    } finally {
+      setUpdatingEnabled(false);
+    }
+  }
+
   const suggestions = useMemo(() => payload?.suggestions ?? [], [payload?.suggestions]);
   const visibleSuggestions = useMemo(
     () => (expanded ? suggestions : suggestions.slice(0, 3)),
@@ -136,18 +211,20 @@ export default function BookingGapWatch({
   );
 
   if (payload && suggestions.length === 0 && !loading && !error && !showEmptyDetails) {
-    const compactStatus = message
+    const compactStatus = !watchEnabled
+      ? "Turned off for this organization"
+      : message
       ? message
       : payload.seasonality?.isSlowSeason
         ? "Slow-season mode · no urgent suggestions"
         : "No promotion suggestions right now";
 
     return (
-      <div className="flex justify-end">
+      <div className="group inline-flex max-w-full items-center rounded-full border border-[#d8c7ab] bg-white/96 shadow-[0_14px_35px_rgba(36,28,21,0.08)] transition hover:-translate-y-0.5 hover:bg-[#fcfaf7]">
         <button
           type="button"
           onClick={() => setShowEmptyDetails(true)}
-          className="group inline-flex max-w-full items-center gap-3 rounded-full border border-[#d8c7ab] bg-white/96 px-4 py-2.5 text-left shadow-[0_14px_35px_rgba(36,28,21,0.08)] transition hover:-translate-y-0.5 hover:bg-[#fcfaf7]"
+          className="inline-flex min-w-0 items-center gap-3 rounded-l-full py-2.5 pl-3 pr-2 text-left"
         >
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#fff8e8] text-[#9a6b24] ring-1 ring-[#ddc99f]">
             <Lightbulb size={18} />
@@ -156,10 +233,14 @@ export default function BookingGapWatch({
             <span className="block text-sm font-semibold text-[#241c15]">Booking Gap Watch</span>
             <span className="block truncate text-xs text-[#7f7263]">{compactStatus}</span>
           </span>
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#f0fbf4] text-[#2f6b3f]">
-            <Check size={15} />
-          </span>
         </button>
+        <div className="mr-2 border-l border-[#eadfce] pl-2">
+          <GapWatchSwitch
+            enabled={watchEnabled}
+            disabled={updatingEnabled || payload.settingsSupported === false}
+            onToggle={() => void toggleWatch()}
+          />
+        </div>
       </div>
     );
   }
@@ -177,14 +258,23 @@ export default function BookingGapWatch({
                 Booking Gap Watch
               </p>
               <h3 className="mt-1 text-xl font-semibold tracking-tight text-[#241c15]">
-                Promotion opportunities
+                {watchEnabled ? "Promotion opportunities" : "Booking Gap Watch is off"}
               </h3>
               <p className="mt-1 max-w-2xl text-sm leading-6 text-[#6f6255]">
-                Reviews synced reservations for approaching gaps and suggests a manual promotion when a date may need attention.
+                {watchEnabled
+                  ? "Reviews synced reservations for approaching gaps and suggests a manual promotion when a date may need attention."
+                  : "Turn it back on whenever you want the system to review calendars for promotion opportunities."}
               </p>
             </div>
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">
+            {payload ? (
+              <GapWatchSwitch
+                enabled={watchEnabled}
+                disabled={updatingEnabled || payload.settingsSupported === false}
+                onToggle={() => void toggleWatch()}
+              />
+            ) : null}
             {payload && suggestions.length === 0 ? (
               <button
                 type="button"
@@ -194,15 +284,17 @@ export default function BookingGapWatch({
                 Minimize
               </button>
             ) : null}
-            <button
-              type="button"
-              onClick={() => void loadSuggestions()}
-              disabled={loading}
-              className="inline-flex items-center justify-center gap-2 rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-semibold text-[#5f4c3b] transition hover:bg-[#fcfaf7] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
-              {loading ? "Scanning" : "Scan again"}
-            </button>
+            {watchEnabled ? (
+              <button
+                type="button"
+                onClick={() => void loadSuggestions()}
+                disabled={loading}
+                className="inline-flex items-center justify-center gap-2 rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm font-semibold text-[#5f4c3b] transition hover:bg-[#fcfaf7] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
+                {loading ? "Scanning" : "Scan again"}
+              </button>
+            ) : null}
           </div>
         </div>
       </div>
@@ -210,7 +302,9 @@ export default function BookingGapWatch({
       <div className="p-5">
         <div className="mb-4 flex flex-wrap items-center gap-2 text-xs font-semibold">
           <span className="rounded-full border border-[#d6e4f5] bg-[#f5f9ff] px-3 py-1.5 text-[#3563a8]">
-            {payload?.analyzedPropertyCount ?? 0} connected propert{payload?.analyzedPropertyCount === 1 ? "y" : "ies"}
+            {watchEnabled
+              ? `${payload?.analyzedPropertyCount ?? 0} connected ${payload?.analyzedPropertyCount === 1 ? "property" : "properties"}`
+              : "Off for this organization"}
           </span>
           <span className="rounded-full border border-[#eadfce] bg-white px-3 py-1.5 text-[#6f6255]">
             Suggestions only · no automatic pricing changes
@@ -228,7 +322,7 @@ export default function BookingGapWatch({
           </div>
         ) : null}
 
-        {payload?.seasonality?.isSlowSeason ? (
+        {watchEnabled && payload?.seasonality?.isSlowSeason ? (
           <div className="mb-4 rounded-[20px] border border-[#c9d7ec] bg-[#f4f7fc] p-4 text-[#314765]">
             <div className="flex items-start gap-3">
               <div className="rounded-[14px] border border-[#c9d7ec] bg-white p-2 text-[#4b6590] shadow-sm">
@@ -255,7 +349,12 @@ export default function BookingGapWatch({
           </div>
         ) : null}
 
-        {loading && !payload ? (
+        {!watchEnabled ? (
+          <div className="rounded-[20px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-5 py-7 text-center">
+            <p className="text-sm font-semibold text-[#5f5245]">Calendar scanning is paused.</p>
+            <p className="mt-1 text-xs text-[#7f7263]">No booking-gap suggestions will be generated until the switch is turned back on.</p>
+          </div>
+        ) : loading && !payload ? (
           <div className="rounded-[20px] border border-dashed border-[#dcc9a7] bg-white px-5 py-8 text-center text-sm text-[#7f7263]">
             Comparing upcoming reservations and open nights…
           </div>
@@ -344,6 +443,11 @@ export default function BookingGapWatch({
         {payload?.actionsSupported === false ? (
           <p className="mt-4 text-xs text-[#963f2f]">
             Suggestions are visible, but action buttons require the latest database migration.
+          </p>
+        ) : null}
+        {payload?.settingsSupported === false ? (
+          <p className="mt-4 text-xs text-[#963f2f]">
+            The on/off switch requires the latest database migration.
           </p>
         ) : null}
         <p className="mt-4 text-xs leading-5 text-[#8a7b68]">

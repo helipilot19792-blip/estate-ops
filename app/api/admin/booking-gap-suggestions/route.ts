@@ -15,11 +15,14 @@ export const dynamic = "force-dynamic";
 
 const ALLOWED_ACTIONS = new Set(["dismissed", "snoozed", "handled"]);
 
-function isMissingTableError(error: { code?: string | null; message?: string | null } | null | undefined) {
+function isMissingTableError(
+  error: { code?: string | null; message?: string | null } | null | undefined,
+  tableName: string
+) {
   const message = error?.message || "";
   return (
     error?.code === "PGRST205" ||
-    message.includes("booking_gap_suggestion_actions") &&
+    message.includes(tableName) &&
       (message.includes("does not exist") || message.includes("Could not find the table"))
   );
 }
@@ -49,6 +52,33 @@ export async function GET(request: Request) {
 
     const admin = await authorize(request, organizationId);
     if ("response" in admin) return admin.response;
+
+    const settingsResult = await admin.service
+      .from("booking_gap_watch_settings")
+      .select("enabled")
+      .eq("organization_id", organizationId)
+      .maybeSingle();
+    const settingsSupported = !settingsResult.error;
+    if (
+      settingsResult.error &&
+      !isMissingTableError(settingsResult.error, "booking_gap_watch_settings")
+    ) {
+      throw new Error(settingsResult.error.message);
+    }
+    const enabled = settingsResult.data?.enabled !== false;
+
+    if (!enabled) {
+      return Response.json({
+        ok: true,
+        generatedAt: new Date().toISOString(),
+        enabled: false,
+        settingsSupported,
+        analyzedPropertyCount: 0,
+        suggestions: [],
+        seasonallyConsolidatedCount: 0,
+        actionsSupported: true,
+      });
+    }
 
     const todayYmd = getTodayYmd();
     const horizonEnd = addDaysYmd(todayYmd, 45);
@@ -84,7 +114,10 @@ export async function GET(request: Request) {
     if (bookingsResult.error) throw new Error(bookingsResult.error.message);
 
     const actionsSupported = !actionsResult.error;
-    if (actionsResult.error && !isMissingTableError(actionsResult.error)) {
+    if (
+      actionsResult.error &&
+      !isMissingTableError(actionsResult.error, "booking_gap_suggestion_actions")
+    ) {
       throw new Error(actionsResult.error.message);
     }
 
@@ -131,6 +164,8 @@ export async function GET(request: Request) {
     return Response.json({
       ok: true,
       generatedAt: new Date().toISOString(),
+      enabled: true,
+      settingsSupported,
       analyzedPropertyCount: connectedPropertyIds.size,
       suggestions,
       seasonality,
@@ -154,6 +189,60 @@ export async function PATCH(request: Request) {
     const propertyId = String(body?.propertyId || "").trim();
     const suggestionKey = String(body?.suggestionKey || "").trim();
     const action = String(body?.action || "").trim();
+
+    if (!organizationId) {
+      return Response.json({ ok: false, error: "Missing organizationId." }, { status: 400 });
+    }
+
+    if (action === "set_enabled") {
+      if (typeof body?.enabled !== "boolean") {
+        return Response.json({ ok: false, error: "An enabled value is required." }, { status: 400 });
+      }
+
+      const admin = await authorize(request, organizationId);
+      if ("response" in admin) return admin.response;
+      const nowIso = new Date().toISOString();
+      const { data: settings, error } = await admin.service
+        .from("booking_gap_watch_settings")
+        .upsert(
+          {
+            organization_id: organizationId,
+            enabled: body.enabled,
+            updated_by_profile_id: admin.user.id,
+            updated_at: nowIso,
+          },
+          { onConflict: "organization_id" }
+        )
+        .select("enabled,updated_at")
+        .single();
+
+      if (error) {
+        if (isMissingTableError(error, "booking_gap_watch_settings")) {
+          return Response.json(
+            { ok: false, error: "The Booking Gap Watch switch needs the latest database migration." },
+            { status: 503 }
+          );
+        }
+        throw new Error(error.message);
+      }
+
+      try {
+        await writeAuditLog(admin.service, {
+          actorProfileId: admin.user.id,
+          actorEmail: admin.profile.email,
+          actorRole: admin.profile.role,
+          organizationId,
+          actionType: body.enabled ? "booking_gap_watch.enabled" : "booking_gap_watch.disabled",
+          targetType: "organization",
+          targetId: organizationId,
+          metadata: { enabled: body.enabled },
+        });
+      } catch {
+        // The setting is already saved; audit logging is non-blocking here.
+      }
+
+      return Response.json({ ok: true, settings });
+    }
 
     if (!organizationId || !propertyId || !suggestionKey || !ALLOWED_ACTIONS.has(action)) {
       return Response.json({ ok: false, error: "Missing or invalid suggestion action." }, { status: 400 });
@@ -198,7 +287,7 @@ export async function PATCH(request: Request) {
       .single();
 
     if (error) {
-      if (isMissingTableError(error)) {
+      if (isMissingTableError(error, "booking_gap_suggestion_actions")) {
         return Response.json(
           { ok: false, error: "Booking Gap Watch actions need the latest database migration." },
           { status: 503 }
