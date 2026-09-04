@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import Image from "next/image";
 import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Copy, Eye, EyeOff, Mail, MapPin, Monitor, Navigation, Phone, Search } from "lucide-react";
+import { Check, Copy, Eye, EyeOff, Mail, MapPin, MessageSquare, Monitor, Navigation, Phone, Search } from "lucide-react";
 import AdminLoadingScene from "@/components/admin/admin-loading-scene";
 import { supabase } from "@/lib/supabase";
 import {
@@ -11551,6 +11551,7 @@ This removes its linked members and deletes the grounds account.`
         const city = getCityFromAddress(property?.address);
         return {
           id: `cleaning-${job.id}`,
+          propertyId: job.property_id,
           dateYmd,
           sortKey: `${dateYmd}-10-${property?.name || job.property_id}`,
           kind: "Cleaning",
@@ -14325,14 +14326,34 @@ This removes its linked members and deletes the grounds account.`
                         : null;
                     const content = (
                       <div className={`rounded-[18px] border ${borderClass} bg-white px-4 py-2.5`}>
-                        <div className="flex items-start justify-between gap-3">
+                        <div>
                           <div className="min-w-0">
-                            <div className={`inline-flex items-center rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${badgeClass}`}>
-                              {item.kind}
+                            <div className="flex flex-wrap items-center gap-2">
+                              <div className={`inline-flex items-center rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${badgeClass}`}>
+                                {item.kind}
+                              </div>
+                              <div className={`rounded-full px-3 py-1 text-xs font-semibold ${dateClass}`}>
+                                {item.label}
+                              </div>
                             </div>
-                            <p className="mt-1 text-[15px] font-semibold text-[#1c2b45]">
-                              {item.title}
-                            </p>
+                            {item.kind === "Cleaning" && "propertyId" in item && typeof item.propertyId === "string" ? (
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  openPropertyOwnerSetup(item.propertyId);
+                                }}
+                                className="group mt-1 max-w-full text-left text-[15px] font-semibold text-[#1c2b45] transition hover:text-[#2957a4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9bb7e5] focus-visible:ring-offset-2"
+                                aria-label={`View property details for ${item.title}`}
+                              >
+                                <span className="underline decoration-[#9bb7e5] underline-offset-4 transition group-hover:decoration-[#2957a4]">{item.title}</span>
+                                <span className="ml-1 inline-block text-[#6f8fbd] transition-transform group-hover:translate-x-0.5" aria-hidden="true">→</span>
+                              </button>
+                            ) : (
+                              <p className="mt-1 text-[15px] font-semibold text-[#1c2b45]">
+                                {item.title}
+                              </p>
+                            )}
                             {groupedWasteItems ? (
                               <div className="mt-2 space-y-1.5">
                                 {groupedWasteItems.map((wasteItem) => (
@@ -14405,9 +14426,6 @@ This removes its linked members and deletes the grounds account.`
                             ) : null}
                             {renderTodayProgress(item)}
                             {renderHideItemFromToday(item)}
-                          </div>
-                          <div className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${dateClass}`}>
-                            {item.label}
                           </div>
                         </div>
                       </div>
@@ -14500,14 +14518,34 @@ This removes its linked members and deletes the grounds account.`
                         : null;
                     const content = (
                       <div className={`rounded-[18px] border ${borderClass} bg-white px-4 py-2.5`}>
-                        <div className="flex items-start justify-between gap-3">
+                        <div>
                           <div className="min-w-0">
-                            <div className={`inline-flex items-center rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${badgeClass}`}>
-                              {item.kind}
+                            <div className="flex flex-wrap items-center gap-2">
+                              <div className={`inline-flex items-center rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${badgeClass}`}>
+                                {item.kind}
+                              </div>
+                              <div className={`rounded-full px-3 py-1 text-xs font-semibold ${dateClass}`}>
+                                {item.label}
+                              </div>
                             </div>
-                            <p className="mt-1 text-[15px] font-semibold text-[#1c2b45]">
-                              {item.title}
-                            </p>
+                            {item.kind === "Cleaning" && "propertyId" in item && typeof item.propertyId === "string" ? (
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  openPropertyOwnerSetup(item.propertyId);
+                                }}
+                                className="group mt-1 max-w-full text-left text-[15px] font-semibold text-[#1c2b45] transition hover:text-[#7a5a23] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d8c7ab] focus-visible:ring-offset-2"
+                                aria-label={`View property details for ${item.title}`}
+                              >
+                                <span className="underline decoration-[#d2ad68] underline-offset-4 transition group-hover:decoration-[#7a5a23]">{item.title}</span>
+                                <span className="ml-1 inline-block text-[#a67c35] transition-transform group-hover:translate-x-0.5" aria-hidden="true">→</span>
+                              </button>
+                            ) : (
+                              <p className="mt-1 text-[15px] font-semibold text-[#1c2b45]">
+                                {item.title}
+                              </p>
+                            )}
                             {groupedWasteItems ? (
                               <div className="mt-2 space-y-1.5">
                                 {groupedWasteItems.map((wasteItem) => (
@@ -14579,9 +14617,6 @@ This removes its linked members and deletes the grounds account.`
                               </div>
                             ) : null}
                             {renderTodayProgress(item)}
-                          </div>
-                          <div className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${dateClass}`}>
-                            {item.label}
                           </div>
                         </div>
                       </div>
@@ -29406,17 +29441,31 @@ This removes its linked members and deletes the grounds account.`
 
             <div className="mt-5 space-y-3 text-sm">
               {selectedStaffContact.phone ? (
-                <a
-                  href={`tel:${selectedStaffContact.phone}`}
-                  className="flex items-center justify-between gap-3 rounded-[18px] border border-[#d8c7ab] bg-[#fcfaf7] px-4 py-3 font-semibold text-[#241c15] transition hover:bg-white"
-                  title="Call phone number"
-                >
-                  <span>{selectedStaffContact.phone}</span>
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#d8c7ab] bg-white text-[#8a7b68]">
+                <div className="flex items-center gap-2 rounded-[18px] border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-2.5">
+                  <a
+                    href={`tel:${selectedStaffContact.phone}`}
+                    className="min-w-0 flex-1 truncate px-1 font-semibold text-[#241c15] transition hover:text-[#0f766e]"
+                    title="Call phone number"
+                  >
+                    {selectedStaffContact.phone}
+                  </a>
+                  <a
+                    href={`tel:${selectedStaffContact.phone}`}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#d8c7ab] bg-white text-[#8a7b68] transition hover:border-[#0f766e] hover:text-[#0f766e]"
+                    title={`Call ${selectedStaffContact.name}`}
+                    aria-label={`Call ${selectedStaffContact.name}`}
+                  >
                     <Phone size={15} strokeWidth={2.2} aria-hidden="true" />
-                    <span className="sr-only">Call</span>
-                  </span>
-                </a>
+                  </a>
+                  <a
+                    href={`sms:${selectedStaffContact.phone}`}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-transparent text-[#8a7b68] transition hover:border-[#d8c7ab] hover:bg-white hover:text-[#0f766e]"
+                    title={`Text ${selectedStaffContact.name}`}
+                    aria-label={`Text ${selectedStaffContact.name}`}
+                  >
+                    <MessageSquare size={15} strokeWidth={2.2} aria-hidden="true" />
+                  </a>
+                </div>
               ) : (
                 <div className="rounded-[18px] border border-dashed border-[#d8c7ab] bg-[#fcfaf7] px-4 py-3 text-[#7f7263]">
                   No phone number saved.
