@@ -11540,7 +11540,7 @@ This removes its linked members and deletes the grounds account.`
         const progressChecklistItems = getCleaningChecklistItemsForJob(job.id);
         const offerHeld = ["held", "releasing"].includes(String(job.staffing_status || "").toLowerCase());
         const cleanerDetail = acceptedCleanerNames.length > 0
-          ? `Cleaner: ${acceptedCleanerNames.join(", ")}`
+          ? acceptedCleanerNames.join(", ")
           : offerHeld
             ? `OFFER OPENS ${job.offer_eligible_at ? labelDate(job.offer_eligible_at).toUpperCase() : "CLOSER TO THE DATE"}`
           : stranded
@@ -11557,7 +11557,9 @@ This removes its linked members and deletes the grounds account.`
           tone: acceptedCleanerNames.length > 0 || offerHeld ? "blue" as const : "red" as const,
           label: labelDate(dateYmd),
           title: property?.name || property?.address || "Unknown property",
-          detail: [city, cleanerDetail].filter(Boolean).join(" - "),
+          detail: acceptedCleanerNames.length > 0
+            ? cleanerDetail
+            : [city, cleanerDetail].filter(Boolean).join(" - "),
           progressSummary: progress.summary,
           progressCompleted: progress.checklistCompleted,
           progressTotal: progress.checklistTotal,
