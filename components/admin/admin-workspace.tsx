@@ -2259,6 +2259,7 @@ export default function AdminPage() {
   const [linkSelections, setLinkSelections] = useState<Record<string, string>>({});
   const [groundsLinkSelections, setGroundsLinkSelections] = useState<Record<string, string>>({});
   const [savingCleanerRotationPropertyId, setSavingCleanerRotationPropertyId] = useState<string | null>(null);
+  const [selectedPropertyQuickViewId, setSelectedPropertyQuickViewId] = useState<string | null>(null);
   const [selectedStaffContact, setSelectedStaffContact] = useState<StaffContact | null>(null);
   const [copiedStaffContactEmail, setCopiedStaffContactEmail] = useState(false);
   const [editingBookingNote, setEditingBookingNote] = useState<{
@@ -2272,6 +2273,9 @@ export default function AdminPage() {
   const [bookingNoteImportant, setBookingNoteImportant] = useState(false);
   const [savingBookingNote, setSavingBookingNote] = useState(false);
   const promptedMissingBookingIdsRef = useRef<Set<string>>(new Set());
+  const selectedPropertyQuickView = selectedPropertyQuickViewId
+    ? properties.find((property) => property.id === selectedPropertyQuickViewId) || null
+    : null;
 
   const todayYmd = toYmd(now);
   const todayEmptyCopy = useMemo(
@@ -13438,6 +13442,10 @@ This removes its linked members and deletes the grounds account.`
     setShowAdminNav(false);
   }
 
+  function openPropertyQuickView(propertyId: string) {
+    setSelectedPropertyQuickViewId(propertyId);
+  }
+
   function toggleAdminMenuOrientation() {
     setAdminMenuOrientation((current) => {
       const next = current === "side" ? "top" : "side";
@@ -14341,7 +14349,7 @@ This removes its linked members and deletes the grounds account.`
                                 type="button"
                                 onClick={(event) => {
                                   event.stopPropagation();
-                                  openPropertyOwnerSetup(item.propertyId);
+                                  openPropertyQuickView(item.propertyId);
                                 }}
                                 className="group mt-1 max-w-full text-left text-[15px] font-semibold text-[#1c2b45] transition hover:text-[#2957a4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9bb7e5] focus-visible:ring-offset-2"
                                 aria-label={`View property details for ${item.title}`}
@@ -14533,7 +14541,7 @@ This removes its linked members and deletes the grounds account.`
                                 type="button"
                                 onClick={(event) => {
                                   event.stopPropagation();
-                                  openPropertyOwnerSetup(item.propertyId);
+                                  openPropertyQuickView(item.propertyId);
                                 }}
                                 className="group mt-1 max-w-full text-left text-[15px] font-semibold text-[#1c2b45] transition hover:text-[#7a5a23] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d8c7ab] focus-visible:ring-offset-2"
                                 aria-label={`View property details for ${item.title}`}
@@ -29413,6 +29421,54 @@ This removes its linked members and deletes the grounds account.`
               </dl>
             </div>
           </section>
+        </div>
+      ) : null}
+      {selectedPropertyQuickView ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="property-quick-view-title"
+            className="w-full max-w-sm rounded-[24px] border border-[#eadfce] bg-white p-5 shadow-[0_24px_70px_rgba(15,23,42,0.24)]"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#8a7b68]">
+                  Property
+                </div>
+                <h2 id="property-quick-view-title" className="mt-2 text-xl font-semibold text-[#241c15]">
+                  {selectedPropertyQuickView.name || "Property details"}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedPropertyQuickViewId(null)}
+                className="rounded-full border border-[#d8c7ab] bg-[#fcfaf7] px-3 py-1.5 text-xs font-semibold text-[#5f5245] transition hover:bg-white"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-5 flex items-start gap-3 border-y border-[#eadfce] py-4 text-sm text-[#5f5245]">
+              <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[#9b7844]" aria-hidden="true" />
+              <span className="leading-6">
+                {selectedPropertyQuickView.address || "No address saved yet."}
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                const propertyId = selectedPropertyQuickView.id;
+                setSelectedPropertyQuickViewId(null);
+                openPropertyOwnerSetup(propertyId);
+              }}
+              className="group mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-[#2957a4] underline decoration-[#9bb7e5] underline-offset-4 transition hover:decoration-[#2957a4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9bb7e5] focus-visible:ring-offset-2"
+            >
+              Open full property
+              <span className="inline-block transition-transform group-hover:translate-x-0.5" aria-hidden="true">→</span>
+            </button>
+          </div>
         </div>
       ) : null}
       {selectedStaffContact ? (
