@@ -4,6 +4,28 @@ type CleanerAssignment = {
   cleaner_account_id: string | null;
 };
 
+type CleanerOfferSlotSeedState = {
+  status?: string | null;
+  offered_at?: string | null;
+};
+
+const NON_SEEDABLE_CLEANER_OFFER_STATUSES = new Set([
+  "offered",
+  "accepted",
+  "declined",
+  "stranded",
+  "in_progress",
+  "completed",
+]);
+
+export function isSeedableCleanerOfferSlot(slot: CleanerOfferSlotSeedState) {
+  if (slot.offered_at) return false;
+
+  return !NON_SEEDABLE_CLEANER_OFFER_STATUSES.has(
+    String(slot.status || "").toLowerCase().trim()
+  );
+}
+
 export function rotateCleanerAssignments<T extends CleanerAssignment>(
   assignments: T[],
   nextCleanerAccountId?: string | null

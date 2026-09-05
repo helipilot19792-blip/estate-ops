@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { findNextEligibleCleanerAssignment } from "../lib/server/cleaner-offer-eligibility.ts";
+import {
+  findNextEligibleCleanerAssignment,
+  isSeedableCleanerOfferSlot,
+} from "../lib/server/cleaner-offer-eligibility.ts";
 
 const jackie = { cleaner_account_id: "jackie", priority: 1 };
 const dawn = { cleaner_account_id: "dawn", priority: 2 };
@@ -41,5 +44,31 @@ const rotationWrapsAndSkipsDeclines = findNextEligibleCleanerAssignment({
   unavailableCleanerIds: new Set(),
 });
 assert.equal(rotationWrapsAndSkipsDeclines.nextAssignment?.cleaner_account_id, "dawn");
+
+assert.equal(
+  isSeedableCleanerOfferSlot({ status: "open", offered_at: null }),
+  true,
+  "A new open slot may receive its initial priority offer"
+);
+assert.equal(
+  isSeedableCleanerOfferSlot({ status: "assigned", offered_at: null }),
+  true,
+  "A never-offered assigned slot may receive its initial priority offer"
+);
+assert.equal(
+  isSeedableCleanerOfferSlot({ status: "declined", offered_at: "2026-09-05T18:09:46.000Z" }),
+  false,
+  "A declined offer must advance through the offer chain instead of resetting to priority one"
+);
+assert.equal(
+  isSeedableCleanerOfferSlot({ status: "open", offered_at: "2026-09-05T18:09:46.000Z" }),
+  false,
+  "Any slot with prior offer history must not be reseeded"
+);
+assert.equal(
+  isSeedableCleanerOfferSlot({ status: "stranded", offered_at: null }),
+  false,
+  "A stranded slot must remain under explicit recovery control"
+);
 
 console.log("Cleaner offer eligibility tests passed.");

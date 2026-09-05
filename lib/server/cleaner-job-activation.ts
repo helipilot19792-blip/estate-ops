@@ -6,6 +6,7 @@ import {
   getTodayYmd,
   normalizePropertyCleanerOfferLeadDays,
 } from "@/lib/server/cleaner-offer-hold";
+import { isSeedableCleanerOfferSlot } from "@/lib/server/cleaner-offer-eligibility";
 import {
   sendJobCancellationNotificationsForJobs,
   sendJobOfferEmailsForSlots,
@@ -96,12 +97,13 @@ async function ensurePriorityOffersHaveDeadlines(
       const activeAssignments = (assignments ?? []).filter((assignment) =>
         activeAccountIds.has(assignment.cleaner_account_id)
       );
-      const assignableCount = Math.min((slots ?? []).length, activeAssignments.length);
+      const seedableSlots = (slots ?? []).filter(isSeedableCleanerOfferSlot);
+      const assignableCount = Math.min(seedableSlots.length, activeAssignments.length);
       const offeredAt = new Date().toISOString();
       const expiresAt = getCleanerOfferExpiresAtForDailySweep(scheduledFor);
 
       for (let index = 0; index < assignableCount; index += 1) {
-        const slot = slots![index];
+        const slot = seedableSlots[index];
         let assignmentQuery = service
           .from("turnover_job_slots")
           .update({
