@@ -22,6 +22,7 @@ import { useI18n } from "@/components/i18n-provider";
 import { createStorageReference } from "@/lib/storage-reference";
 import { useStorageAssetUrls } from "@/lib/use-storage-asset-urls";
 import {
+  formatCleanerOfferMove,
   getUnrepresentedCleanerDeclines,
   isCleanerReassignmentAuditAction,
   isCleanerReleaseToStrandedAuditAction,
@@ -12553,6 +12554,10 @@ This removes its linked members and deletes the grounds account.`
       const previousCleanerName =
         String(log.metadata?.previous_cleaner_name || "").trim() ||
         getCleanerAccountName(previousCleanerAccountId);
+      const newCleanerAccountId = String(log.metadata?.new_cleaner_account_id || "").trim();
+      const newCleanerName =
+        String(log.metadata?.new_cleaner_name || "").trim() ||
+        getCleanerAccountName(newCleanerAccountId);
       if (!previousCleanerAccountId && previousCleanerName === "Unassigned") continue;
       const previousStatus = String(log.metadata?.previous_status || "").trim().toLowerCase();
       const reassignSource = String(log.metadata?.reassign_source || "").trim().toLowerCase();
@@ -12569,18 +12574,18 @@ This removes its linked members and deletes the grounds account.`
       }
       const wasDeclined = previousStatus === "declined" || reassignSource.endsWith("_declined");
       const wasExpired = reassignSource.endsWith("_expired") || reassignSource === "training_rotation_expired";
-      const suffix = wasDeclined
-        ? "declined"
+      const outcomeText = wasDeclined
+        ? `${previousCleanerName} declined`
         : wasExpired
-          ? "offer expired"
+          ? `${previousCleanerName} offer expired`
           : isReleaseToStranded || log.action_type === "cleaner.release_cleaner_slot"
-            ? "released the job"
-            : "was reassigned";
+            ? `${previousCleanerName} released the job`
+            : formatCleanerOfferMove(previousCleanerName, newCleanerName);
       const outcomeAt = previousDeclinedAt || (wasExpired ? previousExpiresAt : null) || log.created_at || null;
       history.push({
         id: `${log.id}-outcome`,
         tone: "previous",
-        text: `${previousCleanerName} ${suffix}${outcomeAt ? ` on ${formatDateTime(outcomeAt)}` : ""}`,
+        text: `${outcomeText}${outcomeAt ? ` on ${formatDateTime(outcomeAt)}` : ""}`,
         occurredAt: outcomeAt,
       });
     }

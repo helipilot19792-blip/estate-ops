@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  formatCleanerOfferMove,
   getUnrepresentedCleanerDeclines,
   isCleanerReassignmentAuditAction,
   isCleanerReleaseToStrandedAuditAction,
@@ -77,6 +78,14 @@ assert.equal(isCleanerReassignmentAuditAction("cleaner.release_cleaner_slot"), t
 assert.equal(isCleanerReassignmentAuditAction("ai.supervisor.turnover_rescue_approved"), true);
 assert.equal(isCleanerReleaseToStrandedAuditAction("admin.approve_cleaner_release_request"), true);
 assert.equal(isCleanerReleaseToStrandedAuditAction("admin.release_cleaner_future_job_stranded"), true);
+assert.equal(
+  formatCleanerOfferMove("Jackie Maracle", "Reagan Loewe"),
+  "Offer moved from Jackie Maracle to Reagan Loewe"
+);
+assert.equal(
+  formatCleanerOfferMove("Jackie Maracle", null),
+  "Offer moved away from Jackie Maracle"
+);
 
 const aiRepresentedDeclineLogs = [
   logs[0],

@@ -49,6 +49,15 @@ export function isCleanerReleaseToStrandedAuditAction(actionType: string) {
   ].includes(actionType);
 }
 
+export function formatCleanerOfferMove(previousCleanerName: string, newCleanerName?: string | null) {
+  const previousName = previousCleanerName.trim() || "the previous cleaner";
+  const nextName = String(newCleanerName || "").trim();
+
+  return nextName && nextName !== "Unassigned"
+    ? `Offer moved from ${previousName} to ${nextName}`
+    : `Offer moved away from ${previousName}`;
+}
+
 export function getUnrepresentedCleanerDeclines(
   logs: CleanerOfferHistoryAuditLog[],
   currentSlot: { cleanerAccountId?: string | null; status?: string | null }
