@@ -414,6 +414,13 @@ function InvitePageContent() {
         return;
       }
 
+      if (payload.accountAlreadyExisted) {
+        setMessage("Please sign in with your existing password to accept this invite.");
+        setPassword("");
+        setConfirmPassword("");
+        return;
+      }
+
       const acceptedInvite = (payload.invite || {
         ...invite,
         status: "accepted",
@@ -423,13 +430,6 @@ function InvitePageContent() {
       setInviteAccepted(true);
       setInvite(acceptedInvite);
       clearPendingInviteToken(token);
-
-      if (payload.accountAlreadyExisted) {
-        setMessage("Your invite is connected. Please sign in with your existing password.");
-        setPassword("");
-        setConfirmPassword("");
-        return;
-      }
 
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email: email.trim().toLowerCase(),

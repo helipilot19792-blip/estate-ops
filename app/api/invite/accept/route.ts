@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { ensureInviteProfile } from "@/lib/server/invite-profile";
 
 type InviteRow = {
   id: string;
@@ -127,16 +128,7 @@ export async function POST(req: NextRequest) {
         null,
     };
 
-    const { error: profileUpsertError } = await service
-      .from("profiles")
-      .upsert(profilePayload, { onConflict: "id" });
-
-    if (profileUpsertError) {
-      return jsonError(profileUpsertError.message, 500, {
-        inviteId: invite.id,
-        userId: user.id,
-      });
-    }
+    await ensureInviteProfile(service, profilePayload);
 
     const { data: existingOrgMembership, error: membershipLookupError } = await service
       .from("organization_members")

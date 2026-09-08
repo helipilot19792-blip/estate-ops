@@ -4,21 +4,6 @@ import { writeAuditLog } from "@/lib/server/audit-log";
 
 type TeamRole = "cleaner" | "grounds";
 
-async function safeCount(
-  service: any,
-  table: string,
-  column: string,
-  value: string
-) {
-  const { count, error } = await service
-    .from(table)
-    .select("id", { count: "exact", head: true })
-    .eq(column, value);
-
-  if (error) throw error;
-  return count || 0;
-}
-
 export async function POST(req: NextRequest) {
   try {
     const authHeader = req.headers.get("authorization");
@@ -96,7 +81,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: membershipError.message }, { status: 500 });
     }
 
-    if (!membership && currentProfile.role !== "platform_admin") {
+    if (membership?.role !== "admin" && currentProfile.role !== "platform_admin") {
       return NextResponse.json(
         { error: "You do not have access to this organization." },
         { status: 403 }
@@ -141,7 +126,7 @@ export async function POST(req: NextRequest) {
       .from(accountTable)
       .select("id")
       .eq("organization_id", organizationId)
-      .ilike("email", targetEmail);
+      .eq("email", targetEmail);
 
     if (accountLookupError) {
       return NextResponse.json({ error: accountLookupError.message }, { status: 500 });
@@ -153,7 +138,7 @@ export async function POST(req: NextRequest) {
     const { data: profilesByEmail, error: profileLookupError } = await service
       .from("profiles")
       .select("id, role")
-      .ilike("email", targetEmail);
+      .eq("email", targetEmail);
 
     if (profileLookupError) {
       return NextResponse.json({ error: profileLookupError.message }, { status: 500 });
@@ -183,14 +168,14 @@ export async function POST(req: NextRequest) {
     let removedAccountMembers = 0;
     let removedAccounts = 0;
     let removedOrgMembers = 0;
-    let deletedLogins = 0;
+    const deletedLogins = 0;
 
     const { data: deletedInvites, error: inviteDeleteError } = await service
       .from("organization_invites")
       .delete()
       .eq("organization_id", organizationId)
       .eq("role", targetRole)
-      .ilike("email", targetEmail)
+      .eq("email", targetEmail)
       .select("id");
 
     if (inviteDeleteError) {
@@ -198,15 +183,15 @@ export async function POST(req: NextRequest) {
     }
     removedInvites = deletedInvites?.length || 0;
 
-    if (profileIdList.length > 0) {
-      await service
-        .from(slotTable)
-        .update({ accepted_by_profile_id: null })
-        .in("accepted_by_profile_id", profileIdList);
-      await service
-        .from(slotTable)
-        .update({ declined_by_profile_id: null })
-        .in("declined_by_profile_id", profileIdList);
+    if (profileIdList.length > 0 && accountIds.length > 0) {
+      for (const column of ["accepted_by_profile_id", "declined_by_profile_id"]) {
+        const { error } = await service
+          .from(slotTable)
+          .update({ [column]: null })
+          .in(accountIdColumn, accountIds)
+          .in(column, profileIdList);
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      }
     }
 
     if (accountIds.length > 0) {
@@ -223,17 +208,6 @@ export async function POST(req: NextRequest) {
     }
 
     if (profileIdList.length > 0) {
-      const { data: deletedMembersByProfile, error: deleteMembersByProfileError } = await service
-        .from(memberTable)
-        .delete()
-        .in("profile_id", profileIdList)
-        .select("id");
-
-      if (deleteMembersByProfileError) {
-        return NextResponse.json({ error: deleteMembersByProfileError.message }, { status: 500 });
-      }
-      removedAccountMembers += deletedMembersByProfile?.length || 0;
-
       const { data: deletedOrgMembers, error: deleteOrgMemberError } = await service
         .from("organization_members")
         .delete()
@@ -261,42 +235,8 @@ export async function POST(req: NextRequest) {
       removedAccounts = deletedAccounts?.length || 0;
     }
 
-    for (const profileId of profileIdList) {
-      const [orgMemberships, cleanerMemberships, groundsMemberships] = await Promise.all([
-        safeCount(service, "organization_members", "profile_id", profileId),
-        safeCount(service, "cleaner_account_members", "profile_id", profileId),
-        safeCount(service, "grounds_account_members", "profile_id", profileId),
-      ]);
-
-      if (orgMemberships + cleanerMemberships + groundsMemberships === 0) {
-        const { data: profile, error: profileError } = await service
-          .from("profiles")
-          .select("id, role")
-          .eq("id", profileId)
-          .maybeSingle();
-
-        if (profileError) {
-          return NextResponse.json({ error: profileError.message }, { status: 500 });
-        }
-
-        if (profile && (profile.role === "cleaner" || profile.role === "grounds")) {
-          const { error: deleteProfileError } = await service
-            .from("profiles")
-            .delete()
-            .eq("id", profileId);
-
-          if (deleteProfileError) {
-            return NextResponse.json({ error: deleteProfileError.message }, { status: 500 });
-          }
-
-          const { error: deleteAuthError } = await service.auth.admin.deleteUser(profileId);
-          if (deleteAuthError) {
-            return NextResponse.json({ error: deleteAuthError.message }, { status: 500 });
-          }
-          deletedLogins += 1;
-        }
-      }
-    }
+    // Company removal must not delete a shared login or profile. Permanent
+    // account deletion is handled by the separate, explicitly authorized flow.
 
     await writeAuditLog(service, {
       actorProfileId: currentProfile.id,

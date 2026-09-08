@@ -1,6 +1,7 @@
 
 [functions.send-support-email]
 enabled = true
+# The handler verifies tokens with Auth /user, including signing-key JWTs.
 verify_jwt = false
 import_map = "./functions/send-support-email/deno.json"
 # Uncomment to specify a custom file path to the entrypoint.

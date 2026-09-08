@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { ensureInviteProfile } from "@/lib/server/invite-profile";
+import { validatePassword } from "@/lib/password-policy";
 
 type InviteRow = {
   id: string;
@@ -53,11 +55,7 @@ async function upsertInviteLinks(service: any, invite: InviteRow, userId: string
     full_name: invite.full_name?.trim() || null,
   };
 
-  const { error: profileUpsertError } = await service
-    .from("profiles")
-    .upsert(profilePayload, { onConflict: "id" });
-
-  if (profileUpsertError) throw new Error(profileUpsertError.message);
+  await ensureInviteProfile(service, profilePayload);
 
   const { data: existingOrgMembership, error: membershipLookupError } = await service
     .from("organization_members")
@@ -226,9 +224,8 @@ export async function POST(req: NextRequest) {
       return jsonError("Missing invite token.", 400);
     }
 
-    if (!password) {
-      return jsonError("Password is required.", 400);
-    }
+    const passwordError = validatePassword(password);
+    if (passwordError) return jsonError(passwordError, 400);
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -285,7 +282,8 @@ export async function POST(req: NextRequest) {
     const accountAlreadyExisted = !!existingUser;
 
     if (existingUser) {
-      userId = existingUser.id;
+      // Acceptance of an existing account belongs to the authenticated endpoint.
+      return NextResponse.json({ ok: true, email, accountAlreadyExisted: true });
     } else {
       const { data: createdUser, error: createUserError } = await service.auth.admin.createUser({
         email,
