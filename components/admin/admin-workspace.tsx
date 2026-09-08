@@ -18527,6 +18527,18 @@ This removes its linked members and deletes the grounds account.`
       const isSelectedForCombine = selectedInvoiceIdsToCombine.includes(invoice.id);
       const documentKind = getInvoiceDocumentKind(invoice);
       const invoiceCurrency = getSavedInvoiceCurrencyCode(invoice);
+      const attachments = [
+        ...(invoice.uploaded_invoice_url
+          ? [{ url: invoice.uploaded_invoice_url, name: invoice.uploaded_invoice_name || "Uploaded invoice", description: "Original invoice" }]
+          : []),
+        ...(invoice.line_items || []).flatMap((item) =>
+          (item.receipt_urls || []).map((url, index) => ({
+            url,
+            name: item.receipt_names?.[index] || `Receipt ${index + 1}`,
+            description: item.description || "Receipt",
+          }))
+        ),
+      ];
       const historyOwnerLabel =
         owner?.full_name ||
         owner?.email ||
@@ -18722,6 +18734,31 @@ This removes its linked members and deletes the grounds account.`
                 {deletingInvoiceId === invoice.id ? "Deleting..." : "Delete"}
               </button>
             </div>
+          </div>
+          <div className="mt-3 border-t border-[#d8c7ab]/60 pt-3 text-xs text-[#5f4c3b]">
+            {attachments.length > 0 ? (
+              <>
+                <div className="font-semibold">Attachments ({attachments.length})</div>
+                <ul className="mt-2 flex flex-wrap gap-2">
+                  {attachments.map((attachment, index) => (
+                    <li key={`${attachment.url}-${index}`} className="min-w-0 max-w-full">
+                      <a
+                        href={getStorageAssetUrl(attachment.url)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block rounded-xl border border-[#d8c7ab] bg-white px-3 py-2 hover:bg-[#f7f1e8] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#5f4c3b]"
+                        aria-label={`Open ${attachment.name} in a new tab`}
+                      >
+                        <span className="block break-all font-semibold underline">{attachment.name}</span>
+                        <span className="mt-0.5 block break-words">{attachment.description}</span>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : (
+              <span>No attachments</span>
+            )}
           </div>
         </div>
       );
