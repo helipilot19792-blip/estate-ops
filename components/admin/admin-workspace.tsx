@@ -16617,7 +16617,11 @@ This removes its linked members and deletes the grounds account.`
 
         const { error: uploadError } = await supabase.storage
           .from("invoice-assets")
-          .upload(filePath, file, { cacheControl: "3600", upsert: false });
+          .upload(filePath, file, {
+            cacheControl: "3600",
+            upsert: false,
+            contentType: /\.pdf$/i.test(file.name) ? "application/pdf" : file.type || undefined,
+          });
 
         if (uploadError) throw uploadError;
 
@@ -20415,11 +20419,11 @@ This removes its linked members and deletes the grounds account.`
                                 </label>
                               ) : null}
                               <label className="inline-flex cursor-pointer items-center rounded-full border border-[#d8c7ab] bg-[#fffdf8] px-3 py-1.5 text-xs font-medium text-[#5f4c3b] hover:bg-[#fff7e8]">
-                                {uploadingReceiptLineItemId === item.id ? "Uploading..." : "Attach receipt"}
+                                {uploadingReceiptLineItemId === item.id ? "Uploading..." : "Attach receipt (image or PDF)"}
                                 <input
                                   type="file"
                                   multiple
-                                  accept="image/*,.pdf"
+                                  accept="image/*,application/pdf,.pdf"
                                   className="hidden"
                                   disabled={uploadingReceiptLineItemId === item.id}
                                   onChange={(e) => void uploadInvoiceReceipts(item.id, e.target.files)}
