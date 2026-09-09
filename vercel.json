@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/cron/send-job-notifications",
-      "schedule": "0 12 * * *"
+      "schedule": "0 14,15 * * *"
     },
     {
       "path": "/api/cron/send-invoice-reminders",

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { applyCleanerTrainingRotationToJob } from "@/lib/server/cleaner-training-rotation";
-import { getCleanerOfferExpiresAtForDailySweep } from "@/lib/server/cleaner-offer-deadlines";
+import { getCleanerOfferExpiresAtForDailySweep, getInitialCleanerOfferDeadline } from "@/lib/server/cleaner-offer-deadlines";
 import {
   getCleanerOfferHoldDecision,
   getTodayYmd,
@@ -142,16 +142,23 @@ async function ensurePriorityOffersHaveDeadlines(
   if (offeredSlotIds.length === 0) return [];
 
   for (const offerSlot of offerSlots ?? []) {
-    if (offerSlot.expires_at) continue;
+    const expiresAt = getInitialCleanerOfferDeadline(
+      scheduledFor, offerSlot.offered_at, offerSlot.expires_at
+    );
+    if (expiresAt === offerSlot.expires_at) continue;
 
-    const offeredAtDate = offerSlot.offered_at ? new Date(offerSlot.offered_at) : new Date();
-    const deadlineBase = Number.isNaN(offeredAtDate.getTime()) ? new Date() : offeredAtDate;
-    const { error: deadlineError } = await service
+    let deadlineQuery = service
       .from("turnover_job_slots")
-      .update({ expires_at: getCleanerOfferExpiresAtForDailySweep(scheduledFor, deadlineBase) })
+      .update({ expires_at: expiresAt })
       .eq("id", offerSlot.id)
-      .eq("status", "offered")
-      .is("expires_at", null);
+      .eq("status", "offered");
+    deadlineQuery = offerSlot.expires_at
+      ? deadlineQuery.eq("expires_at", offerSlot.expires_at)
+      : deadlineQuery.is("expires_at", null);
+    deadlineQuery = offerSlot.offered_at
+      ? deadlineQuery.eq("offered_at", offerSlot.offered_at)
+      : deadlineQuery.is("offered_at", null);
+    const { error: deadlineError } = await deadlineQuery;
 
     if (deadlineError) throw new Error(deadlineError.message);
   }

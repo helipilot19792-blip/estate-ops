@@ -20,47 +20,49 @@ function addCalendarDays(dateYmd: string, days: number) {
 }
 
 export function getCleanerOfferResponseDays(jobDate: string | null, now = new Date()) {
-  if (!jobDate) return 2;
-
+  if (!jobDate) return 1;
   const scheduled = new Date(`${jobDate}T12:00:00Z`);
-  if (Number.isNaN(scheduled.getTime())) return 2;
-
-  const daysUntilCleaning = (scheduled.getTime() - now.getTime()) / (24 * 60 * 60 * 1000);
-  if (daysUntilCleaning > 21) return 5;
-  if (daysUntilCleaning > 7) return 3;
-  if (daysUntilCleaning > 2) return 2;
+  if (Number.isNaN(scheduled.getTime())) return 1;
+  const today = new Date(`${getOperationsDateYmd(now)}T12:00:00Z`);
+  const daysUntilCleaning = (scheduled.getTime() - today.getTime()) / 86_400_000;
+  if (daysUntilCleaning >= 28) return 5;
+  if (daysUntilCleaning >= 14) return 3;
   return 1;
 }
 
 export function getCleanerOfferExpiresAtForDailySweep(jobDate: string | null, now = new Date()) {
-  const firstUpcomingSweep = new Date(now);
-  firstUpcomingSweep.setUTCHours(12, 0, 0, 0);
-  if (firstUpcomingSweep.getTime() <= now.getTime()) {
-    firstUpcomingSweep.setUTCDate(firstUpcomingSweep.getUTCDate() + 1);
-  }
-
-  const expirationSweep = new Date(firstUpcomingSweep);
-  expirationSweep.setUTCDate(
-    expirationSweep.getUTCDate() + getCleanerOfferResponseDays(jobDate, now) - 1
+  const deadlineDate = addCalendarDays(
+    getOperationsDateYmd(now), getCleanerOfferResponseDays(jobDate, now)
   );
-
-  // Offers for jobs beyond tomorrow must always receive at least 24 full hours.
-  // Since expiry processing runs on the daily sweep, advance to the next sweep
-  // whenever the normal deadline would cut that minimum window short.
-  const jobDateYmd = jobDate?.match(/^\d{4}-\d{2}-\d{2}/)?.[0] || "";
-  const tomorrowYmd = addCalendarDays(getOperationsDateYmd(now), 1);
-  const jobIsBeyondTomorrow = jobDateYmd > tomorrowYmd;
-  const minimumResponseTime = now.getTime() + 24 * 60 * 60 * 1000;
-  while (jobIsBeyondTomorrow && expirationSweep.getTime() < minimumResponseTime) {
-    expirationSweep.setUTCDate(expirationSweep.getUTCDate() + 1);
-  }
-
-  return expirationSweep.toISOString();
+  // At 10 a.m. Toronto is unambiguously on the new offset even on DST transition days.
+  const candidate = new Date(`${deadlineDate}T15:00:00Z`);
+  const localHour = Number(new Intl.DateTimeFormat("en-CA", {
+    timeZone: CLEANER_OPERATIONS_TIME_ZONE,
+    hour: "numeric",
+    hourCycle: "h23",
+  }).format(candidate));
+  candidate.setUTCHours(candidate.getUTCHours() + 10 - localHour);
+  return candidate.toISOString();
 }
 
 export function isCleanerJobDatePast(jobDate: string | null, now = new Date()) {
   if (!jobDate || !/^\d{4}-\d{2}-\d{2}$/.test(jobDate)) return false;
   return jobDate < getOperationsDateYmd(now);
+}
+
+// Database slot creation can still supply the legacy eight-hour deadline.
+// Apply the response policy before notifying cleaners, preserving longer offers.
+export function getInitialCleanerOfferDeadline(
+  jobDate: string | null,
+  offeredAt: string | null,
+  expiresAt: string | null,
+  now = new Date()
+) {
+  const offered = offeredAt ? new Date(offeredAt) : now;
+  const base = Number.isNaN(offered.getTime()) ? now : offered;
+  const policyDeadline = getCleanerOfferExpiresAtForDailySweep(jobDate, base);
+  const storedTime = expiresAt ? new Date(expiresAt).getTime() : NaN;
+  return storedTime >= new Date(policyDeadline).getTime() ? expiresAt! : policyDeadline;
 }
 
 export function isCleanerOfferInFinalWarningWindow(expiresAt: string | null, now = new Date()) {
