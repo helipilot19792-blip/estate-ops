@@ -141,7 +141,7 @@ const QUIRKY_SYNCING_COPY = [
 const SHOW_ADMIN_TOP_BANNER = false;
 const MAINTENANCE_FLAG_SNOOZE_DAYS = 3;
 const SHOW_ADMIN_TOP_OVERVIEW = false;
-const ADMIN_HOME_RETRYABLE_STATUS_CODES = new Set([502, 503, 504]);
+const ADMIN_HOME_RETRYABLE_STATUS_CODES = new Set([500, 502, 503, 504]);
 const ADMIN_HOME_RETRY_DELAY_MS = 750;
 
 function reportAdminLoadTiming(kind: "home" | "workspace", response: Response, startedAt: number) {
@@ -1875,6 +1875,9 @@ export default function AdminPage() {
   const maintenanceCameraInputRef = useRef<HTMLInputElement | null>(null);
   const maintenanceLibraryInputRef = useRef<HTMLInputElement | null>(null);
   const latestHomeLoadIdRef = useRef(0);
+  const homeLoadInFlightRef = useRef(0);
+  const homeLoadErrorRef = useRef("");
+  const homeLoadedOrganizationRef = useRef<string | null>(null);
   const latestDataLoadIdRef = useRef<Partial<Record<DashboardDataScope, number>>>({});
   const adminDataLoadedRef = useRef(false);
   const hiddenTodayItemsLoadedKeyRef = useRef<string | null>(null);
@@ -2808,7 +2811,7 @@ export default function AdminPage() {
     const interval = window.setInterval(() => {
       if (document.visibilityState !== "visible") return;
       if (activeSection === "home") {
-        void loadHomeData();
+        void loadHomeData({ background: true });
       } else if (activeSection !== "bulletin") {
         void loadData({ background: true, scope: getDashboardDataScope(activeSection) });
       }
@@ -2825,7 +2828,7 @@ export default function AdminPage() {
       if (refreshTimer !== null) window.clearTimeout(refreshTimer);
       refreshTimer = window.setTimeout(() => {
         refreshTimer = null;
-        void loadHomeData();
+        void loadHomeData({ background: true });
       }, 500);
     };
 
@@ -3624,16 +3627,30 @@ export default function AdminPage() {
     }
   }
 
-  async function loadHomeData() {
+  async function loadHomeData(options: { background?: boolean } = {}) {
+    // Realtime events and the safety timer can arrive while a slow request is
+    // still running. Keep them from starting duplicate database work.
+    if (options.background && homeLoadInFlightRef.current) return false;
+    homeLoadInFlightRef.current += 1;
+    try {
+      return await performHomeDataLoad();
+    } finally {
+      homeLoadInFlightRef.current -= 1;
+    }
+  }
+
+  async function performHomeDataLoad() {
     const requestId = ++latestHomeLoadIdRef.current;
-    setError("");
-    setHomeLoadFailedMessage("");
 
     const isCurrentRequest = () => requestId === latestHomeLoadIdRef.current;
     const showHomeLoadError = (message: string) => {
       if (!isCurrentRequest()) return;
-      setHomeLoadFailedMessage(message);
-      setError(message);
+      const displayMessage = homeLoadedOrganizationRef.current === currentOrganizationId
+        ? `Dashboard refresh failed. Showing the last loaded data. ${message}`
+        : message;
+      setHomeLoadFailedMessage(displayMessage);
+      homeLoadErrorRef.current = displayMessage;
+      setError(displayMessage);
     };
 
     if (!currentOrganizationId) {
@@ -3658,6 +3675,7 @@ export default function AdminPage() {
       try {
         const response = await fetch(requestUrl, {
           cache: "no-store",
+          signal: AbortSignal.timeout(45_000),
           headers: {
             Authorization: `Bearer ${session.access_token}`,
           },
@@ -3669,13 +3687,21 @@ export default function AdminPage() {
 
         if (response.ok && payload?.ok) {
           applyAdminHomePayload(payload.data || {});
+          homeLoadedOrganizationRef.current = currentOrganizationId;
+          const previousHomeError = homeLoadErrorRef.current;
+          setError((current) => current === previousHomeError ? "" : current);
+          homeLoadErrorRef.current = "";
           setHomeLoadFailedMessage("");
           return true;
         }
 
         const shouldRetry = attempt === 0 && ADMIN_HOME_RETRYABLE_STATUS_CODES.has(response.status);
         if (!shouldRetry) {
-          showHomeLoadError(payload?.error || "Could not load admin home data.");
+          showHomeLoadError(
+            ADMIN_HOME_RETRYABLE_STATUS_CODES.has(response.status)
+              ? "The server is temporarily unavailable. Please retry shortly."
+              : payload?.error || "Could not load admin home data."
+          );
           return false;
         }
       } catch {
@@ -11054,6 +11080,7 @@ This removes its linked members and deletes the grounds account.`
         </div>
         {expanded ? (
           <div className="mt-2 space-y-2 text-xs font-medium text-[#5f5245]">
+            <div className="font-semibold">Cleaning checklist</div>
             <div>{item.progressSummary || "No cleaner progress has been recorded yet."}</div>
             {item.progressChecklistItems && item.progressChecklistItems.length > 0 ? (
               <div className="space-y-1 rounded-lg border border-[#eee3d2] bg-[#fcfaf7] p-2">
@@ -11079,7 +11106,9 @@ This removes its linked members and deletes the grounds account.`
                   </div>
                 ))}
               </div>
-            ) : null}
+            ) : (
+              <p>No checklist items have been created for this cleaning yet.</p>
+            )}
           </div>
         ) : null}
       </button>

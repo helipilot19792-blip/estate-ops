@@ -159,7 +159,6 @@ export async function GET(request: Request) {
       inspectionRulesRes,
       staffJobStatusEventsRes,
       jobOfferAuditLogsRes,
-      turnoverJobChecklistItemsRes,
     ] = await Promise.all([
       serviceClient
         .from("properties")
@@ -224,13 +223,6 @@ export async function GET(request: Request) {
         ])
         .order("created_at", { ascending: false })
         .limit(500),
-      priorityOnly
-        ? emptyResult()
-        : serviceClient
-            .from("turnover_job_checklist_items")
-            .select("*")
-            .eq("organization_id", organizationId)
-            .order("sort_order", { ascending: true }),
     ]);
     const primaryQueriesFinishedAt = Date.now();
 
@@ -251,6 +243,20 @@ export async function GET(request: Request) {
     }
 
     const properties = propertiesRes.data ?? [];
+    // The priority home view also renders expandable cleaning checklists.
+    // Load items for its jobs instead of omitting them or fetching all history.
+    const jobIds = (jobsRes.data ?? []).map((job: { id: string }) => job.id);
+    const turnoverJobChecklistItemsRes = jobIds.length > 0
+      ? await serviceClient
+          .from("turnover_job_checklist_items")
+          .select("*")
+          .eq("organization_id", organizationId)
+          .in("job_id", jobIds)
+          .order("sort_order", { ascending: true })
+      : await emptyResult();
+    if (turnoverJobChecklistItemsRes.error && !isOptionalTableError(turnoverJobChecklistItemsRes.error)) {
+      throw new Error(turnoverJobChecklistItemsRes.error.message);
+    }
     const propertyIds = properties.map((property: { id: string }) => property.id);
     const strandedJobsRes = propertyIds.length > 0
       ? await serviceClient
