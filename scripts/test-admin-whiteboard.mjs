@@ -4,10 +4,12 @@ import ts from 'typescript';
 const org = '11111111-1111-1111-1111-111111111111';
 const other = '22222222-2222-2222-2222-222222222222';
 let signedIn = true;
+let savedSequence = 0;
 const db = {
   organization_members: [{organization_id:org,profile_id:'admin',role:'admin'}, {organization_id:org,profile_id:'second',role:'admin'}, {organization_id:other,profile_id:'foreign',role:'admin'}, {organization_id:org,profile_id:'cleaner',role:'cleaner'}],
   profiles: [{id:'admin',role:'admin',full_name:'Admin'}, {id:'second',role:'admin',full_name:'Second'}, {id:'foreign',role:'admin'}, {id:'cleaner',role:'cleaner'}],
   admin_whiteboard_tasks: [{ id: 'other-task', organization_id: other, title: 'Private', completed_at: null }],
+  admin_whiteboard_saved_drawings: [],
   admin_whiteboard_drawings: [{organization_id:other,revision:5,strokes:[],updated_at:null}],
 };
 const service = { from(table) {
@@ -25,7 +27,7 @@ const service = { from(table) {
     then(resolve,reject) { return Promise.resolve().then(() => {
       const rows=db[table];
       if(upserted && !rows.some(r=>r.organization_id===upserted.organization_id)) rows.push({...upserted,revision:0,strokes:[]});
-      if(inserted) rows.push({id:'new-task',...inserted});
+      if(inserted) rows.push({id:table === 'admin_whiteboard_saved_drawings' ? `saved-${++savedSequence}` : 'new-task', ...(table === 'admin_whiteboard_saved_drawings' ? {revision:1,updated_at:null} : {}),...inserted});
       const found=inserted?[rows.at(-1)]:rows.filter(r=>filters.every(f=>f(r)));
       if(patch) found.forEach(r=>Object.assign(r,patch));
       if(removing) db[table] = rows.filter(r=>!found.includes(r));
@@ -78,6 +80,24 @@ assert.deepEqual((await(await call('GET',undefined,'drawing')).json()).drawing.s
 assert.equal(db.admin_whiteboard_drawings[0].revision,5);
 assert.equal((await call('PUT',{strokes:[],revision:1},'drawing')).status,200);
 assert.deepEqual((await(await call('GET',undefined,'drawing')).json()).drawing.strokes,[]);
+// Named drawings remain independent, can be reopened and copied, and use
+// version checks for edits and deletion just like the shared board.
+assert.equal((await call('POST',{title:' ',strokes},'gallery')).status,400);
+const first=(await(await call('POST',{title:'Garden plan',strokes},'gallery')).json()).drawing;
+assert.ok(first.id);
+const second=(await(await call('POST',{title:'New idea',strokes:[]},'gallery')).json()).drawing;
+assert.notEqual(first.id,second.id);
+assert.deepEqual((await(await call('GET',undefined,`gallery/${first.id}`)).json()).drawing.strokes,strokes);
+assert.equal((await call('GET',undefined,`gallery/${first.id}`,other)).status,403);
+assert.equal((await call('PUT',{id:first.id,revision:1,title:'Changed',strokes:[]},'gallery',other)).status,403);
+assert.equal((await call('PUT',{id:first.id,revision:1,title:'Garden plan updated',strokes:[]},'gallery')).status,200);
+assert.equal((await call('PUT',{id:first.id,revision:1,title:'Stale',strokes},'gallery')).status,409);
+assert.equal((await call('DELETE',{id:first.id,revision:1},'gallery')).status,409);
+assert.equal((await(await call('GET',undefined,'gallery')).json()).drawings.length,2);
+assert.equal((await call('DELETE',{id:first.id,revision:2},'gallery')).status,200);
+assert.equal((await call('GET',undefined,`gallery/${first.id}`)).status,404);
+assert.equal((await call('GET',undefined,`gallery/${second.id}`)).status,200);
+
 // History actions cannot touch another tenant or a task reopened meanwhile.
 assert.equal((await call('PATCH',{action:'archive',ids:['new-task']})).status,200);
 assert.equal(task.archived_at,null);
@@ -123,10 +143,16 @@ const componentModules={react,'react/jsx-runtime':{jsx:element,jsxs:element},'./
 const canvasCode=ts.transpileModule(readFileSync(new URL('../components/admin/whiteboard-canvas.tsx',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
 const canvasModule={};
 new Function('exports','require','window','document',canvasCode)(canvasModule,name=>{assert.ok(componentModules[name],name);return componentModules[name];},eventTarget,eventTarget);
-const props={request:async()=>({drawing:{strokes:[],revision:0,updated_at:null}}),onDirtyChange:()=>{}};
+signedIn = true;
+const props={request:async(method='GET',body,resource='drawing')=>{
+  const response=await call(method,body,resource);
+  const result=await response.json();
+  if(!response.ok)throw new Error(result.error);
+  return result;
+},onDirtyChange:()=>{}};
 function findElement(node,type) { if(!node || typeof node!=='object')return null; if(node.type===type)return node; for(const child of [node.props?.children].flat(Infinity)){const found=findElement(child,type);if(found)return found;} return null; }
 function renderCanvas(){hookIndex=0;effects=[];const tree=canvasModule.default(props);for(const effect of effects)effect();return findElement(tree,'svg');}
-renderCanvas();await Promise.resolve();await Promise.resolve();
+renderCanvas();await new Promise(resolve=>setImmediate(resolve));
 let surface=renderCanvas();
 let prevented=0;
 const pointer=(id=1,buttons=1)=>({pointerId:id,buttons,button:0,clientX:30,clientY:30,preventDefault(){prevented++;},currentTarget:{getBoundingClientRect:()=>({left:0,top:0,width:1000,height:500}),setPointerCapture(){}}});
@@ -145,3 +171,28 @@ surface.props.onPointerDown(pointer(3));surface=renderCanvas();
 surface.props.onPointerUp(pointer(3));surface.props.onLostPointerCapture(pointer(3));surface=renderCanvas();
 assert.equal(marks().length,3,'release and capture loss commit once and allow another stroke');
 console.log('Canvas drag prevention and interrupted-pointer recovery checks passed.');
+
+function elements(node,type) {
+  if(!node || typeof node!=='object')return [];
+  return [...(node.type===type?[node]:[]), ...[node.props?.children].flat(Infinity).flatMap(child=>elements(child,type))];
+}
+function renderBoard(){hookIndex=0;effects=[];const tree=canvasModule.default(props);for(const effect of effects)effect();return tree;}
+let board=renderBoard();
+elements(board,'input').find(input=>input.props.placeholder==='e.g. Cabin garden plan').props.onChange({target:{value:'Original sketch'}});
+board=renderBoard();
+elements(board,'button').find(button=>button.props.children==='Save as new').props.onClick();
+await new Promise(resolve=>setImmediate(resolve));
+board=renderBoard();
+const original=db.admin_whiteboard_saved_drawings.find(item=>item.title==='Original sketch');
+assert.equal(original.strokes.length,3);
+elements(board,'button').find(button=>button.props.children==='New drawing').props.onClick();
+board=renderBoard();
+assert.equal(elements(findElement(board,'svg'),'circle').length,0,'New drawing starts blank');
+assert.equal(original.strokes.length,3,'New drawing preserves the saved sketch');
+const originalCard=elements(board,'li').find(card=>elements(card,'div').some(div=>Array.isArray(div.props.children)&&div.props.children[0]==='Original sketch'));
+assert.ok(originalCard);
+elements(originalCard,'button').find(button=>button.props.children==='Open').props.onClick();
+await new Promise(resolve=>setImmediate(resolve));
+board=renderBoard();
+assert.equal(elements(findElement(board,'svg'),'circle').length,3,'Opening the saved drawing restores its marks');
+console.log('Named drawing save, new canvas, and reopen workflow checks passed.');

@@ -19,6 +19,45 @@ async function handle(request: Request) {
     if (!membership.data) return Response.json({ error: "Only this organization’s admins can access its whiteboard." }, { status: 403 });
 
     const resource = new URL(request.url).searchParams.get("resource");
+    if (resource === "gallery" || resource?.startsWith("gallery/")) {
+      const id = resource.includes("/") ? resource.slice("gallery/".length) : null;
+      if (request.method === "GET") {
+        const query = service.from("admin_whiteboard_saved_drawings")
+          .select(id ? "id,title,strokes,revision,updated_at" : "id,title,revision,updated_at")
+          .eq("organization_id", organizationId);
+        const result = id ? await query.eq("id", id).maybeSingle() : await query.order("updated_at", { ascending: false });
+        if (result.error) throw result.error;
+        if (id && !result.data) return Response.json({ error: "Saved drawing not found." }, { status: 404 });
+        return Response.json(id ? { drawing: result.data } : { drawings: result.data }, { headers: { "Cache-Control": "private, no-store" } });
+      }
+      if (!["POST", "PUT", "DELETE"].includes(request.method)) return Response.json({ error: "Method not allowed." }, { status: 405 });
+      const text = await request.text();
+      if (text.length > 1_000_000) return Response.json({ error: "Drawing is too large." }, { status: 413 });
+      const body = (() => { try { return JSON.parse(text); } catch { return null; } })();
+      if (!body || (request.method !== "POST" && (typeof body.id !== "string" || !Number.isSafeInteger(body.revision) || body.revision < 1 || body.revision >= 2147483647))) {
+        return Response.json({ error: "Choose a saved drawing and its version." }, { status: 400 });
+      }
+      const title = typeof body.title === "string" ? body.title.trim() : "";
+      if (request.method !== "DELETE" && (!title || title.length > 120 || !isValidDrawing(body.strokes))) {
+        return Response.json({ error: "Enter a drawing name (up to 120 characters) and a valid drawing." }, { status: 400 });
+      }
+      if (request.method === "POST") {
+        const result = await service.from("admin_whiteboard_saved_drawings").insert({
+          organization_id: organizationId, title, strokes: body.strokes, updated_by: auth.user.id,
+        }).select("id,title,strokes,revision,updated_at").single();
+        if (result.error) throw result.error;
+        return Response.json({ drawing: result.data }, { status: 201 });
+      }
+      const query = request.method === "DELETE"
+        ? service.from("admin_whiteboard_saved_drawings").delete()
+        : service.from("admin_whiteboard_saved_drawings").update({ title, strokes: body.strokes,
+          revision: body.revision + 1, updated_at: new Date().toISOString(), updated_by: auth.user.id });
+      const result = await query.eq("organization_id", organizationId).eq("id", body.id).eq("revision", body.revision)
+        .select("id,title,strokes,revision,updated_at").maybeSingle();
+      if (result.error) throw result.error;
+      if (!result.data) return Response.json({ error: "This drawing was changed or removed. Save a copy of your work or load the latest version before trying again." }, { status: 409 });
+      return Response.json(request.method === "DELETE" ? { deletedId: result.data.id } : { drawing: result.data });
+    }
     if (resource === "admins" && request.method === "GET") {
       const members = await service.from("organization_members").select("profile_id")
         .eq("organization_id", organizationId).eq("role", "admin");

@@ -4,8 +4,9 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent } from "rea
 import styles from "./whiteboard.module.css";
 import { MAX_DRAWING_POINTS, type WhiteboardStroke } from "@/lib/whiteboard-drawing";
 
-type Drawing = { strokes: WhiteboardStroke[]; revision: number; updated_at: string | null };
-type RequestBoard = (method?: string, body?: object, resource?: string) => Promise<{ drawing: Drawing }>;
+type GalleryItem = { id: string; title: string; revision: number; updated_at: string | null };
+type Drawing = { id?: string; title?: string; strokes: WhiteboardStroke[]; revision: number; updated_at: string | null };
+type RequestBoard = (method?: string, body?: object, resource?: string) => Promise<{ drawing?: Drawing; drawings?: GalleryItem[]; deletedId?: string }>;
 
 export default function WhiteboardCanvas({ request, onDirtyChange }: { request: RequestBoard; onDirtyChange: (dirty: boolean) => void }) {
   const svg = useRef<SVGSVGElement>(null);
@@ -22,6 +23,18 @@ export default function WhiteboardCanvas({ request, onDirtyChange }: { request: 
   const [dirty, setDirty] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [mode, setMode] = useState<"shared" | "new" | "saved">("shared");
+  const [drawingId, setDrawingId] = useState<string | null>(null);
+  const [name, setName] = useState("Shared board");
+  const [gallery, setGallery] = useState<GalleryItem[]>([]);
+  const [galleryError, setGalleryError] = useState("");
+  const refreshGallery = useCallback(async () => {
+    try {
+      const result = await request("GET", undefined, "gallery");
+      setGallery(result.drawings ?? []); setGalleryError("");
+    } catch (err) { setGalleryError(err instanceof Error ? err.message : "Could not load saved drawings."); }
+  }, [request]);
+  useEffect(() => { void refreshGallery(); }, [refreshGallery]);
 
   const finishStroke = useCallback(() => {
     const current = active.current;
@@ -56,6 +69,7 @@ export default function WhiteboardCanvas({ request, onDirtyChange }: { request: 
     let cancelled = false;
     request("GET", undefined, "drawing").then(({ drawing }) => {
       if (cancelled) return;
+      if (!drawing) throw new Error("Could not load drawing.");
       setStrokes(drawing.strokes); setRevision(drawing.revision); setLoaded(true);
     }).catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : "Could not load drawing."); });
     return () => { cancelled = true; };
@@ -99,21 +113,50 @@ export default function WhiteboardCanvas({ request, onDirtyChange }: { request: 
     if (active.current?.pointer !== event.pointerId) return;
     finishStroke();
   }
-  async function save() {
+  async function save(asNew = false) {
     setBusy(true); setError("");
     try {
-      const { drawing } = await request("PUT", { strokes, revision }, "drawing");
+      const creating = asNew || mode === "new";
+      const resource = creating || mode === "saved" ? "gallery" : "drawing";
+      const { drawing } = await request(creating ? "POST" : "PUT", {
+        strokes, revision, title: name.trim(), ...(drawingId ? { id: drawingId } : {}),
+      }, resource);
+      if (!drawing) throw new Error("Could not save drawing.");
+      if (drawing.id) { setDrawingId(drawing.id); setMode("saved"); setName(drawing.title || name); }
       setRevision(drawing.revision); setDirty(false); setMessage("Drawing saved for this organization’s admins.");
+      void refreshGallery();
     } catch (err) { setError(err instanceof Error ? err.message : "Could not save drawing."); }
     finally { setBusy(false); }
   }
-  async function reload() {
-    if (dirty && !window.confirm("Discard your unsaved drawing changes and load the latest saved board?")) return;
+  async function openDrawing(id: string | null) {
+    if (dirty && !window.confirm("Discard your unsaved changes and open this drawing? Save your work first to keep it.")) return;
     setBusy(true); setError("");
     try {
-      const { drawing } = await request("GET", undefined, "drawing");
-      setStrokes(drawing.strokes); setRevision(drawing.revision); setHistory([]); setDirty(false); setLoaded(true); setMessage("Latest drawing loaded.");
+      const { drawing } = await request("GET", undefined, id ? `gallery/${id}` : "drawing");
+      if (!drawing) throw new Error("Could not load drawing.");
+      setStrokes(drawing.strokes); setRevision(drawing.revision); setHistory([]); setDirty(false); setLoaded(true);
+      setDrawingId(id); setMode(id ? "saved" : "shared"); setName(drawing.title || "Shared board");
+      setMessage("Drawing opened.");
     } catch (err) { setError(err instanceof Error ? err.message : "Could not load drawing."); }
+    finally { setBusy(false); }
+  }
+  function newDrawing() {
+    if (dirty && !window.confirm("Start a new drawing and discard unsaved changes? Saved drawings will stay in the gallery.")) return;
+    setStrokes([]); setHistory([]); setRevision(0); setDrawingId(null); setMode("new"); setName("");
+    setDirty(false); setLoaded(true); setMessage("Blank canvas ready. Give it a name and save when you’re ready."); setError("");
+  }
+  async function deleteDrawing(item: GalleryItem) {
+    const discard = item.id === drawingId && dirty ? " Your unsaved changes to this drawing will also be discarded." : "";
+    if (!window.confirm(`Permanently delete “${item.title}” for all admins in this organization? This cannot be undone.${discard}`)) return;
+    setBusy(true); setError("");
+    try {
+      await request("DELETE", { id: item.id, revision: item.revision }, "gallery");
+      setGallery((items) => items.filter((entry) => entry.id !== item.id));
+      if (item.id === drawingId) {
+        setStrokes([]); setHistory([]); setRevision(0); setDrawingId(null); setMode("new"); setName(""); setDirty(false);
+      }
+      setMessage("Saved drawing deleted.");
+    } catch (err) { setError(err instanceof Error ? err.message : "Could not delete drawing."); void refreshGallery(); }
     finally { setBusy(false); }
   }
   function download() {
@@ -135,6 +178,14 @@ export default function WhiteboardCanvas({ request, onDirtyChange }: { request: 
   return <div className={styles.drawing}>
     <div className="mb-3 flex flex-wrap items-center justify-between gap-3"><div><h3 className={styles.sectionTitle}>Room to think</h3><p className="text-xs text-[#756656]">Draw with your mouse, finger, or pen. Save before leaving this section.</p></div>
       <span role="status" className="text-xs">{busy ? "Working…" : dirty ? "Unsaved changes" : loaded ? "Saved board" : "Drawing not loaded"}</span></div>
+    <div className="mb-4 flex flex-wrap items-end gap-3">
+      <label className="min-w-0 flex-1 text-sm">Drawing name
+        <input value={name} maxLength={120} disabled={busy || !!preview} placeholder="e.g. Cabin garden plan"
+          onChange={(event) => { setName(event.target.value); setDirty(true); }} className="mt-1 block w-full rounded-lg border border-[#cbd5d0] bg-white px-3 py-2" />
+      </label>
+      <button type="button" className={button} disabled={busy || !!preview} onClick={newDrawing}>New drawing</button>
+      <button type="button" className={button} disabled={disabled || !name.trim()} onClick={() => void save(true)}>{mode === "saved" ? "Save a copy" : "Save as new"}</button>
+    </div>
     <div className={`${styles.tools} mb-3 flex flex-wrap items-center gap-2`}>
       <button type="button" className={`${button} ${!eraser ? "ring-2 ring-[#2f7d4f]" : ""}`} aria-pressed={!eraser} onClick={() => setEraser(false)}>Pen</button>
       <button type="button" className={`${button} ${eraser ? "ring-2 ring-[#2f7d4f]" : ""}`} aria-pressed={eraser} onClick={() => setEraser(true)}>Eraser</button>
@@ -143,8 +194,8 @@ export default function WhiteboardCanvas({ request, onDirtyChange }: { request: 
       <button type="button" className={button} disabled={disabled || !history.length} onClick={() => { setStrokes(history.at(-1)!); setHistory(history.slice(0, -1)); setDirty(true); }}>Undo</button>
       <button type="button" className={button} disabled={disabled || !strokes.length} onClick={() => { if (window.confirm("Clear the drawing? You can undo this before leaving.")) { setHistory([...history.slice(-19), strokes]); setStrokes([]); setDirty(true); } }}>Clear</button>
       <button type="button" className={button} disabled={disabled} onClick={download}>Download</button>
-      <button type="button" className={button} disabled={busy || !!preview} onClick={() => void reload()}>Load latest</button>
-      <button type="button" className="rounded-full bg-[#241c15] px-4 py-2 text-sm text-white disabled:opacity-40" disabled={disabled || !dirty} onClick={() => void save()}>Save drawing</button>
+      <button type="button" className={button} disabled={busy || !!preview || mode === "new"} onClick={() => void openDrawing(drawingId)}>Load latest</button>
+      <button type="button" className="rounded-full bg-[#241c15] px-4 py-2 text-sm text-white disabled:opacity-40" disabled={disabled || !dirty || (mode !== "shared" && !name.trim())} onClick={() => void save()}>{mode === "saved" ? "Save changes" : mode === "new" ? "Save drawing" : "Save shared board"}</button>
     </div>
     {error ? <p role="alert" className="mb-3 text-sm text-red-800">{error}</p> : null}
     {message ? <p role="status" className="mb-3 text-sm text-green-800">{message}</p> : null}
@@ -154,5 +205,22 @@ export default function WhiteboardCanvas({ request, onDirtyChange }: { request: 
       <rect width="1000" height="500" fill="#ffffff" />
       {strokes.map(strokeElement)}{preview ? strokeElement(preview, strokes.length) : null}
     </svg>
+    <details className="mt-5 rounded-xl border border-[#d8e0de] bg-[#f8faf8] p-4">
+      <summary className="cursor-pointer font-semibold">Saved drawings ({gallery.length})</summary>
+      <div className="my-3 flex flex-wrap gap-2">
+        <button type="button" className={button} disabled={busy || !!preview} onClick={() => void refreshGallery()}>Refresh gallery</button>
+        <button type="button" className={button} disabled={busy || !!preview} onClick={() => void openDrawing(null)}>Open shared board</button>
+      </div>
+      {galleryError ? <p role="alert" className="mb-3 text-sm text-red-800">{galleryError}</p> : null}
+      {!gallery.length && !galleryError ? <p className="text-sm text-[#63716c]">Use Save as new to keep a named drawing here, then start a new one.</p> : null}
+      <ul className="grid gap-3 sm:grid-cols-2">
+        {gallery.map((item) => <li key={item.id} className="rounded-lg border border-[#d8e0de] bg-white p-3">
+          <div className="break-words font-semibold">{item.title}{drawingId === item.id ? " · Open" : ""}</div>
+          {item.updated_at ? <p className="mt-1 text-xs text-[#63716c]">Saved {new Date(item.updated_at).toLocaleString()}</p> : null}
+          <div className="mt-3 flex gap-2"><button type="button" className={button} disabled={busy || !!preview} onClick={() => void openDrawing(item.id)}>Open</button>
+            <button type="button" className={`${button} text-red-800`} disabled={busy || !!preview} onClick={() => void deleteDrawing(item)}>Delete</button></div>
+        </li>)}
+      </ul>
+    </details>
   </div>;
 }
