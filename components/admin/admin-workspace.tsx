@@ -32,6 +32,7 @@ import type { OnboardingStep } from "@/components/onboarding-checklist";
 
 const OnboardingChecklist = dynamic(() => import("@/components/onboarding-checklist"));
 const PortalInstallControl = dynamic(() => import("@/components/pwa/portalinstallcontrol"));
+const AdminWhiteboard = dynamic(() => import("@/components/admin/admin-whiteboard"));
 const TeamBulletinBoard = dynamic(() => import("@/components/team/team-bulletin"));
 const AdminAiActionsPanel = dynamic(() => import("@/components/admin/admin-ai-actions-panel"), { ssr: false });
 const AdminBillingBanner = dynamic(() => import("@/components/admin/admin-billing-banner"), { ssr: false });
@@ -748,6 +749,7 @@ type AdminSection =
   | "jobs"
   | "calendar"
   | "bookings"
+  | "whiteboard"
   | "bulletin"
   | "maintenance"
   | "inspections"
@@ -843,6 +845,7 @@ const ADMIN_FEATURE_LABELS: Record<AdminSection, string> = {
   jobs: "Jobs",
   calendar: "Calendar",
   bookings: "Bookings",
+  whiteboard: "Whiteboard",
   bulletin: "Bulletin Board",
   maintenance: "Maintenance Flags",
   inspections: "Property Inspections",
@@ -2735,6 +2738,7 @@ export default function AdminPage() {
       checkingAuth ||
       !currentOrganizationId ||
       activeSection === "home" ||
+      activeSection === "whiteboard" ||
       activeSection === "bulletin" ||
       adminDataLoaded ||
       loadedAdminSections.has(activeSection)
@@ -2812,7 +2816,7 @@ export default function AdminPage() {
       if (document.visibilityState !== "visible") return;
       if (activeSection === "home") {
         void loadHomeData({ background: true });
-      } else if (activeSection !== "bulletin") {
+      } else if (activeSection !== "bulletin" && activeSection !== "whiteboard") {
         void loadData({ background: true, scope: getDashboardDataScope(activeSection) });
       }
     }, 600000);
@@ -12259,6 +12263,7 @@ This removes its linked members and deletes the grounds account.`
     "bookings",
     "chat",
     "bulletin",
+    "whiteboard",
     "jobs",
     "maintenance",
     "invoices",
@@ -12868,6 +12873,13 @@ This removes its linked members and deletes the grounds account.`
           hint: t("admin.navigation.items.chat.hint"),
           accent: "bg-[#06b6d4]",
           activeClass: "border-[#a5f3fc] bg-[#ecfeff] text-[#0e7490]",
+        },
+        {
+          key: "whiteboard",
+          label: "Whiteboard",
+          hint: "Private admin task checklist",
+          accent: "bg-[#64748b]",
+          activeClass: "border-[#cbd5e1] bg-[#f1f5f9] text-[#334155]",
         },
         {
           key: "bulletin",
@@ -29295,6 +29307,8 @@ This removes its linked members and deletes the grounds account.`
         return renderTeamSection();
       case "chat":
         return renderChatSection();
+      case "whiteboard":
+        return currentOrganizationId ? <AdminWhiteboard key={currentOrganizationId} organizationId={currentOrganizationId} /> : null;
       case "bulletin":
         return renderBulletinSection();
       case "assignments":
@@ -30524,7 +30538,7 @@ This removes its linked members and deletes the grounds account.`
 
         {(activeSection === "home"
           ? adminHomeLoaded
-          : activeSection === "bulletin" || adminDataLoaded || loadedAdminSections.has(activeSection))
+          : activeSection === "whiteboard" || activeSection === "bulletin" || adminDataLoaded || loadedAdminSections.has(activeSection))
           ? renderActiveSection()
           : renderAdminWorkspaceLoading()}
         </div>
