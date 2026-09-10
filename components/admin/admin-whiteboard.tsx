@@ -27,6 +27,7 @@ export default function AdminWhiteboard({ organizationId, onDrawingDirtyChange }
   const [error, setError] = useState("");
   const version = useRef(0);
   const mounted = useRef(true);
+  const refreshing = useRef(false);
   const request = useCallback(async (method = "GET", body?: object, resource?: string) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) throw new Error("Please sign in again to open the whiteboard.");
@@ -49,16 +50,26 @@ export default function AdminWhiteboard({ organizationId, onDrawingDirtyChange }
   }, [request]);
 
   const refresh = useCallback(async () => {
+    if (refreshing.current) return;
+    refreshing.current = true;
     const current = ++version.current;
     try {
-      const result = await request();
-      if (mounted.current && current === version.current) { setTasks(result.tasks); setError(""); }
+      // The existing SELECT policy checks admin profile and organization
+      // membership in the database. Avoid an extra server/auth round trip for
+      // reads; mutations still use the authenticated API.
+      const result = await supabase.from("admin_whiteboard_tasks")
+        .select("id,title,notes,due_date,assigned_to,archived_at,completed_at,completed_by")
+        .eq("organization_id", organizationId).order("created_at", { ascending: false })
+        .abortSignal(AbortSignal.timeout(30_000));
+      if (result.error) throw new Error(result.error.message);
+      if (mounted.current && current === version.current) { setTasks(result.data ?? []); setError(""); }
     } catch (err) {
       if (mounted.current && current === version.current) setError(err instanceof Error ? err.message : "Could not load tasks.");
     } finally {
+      refreshing.current = false;
       if (mounted.current && current === version.current) setLoading(false);
     }
-  }, [request]);
+  }, [organizationId]);
 
   useEffect(() => {
     mounted.current = true;
