@@ -56,6 +56,7 @@ export default function WhiteboardCanvas({ request, onDirtyChange }: { request: 
   const [gallery, setGallery] = useState<GalleryItem[]>([]);
   const [galleryError, setGalleryError] = useState("");
   const [galleryOpen, setGalleryOpen] = useState(false);
+  const [minimized, setMinimized] = useState(false);
   const refreshGallery = useCallback(async () => {
     try {
       const result = await request("GET", undefined, "gallery");
@@ -205,7 +206,12 @@ export default function WhiteboardCanvas({ request, onDirtyChange }: { request: 
   }
   return <div className={styles.drawing}>
     <div className="mb-3 flex flex-wrap items-center justify-between gap-3"><div><h3 className={styles.sectionTitle}>Room to think</h3><p className="text-xs text-[#756656]">Draw with your mouse, finger, or pen. Save before leaving this section.</p></div>
-      <span role="status" className="text-xs">{busy ? "Working…" : dirty ? "Unsaved changes" : loaded ? "Saved board" : "Drawing not loaded"}</span></div>
+      <div className="flex items-center gap-3">
+        <span role="status" className="text-xs">{busy ? "Working…" : dirty ? "Unsaved changes" : loaded ? "Saved board" : "Drawing not loaded"}</span>
+        <button type="button" className={button} aria-expanded={!minimized} aria-controls="whiteboard-drawing-space"
+          onClick={() => { finishStroke(); setMinimized((value) => !value); }}>{minimized ? "Expand drawing" : "Minimize drawing"}</button>
+      </div></div>
+    <div id="whiteboard-drawing-space" hidden={minimized}>
     <div className="mb-4 flex flex-wrap items-end gap-3">
       <label className="min-w-0 flex-1 text-sm">Drawing name
         <input value={name} maxLength={120} disabled={busy || !!preview} placeholder="e.g. Cabin garden plan"
@@ -251,5 +257,6 @@ export default function WhiteboardCanvas({ request, onDirtyChange }: { request: 
         </li>)}
       </ul>
     </details>
+    </div>
   </div>;
 }
