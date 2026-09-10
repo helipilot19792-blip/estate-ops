@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type PointerEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
 import styles from "./whiteboard.module.css";
 import { MAX_DRAWING_POINTS, type WhiteboardStroke } from "@/lib/whiteboard-drawing";
 
@@ -22,6 +22,32 @@ export default function WhiteboardCanvas({ request, onDirtyChange }: { request: 
   const [dirty, setDirty] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+
+  const finishStroke = useCallback(() => {
+    const current = active.current;
+    if (!current) return;
+    // Clear first: pointerup and lostpointercapture can both arrive for a stroke.
+    active.current = null;
+    setHistory((items) => [...items.slice(-19), strokes]);
+    setStrokes([...strokes, current.stroke]); setDirty(true); setPreview(null);
+  }, [strokes]);
+
+  useEffect(() => {
+    const release = (event: globalThis.PointerEvent) => {
+      if (active.current?.pointer === event.pointerId) finishStroke();
+    };
+    const hidden = () => { if (document.visibilityState !== "visible") finishStroke(); };
+    window.addEventListener("pointerup", release);
+    window.addEventListener("pointercancel", release);
+    window.addEventListener("blur", finishStroke);
+    document.addEventListener("visibilitychange", hidden);
+    return () => {
+      window.removeEventListener("pointerup", release);
+      window.removeEventListener("pointercancel", release);
+      window.removeEventListener("blur", finishStroke);
+      document.removeEventListener("visibilitychange", hidden);
+    };
+  }, [finishStroke]);
 
   useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
   useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
@@ -47,6 +73,7 @@ export default function WhiteboardCanvas({ request, onDirtyChange }: { request: 
       Math.round(Math.max(0, Math.min(500, (event.clientY - box.top) / box.height * 500)))];
   }
   function begin(event: PointerEvent<SVGSVGElement>) {
+    event.preventDefault();
     if (!loaded || busy || active.current || event.button !== 0) return;
     const count = strokes.reduce((sum, stroke) => sum + stroke.points.length, 0);
     if (count >= MAX_DRAWING_POINTS || strokes.length >= 1000) { setError("This board is full. Download it before clearing space."); return; }
@@ -57,6 +84,9 @@ export default function WhiteboardCanvas({ request, onDirtyChange }: { request: 
   }
   function move(event: PointerEvent<SVGSVGElement>) {
     if (active.current?.pointer !== event.pointerId) return;
+    event.preventDefault();
+    // Recover if the browser lost the release event outside the window.
+    if (event.buttons === 0) { finishStroke(); return; }
     const stroke = active.current.stroke;
     const point = position(event);
     const previous = stroke.points.at(-1)!;
@@ -67,9 +97,7 @@ export default function WhiteboardCanvas({ request, onDirtyChange }: { request: 
   }
   function finish(event: PointerEvent<SVGSVGElement>) {
     if (active.current?.pointer !== event.pointerId) return;
-    setHistory((items) => [...items.slice(-19), strokes]);
-    setStrokes([...strokes, active.current.stroke]); setDirty(true);
-    active.current = null; setPreview(null);
+    finishStroke();
   }
   async function save() {
     setBusy(true); setError("");
@@ -121,6 +149,7 @@ export default function WhiteboardCanvas({ request, onDirtyChange }: { request: 
     {error ? <p role="alert" className="mb-3 text-sm text-red-800">{error}</p> : null}
     {message ? <p role="status" className="mb-3 text-sm text-green-800">{message}</p> : null}
     <svg ref={svg} viewBox="0 0 1000 500" role="img" aria-label="Shared freehand drawing board" className={`${styles.surface} block aspect-[2/1] w-full touch-none rounded-xl border border-[#ded3c4] bg-white`} style={{ cursor: eraser ? "cell" : "crosshair" }}
+      onDragStart={(event) => event.preventDefault()} onContextMenu={(event) => event.preventDefault()}
       onPointerDown={begin} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={finish}>
       <rect width="1000" height="500" fill="#ffffff" />
       {strokes.map(strokeElement)}{preview ? strokeElement(preview, strokes.length) : null}

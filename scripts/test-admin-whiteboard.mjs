@@ -100,3 +100,48 @@ assert.equal(db.admin_whiteboard_tasks[0].id,'other-task');
 signedIn=false;
 for(const resource of ['','drawing','admins']) assert.equal((await call('GET',undefined,resource)).status,401);
 console.log('Whiteboard isolation, assignment, validation, completion, drawing persistence, save-conflict and archive/delete checks passed.');
+
+// Exercise the real canvas handlers with a small hook/event harness, including
+// interrupted pointers. No browser, network, or production drawing is modified.
+const hookSlots = [];
+let hookIndex = 0;
+let effects = [];
+const listeners = new Map();
+const eventTarget = {
+  visibilityState: 'visible',
+  addEventListener(name, fn) { if (!listeners.has(name)) listeners.set(name, new Set()); listeners.get(name).add(fn); },
+  removeEventListener(name, fn) { listeners.get(name)?.delete(fn); },
+};
+const react = {
+  useState(initial) { const index=hookIndex++; if (!(index in hookSlots)) hookSlots[index]=initial; return [hookSlots[index], value=>{hookSlots[index]=typeof value==='function'?value(hookSlots[index]):value;}]; },
+  useRef(initial) { const index=hookIndex++; return hookSlots[index] ??= {current:initial}; },
+  useCallback(fn) { return fn; },
+  useEffect(fn,deps) { const index=hookIndex++; const old=hookSlots[index]; if(!old || deps.some((dep,i)=>dep!==old.deps[i])) {effects.push(()=>{old?.cleanup?.(); hookSlots[index]={deps,cleanup:fn()};});} },
+};
+const element=(type,props)=>({type,props});
+const componentModules={react,'react/jsx-runtime':{jsx:element,jsxs:element},'./whiteboard.module.css':{default:{}},'@/lib/whiteboard-drawing':drawing};
+const canvasCode=ts.transpileModule(readFileSync(new URL('../components/admin/whiteboard-canvas.tsx',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
+const canvasModule={};
+new Function('exports','require','window','document',canvasCode)(canvasModule,name=>{assert.ok(componentModules[name],name);return componentModules[name];},eventTarget,eventTarget);
+const props={request:async()=>({drawing:{strokes:[],revision:0,updated_at:null}}),onDirtyChange:()=>{}};
+function findElement(node,type) { if(!node || typeof node!=='object')return null; if(node.type===type)return node; for(const child of [node.props?.children].flat(Infinity)){const found=findElement(child,type);if(found)return found;} return null; }
+function renderCanvas(){hookIndex=0;effects=[];const tree=canvasModule.default(props);for(const effect of effects)effect();return findElement(tree,'svg');}
+renderCanvas();await Promise.resolve();await Promise.resolve();
+let surface=renderCanvas();
+let prevented=0;
+const pointer=(id=1,buttons=1)=>({pointerId:id,buttons,button:0,clientX:30,clientY:30,preventDefault(){prevented++;},currentTarget:{getBoundingClientRect:()=>({left:0,top:0,width:1000,height:500}),setPointerCapture(){}}});
+surface.props.onDragStart({preventDefault(){prevented++;}});
+assert.equal(prevented,1,'native drag must be cancelled');
+surface.props.onPointerDown(pointer());surface=renderCanvas();
+assert.equal(prevented,2,'drawing must prevent native selection');
+surface.props.onPointerMove(pointer(1,0));surface=renderCanvas();
+assert.ok(findElement(surface,'circle'),'a lost mouse release commits the existing stroke');
+surface.props.onPointerDown(pointer(2));surface=renderCanvas();
+for(const fn of [...listeners.get('blur')])fn();
+surface=renderCanvas();
+const marks=()=>[surface.props.children].flat(Infinity).filter(node=>node?.type==='circle');
+assert.equal(marks().length,2,'blur finishes the active stroke');
+surface.props.onPointerDown(pointer(3));surface=renderCanvas();
+surface.props.onPointerUp(pointer(3));surface.props.onLostPointerCapture(pointer(3));surface=renderCanvas();
+assert.equal(marks().length,3,'release and capture loss commit once and allow another stroke');
+console.log('Canvas drag prevention and interrupted-pointer recovery checks passed.');

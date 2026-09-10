@@ -34,6 +34,9 @@
 .tools { padding: 10px; border: 1px solid #d8e0de; border-radius: 12px; background: linear-gradient(#f9fbfa, #eef2f0); box-shadow: 0 3px 5px #203e3010; }
 .tools button { border-radius: 7px; border-color: #cbd5d0; }
 .surface { border: 1px dashed #bdccc5; border-radius: 3px; box-shadow: inset 0 0 12px #23493605; }
+.surface, .surface * { user-select: none; -webkit-user-select: none; -webkit-user-drag: none; }
+.surface { touch-action: none; }
+.surface > * { pointer-events: none; }
 .composer { position: relative; background: #fff9d9; border: 1px solid #eae1ac; border-radius: 3px; padding: 24px; box-shadow: 2px 5px 10px #77672a12; }
 .composer::before { content: ""; position: absolute; top: -9px; left: 32px; width: 72px; height: 20px; background: #e1e8ddbb; transform: rotate(-4deg); box-shadow: 0 1px 2px #203e300c; }
 .composer input, .composer select, .composer textarea { border-color: #d9d3ae; background: #ffffffa6; border-radius: 5px; }
