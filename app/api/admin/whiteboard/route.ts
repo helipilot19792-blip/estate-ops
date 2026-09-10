@@ -1,8 +1,28 @@
 import { authenticateBearerRequest, createServiceRoleClient } from "@/lib/server/request-auth";
-import { requireOrganizationAdmin, getOrganizationAccessErrorStatus } from "@/lib/server/organization-access";
+import { getOrganizationAccessErrorStatus } from "@/lib/server/organization-access";
 import { isValidDrawing } from "@/lib/whiteboard-drawing";
+import { after } from "next/server";
+import { sendStaffPushNotifications } from "@/lib/server/staff-push-notifications";
 
 export const dynamic = "force-dynamic";
+
+function notifyAssignee(task: { id: string; title: string; assigned_to?: string | null }, organizationId: string) {
+  if (!task.assigned_to) return;
+  const assigneeId = task.assigned_to;
+  after(async () => {
+    try {
+      const result = await sendStaffPushNotifications("admin", [assigneeId], {
+        title: "New Whiteboard assignment",
+        body: task.title,
+        url: `/admin?open=whiteboard&organizationId=${encodeURIComponent(organizationId)}`,
+        tag: `whiteboard-assignment-${task.id}`,
+      });
+      if (result.errors.length) console.error("Whiteboard assignment push failed", result.errors);
+    } catch (error) {
+      console.error("Whiteboard assignment push failed", error);
+    }
+  });
+}
 
 async function handle(request: Request) {
   try {
@@ -11,11 +31,16 @@ async function handle(request: Request) {
     const organizationId = new URL(request.url).searchParams.get("organizationId") || "";
     if (!/^[0-9a-f-]{36}$/i.test(organizationId)) return Response.json({ error: "Choose an organization." }, { status: 400 });
     const service = createServiceRoleClient();
-    await requireOrganizationAdmin(service, auth.user.id, organizationId);
-    // No cross-organization platform-admin bypass for private whiteboards.
-    const membership = await service.from("organization_members").select("role")
-      .eq("organization_id", organizationId).eq("profile_id", auth.user.id).eq("role", "admin").maybeSingle();
+    // Check profile and membership together, once. Platform admins still need
+    // explicit membership to access this organization's private whiteboard.
+    const [profile, membership] = await Promise.all([
+      service.from("profiles").select("role").eq("id", auth.user.id).maybeSingle(),
+      service.from("organization_members").select("role")
+        .eq("organization_id", organizationId).eq("profile_id", auth.user.id).eq("role", "admin").maybeSingle(),
+    ]);
+    if (profile.error) throw profile.error;
     if (membership.error) throw membership.error;
+    if (!profile.data || !["admin", "platform_admin"].includes(profile.data.role)) return Response.json({ error: "Admin access required." }, { status: 403 });
     if (!membership.data) return Response.json({ error: "Only this organization’s admins can access its whiteboard." }, { status: 403 });
 
     const resource = new URL(request.url).searchParams.get("resource");
@@ -148,22 +173,36 @@ async function handle(request: Request) {
         ...(assigning ? { assigned_to: body.assignedTo } : {}),
       }).select().single();
       if (result.error) throw result.error;
+      notifyAssignee(result.data, organizationId);
       return Response.json({ task: result.data }, { status: 201 });
     }
     if (typeof body.id !== "string" || (!assigning && typeof body.completed !== "boolean") ||
       (Object.hasOwn(body, "completed") && typeof body.completed !== "boolean")) {
       return Response.json({ error: "Choose a task and completion status." }, { status: 400 });
     }
-    const result = await service.from("admin_whiteboard_tasks").update({
+    let previousAssignee: string | null = null;
+    if (assigning) {
+      const previous = await service.from("admin_whiteboard_tasks").select("assigned_to")
+        .eq("organization_id", organizationId).eq("id", body.id).maybeSingle();
+      if (previous.error) throw previous.error;
+      if (!previous.data) return Response.json({ error: "Task not found." }, { status: 404 });
+      previousAssignee = previous.data.assigned_to ?? null;
+    }
+    let query = service.from("admin_whiteboard_tasks").update({
       ...(typeof body.completed === "boolean" ? {
         completed_at: body.completed ? new Date().toISOString() : null,
         completed_by: body.completed ? auth.user.id : null,
         ...(!body.completed ? { archived_at: null } : {}),
       } : {}),
       ...(assigning ? { assigned_to: body.assignedTo } : {}),
-    }).eq("organization_id", organizationId).eq("id", body.id).select().maybeSingle();
+    }).eq("organization_id", organizationId).eq("id", body.id);
+    // Compare the saved assignee atomically so concurrent requests cannot send
+    // duplicate assignment notifications or overwrite a newer assignment.
+    if (assigning) query = previousAssignee === null ? query.is("assigned_to", null) : query.eq("assigned_to", previousAssignee);
+    const result = await query.select().maybeSingle();
     if (result.error) throw result.error;
-    if (!result.data) return Response.json({ error: "Task not found." }, { status: 404 });
+    if (!result.data) return Response.json({ error: assigning ? "This assignment changed. Refresh and retry." : "Task not found." }, { status: assigning ? 409 : 404 });
+    if (assigning && result.data.assigned_to !== previousAssignee) notifyAssignee(result.data, organizationId);
     return Response.json({ task: result.data });
   } catch (error) {
     const code = (error as { code?: string })?.code;

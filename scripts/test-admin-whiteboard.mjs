@@ -5,6 +5,10 @@ const org = '11111111-1111-1111-1111-111111111111';
 const other = '22222222-2222-2222-2222-222222222222';
 let signedIn = true;
 let savedSequence = 0;
+const afterCallbacks = [];
+const pushes = [];
+let pushFails = false;
+async function flushPushes() { while (afterCallbacks.length) await afterCallbacks.shift()(); }
 const db = {
   organization_members: [{organization_id:org,profile_id:'admin',role:'admin'}, {organization_id:org,profile_id:'second',role:'admin'}, {organization_id:other,profile_id:'foreign',role:'admin'}, {organization_id:org,profile_id:'cleaner',role:'cleaner'}],
   profiles: [{id:'admin',role:'admin',full_name:'Admin'}, {id:'second',role:'admin',full_name:'Second'}, {id:'foreign',role:'admin'}, {id:'cleaner',role:'cleaner'}],
@@ -18,6 +22,7 @@ const service = { from(table) {
   const q = {
     select() { return q; }, order() { return q; },
     eq(k,v) { filters.push(r => r[k] === v); return q; },
+    is(k,v) { filters.push(r => v === null ? r[k] == null : r[k] === v); return q; },
     in(k,v) { filters.push(r => v.includes(r[k])); return q; },
     not(k,op,v) { assert.equal(op,"is"); assert.equal(v,null); filters.push(r => r[k] != null); return q; },
     delete() { removing=true; return q; },
@@ -41,6 +46,11 @@ function load(path, modules={}) {
 }
 const drawing=load('../lib/whiteboard-drawing.ts');
 const routes=load('../app/api/admin/whiteboard/route.ts', {
+  'next/server': { after: callback => afterCallbacks.push(callback) },
+  '@/lib/server/staff-push-notifications': { sendStaffPushNotifications: async (...args) => {
+    if (pushFails) throw new Error('Push unavailable');
+    pushes.push(args); return { sent: 1, errors: [] };
+  } },
   '@/lib/whiteboard-drawing':drawing,
   '@/lib/server/request-auth':{authenticateBearerRequest:async()=>signedIn?{ok:true,user:{id:'admin'}}:{ok:false,status:401,error:'Sign in'},createServiceRoleClient:()=>service},
   '@/lib/server/organization-access':{requireOrganizationAdmin:async()=>{},getOrganizationAccessErrorStatus:()=>500}
@@ -53,6 +63,16 @@ assert.equal(db.admin_whiteboard_tasks[0].completed_at,null);
 assert.equal((await call('POST',{title:'  '})).status,400);
 assert.equal((await call('POST',{title:'Task',organization_id:other,completed_at:'forged',assignedTo:'second'})).status,201);
 const task=db.admin_whiteboard_tasks.at(-1);
+assert.equal(pushes.length,0,'push delivery does not block the save response');
+await flushPushes();
+assert.equal(pushes.length,1);
+assert.equal(pushes[0][0],'admin');
+assert.deepEqual(pushes[0][1],['second']);
+assert.equal(pushes[0][2].url,`/admin?open=whiteboard&organizationId=${org}`);
+assert.equal(pushes[0][2].body,'Task');
+await call('PATCH',{id:'new-task',assignedTo:'second'});
+await flushPushes();
+assert.equal(pushes.length,1,'saving the same assignee does not notify again');
 assert.equal(task.organization_id,org);assert.equal(task.assigned_to,'second');assert.equal(task.completed_at,undefined);
 for(const assignedTo of ['foreign','cleaner','missing']) {
   assert.equal((await call('PATCH',{id:'new-task',assignedTo})).status,400);
@@ -66,6 +86,23 @@ await call('PATCH',{id:'new-task',assignedTo:null});
 assert.equal(task.assigned_to,null);assert.equal(task.completed_at,completedAt);
 await call('PATCH',{id:'new-task',completed:false});
 assert.equal(task.completed_at,null);assert.equal(task.completed_by,null);
+await flushPushes();
+assert.equal(pushes.length,1,'completion and unassignment do not notify');
+await call('PATCH',{id:'new-task',assignedTo:'admin'});
+await flushPushes();
+assert.deepEqual(pushes.at(-1)[1],['admin'],'reassignment notifies the new assignee');
+pushFails=true;
+assert.equal((await call('PATCH',{id:'new-task',assignedTo:'second'})).status,200);
+const originalError=console.error;
+try { console.error=()=>{}; await flushPushes(); } finally { console.error=originalError; }
+assert.equal(task.assigned_to,'second','push failure preserves the saved assignment');
+pushFails=false;
+const adminProfile=db.profiles.find(profile=>profile.id==='admin');
+adminProfile.role='cleaner';
+assert.equal((await call('GET')).status,403,'membership alone does not grant admin access');
+adminProfile.role='platform_admin';
+assert.equal((await call('GET',undefined,'',other)).status,403,'platform admins cannot bypass private board membership');
+adminProfile.role='admin';
 assert.deepEqual((await(await call('GET',undefined,'admins')).json()).admins.map(a=>a.id),['admin','second']);
 const strokes=[{color:'#123456',width:4,points:[[0,0],[1000,500]]}];
 assert.ok(drawing.isValidDrawing(strokes));

@@ -15,6 +15,7 @@ type Task = {
 export default function AdminWhiteboard({ organizationId, onDrawingDirtyChange }: { organizationId: string; onDrawingDirtyChange: (dirty: boolean) => void }) {
   const [admins, setAdmins] = useState<Array<{ id: string; full_name: string | null; email: string | null }>>([]);
   const [assignedTo, setAssignedTo] = useState("");
+  const [assigneeFilter, setAssigneeFilter] = useState("");
   const [adminsError, setAdminsError] = useState("");
   const [tasks, setTasks] = useState<Task[]>([]);
   const [title, setTitle] = useState("");
@@ -110,9 +111,13 @@ export default function AdminWhiteboard({ organizationId, onDrawingDirtyChange }
     finally { if (mounted.current) setBusy(null); }
   }
 
-  const pending = tasks.filter((task) => !task.completed_at);
-  const completed = tasks.filter((task) => task.completed_at && !task.archived_at).sort((a, b) => b.completed_at!.localeCompare(a.completed_at!));
-  const archived = tasks.filter((task) => task.completed_at && task.archived_at).sort((a, b) => b.archived_at!.localeCompare(a.archived_at!));
+  const visibleTasks = tasks.filter((task) => !assigneeFilter ||
+    (assigneeFilter === "unassigned" ? !task.assigned_to : task.assigned_to === assigneeFilter));
+  const unavailableAssignees = [...new Set(tasks.flatMap((task) => task.assigned_to &&
+    !admins.some((admin) => admin.id === task.assigned_to) ? [task.assigned_to] : []))];
+  const pending = visibleTasks.filter((task) => !task.completed_at);
+  const completed = visibleTasks.filter((task) => task.completed_at && !task.archived_at).sort((a, b) => b.completed_at!.localeCompare(a.completed_at!));
+  const archived = visibleTasks.filter((task) => task.completed_at && task.archived_at).sort((a, b) => b.archived_at!.localeCompare(a.archived_at!));
   const historyButton = "rounded-lg border border-[#cbd5d0] bg-white/70 px-3 py-1.5 text-xs disabled:opacity-40";
   const inputClass = "w-full rounded-xl border border-[#ded3c4] bg-white px-3 py-2 text-sm text-[#241c15]";
   const row = (task: Task) => (
@@ -149,7 +154,7 @@ export default function AdminWhiteboard({ organizationId, onDrawingDirtyChange }
         <button type="button" onClick={() => void refresh()} disabled={saving || busy !== null} className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm disabled:opacity-50">Refresh</button>
       </div>
       {error ? <div role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div> : null}
-      <WhiteboardCanvas request={request} onDirtyChange={onDrawingDirtyChange} />
+      {!loading ? <WhiteboardCanvas request={request} onDirtyChange={onDrawingDirtyChange} /> : null}
       {adminsError ? <p role="alert" className="my-3 text-sm text-red-800">Admin list unavailable: {adminsError}</p> : null}
       <form onSubmit={(event) => void addTask(event)} className={`${styles.composer} my-6 space-y-3 rounded-2xl border border-[#eadfce] bg-[#f8f4ed] p-4`}>
         <div className={styles.sectionTitle}>Leave a note</div>
@@ -168,21 +173,35 @@ export default function AdminWhiteboard({ organizationId, onDrawingDirtyChange }
         </details>
         <button disabled={saving || loading || !title.trim()} className="rounded-full bg-[#241c15] px-5 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving ? "Adding…" : "Add task"}</button>
       </form>
+      <div className="mb-6 flex flex-wrap items-end gap-3">
+        <label className="block text-sm font-medium">Filter by assigned to
+          <select value={assigneeFilter} onChange={(event) => setAssigneeFilter(event.target.value)} className={`${inputClass} mt-1`}>
+            <option value="">Everyone</option>
+            <option value="unassigned">Unassigned</option>
+            {admins.map((admin) => <option key={admin.id} value={admin.id}>{admin.full_name || admin.email || "Admin"}</option>)}
+            {unavailableAssignees.map((id, index) => <option key={id} value={id}>Former or unavailable admin {index + 1}</option>)}
+            {assigneeFilter && assigneeFilter !== "unassigned" && !admins.some((admin) => admin.id === assigneeFilter) && !unavailableAssignees.includes(assigneeFilter)
+              ? <option value={assigneeFilter}>Former or unavailable admin</option> : null}
+          </select>
+        </label>
+        {assigneeFilter ? <button type="button" onClick={() => setAssigneeFilter("")} className={historyButton}>Clear filter</button> : null}
+        <p className="text-xs text-[#756656]">Applies to open, completed, and archived tasks.</p>
+      </div>
       {loading ? <p role="status">Loading tasks…</p> : <>
         <h3 className={`${styles.sectionTitle} mb-5`}>Things to do <span className={styles.count}>{pending.length}</span></h3>
         <ul className={styles.notes}>{pending.map(row)}</ul>
-        {!pending.length ? <p className="rounded-2xl border border-dashed border-[#d8c7ab] p-6 text-sm text-[#756656]">{error ? "Tasks could not be loaded. Use Refresh to try again." : "Nothing outstanding. Add a task above whenever you need one."}</p> : null}
+        {!pending.length ? <p className="rounded-2xl border border-dashed border-[#d8c7ab] p-6 text-sm text-[#756656]">{error ? "Tasks could not be loaded. Use Refresh to try again." : assigneeFilter ? "No outstanding tasks match this assignee." : "Nothing outstanding. Add a task above whenever you need one."}</p> : null}
         <details className={`${styles.completed} mt-8`}><summary className="cursor-pointer font-semibold text-[#65735e]">Completed ({completed.length})</summary>
           {completed.length > 0 ? <div className="mt-4 flex flex-wrap gap-2">
-            <button type="button" className={historyButton} disabled={busy !== null} onClick={() => void manageHistory("archive", completed)}>Archive all completed</button>
-            <button type="button" className={`${historyButton} text-red-800`} disabled={busy !== null} onClick={() => void manageHistory("delete", completed)}>Delete all completed</button>
+            <button type="button" className={historyButton} disabled={busy !== null} onClick={() => void manageHistory("archive", completed)}>{assigneeFilter ? "Archive matching completed" : "Archive all completed"}</button>
+            <button type="button" className={`${historyButton} text-red-800`} disabled={busy !== null} onClick={() => void manageHistory("delete", completed)}>{assigneeFilter ? "Delete matching completed" : "Delete all completed"}</button>
           </div> : null}
           <ul className={`${styles.notes} mt-5`}>{completed.map(row)}</ul>
           {!completed.length ? <p className="mt-3 text-sm text-[#756656]">Checked tasks will appear here. Uncheck a task to reopen it.</p> : null}
         </details>
         <details className={`${styles.completed} mt-6`}><summary className="cursor-pointer font-semibold text-[#65735e]">Archived ({archived.length})</summary>
           <p className="mt-3 text-sm text-[#756656]">Archived tasks stay here until restored or permanently deleted.</p>
-          {archived.length > 0 ? <button type="button" className={`${historyButton} mt-3 text-red-800`} disabled={busy !== null} onClick={() => void manageHistory("delete", archived)}>Delete all archived</button> : null}
+          {archived.length > 0 ? <button type="button" className={`${historyButton} mt-3 text-red-800`} disabled={busy !== null} onClick={() => void manageHistory("delete", archived)}>{assigneeFilter ? "Delete matching archived" : "Delete all archived"}</button> : null}
           <ul className={`${styles.notes} mt-5`}>{archived.map(row)}</ul>
         </details>
         {busy === "history" ? <p role="status" className="mt-3 text-sm">Updating task history…</p> : null}

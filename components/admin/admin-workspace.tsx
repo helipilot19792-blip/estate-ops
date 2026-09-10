@@ -2686,6 +2686,9 @@ export default function AdminPage() {
     if (open === "bulletin") {
       setActiveSection("bulletin");
     }
+    if (open === "whiteboard") {
+      setActiveSection("whiteboard");
+    }
     if (open === "jobs") {
       setActiveSection("jobs");
     }
