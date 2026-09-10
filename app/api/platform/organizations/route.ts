@@ -1120,6 +1120,12 @@ export async function GET(req: NextRequest) {
     const authHeader = req.headers.get("authorization");
     const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
     const { profile, serviceClient } = await requirePlatformAdmin(token);
+    if (req.nextUrl.searchParams.get("scope") === "selector") {
+      const { data, error } = await serviceClient.from("organizations")
+        .select("id,name,slug").order("name", { ascending: true });
+      if (error) throw error;
+      return NextResponse.json({ ok: true, organizations: data ?? [] });
+    }
     const organizations = await loadOrganizationOverview(serviceClient);
     const auditLogState = await loadRecentAuditLogs(serviceClient);
     const featureUsage = await loadFeatureUsageSummary(serviceClient);

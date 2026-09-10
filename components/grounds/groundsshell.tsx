@@ -1,4 +1,5 @@
 "use client";
+import { createRefreshQueue } from "@/lib/database-workload";
 
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -673,6 +674,7 @@ export default function GroundsShell({ mode }: GroundsShellProps) {
 
   const hasAutoSelectedInitialJob = useRef(false);
   const realtimeRefreshTimeoutRef = useRef<number | null>(null);
+  const queueDashboardRefresh = useRef(createRefreshQueue());
   const chatSectionRef = useRef<HTMLDivElement | null>(null);
   const bulletinSectionRef = useRef<HTMLDivElement | null>(null);
   const {
@@ -1064,6 +1066,10 @@ export default function GroundsShell({ mode }: GroundsShellProps) {
   }
 
   async function refreshGroundsJobs() {
+    return queueDashboardRefresh.current(performGroundsRefresh);
+  }
+
+  async function performGroundsRefresh() {
     const {
       data: { session },
     } = await supabase.auth.getSession();

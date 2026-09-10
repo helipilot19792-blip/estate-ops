@@ -1343,7 +1343,8 @@ async function runSlotNotificationSweep(
     .select(
       `id,status,offered_at,accepted_at,expires_at,offer_email_sent_at,offer_reminder_sent_at,day_of_reminder_sent_at,offer_push_sent_at,offer_reminder_push_sent_at,day_of_reminder_push_sent_at,${accountIdColumn}`
     )
-    .not(accountIdColumn, "is", null);
+    .not(accountIdColumn, "is", null)
+    .or(`${sentColumn}.is.null,${pushSentColumn}.is.null`);
 
   if (mode === "offer") {
     query = query.eq("status", "offered");

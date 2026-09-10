@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { DEVICE_HEARTBEAT_INTERVAL_MS, needsDeviceHeartbeat } from "@/lib/database-workload";
 import {
   getFirstNameFromBookingSummary,
   getTodayYmd,
@@ -55,7 +56,7 @@ export async function GET(request: NextRequest) {
     const tokenHash = hashGuestDeviceToken(token);
     const { data: device, error: deviceError } = await service
       .from("property_guest_devices")
-      .select("id,label,organization_id,property_id,revoked_at")
+      .select("id,label,organization_id,property_id,revoked_at,last_seen_at")
       .eq("token_hash", tokenHash)
       .maybeSingle();
 
@@ -100,13 +101,17 @@ export async function GET(request: NextRequest) {
     const booking = relevantStay.booking;
     const guestFirstName = booking ? getFirstNameFromBookingSummary(booking.summary) : null;
 
-    await service
-      .from("property_guest_devices")
-      .update({
-        last_seen_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", device.id);
+    const now = Date.now();
+    if (needsDeviceHeartbeat(device.last_seen_at, now)) {
+      await service
+        .from("property_guest_devices")
+        .update({
+          last_seen_at: new Date(now).toISOString(),
+          updated_at: new Date(now).toISOString(),
+        })
+        .eq("id", device.id)
+        .or(`last_seen_at.is.null,last_seen_at.lte.${new Date(now - DEVICE_HEARTBEAT_INTERVAL_MS).toISOString()}`);
+    }
 
     return NextResponse.json({
       ok: true,

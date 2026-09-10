@@ -305,8 +305,15 @@ export default function TeamBulletin({
         table: "chat_participants",
         filter: `conversation_id=eq.${conversationId}`,
       },
-      () => {
-        void loadBoard();
+      (payload) => {
+        // Read receipts are participant UPDATEs too. Applying the row avoids
+        // every reader reloading the entire board for every other reader.
+        if (payload.eventType === "UPDATE") {
+          const incoming = payload.new as ChatParticipantRow;
+          setParticipants((current) => current.map((row) => row.id === incoming.id ? { ...row, ...incoming } : row));
+        } else {
+          void loadBoard();
+        }
       }
     );
 

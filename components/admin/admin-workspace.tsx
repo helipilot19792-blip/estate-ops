@@ -1685,7 +1685,7 @@ function getKnowledgeImageCategoryLabel(value?: string | null) {
 }
 
 async function loadPlatformAdminOrganizations(accessToken: string): Promise<MyOrganizationRow[]> {
-  const response = await fetch("/api/platform/organizations", {
+  const response = await fetch("/api/platform/organizations?scope=selector", {
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
@@ -1708,7 +1708,7 @@ async function loadPlatformAdminOrganizations(accessToken: string): Promise<MyOr
     organization_name: organization.name || organization.slug || "Organization",
     organization_slug: organization.slug || "",
     role: "platform_admin",
-    record_count:
+    record_count: organization.property_count === undefined ? undefined :
       (organization.property_count || 0) +
       (organization.cleaning_job_count || 0) +
       (organization.grounds_job_count || 0),
@@ -2833,13 +2833,15 @@ export default function AdminPage() {
     if (checkingAuth || !currentOrganizationId) return;
 
     let refreshTimer: number | null = null;
+    let lastRefreshStarted = 0;
     const scheduleHomeRefresh = () => {
       if (document.visibilityState !== "visible") return;
-      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
+      if (refreshTimer !== null) return;
       refreshTimer = window.setTimeout(() => {
         refreshTimer = null;
+        lastRefreshStarted = Date.now();
         void loadHomeData({ background: true });
-      }, 500);
+      }, Math.max(500, 5_000 - (Date.now() - lastRefreshStarted)));
     };
 
     const updateTurnoverSlot = (payload: { eventType: string; new: unknown; old: unknown }) => {

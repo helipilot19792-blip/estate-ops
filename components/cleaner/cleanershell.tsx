@@ -1,4 +1,5 @@
 "use client";
+import { createRefreshQueue } from "@/lib/database-workload";
 
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -756,6 +757,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
 
   const hasAutoSelectedInitialJob = useRef(false);
   const realtimeRefreshTimeoutRef = useRef<number | null>(null);
+  const queueDashboardRefresh = useRef(createRefreshQueue());
   const chatSectionRef = useRef<HTMLDivElement | null>(null);
   const bulletinSectionRef = useRef<HTMLDivElement | null>(null);
   const jobsSectionRef = useRef<HTMLDivElement | null>(null);
@@ -768,28 +770,6 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     organizationId: cleanerAccount?.organization_id || "",
     enabled: Boolean(profile?.id && cleanerAccount?.organization_id),
   });
-  useEffect(() => {
-    if (!cleanerAccount?.id) return;
-
-    const channel = supabase
-      .channel("cleaner-jobs-realtime")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "turnover_job_slots",
-        },
-        async () => {
-          await refreshCleanerJobs();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [cleanerAccount?.id]);
   useEffect(() => {
     const interval = window.setInterval(() => {
       setNow(new Date());
@@ -1188,6 +1168,10 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
   }
 
   async function refreshCleanerJobs() {
+    return queueDashboardRefresh.current(performCleanerRefresh);
+  }
+
+  async function performCleanerRefresh() {
     const {
       data: { session },
     } = await supabase.auth.getSession();

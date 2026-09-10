@@ -9,6 +9,7 @@ import {
 } from "@/lib/server/cleaner-offer-hold";
 import { detectSameDayCleanerConflicts } from "@/lib/server/same-day-cleaner-conflicts";
 import { fetchPublicText } from "@/lib/server/safe-remote-fetch";
+import { bookingContentMatches } from "@/lib/database-workload";
 import { writeAuditLog } from "@/lib/server/audit-log";
 import { getSyncedCleanerScheduleChange } from "@/lib/server/synced-cleaner-schedule";
 
@@ -746,7 +747,7 @@ async function upsertBookingEvent(
 
   const { data: existingBookingEvent, error: existingBookingEventError } = await supabase
     .from("property_booking_events")
-    .select("id, summary, guest_count, last_seen_at, updated_at")
+    .select("id,organization_id,property_id,property_calendar_id,source,external_uid,summary,guest_count,checkin_date,checkout_date,raw_dtstart,raw_dtend,last_seen_at,updated_at")
     .eq("property_id", calendar.property_id)
     .eq("source", calendar.source)
     .eq("external_uid", externalUid)
@@ -773,6 +774,7 @@ async function upsertBookingEvent(
       ? existingBookingEvent.guest_count
       : event.guestCount;
 
+  const syncedAt = new Date().toISOString();
   const payload = {
     organization_id: property.organization_id,
     property_id: calendar.property_id,
@@ -785,9 +787,13 @@ async function upsertBookingEvent(
     checkout_date: event.checkoutDate,
     raw_dtstart: event.dtstartRaw,
     raw_dtend: event.dtendRaw,
-    last_seen_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
+    last_seen_at: syncedAt,
+    updated_at: syncedAt,
   };
+
+  // Reconciliation uses the feed's seen UID set, not this timestamp. Keep
+  // unchanged rows untouched so they do not emit spurious Realtime updates.
+  if (bookingContentMatches(existingBookingEvent, payload)) return existingBookingEvent!.id;
 
   const { data, error } = await supabase
     .from("property_booking_events")
