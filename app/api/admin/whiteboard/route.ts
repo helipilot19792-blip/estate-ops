@@ -1,5 +1,6 @@
 import { authenticateBearerRequest, createServiceRoleClient } from "@/lib/server/request-auth";
 import { requireOrganizationAdmin, getOrganizationAccessErrorStatus } from "@/lib/server/organization-access";
+import { isValidDrawing } from "@/lib/whiteboard-drawing";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,48 @@ async function handle(request: Request) {
     if (membership.error) throw membership.error;
     if (!membership.data) return Response.json({ error: "Only this organization’s admins can access its whiteboard." }, { status: 403 });
 
+    const resource = new URL(request.url).searchParams.get("resource");
+    if (resource === "admins" && request.method === "GET") {
+      const members = await service.from("organization_members").select("profile_id")
+        .eq("organization_id", organizationId).eq("role", "admin");
+      if (members.error) throw members.error;
+      const ids = (members.data ?? []).map((row) => row.profile_id);
+      const profiles = ids.length ? await service.from("profiles").select("id,full_name,email")
+        .in("id", ids).in("role", ["admin", "platform_admin"]) : { data: [], error: null };
+      if (profiles.error) throw profiles.error;
+      return Response.json({ admins: profiles.data }, { headers: { "Cache-Control": "private, no-store" } });
+    }
+    if (resource === "drawing") {
+      if (request.method === "GET") {
+        const drawing = await service.from("admin_whiteboard_drawings").select("strokes,revision,updated_at")
+          .eq("organization_id", organizationId).maybeSingle();
+        if (drawing.error) throw drawing.error;
+        return Response.json({ drawing: drawing.data ?? { strokes: [], revision: 0, updated_at: null } },
+          { headers: { "Cache-Control": "private, no-store" } });
+      }
+      if (request.method !== "PUT") return Response.json({ error: "Method not allowed." }, { status: 405 });
+      const text = await request.text();
+      if (text.length > 1_000_000) return Response.json({ error: "Drawing is too large." }, { status: 413 });
+      const body = (() => { try { return JSON.parse(text); } catch { return null; } })();
+      if (!body || !isValidDrawing(body.strokes) || !Number.isSafeInteger(body.revision) || body.revision < 0 || body.revision >= 2147483647) {
+        return Response.json({ error: "Invalid drawing or drawing is too large." }, { status: 400 });
+      }
+      // Initialize once, then compare revisions so two admins cannot silently
+      // overwrite each other's drawings. A retry after a lost response is safe.
+      const initial = await service.from("admin_whiteboard_drawings").upsert({ organization_id: organizationId },
+        { onConflict: "organization_id", ignoreDuplicates: true });
+      if (initial.error) throw initial.error;
+      const saved = await service.from("admin_whiteboard_drawings").update({
+        strokes: body.strokes, revision: body.revision + 1,
+        updated_at: new Date().toISOString(), updated_by: auth.user.id,
+      }).eq("organization_id", organizationId).eq("revision", body.revision)
+        .select("strokes,revision,updated_at").maybeSingle();
+      if (saved.error) throw saved.error;
+      if (!saved.data) return Response.json({ error: "Another admin saved a newer drawing. Download your sketch before loading the latest board." }, { status: 409 });
+      return Response.json({ drawing: saved.data });
+    }
+    if (request.method === "PUT") return Response.json({ error: "Method not allowed." }, { status: 405 });
+
     if (request.method === "GET") {
       const result = await service.from("admin_whiteboard_tasks").select("*")
         .eq("organization_id", organizationId).order("created_at", { ascending: false });
@@ -25,6 +68,34 @@ async function handle(request: Request) {
     }
     const body = await request.json().catch(() => null);
     if (!body) return Response.json({ error: "Invalid task." }, { status: 400 });
+    if (request.method === "DELETE" || (request.method === "PATCH" && (body.action === "archive" || body.action === "restore"))) {
+      if (!Array.isArray(body.ids) || !body.ids.length || body.ids.length > 500 ||
+        body.ids.some((id: unknown) => typeof id !== "string" || !id)) {
+        return Response.json({ error: "Choose between 1 and 500 completed tasks." }, { status: 400 });
+      }
+      const query = request.method === "DELETE"
+        ? service.from("admin_whiteboard_tasks").delete()
+        : service.from("admin_whiteboard_tasks").update({ archived_at: body.action === "archive" ? new Date().toISOString() : null });
+      // Apply the completion and tenant checks atomically, including bulk actions.
+      // A task reopened by another admin must not be removed by a stale screen.
+      const result = await query.eq("organization_id", organizationId).in("id", body.ids)
+        .not("completed_at", "is", null).select();
+      if (result.error) throw result.error;
+      return Response.json(request.method === "DELETE"
+        ? { deletedIds: (result.data ?? []).map((task) => task.id) }
+        : { tasks: result.data ?? [] });
+    }
+    const assigning = Object.hasOwn(body, "assignedTo");
+    if (assigning && body.assignedTo !== null) {
+      if (typeof body.assignedTo !== "string") return Response.json({ error: "Choose an admin." }, { status: 400 });
+      const assignee = await service.from("organization_members").select("profile_id")
+        .eq("organization_id", organizationId).eq("profile_id", body.assignedTo).eq("role", "admin").maybeSingle();
+      if (assignee.error) throw assignee.error;
+      const profile = await service.from("profiles").select("id").eq("id", body.assignedTo)
+        .in("role", ["admin", "platform_admin"]).maybeSingle();
+      if (profile.error) throw profile.error;
+      if (!assignee.data || !profile.data) return Response.json({ error: "Assign tasks only to an admin in this organization." }, { status: 400 });
+    }
     if (request.method === "POST") {
       const title = typeof body.title === "string" ? body.title.trim() : "";
       const notes = typeof body.notes === "string" ? body.notes.trim() : "";
@@ -35,23 +106,29 @@ async function handle(request: Request) {
       }
       const result = await service.from("admin_whiteboard_tasks").insert({
         organization_id: organizationId, title, notes, due_date: dueDate, created_by: auth.user.id,
+        ...(assigning ? { assigned_to: body.assignedTo } : {}),
       }).select().single();
       if (result.error) throw result.error;
       return Response.json({ task: result.data }, { status: 201 });
     }
-    if (typeof body.id !== "string" || typeof body.completed !== "boolean") {
+    if (typeof body.id !== "string" || (!assigning && typeof body.completed !== "boolean") ||
+      (Object.hasOwn(body, "completed") && typeof body.completed !== "boolean")) {
       return Response.json({ error: "Choose a task and completion status." }, { status: 400 });
     }
     const result = await service.from("admin_whiteboard_tasks").update({
-      completed_at: body.completed ? new Date().toISOString() : null,
-      completed_by: body.completed ? auth.user.id : null,
+      ...(typeof body.completed === "boolean" ? {
+        completed_at: body.completed ? new Date().toISOString() : null,
+        completed_by: body.completed ? auth.user.id : null,
+        ...(!body.completed ? { archived_at: null } : {}),
+      } : {}),
+      ...(assigning ? { assigned_to: body.assignedTo } : {}),
     }).eq("organization_id", organizationId).eq("id", body.id).select().maybeSingle();
     if (result.error) throw result.error;
     if (!result.data) return Response.json({ error: "Task not found." }, { status: 404 });
     return Response.json({ task: result.data });
   } catch (error) {
     const code = (error as { code?: string })?.code;
-    if (code === "PGRST205" || code === "42P01") {
+    if (code === "PGRST205" || code === "42P01" || code === "PGRST204" || code === "42703") {
       return Response.json({ error: "Whiteboard setup is pending. Apply the admin whiteboard database migration, then retry." }, { status: 503 });
     }
     const status = getOrganizationAccessErrorStatus(error);
@@ -63,3 +140,5 @@ async function handle(request: Request) {
 export const GET = handle;
 export const POST = handle;
 export const PATCH = handle;
+export const PUT = handle;
+export const DELETE = handle;

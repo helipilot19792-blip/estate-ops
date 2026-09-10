@@ -1724,6 +1724,7 @@ export default function AdminPage() {
   const [currentAdminUserId, setCurrentAdminUserId] = useState<string | null>(null);
   const [currentAdminProfile, setCurrentAdminProfile] = useState<ProfileRow | null>(null);
   const [currentOrganizationId, setCurrentOrganizationId] = useState<string | null>(null);
+  const [whiteboardDrawingDirty, setWhiteboardDrawingDirty] = useState(false);
   const [currentOrganizationBilling, setCurrentOrganizationBilling] = useState<OrganizationBillingRow | null>(null);
   const [myOrganizations, setMyOrganizations] = useState<MyOrganizationRow[]>([]);
   const [adminHomeLoaded, setAdminHomeLoaded] = useState(false);
@@ -13398,6 +13399,8 @@ This removes its linked members and deletes the grounds account.`
   }
 
   function selectAdminSection(section: AdminSection) {
+    if (activeSection === "whiteboard" && section !== "whiteboard" && whiteboardDrawingDirty &&
+      !window.confirm("Leave Whiteboard and discard unsaved drawing changes? Use Save drawing to keep your sketch.")) return;
     if (isCleaningCompanyMode && !allowedAdminSectionKeys.includes(section)) {
       setActiveSection("jobs");
       setShowAdminNav(false);
@@ -29308,7 +29311,7 @@ This removes its linked members and deletes the grounds account.`
       case "chat":
         return renderChatSection();
       case "whiteboard":
-        return currentOrganizationId ? <AdminWhiteboard key={currentOrganizationId} organizationId={currentOrganizationId} /> : null;
+        return currentOrganizationId ? <AdminWhiteboard key={currentOrganizationId} organizationId={currentOrganizationId} onDrawingDirtyChange={setWhiteboardDrawingDirty} /> : null;
       case "bulletin":
         return renderBulletinSection();
       case "assignments":
@@ -29886,6 +29889,7 @@ This removes its linked members and deletes the grounds account.`
                     onChange={(event) => {
                       const nextOrganizationId = event.target.value;
                       if (!nextOrganizationId) return;
+                      if (whiteboardDrawingDirty && !window.confirm("Switch organizations and discard unsaved drawing changes? Save your drawing first to keep it.")) return;
                       if (typeof window !== "undefined") {
                         window.localStorage.setItem(ADMIN_SELECTED_ORGANIZATION_KEY, nextOrganizationId);
                       }
