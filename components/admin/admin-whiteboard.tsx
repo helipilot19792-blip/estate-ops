@@ -12,7 +12,11 @@ type Task = {
   completed_at: string | null; completed_by: string | null;
 };
 
-export default function AdminWhiteboard({ organizationId, onDrawingDirtyChange }: { organizationId: string; onDrawingDirtyChange: (dirty: boolean) => void }) {
+export default function AdminWhiteboard({ organizationId, userId, onDrawingDirtyChange }: { organizationId: string; userId: string; onDrawingDirtyChange: (dirty: boolean) => void }) {
+  const [boardTitle, setBoardTitle] = useState("Our whiteboard");
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+  const [renaming, setRenaming] = useState(false);
   const [admins, setAdmins] = useState<Array<{ id: string; full_name: string | null; email: string | null }>>([]);
   const [assignedTo, setAssignedTo] = useState("");
   const [assigneeFilter, setAssigneeFilter] = useState("");
@@ -70,6 +74,23 @@ export default function AdminWhiteboard({ organizationId, onDrawingDirtyChange }
       if (mounted.current && current === version.current) setLoading(false);
     }
   }, [organizationId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    request("GET", undefined, "settings").then((result) => {
+      if (!cancelled) setBoardTitle(result.title);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [request]);
+
+  async function renameBoard(event: React.FormEvent) {
+    event.preventDefault(); setRenaming(true); setError("");
+    try {
+      const result = await request("PUT", { title: titleDraft }, "settings");
+      setBoardTitle(result.title); setEditingTitle(false);
+    } catch (err) { setError(err instanceof Error ? err.message : "Could not rename board."); }
+    finally { setRenaming(false); }
+  }
 
   useEffect(() => {
     mounted.current = true;
@@ -161,11 +182,17 @@ export default function AdminWhiteboard({ organizationId, onDrawingDirtyChange }
   return (
     <section className={styles.board}>
       <div className={`${styles.heading} flex flex-wrap items-center justify-between gap-3`}>
-        <div><span className={styles.eyebrow}>ADMIN TEAM · PRIVATE SPACE</span><h2 className={styles.title}>Our whiteboard</h2><p className="mt-2 text-sm text-[#63716c]">A place to sketch ideas, leave notes, and get things done.</p></div>
+        <div><span className={styles.eyebrow}>ADMIN TEAM · PRIVATE SPACE</span>
+          {editingTitle ? <form onSubmit={(event) => void renameBoard(event)} className="my-2 flex flex-wrap gap-2">
+            <input aria-label="Whiteboard name" value={titleDraft} onChange={(event) => setTitleDraft(event.target.value)} required maxLength={120} disabled={renaming} className={inputClass} autoFocus />
+            <button className={historyButton} disabled={renaming || !titleDraft.trim()}>{renaming ? "Saving…" : "Save name"}</button>
+            <button type="button" className={historyButton} disabled={renaming} onClick={() => setEditingTitle(false)}>Cancel</button>
+          </form> : <div className="flex flex-wrap items-center gap-3"><h2 className={styles.title}>{boardTitle}</h2><button type="button" className={historyButton} onClick={() => { setTitleDraft(boardTitle); setEditingTitle(true); }}>Rename board</button></div>}
+          <p className="mt-2 text-sm text-[#63716c]">A place to sketch ideas, leave notes, and get things done.</p></div>
         <button type="button" onClick={() => void refresh()} disabled={saving || busy !== null} className="rounded-full border border-[#d8c7ab] bg-white px-4 py-2 text-sm disabled:opacity-50">Refresh</button>
       </div>
       {error ? <div role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div> : null}
-      {!loading ? <WhiteboardCanvas request={request} onDirtyChange={onDrawingDirtyChange} /> : null}
+      {!loading ? <WhiteboardCanvas request={request} storageKey={`whiteboard-draft:${organizationId}:${userId}`} onDirtyChange={onDrawingDirtyChange} /> : null}
       {adminsError ? <p role="alert" className="my-3 text-sm text-red-800">Admin list unavailable: {adminsError}</p> : null}
       <form onSubmit={(event) => void addTask(event)} className={`${styles.composer} my-6 space-y-3 rounded-2xl border border-[#eadfce] bg-[#f8f4ed] p-4`}>
         <div className={styles.sectionTitle}>Leave a note</div>

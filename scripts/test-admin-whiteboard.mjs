@@ -233,3 +233,31 @@ await new Promise(resolve=>setImmediate(resolve));
 board=renderBoard();
 assert.equal(elements(findElement(board,'svg'),'circle').length,3,'Opening the saved drawing restores its marks');
 console.log('Named drawing save, new canvas, and reopen workflow checks passed.');
+
+assert.equal((await call('PUT',{title:'Team planning'},'settings')).status,200);
+assert.equal((await(await call('GET',undefined,'settings')).json()).title,'Team planning');
+assert.equal((await call('PUT',{title:' '},'settings')).status,400);
+assert.equal((await call('PUT',{title:'Foreign'},'settings',other)).status,403);
+assert.equal((await(await call('GET',undefined,'settings')).json()).title,'Team planning');
+
+const recovery = new Map();
+eventTarget.sessionStorage = { getItem: key => recovery.get(key) ?? null, setItem: (key,value) => recovery.set(key,value) };
+props.storageKey='whiteboard-draft:org:admin';
+function remount() {
+  for (const slot of hookSlots) slot?.cleanup?.();
+  hookSlots.length=0;
+  renderBoard();
+}
+recovery.set(props.storageKey,JSON.stringify({strokes:[],revision:0,mode:'new',drawingId:null,name:'',dirty:false}));
+remount();
+await new Promise(resolve=>setImmediate(resolve));
+board=renderBoard();
+assert.equal(elements(findElement(board,'svg'),'circle').length,0,'refresh restores the last blank canvas instead of shared artwork');
+recovery.set(props.storageKey,JSON.stringify({strokes:[{color:'#123456',width:4,points:[[10,20]]}],revision:2,mode:'saved',drawingId:'draft-id',name:'Draft',dirty:true}));
+remount();
+await new Promise(resolve=>setImmediate(resolve));
+board=renderBoard();
+assert.equal(elements(findElement(board,'svg'),'circle').length,1,'refresh restores unsaved drawing strokes');
+assert.equal(elements(board,'input').find(input=>input.props.placeholder==='e.g. Cabin garden plan').props.value,'Draft');
+assert.equal(JSON.parse(recovery.get(props.storageKey)).revision,2,'recovery preserves conflict-check revision');
+console.log('Organization board naming and blank/unsaved canvas refresh recovery checks passed.');

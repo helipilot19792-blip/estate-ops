@@ -29314,7 +29314,7 @@ This removes its linked members and deletes the grounds account.`
       case "chat":
         return renderChatSection();
       case "whiteboard":
-        return currentOrganizationId ? <AdminWhiteboard key={currentOrganizationId} organizationId={currentOrganizationId} onDrawingDirtyChange={setWhiteboardDrawingDirty} /> : null;
+        return currentOrganizationId && currentAdminUserId ? <AdminWhiteboard key={`${currentOrganizationId}:${currentAdminUserId}`} organizationId={currentOrganizationId} userId={currentAdminUserId} onDrawingDirtyChange={setWhiteboardDrawingDirty} /> : null;
       case "bulletin":
         return renderBulletinSection();
       case "assignments":

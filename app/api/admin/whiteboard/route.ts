@@ -44,6 +44,24 @@ async function handle(request: Request) {
     if (!membership.data) return Response.json({ error: "Only this organization’s admins can access its whiteboard." }, { status: 403 });
 
     const resource = new URL(request.url).searchParams.get("resource");
+    if (resource === "settings") {
+      if (request.method === "GET") {
+        const result = await service.from("admin_whiteboard_drawings").select("board_title")
+          .eq("organization_id", organizationId).maybeSingle();
+        if (result.error && !["42703", "PGRST204"].includes(result.error.code)) throw result.error;
+        return Response.json({ title: result.data?.board_title || "Our whiteboard" }, { headers: { "Cache-Control": "private, no-store" } });
+      }
+      if (request.method !== "PUT") return Response.json({ error: "Method not allowed." }, { status: 405 });
+      const body = await request.json().catch(() => null);
+      const title = typeof body?.title === "string" ? body.title.trim() : "";
+      if (!title || title.length > 120) return Response.json({ error: "Enter a board name up to 120 characters." }, { status: 400 });
+      const initial = await service.from("admin_whiteboard_drawings").upsert({ organization_id: organizationId }, { onConflict: "organization_id", ignoreDuplicates: true });
+      if (initial.error) throw initial.error;
+      const result = await service.from("admin_whiteboard_drawings").update({ board_title: title })
+        .eq("organization_id", organizationId).select("board_title").single();
+      if (result.error) return Response.json({ error: "Could not rename the board. Ensure the whiteboard title migration (20260910050000) is applied, then retry." }, { status: 503 });
+      return Response.json({ title: result.data.board_title });
+    }
     if (resource === "gallery" || resource?.startsWith("gallery/")) {
       const id = resource.includes("/") ? resource.slice("gallery/".length) : null;
       if (request.method === "GET") {

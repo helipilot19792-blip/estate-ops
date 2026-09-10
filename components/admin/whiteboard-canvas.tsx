@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
 import styles from "./whiteboard.module.css";
-import { MAX_DRAWING_POINTS, type WhiteboardStroke } from "@/lib/whiteboard-drawing";
+import { isValidDrawing, MAX_DRAWING_POINTS, type WhiteboardStroke } from "@/lib/whiteboard-drawing";
 
 type GalleryItem = { id: string; title: string; revision: number; updated_at: string | null };
 type Drawing = { id?: string; title?: string; strokes: WhiteboardStroke[]; revision: number; updated_at: string | null };
@@ -35,7 +35,7 @@ function DrawingThumbnail({ item, request }: { item: GalleryItem; request: Reque
   </div>;
 }
 
-export default function WhiteboardCanvas({ request, onDirtyChange }: { request: RequestBoard; onDirtyChange: (dirty: boolean) => void }) {
+export default function WhiteboardCanvas({ request, storageKey, onDirtyChange }: { request: RequestBoard; storageKey?: string; onDirtyChange: (dirty: boolean) => void }) {
   const svg = useRef<SVGSVGElement>(null);
   const active = useRef<{ pointer: number; stroke: WhiteboardStroke } | null>(null);
   const [strokes, setStrokes] = useState<WhiteboardStroke[]>([]);
@@ -96,13 +96,43 @@ export default function WhiteboardCanvas({ request, onDirtyChange }: { request: 
 
   useEffect(() => {
     let cancelled = false;
-    request("GET", undefined, "drawing").then(({ drawing }) => {
+    let last: { strokes: WhiteboardStroke[]; revision: number; mode: "shared" | "new" | "saved"; drawingId: string | null; name: string; dirty: boolean } | null = null;
+    try {
+      const saved = storageKey ? JSON.parse(window.sessionStorage.getItem(storageKey) || "null") : null;
+      if (saved && isValidDrawing(saved.strokes) && Number.isSafeInteger(saved.revision) && saved.revision >= 0 &&
+        ["shared", "new", "saved"].includes(saved.mode) && typeof saved.name === "string" && typeof saved.dirty === "boolean" &&
+        (saved.drawingId === null || typeof saved.drawingId === "string")) last = saved;
+    } catch { /* Storage may be disabled or contain an outdated draft. */ }
+    if (last && (last.dirty || last.mode === "new")) {
+      setStrokes(last.strokes); setRevision(last.revision); setMode(last.mode); setDrawingId(last.drawingId);
+      setName(last.name); setDirty(last.dirty); setLoaded(true);
+      setMessage(last.dirty ? "Restored your unsaved drawing from this tab. Save to share it with your organization." : "Restored your blank canvas.");
+      return () => { cancelled = true; };
+    }
+    const id = last?.mode === "saved" ? last.drawingId : null;
+    request("GET", undefined, id ? `gallery/${id}` : "drawing").then(({ drawing }) => {
       if (cancelled) return;
       if (!drawing) throw new Error("Could not load drawing.");
       setStrokes(drawing.strokes); setRevision(drawing.revision); setLoaded(true);
-    }).catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : "Could not load drawing."); });
+      setDrawingId(id); setMode(id ? "saved" : "shared"); setName(drawing.title || "Shared board");
+    }).catch((err) => {
+      if (cancelled) return;
+      // Keep the last canvas if its saved version was removed or is temporarily
+      // unavailable. Saving as new remains possible without changing other work.
+      if (last) {
+        setStrokes(last.strokes); setRevision(0); setMode("new"); setDrawingId(null); setName(last.name); setDirty(true); setLoaded(true);
+      }
+      setError(err instanceof Error ? err.message : "Could not load drawing.");
+    });
     return () => { cancelled = true; };
-  }, [request]);
+  }, [request, storageKey]);
+
+  useEffect(() => {
+    if (!loaded || !storageKey) return;
+    try {
+      window.sessionStorage.setItem(storageKey, JSON.stringify({ strokes, revision, mode, drawingId, name, dirty }));
+    } catch { setError("This browser could not keep a refresh recovery copy. Save your drawing before refreshing."); }
+  }, [loaded, storageKey, strokes, revision, mode, drawingId, name, dirty]);
 
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => { if (dirty) { event.preventDefault(); event.returnValue = ""; } };
