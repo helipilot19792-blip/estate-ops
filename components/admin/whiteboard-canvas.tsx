@@ -31,6 +31,7 @@ export default function WhiteboardCanvas({ request, storageKey, onDirtyChange }:
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const recoverySaved = useRef(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [mode, setMode] = useState<"shared" | "new" | "saved">("shared");
@@ -74,7 +75,6 @@ export default function WhiteboardCanvas({ request, storageKey, onDirtyChange }:
     };
   }, [finishStroke]);
 
-  useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
   useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
 
   useEffect(() => {
@@ -111,14 +111,21 @@ export default function WhiteboardCanvas({ request, storageKey, onDirtyChange }:
   }, [request, storageKey]);
 
   useEffect(() => {
-    if (!loaded || !storageKey) return;
+    recoverySaved.current = false;
+    if (!loaded) return;
     try {
-      window.sessionStorage.setItem(storageKey, JSON.stringify({ strokes, revision, mode, drawingId, name, dirty }));
+      if (storageKey) {
+        window.sessionStorage.setItem(storageKey, JSON.stringify({ strokes, revision, mode, drawingId, name, dirty }));
+        recoverySaved.current = true;
+      }
     } catch { setError("This browser could not keep a refresh recovery copy. Save your drawing before refreshing."); }
-  }, [loaded, storageKey, strokes, revision, mode, drawingId, name, dirty]);
+    // Leaving the section doesn't discard a draft successfully saved in this
+    // tab. Warn only if recovery storage failed or isn't available.
+    onDirtyChange(dirty && !recoverySaved.current);
+  }, [loaded, storageKey, strokes, revision, mode, drawingId, name, dirty, onDirtyChange]);
 
   useEffect(() => {
-    const warn = (event: BeforeUnloadEvent) => { if (dirty) { event.preventDefault(); event.returnValue = ""; } };
+    const warn = (event: BeforeUnloadEvent) => { if (dirty && !recoverySaved.current) { event.preventDefault(); event.returnValue = ""; } };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);

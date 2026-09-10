@@ -281,3 +281,16 @@ assert.deepEqual(compact[0].points[0],dense[0].points[0]);
 assert.deepEqual(compact[0].points.at(-1),dense[0].points.at(-1));
 assert.equal(dense[0].points.length,20000,'preview generation preserves editor data');
 console.log('Numeric priority validation and bundled compact gallery preview checks passed.');
+
+let navigationWarning = null;
+props.onDirtyChange = value => { navigationWarning = value; };
+board=renderBoard();
+assert.equal(navigationWarning,false,'a recovered draft saved in this tab does not block navigation');
+let unloadPrevented=false;
+for (const fn of listeners.get('beforeunload') ?? []) fn({preventDefault(){unloadPrevented=true;}});
+assert.equal(unloadPrevented,false,'a recoverable draft does not prompt on refresh');
+eventTarget.sessionStorage.setItem=()=>{throw new Error('Storage blocked');};
+elements(board,'input').find(input=>input.props.placeholder==='e.g. Cabin garden plan').props.onChange({target:{value:'Storage failure draft'}});
+board=renderBoard();
+assert.equal(navigationWarning,true,'unrecoverable changes still warn before leaving');
+console.log('Recovered drafts allow navigation; storage failures retain the loss warning.');
