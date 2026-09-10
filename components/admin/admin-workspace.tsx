@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { Check, Copy, Eye, EyeOff, Mail, MapPin, MessageSquare, Monitor, Navigation, Phone, Search } from "lucide-react";
 import AdminLoadingScene from "@/components/admin/admin-loading-scene";
 import { supabase } from "@/lib/supabase";
+import { useWhiteboardUnread } from "@/lib/use-whiteboard-unread";
 import {
   DEFAULT_CURRENCY_CODE,
   SUPPORTED_CURRENCY_CODES,
@@ -1724,6 +1725,7 @@ export default function AdminPage() {
   const [currentAdminUserId, setCurrentAdminUserId] = useState<string | null>(null);
   const [currentAdminProfile, setCurrentAdminProfile] = useState<ProfileRow | null>(null);
   const [currentOrganizationId, setCurrentOrganizationId] = useState<string | null>(null);
+  const { count: whiteboardUnreadCount, markSeen: markWhiteboardTasksSeen } = useWhiteboardUnread(currentOrganizationId, currentAdminUserId);
   const [whiteboardDrawingDirty, setWhiteboardDrawingDirty] = useState(false);
   const [currentOrganizationBilling, setCurrentOrganizationBilling] = useState<OrganizationBillingRow | null>(null);
   const [myOrganizations, setMyOrganizations] = useState<MyOrganizationRow[]>([]);
@@ -13338,6 +13340,7 @@ This removes its linked members and deletes the grounds account.`
     if (section === "notifications") return notificationCenterCount;
     if (section === "chat") return unreadChatCount;
     if (section === "bulletin") return bulletinUnreadCount;
+    if (section === "whiteboard") return whiteboardUnreadCount;
     if (section === "jobs") return strandedJobs.length;
     if (section === "maintenance") return maintenanceFlagCounts.urgent;
     if (section === "inspections") return dueInspectionRules.length;
@@ -13350,7 +13353,7 @@ This removes its linked members and deletes the grounds account.`
     if (section === activeSection) return "";
 
     const currentCount = getRawAdminMenuBadgeCount(section);
-    if (section === "chat" || section === "bulletin") {
+    if (section === "chat" || section === "bulletin" || section === "whiteboard") {
       return currentCount > 0 ? (currentCount > 99 ? "99+" : String(currentCount)) : "";
     }
 
@@ -29314,7 +29317,7 @@ This removes its linked members and deletes the grounds account.`
       case "chat":
         return renderChatSection();
       case "whiteboard":
-        return currentOrganizationId && currentAdminUserId ? <AdminWhiteboard key={`${currentOrganizationId}:${currentAdminUserId}`} organizationId={currentOrganizationId} userId={currentAdminUserId} onDrawingDirtyChange={setWhiteboardDrawingDirty} /> : null;
+        return currentOrganizationId && currentAdminUserId ? <AdminWhiteboard key={`${currentOrganizationId}:${currentAdminUserId}`} organizationId={currentOrganizationId} userId={currentAdminUserId} onTasksSeen={markWhiteboardTasksSeen} onDrawingDirtyChange={setWhiteboardDrawingDirty} /> : null;
       case "bulletin":
         return renderBulletinSection();
       case "assignments":

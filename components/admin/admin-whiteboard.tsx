@@ -14,7 +14,7 @@ type Task = {
   completed_at: string | null; completed_by: string | null;
 };
 
-export default function AdminWhiteboard({ organizationId, userId, onDrawingDirtyChange }: { organizationId: string; userId: string; onDrawingDirtyChange: (dirty: boolean) => void }) {
+export default function AdminWhiteboard({ organizationId, userId, onTasksSeen, onDrawingDirtyChange }: { organizationId: string; userId: string; onTasksSeen: (ids: string[]) => Promise<void>; onDrawingDirtyChange: (dirty: boolean) => void }) {
   const [boardTitle, setBoardTitle] = useState("Our whiteboard");
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
@@ -161,6 +161,11 @@ export default function AdminWhiteboard({ organizationId, userId, onDrawingDirty
   const unavailableAssignees = [...new Set(tasks.flatMap((task) => task.assigned_to &&
     !admins.some((admin) => admin.id === task.assigned_to) ? [task.assigned_to] : []))];
   const pending = visibleTasks.filter((task) => !task.completed_at).sort((a, b) => (a.priority ?? Infinity) - (b.priority ?? Infinity));
+  useEffect(() => {
+    if (!loading && !error) void onTasksSeen(visibleTasks.filter((task) => !task.completed_at).map((task) => task.id));
+  // Only acknowledge tasks actually displayed by the current assignee filter.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks, assigneeFilter, loading, error, onTasksSeen]);
   const completed = visibleTasks.filter((task) => task.completed_at && !task.archived_at).sort((a, b) => b.completed_at!.localeCompare(a.completed_at!));
   const archived = visibleTasks.filter((task) => task.completed_at && task.archived_at).sort((a, b) => b.archived_at!.localeCompare(a.archived_at!));
   const historyButton = "rounded-lg border border-[#cbd5d0] bg-white/70 px-3 py-1.5 text-xs disabled:opacity-40";
