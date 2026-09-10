@@ -264,6 +264,9 @@ console.log('Organization board naming and blank/unsaved canvas refresh recovery
 
 const priorityTask=(await(await call('POST',{title:'Prioritized',priority:3})).json()).task;
 assert.equal(priorityTask.priority,3);
+assert.equal((await call('PATCH',{id:priorityTask.id,urgency:'super_hot'})).status,200);
+assert.equal(db.admin_whiteboard_tasks.find(task=>task.id===priorityTask.id).urgency,'super_hot');
+assert.equal((await call('PATCH',{id:priorityTask.id,urgency:'invalid'})).status,400);
 assert.equal((await call('PATCH',{id:priorityTask.id,priority:1})).status,200);
 assert.equal(db.admin_whiteboard_tasks.find(task=>task.id===priorityTask.id).priority,1);
 for (const priority of [0,-1,1.5,10000,'high']) assert.equal((await call('PATCH',{id:priorityTask.id,priority})).status,400);

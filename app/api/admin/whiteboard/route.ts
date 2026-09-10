@@ -174,6 +174,10 @@ async function handle(request: Request) {
     }
     const assigning = Object.hasOwn(body, "assignedTo");
     const prioritizing = Object.hasOwn(body, "priority");
+    const changingUrgency = Object.hasOwn(body, "urgency");
+    if (changingUrgency && !["normal", "high", "super_hot"].includes(body.urgency)) {
+      return Response.json({ error: "Choose Normal, High, or Super hot urgency." }, { status: 400 });
+    }
     if (prioritizing && body.priority !== null && (!Number.isInteger(body.priority) || body.priority < 1 || body.priority > 9999)) {
       return Response.json({ error: "Enter a priority number from 1 to 9999, or leave it blank." }, { status: 400 });
     }
@@ -198,13 +202,14 @@ async function handle(request: Request) {
       const result = await service.from("admin_whiteboard_tasks").insert({
         organization_id: organizationId, title, notes, due_date: dueDate, created_by: auth.user.id,
         ...(prioritizing ? { priority: body.priority } : {}),
+        ...(changingUrgency ? { urgency: body.urgency } : {}),
         ...(assigning ? { assigned_to: body.assignedTo } : {}),
       }).select().single();
       if (result.error) throw result.error;
       notifyAssignee(result.data, organizationId);
       return Response.json({ task: result.data }, { status: 201 });
     }
-    if (typeof body.id !== "string" || (!assigning && !prioritizing && typeof body.completed !== "boolean") ||
+    if (typeof body.id !== "string" || (!assigning && !prioritizing && !changingUrgency && typeof body.completed !== "boolean") ||
       (Object.hasOwn(body, "completed") && typeof body.completed !== "boolean")) {
       return Response.json({ error: "Choose a task and completion status." }, { status: 400 });
     }
@@ -217,6 +222,7 @@ async function handle(request: Request) {
       previousAssignee = previous.data.assigned_to ?? null;
     }
     let query = service.from("admin_whiteboard_tasks").update({
+      ...(changingUrgency ? { urgency: body.urgency } : {}),
       ...(prioritizing ? { priority: body.priority } : {}),
       ...(typeof body.completed === "boolean" ? {
         completed_at: body.completed ? new Date().toISOString() : null,
