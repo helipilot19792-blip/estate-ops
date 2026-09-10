@@ -261,3 +261,20 @@ assert.equal(elements(findElement(board,'svg'),'circle').length,1,'refresh resto
 assert.equal(elements(board,'input').find(input=>input.props.placeholder==='e.g. Cabin garden plan').props.value,'Draft');
 assert.equal(JSON.parse(recovery.get(props.storageKey)).revision,2,'recovery preserves conflict-check revision');
 console.log('Organization board naming and blank/unsaved canvas refresh recovery checks passed.');
+
+const priorityTask=(await(await call('POST',{title:'Prioritized',priority:3})).json()).task;
+assert.equal(priorityTask.priority,3);
+assert.equal((await call('PATCH',{id:priorityTask.id,priority:1})).status,200);
+assert.equal(db.admin_whiteboard_tasks.find(task=>task.id===priorityTask.id).priority,1);
+for (const priority of [0,-1,1.5,10000,'high']) assert.equal((await call('PATCH',{id:priorityTask.id,priority})).status,400);
+assert.equal((await call('PATCH',{id:priorityTask.id,priority:null})).status,200);
+assert.equal((await call('PATCH',{id:priorityTask.id,priority:2},'',other)).status,403);
+const galleryPayload=await(await call('GET',undefined,'gallery')).json();
+assert.ok(galleryPayload.drawings.every(item=>Array.isArray(item.preview) && !Object.hasOwn(item,'strokes')),'gallery includes previews without full editor data');
+const dense=[{color:'#123456',width:4,points:Array.from({length:20000},(_,i)=>[i%1000,i%500])}];
+const compact=drawing.drawingPreview(dense);
+assert.ok(compact[0].points.length<=2002);
+assert.deepEqual(compact[0].points[0],dense[0].points[0]);
+assert.deepEqual(compact[0].points.at(-1),dense[0].points.at(-1));
+assert.equal(dense[0].points.length,20000,'preview generation preserves editor data');
+console.log('Numeric priority validation and bundled compact gallery preview checks passed.');

@@ -5,6 +5,15 @@ export type WhiteboardStroke = {
 };
 
 export const MAX_DRAWING_POINTS = 20000;
+// Gallery previews retain stroke order (including eraser marks) and endpoints,
+// but don't transfer all the editor's pointer samples for every saved drawing.
+export function drawingPreview(strokes: WhiteboardStroke[]): WhiteboardStroke[] {
+  const count = strokes.reduce((total, stroke) => total + stroke.points.length, 0);
+  const stride = Math.max(1, Math.ceil(count / 2000));
+  return strokes.map((stroke) => ({ ...stroke,
+    points: stroke.points.filter((_, index) => index === 0 || index === stroke.points.length - 1 || index % stride === 0),
+  }));
+}
 export function isValidDrawing(value: unknown): value is WhiteboardStroke[] {
   if (!Array.isArray(value) || value.length > 1000) return false;
   let count = 0;

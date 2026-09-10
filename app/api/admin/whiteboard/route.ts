@@ -1,6 +1,6 @@
 import { authenticateBearerRequest, createServiceRoleClient } from "@/lib/server/request-auth";
 import { getOrganizationAccessErrorStatus } from "@/lib/server/organization-access";
-import { isValidDrawing } from "@/lib/whiteboard-drawing";
+import { drawingPreview, isValidDrawing } from "@/lib/whiteboard-drawing";
 import { after } from "next/server";
 import { sendStaffPushNotifications } from "@/lib/server/staff-push-notifications";
 
@@ -66,12 +66,17 @@ async function handle(request: Request) {
       const id = resource.includes("/") ? resource.slice("gallery/".length) : null;
       if (request.method === "GET") {
         const query = service.from("admin_whiteboard_saved_drawings")
-          .select(id ? "id,title,strokes,revision,updated_at" : "id,title,revision,updated_at")
+          .select("id,title,strokes,revision,updated_at")
           .eq("organization_id", organizationId);
         const result = id ? await query.eq("id", id).maybeSingle() : await query.order("updated_at", { ascending: false });
         if (result.error) throw result.error;
         if (id && !result.data) return Response.json({ error: "Saved drawing not found." }, { status: 404 });
-        return Response.json(id ? { drawing: result.data } : { drawings: result.data }, { headers: { "Cache-Control": "private, no-store" } });
+        const payload = id ? { drawing: result.data } : {
+          drawings: (Array.isArray(result.data) ? result.data : []).map(({ strokes, ...item }) => ({
+            ...item, preview: drawingPreview(strokes),
+          })),
+        };
+        return Response.json(payload, { headers: { "Cache-Control": "private, no-store" } });
       }
       if (!["POST", "PUT", "DELETE"].includes(request.method)) return Response.json({ error: "Method not allowed." }, { status: 405 });
       const text = await request.text();
@@ -168,6 +173,10 @@ async function handle(request: Request) {
         : { tasks: result.data ?? [] });
     }
     const assigning = Object.hasOwn(body, "assignedTo");
+    const prioritizing = Object.hasOwn(body, "priority");
+    if (prioritizing && body.priority !== null && (!Number.isInteger(body.priority) || body.priority < 1 || body.priority > 9999)) {
+      return Response.json({ error: "Enter a priority number from 1 to 9999, or leave it blank." }, { status: 400 });
+    }
     if (assigning && body.assignedTo !== null) {
       if (typeof body.assignedTo !== "string") return Response.json({ error: "Choose an admin." }, { status: 400 });
       const assignee = await service.from("organization_members").select("profile_id")
@@ -188,13 +197,14 @@ async function handle(request: Request) {
       }
       const result = await service.from("admin_whiteboard_tasks").insert({
         organization_id: organizationId, title, notes, due_date: dueDate, created_by: auth.user.id,
+        ...(prioritizing ? { priority: body.priority } : {}),
         ...(assigning ? { assigned_to: body.assignedTo } : {}),
       }).select().single();
       if (result.error) throw result.error;
       notifyAssignee(result.data, organizationId);
       return Response.json({ task: result.data }, { status: 201 });
     }
-    if (typeof body.id !== "string" || (!assigning && typeof body.completed !== "boolean") ||
+    if (typeof body.id !== "string" || (!assigning && !prioritizing && typeof body.completed !== "boolean") ||
       (Object.hasOwn(body, "completed") && typeof body.completed !== "boolean")) {
       return Response.json({ error: "Choose a task and completion status." }, { status: 400 });
     }
@@ -207,6 +217,7 @@ async function handle(request: Request) {
       previousAssignee = previous.data.assigned_to ?? null;
     }
     let query = service.from("admin_whiteboard_tasks").update({
+      ...(prioritizing ? { priority: body.priority } : {}),
       ...(typeof body.completed === "boolean" ? {
         completed_at: body.completed ? new Date().toISOString() : null,
         completed_by: body.completed ? auth.user.id : null,

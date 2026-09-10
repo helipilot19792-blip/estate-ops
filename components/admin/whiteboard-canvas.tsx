@@ -4,37 +4,20 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent } from "rea
 import styles from "./whiteboard.module.css";
 import { isValidDrawing, MAX_DRAWING_POINTS, type WhiteboardStroke } from "@/lib/whiteboard-drawing";
 
-type GalleryItem = { id: string; title: string; revision: number; updated_at: string | null };
+type GalleryItem = { preview?: WhiteboardStroke[]; id: string; title: string; revision: number; updated_at: string | null };
 type Drawing = { id?: string; title?: string; strokes: WhiteboardStroke[]; revision: number; updated_at: string | null };
 type RequestBoard = (method?: string, body?: object, resource?: string) => Promise<{ drawing?: Drawing; drawings?: GalleryItem[]; deletedId?: string }>;
 
-function DrawingThumbnail({ item, request }: { item: GalleryItem; request: RequestBoard }) {
-  const container = useRef<HTMLDivElement>(null);
-  const [drawing, setDrawing] = useState<Drawing | null>(null);
-  const [failed, setFailed] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    const observer = new IntersectionObserver((entries) => {
-      if (!entries.some((entry) => entry.isIntersecting)) return;
-      observer.disconnect();
-      void request("GET", undefined, `gallery/${item.id}`).then((result) => {
-        if (!result.drawing) throw new Error("Drawing unavailable");
-        if (!cancelled) setDrawing(result.drawing);
-      }).catch(() => { if (!cancelled) setFailed(true); });
-    }, { rootMargin: "200px" });
-    if (container.current) observer.observe(container.current);
-    return () => { cancelled = true; observer.disconnect(); };
-  }, [item.id, request]);
-  return <div ref={container} className="mb-3 flex aspect-[2/1] w-full items-center justify-center overflow-hidden rounded-md border border-[#d8e0de] bg-white">
-    {drawing ? <svg viewBox="0 0 1000 500" role="img" aria-label={`Preview of ${item.title}`} className="block h-full w-full">
+function DrawingThumbnail({ item }: { item: GalleryItem }) {
+  return <div className="mb-3 aspect-[2/1] w-full overflow-hidden rounded-md border border-[#d8e0de] bg-white">
+    <svg viewBox="0 0 1000 500" role="img" aria-label={`Preview of ${item.title}`} className="block h-full w-full">
       <rect width="1000" height="500" fill="#ffffff" />
-      {drawing.strokes.map((stroke, index) => stroke.points.length === 1
+      {(item.preview ?? []).map((stroke, index) => stroke.points.length === 1
         ? <circle key={index} cx={stroke.points[0][0]} cy={stroke.points[0][1]} r={stroke.width / 2} fill={stroke.color} />
         : <polyline key={index} points={stroke.points.map((point) => point.join(",")).join(" ")} fill="none" stroke={stroke.color} strokeWidth={stroke.width} strokeLinecap="round" strokeLinejoin="round" />)}
-    </svg> : <span className="text-xs text-[#63716c]">{failed ? "Preview unavailable. Use Open to view drawing." : "Loading preview…"}</span>}
+    </svg>
   </div>;
 }
-
 export default function WhiteboardCanvas({ request, storageKey, onDirtyChange }: { request: RequestBoard; storageKey?: string; onDirtyChange: (dirty: boolean) => void }) {
   const svg = useRef<SVGSVGElement>(null);
   const active = useRef<{ pointer: number; stroke: WhiteboardStroke } | null>(null);
@@ -279,7 +262,7 @@ export default function WhiteboardCanvas({ request, storageKey, onDirtyChange }:
       {!gallery.length && !galleryError ? <p className="text-sm text-[#63716c]">Use Save as new to keep a named drawing here, then start a new one.</p> : null}
       <ul className="grid gap-3 sm:grid-cols-2">
         {gallery.map((item) => <li key={item.id} className="rounded-lg border border-[#d8e0de] bg-white p-3">
-          {galleryOpen ? <DrawingThumbnail key={`${item.id}:${item.revision}`} item={item} request={request} /> : null}
+          {galleryOpen ? <DrawingThumbnail key={`${item.id}:${item.revision}`} item={item} /> : null}
           <div className="break-words font-semibold">{item.title}{drawingId === item.id ? " · Open" : ""}</div>
           {item.updated_at ? <p className="mt-1 text-xs text-[#63716c]">Saved {new Date(item.updated_at).toLocaleString()}</p> : null}
           <div className="mt-3 flex gap-2"><button type="button" className={button} disabled={busy || !!preview} onClick={() => void openDrawing(item.id)}>Open</button>

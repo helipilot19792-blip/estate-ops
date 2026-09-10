@@ -6,6 +6,7 @@ import WhiteboardCanvas from "@/components/admin/whiteboard-canvas";
 import { supabase } from "@/lib/supabase";
 
 type Task = {
+  priority?: number | null;
   id: string; title: string; notes: string; due_date: string | null;
   assigned_to?: string | null;
   archived_at?: string | null;
@@ -19,6 +20,7 @@ export default function AdminWhiteboard({ organizationId, userId, onDrawingDirty
   const [renaming, setRenaming] = useState(false);
   const [admins, setAdmins] = useState<Array<{ id: string; full_name: string | null; email: string | null }>>([]);
   const [assignedTo, setAssignedTo] = useState("");
+  const [priority, setPriority] = useState("");
   const [assigneeFilter, setAssigneeFilter] = useState("");
   const [adminsError, setAdminsError] = useState("");
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -62,7 +64,7 @@ export default function AdminWhiteboard({ organizationId, userId, onDrawingDirty
       // membership in the database. Avoid an extra server/auth round trip for
       // reads; mutations still use the authenticated API.
       const result = await supabase.from("admin_whiteboard_tasks")
-        .select("id,title,notes,due_date,assigned_to,archived_at,completed_at,completed_by")
+        .select("*")
         .eq("organization_id", organizationId).order("created_at", { ascending: false })
         .abortSignal(AbortSignal.timeout(30_000));
       if (result.error) throw new Error(result.error.message);
@@ -105,16 +107,17 @@ export default function AdminWhiteboard({ organizationId, userId, onDrawingDirty
     event.preventDefault();
     setSaving(true); setError(""); version.current++;
     try {
-      const result = await request("POST", { title, notes, dueDate, assignedTo: assignedTo || null });
+      const result = await request("POST", { title, notes, dueDate, assignedTo: assignedTo || null, priority: priority ? Number(priority) : null });
       if (!mounted.current) return;
       version.current++;
       setTasks((rows) => [result.task, ...rows.filter((row) => row.id !== result.task.id)]);
       setTitle(""); setNotes(""); setDueDate(""); setAssignedTo("");
+      setPriority("");
     } catch (err) { if (mounted.current) setError(err instanceof Error ? err.message : "Could not add task."); }
     finally { if (mounted.current) setSaving(false); }
   }
 
-  async function updateTask(task: Task, changes: { completed?: boolean; assignedTo?: string | null }) {
+  async function updateTask(task: Task, changes: { completed?: boolean; assignedTo?: string | null; priority?: Task["priority"] }) {
     setBusy(task.id); setError(""); version.current++;
     try {
       const result = await request("PATCH", { id: task.id, ...changes });
@@ -147,7 +150,7 @@ export default function AdminWhiteboard({ organizationId, userId, onDrawingDirty
     (assigneeFilter === "unassigned" ? !task.assigned_to : task.assigned_to === assigneeFilter));
   const unavailableAssignees = [...new Set(tasks.flatMap((task) => task.assigned_to &&
     !admins.some((admin) => admin.id === task.assigned_to) ? [task.assigned_to] : []))];
-  const pending = visibleTasks.filter((task) => !task.completed_at);
+  const pending = visibleTasks.filter((task) => !task.completed_at).sort((a, b) => (a.priority ?? Infinity) - (b.priority ?? Infinity));
   const completed = visibleTasks.filter((task) => task.completed_at && !task.archived_at).sort((a, b) => b.completed_at!.localeCompare(a.completed_at!));
   const archived = visibleTasks.filter((task) => task.completed_at && task.archived_at).sort((a, b) => b.archived_at!.localeCompare(a.archived_at!));
   const historyButton = "rounded-lg border border-[#cbd5d0] bg-white/70 px-3 py-1.5 text-xs disabled:opacity-40";
@@ -159,6 +162,17 @@ export default function AdminWhiteboard({ organizationId, userId, onDrawingDirty
         className="mt-1 h-5 w-5 shrink-0 accent-[#2f7d4f]" />
       <div className="min-w-0 flex-1">
         <div className={`${styles.noteTitle} break-words font-semibold ${task.completed_at ? "line-through" : ""}`}>{task.title}</div>
+        <label className="mt-2 flex items-center gap-2 text-xs">Priority
+          <input key={task.priority ?? "none"} type="number" min={1} max={9999} step={1} aria-label={`Priority for ${task.title}`}
+            defaultValue={task.priority ?? ""} placeholder="—" disabled={busy !== null}
+            onBlur={(event) => {
+              const value = event.currentTarget.value;
+              if (!event.currentTarget.validity.valid) { event.currentTarget.reportValidity(); event.currentTarget.value = String(task.priority ?? ""); return; }
+              const next = value ? Number(value) : null;
+              if (next !== (task.priority ?? null)) void updateTask(task, { priority: next });
+            }}
+            onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
+            className="w-20 rounded-lg border border-[#ded3c4] bg-white px-2 py-1 font-semibold text-[#241c15]" />        </label>
         {task.notes ? <p className="mt-1 whitespace-pre-wrap break-words text-sm">{task.notes}</p> : null}
         <label className="mt-2 flex flex-wrap items-center gap-2 text-xs">Assigned to
           <select aria-label={`Assign ${task.title}`} value={task.assigned_to || ""} disabled={busy !== null || !!adminsError}
@@ -197,6 +211,9 @@ export default function AdminWhiteboard({ organizationId, userId, onDrawingDirty
       <form onSubmit={(event) => void addTask(event)} className={`${styles.composer} my-6 space-y-3 rounded-2xl border border-[#eadfce] bg-[#f8f4ed] p-4`}>
         <div className={styles.sectionTitle}>Leave a note</div>
         <label className="block text-sm font-medium">New task<input required maxLength={200} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="What needs to be done?" className={`${inputClass} mt-1`} disabled={saving} /></label>
+        <label className="block text-sm">Priority
+          <input type="number" min={1} max={9999} step={1} value={priority} onChange={(event) => setPriority(event.target.value)} disabled={saving} placeholder="Optional — 1 goes first" className={`${inputClass} mt-1`} />
+        </label>
         <label className="block text-sm">Assign to an admin
           <select value={assignedTo} onChange={(event) => setAssignedTo(event.target.value)} disabled={saving || !!adminsError} className={`${inputClass} mt-1`}>
             <option value="">Unassigned</option>
@@ -223,7 +240,7 @@ export default function AdminWhiteboard({ organizationId, userId, onDrawingDirty
           </select>
         </label>
         {assigneeFilter ? <button type="button" onClick={() => setAssigneeFilter("")} className={historyButton}>Clear filter</button> : null}
-        <p className="text-xs text-[#756656]">Applies to open, completed, and archived tasks.</p>
+        <p className="text-xs text-[#756656]">Applies to open, completed, and archived tasks. Open tasks sort by priority: 1 first; unnumbered tasks last.</p>
       </div>
       {loading ? <p role="status">Loading tasks…</p> : <>
         <h3 className={`${styles.sectionTitle} mb-5`}>Things to do <span className={styles.count}>{pending.length}</span></h3>
