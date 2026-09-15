@@ -30278,7 +30278,7 @@ This removes its linked members and deletes the grounds account.`
         {activeSection === "home" && currentOrganizationId ? (
           <div className="mb-6 flex flex-wrap items-start justify-end gap-3">
             <AdminAiActionsPanel organizationId={currentOrganizationId} assistantRow />
-            <BookingGapWatch organizationId={currentOrganizationId} assistantRow />
+            <BookingGapWatch key={currentOrganizationId} organizationId={currentOrganizationId} assistantRow />
           </div>
         ) : null}
 

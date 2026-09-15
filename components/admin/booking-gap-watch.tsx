@@ -88,6 +88,7 @@ export default function BookingGapWatch({
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData.session?.access_token;
+      if (signal?.aborted) return;
       if (!token) throw new Error("Please sign in again to scan booking gaps.");
 
       const response = await fetch(
@@ -95,6 +96,7 @@ export default function BookingGapWatch({
         { headers: { Authorization: `Bearer ${token}` }, cache: "no-store", signal }
       );
       const nextPayload = (await response.json().catch(() => null)) as BookingGapWatchPayload | null;
+      if (signal?.aborted) return;
       if (!response.ok || !nextPayload?.ok) {
         throw new Error(nextPayload?.error || "Could not scan booking gaps.");
       }
@@ -209,6 +211,22 @@ export default function BookingGapWatch({
     () => (expanded ? suggestions : suggestions.slice(0, 3)),
     [expanded, suggestions]
   );
+
+  // The saved setting is unknown until the server responds. Do not present
+  // that settings lookup as a running calendar scan.
+  if (!payload) {
+    return (
+      <div role="status" className="inline-flex max-w-full items-center gap-3 rounded-full border border-[#d8c7ab] bg-white/96 px-4 py-3 text-sm text-[#7f7263]">
+        <Lightbulb size={18} className="shrink-0 text-[#9a6b24]" />
+        <span>Booking Gap Watch · {error || "Checking setting…"}</span>
+        {error ? (
+          <button type="button" disabled={loading} onClick={() => void loadSuggestions()} className="font-semibold text-[#5f4c3b] disabled:opacity-50">
+            Retry
+          </button>
+        ) : null}
+      </div>
+    );
+  }
 
   if (payload && suggestions.length === 0 && !loading && !error && !showEmptyDetails) {
     const compactStatus = !watchEnabled
