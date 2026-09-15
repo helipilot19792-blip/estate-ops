@@ -14,6 +14,8 @@ import { writeAuditLog } from "@/lib/server/audit-log";
 import { getSyncedCleanerScheduleChange } from "@/lib/server/synced-cleaner-schedule";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+export const maxDuration = 300;
 
 type PropertyCalendarRow = {
   id: string;

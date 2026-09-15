@@ -10,33 +10,46 @@ export async function GET(request: Request) {
     return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
-  const origin = new URL(request.url).origin;
+  const startedAt = Date.now();
 
   try {
-    const response = await fetch(`${origin}/api/sync-calendars`, {
+    // Run in this invocation so deployment protection, redirects, and a second
+    // function's timeout cannot interrupt the scheduled sync.
+    const { POST } = await import("@/app/api/sync-calendars/route");
+    const response = await POST(new Request(request.url, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${expected}`,
       },
-      cache: "no-store",
-    });
+    }));
 
     const payload = await response.json().catch(() => null);
 
-    if (!response.ok) {
+    const ok = response.ok && payload?.ok === true &&
+      Number(payload?.totals?.errors ?? 0) === 0 &&
+      (payload?.same_day_cleaner_conflicts?.errors?.length ?? 0) === 0;
+    const status = ok ? 200 : response.ok ? 500 : response.status;
+
+    if (!ok) {
       console.error("Scheduled calendar sync failed.", {
         status: response.status,
         payload,
+      });
+    } else {
+      console.info("Scheduled calendar sync completed.", {
+        duration_ms: Date.now() - startedAt,
+        calendars_found: payload.calendars_found,
+        totals: payload.totals,
       });
     }
 
     return Response.json(
       {
-        ok: response.ok,
-        status: response.status,
+        ok,
+        status,
         payload,
       },
-      { status: response.ok ? 200 : response.status }
+      { status }
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown calendar sync error.";
