@@ -32,6 +32,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm audit --audit-level=high
+      - run: npm run test:lint-glob
+      - run: npm run test:invoice-balances
       - run: npm run lint -- --quiet
       - run: npm run typecheck
       - run: npm test

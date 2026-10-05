@@ -11,6 +11,7 @@
     "test": "npm run test:database-workload && npm run test:admin-whiteboard && npm run test:ai-supervisor && npm run test:ai-turnover-rescue && npm run test:booking-gap-watch && npm run test:cleaner-offer-deadlines && npm run test:cleaner-offer-history && npm run test:cleaner-offer-countdown && npm run test:cleaner-offer-eligibility && npm run test:cleaner-offer-transitions && npm run test:cleaner-offer-holds && npm run test:synced-cleaner-schedule && npm run test:job-email-signatures && npm run test:workspace-billing && npm run test:storage-references && npm run test:property-details-update && npm run test:security-boundaries",
     "test:database-workload": "node scripts/test-database-workload.mjs",
     "test:invoice-balances": "node scripts/test-invoice-balances.mjs",
+    "test:lint-glob": "node scripts/test-lint-glob.mjs",
     "test:admin-whiteboard": "node scripts/test-admin-whiteboard.mjs",
     "test:ai-supervisor": "node --experimental-strip-types scripts/test-ai-supervisor-anomalies.mjs",
     "test:ai-turnover-rescue": "node --experimental-strip-types scripts/test-ai-turnover-rescue.mjs",
@@ -28,12 +29,17 @@
     "test:property-details-update": "node --experimental-strip-types scripts/test-property-details-update.mjs",
     "test:security-boundaries": "node --experimental-strip-types scripts/test-security-boundaries.mjs"
   },
+  "overrides": {
+    "@next/eslint-plugin-next": {
+      "fast-glob": "file:../../../tools/lint-glob"
+    }
+  },
   "dependencies": {
     "@supabase/auth-helpers-nextjs": "^0.15.0",
     "@supabase/ssr": "^0.10.0",
     "@supabase/supabase-js": "^2.100.1",
     "lucide-react": "^1.17.0",
-    "next": "16.3.4",
+    "next": "16.3.8",
     "pdf-lib": "^1.17.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -48,7 +54,7 @@
     "@types/react-dom": "^19",
     "@types/web-push": "^3.6.4",
     "eslint": "^9",
-    "eslint-config-next": "16.3.4",
+    "eslint-config-next": "16.3.8",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

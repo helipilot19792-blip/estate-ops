@@ -22,6 +22,16 @@ This project uses [`next/font`](https://nextjs.org/docs/app/building-your-applic
 
 ## Learn More
 
+### Lint dependency security
+
+The Next.js ESLint plugin's `fast-glob` dependency is scoped to a small adapter
+in `tools/lint-glob` backed by `tinyglobby`. The plugin only uses `globSync` with
+`onlyDirectories` to resolve configured root directories. The adapter preserves
+absolute paths and strips directory trailing slashes. This removes
+the unpatched `braces` dependency ([GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm))
+without relaxing CI's security audit. Recheck this override when upgrading the
+Next.js ESLint plugin.
+
 ### Invoice currency defaults
 
 New installations default to CAD. Admins can select CAD or USD using the Default
