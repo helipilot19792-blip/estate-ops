@@ -17,6 +17,7 @@ import {
   type CurrencyCode,
 } from "@/lib/currency";
 import { trackFeatureUsage } from "@/lib/feature-usage";
+import { getUnpaidInvoiceBalances } from "@/lib/invoice-balances";
 import { TEAM_BULLETIN_CONTEXT_TYPE } from "@/lib/team-bulletin";
 import { useTeamBulletinSummary } from "@/lib/use-team-bulletin-summary";
 import { useI18n } from "@/components/i18n-provider";
@@ -3000,9 +3001,6 @@ export default function AdminPage() {
     setInvoicePaymentInstructions(invoiceSettings?.payment_instructions || "");
     const defaultCurrencyCode = normalizeCurrencyCode(invoiceSettings?.billing_currency_code, DEFAULT_CURRENCY_CODE);
     setInvoiceDefaultCurrencyCode(defaultCurrencyCode);
-    setInvoiceCurrencyCode((current) =>
-      editingOwnerInvoiceId ? current : defaultCurrencyCode
-    );
     setInvoiceTaxLines(normalizeTaxLines(invoiceSettings?.tax_lines));
     setInvoiceAutoTurnover(invoiceSettings?.auto_add_turnover ?? true);
     setInvoiceAutoGrounds(invoiceSettings?.auto_add_grounds ?? true);
@@ -3011,6 +3009,12 @@ export default function AdminPage() {
     setInvoiceReminderRepeatDays(String(invoiceSettings?.invoice_reminder_repeat_days ?? 15));
     setInvoiceReminderMaxCount(String(invoiceSettings?.invoice_reminder_max_count ?? 3));
   }, [invoiceSettings, currentOrganizationBilling, invoiceSettingsDirty, editingOwnerInvoiceId]);
+
+  useEffect(() => {
+    if (!editingOwnerInvoiceId && !invoiceDraftDirty) {
+      setInvoiceCurrencyCode(invoiceDefaultCurrencyCode);
+    }
+  }, [invoiceDefaultCurrencyCode, editingOwnerInvoiceId, invoiceDraftDirty]);
 
   useEffect(() => {
     const ratesByPropertyId = new Map(propertyInvoiceRates.map((rate) => [rate.property_id, rate]));
@@ -17445,6 +17449,35 @@ This removes its linked members and deletes the grounds account.`
     );
   }
 
+  async function saveInvoiceCurrencyDefault(currencyCode: CurrencyCode) {
+    if (!currentOrganizationId || savingInvoiceSettings) return;
+
+    setSavingInvoiceSettings(true);
+    setError("");
+    setActionMessage("");
+
+    try {
+      const currencySettings = {
+        billing_currency_code: currencyCode,
+        updated_at: new Date().toISOString(),
+      };
+      const query = invoiceSettings
+        ? supabase.from("organization_invoice_settings").update(currencySettings).eq("organization_id", currentOrganizationId)
+        : supabase.from("organization_invoice_settings").insert({ organization_id: currentOrganizationId, ...currencySettings });
+      const { data, error } = await query.select("*").single();
+
+      if (error) throw error;
+
+      setInvoiceSettings(data as InvoiceSettingsRow);
+      setInvoiceDefaultCurrencyCode(currencyCode);
+      setActionMessage(`Default invoice currency saved as ${currencyCode}. Existing invoices keep their currency.`);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Could not save default invoice currency."));
+    } finally {
+      setSavingInvoiceSettings(false);
+    }
+  }
+
   async function saveInvoiceSettings() {
     if (!currentOrganizationId) return;
 
@@ -18348,6 +18381,7 @@ This removes its linked members and deletes the grounds account.`
       (invoice) => invoice.status === "draft" && getInvoiceDocumentKind(invoice) !== "quote"
     );
     const allActiveInvoices = ownerInvoices.filter((invoice) => invoice.status === "sent" && getInvoiceDocumentKind(invoice) !== "quote");
+    const unpaidInvoiceBalances = getUnpaidInvoiceBalances(ownerInvoices);
     const allQuoteInvoices = ownerInvoices.filter((invoice) => getInvoiceDocumentKind(invoice) === "quote");
     const allPaidInvoices = ownerInvoices.filter((invoice) => invoice.status === "paid" || invoice.status === "void");
     const normalizedInvoiceSearch = invoiceHistorySearch.trim().toLowerCase();
@@ -18873,6 +18907,23 @@ This removes its linked members and deletes the grounds account.`
                 Create quote
               </button>
             </div>
+          </div>
+          <div className="mt-4 flex flex-col gap-2 rounded-[18px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <label htmlFor="organization-invoice-currency" className="text-sm font-semibold text-[#241c15]">Default invoice currency</label>
+              <p className="mt-1 text-xs text-[#7f7263]">Saved for this organization. Applies to new invoices and quotes; existing invoices keep their currency.</p>
+            </div>
+            <select
+              id="organization-invoice-currency"
+              className="rounded-[14px] border border-[#d9ccbb] bg-white px-4 py-2 text-sm outline-none focus:border-[#b48d4e] disabled:opacity-60"
+              value={normalizeCurrencyCode(invoiceSettings?.billing_currency_code)}
+              disabled={savingInvoiceSettings || !currentOrganizationId}
+              onChange={(e) => void saveInvoiceCurrencyDefault(normalizeCurrencyCode(e.target.value))}
+            >
+              {SUPPORTED_CURRENCY_CODES.map((currencyCode) => (
+                <option key={currencyCode} value={currencyCode}>{getCurrencyLabel(currencyCode)}</option>
+              ))}
+            </select>
           </div>
           <div className="mt-5 grid gap-3 lg:grid-cols-5">
             {invoiceWorkflowOptions.map((option) => {
@@ -20698,7 +20749,18 @@ This removes its linked members and deletes the grounds account.`
               ))}
             </div>
           </div>
-          <div className="mt-3 grid gap-2 sm:grid-cols-4">
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+            <div className="rounded-[16px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">Total owed to organization</div>
+              {unpaidInvoiceBalances.balances.map((balance) => (
+                <div key={balance.currency} className="mt-1 text-xl font-semibold text-[#7f1d1d]">
+                  {formatInvoiceCurrency(balance.total, balance.currency)} {balance.currency}
+                </div>
+              ))}
+              <div className="mt-1 text-xs text-[#7f7263]">
+                {unpaidInvoiceBalances.invoiceCount} unpaid invoice{unpaidInvoiceBalances.invoiceCount === 1 ? "" : "s"} across all properties. Excludes quotes and statements.
+              </div>
+            </div>
             <div className="rounded-[16px] border border-[#eadfce] bg-[#fcfaf7] px-4 py-3">
               <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8a7b68]">Unpaid</div>
               <div className="mt-1 text-xl font-semibold text-[#7f1d1d]">{allActiveInvoices.length}</div>

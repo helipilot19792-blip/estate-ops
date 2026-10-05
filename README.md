@@ -22,6 +22,20 @@ This project uses [`next/font`](https://nextjs.org/docs/app/building-your-applic
 
 ## Learn More
 
+### Invoice currency defaults
+
+New installations default to CAD. Admins can select CAD or USD using the Default
+invoice currency control at the top of the invoice section; changes save immediately
+for that organization and apply to new invoices and quotes. Individual invoices can
+still use a different currency, and existing invoice currencies and amounts remain
+unchanged. Existing databases can run `supabase/set_invoice_currency_default_cad.sql`
+to update column defaults without overwriting saved organization preferences.
+
+The invoice history shows the total owed across the organization from sent, unpaid
+invoices, including tax. CAD and USD balances are shown separately. Quotes, drafts,
+paid invoices, void invoices, and summary statements are excluded; searching or
+filtering the history does not change this organization total.
+
 To learn more about Next.js, take a look at the following resources:
 
 - [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.

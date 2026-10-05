@@ -5,7 +5,7 @@ alter table public.owner_invoices
   add column if not exists currency_code text not null default 'CAD';
 
 update public.organization_invoice_settings
-set billing_currency_code = 'USD'
+set billing_currency_code = 'CAD'
 where billing_currency_code is null
    or trim(billing_currency_code) = '';
 
