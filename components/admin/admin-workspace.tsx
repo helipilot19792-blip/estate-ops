@@ -18449,7 +18449,11 @@ This removes its linked members and deletes the grounds account.`
     const paidOnlyInvoices = scopedOwnerInvoices.filter((invoice) => invoice.status === "paid");
     const voidInvoices = scopedOwnerInvoices.filter((invoice) => invoice.status === "void");
     const paidInvoices =
-      invoiceHistoryStatusFilter === "void" ? voidInvoices : scopedOwnerInvoices.filter((invoice) => invoice.status === "paid" || invoice.status === "void");
+      invoiceHistoryStatusFilter === "void"
+        ? voidInvoices
+        : invoiceHistoryStatusFilter === "paid"
+          ? paidOnlyInvoices
+          : scopedOwnerInvoices.filter((invoice) => invoice.status === "paid" || invoice.status === "void");
     const selectedInvoicesToCombine = selectedInvoiceIdsToCombine
       .map((id) => ownerInvoices.find((invoice) => invoice.id === id))
       .filter((invoice): invoice is OwnerInvoiceRow => invoice?.status === "sent");
@@ -20849,9 +20853,9 @@ This removes its linked members and deletes the grounds account.`
             {showPaidSection
               ? renderInvoiceHistoryGroup(
                   "paid",
-                  invoiceHistoryStatusFilter === "void" ? "Void invoices" : "Paid and closed",
+                  invoiceHistoryStatusFilter === "void" ? "Void invoices" : invoiceHistoryStatusFilter === "paid" ? "Paid invoices" : "Paid and closed",
                   paidInvoices,
-                  invoiceHistoryStatusFilter === "void" ? "No void invoices." : "No paid or closed invoices."
+                  invoiceHistoryStatusFilter === "void" ? "No void invoices." : invoiceHistoryStatusFilter === "paid" ? "No paid invoices." : "No paid or closed invoices."
                 )
               : null}
           </div>
