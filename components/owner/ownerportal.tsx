@@ -1,0 +1,3349 @@
+"use client";
+
+import dynamic from "next/dynamic";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { supabase } from "@/lib/supabase";
+import { DEFAULT_CURRENCY_CODE, formatCurrency as formatDocumentCurrency, normalizeCurrencyCode, type CurrencyCode } from "@/lib/currency";
+import PortalInstallControl from "@/components/pwa/portalinstallcontrol";
+import { trackFeatureUsage } from "@/lib/feature-usage";
+import { useI18n } from "@/components/i18n-provider";
+import PortalLoadingScene from "@/components/portal/portal-loading-scene";
+import type { TranslationPath } from "@/lib/i18n";
+import { useStorageAssetUrls } from "@/lib/use-storage-asset-urls";
+
+const PortalChat = dynamic(() => import("@/components/chat/portalchat"));
+
+type OwnerAccountRow = {
+  id: string;
+  email: string;
+  full_name: string | null;
+  profile_id?: string | null;
+  invite_sent_at?: string | null;
+  invite_accepted_at?: string | null;
+  is_active: boolean;
+};
+
+type OwnerPropertyAccessRow = {
+  id: string;
+  owner_account_id: string;
+  property_id: string;
+};
+
+type Property = {
+  id: string;
+  organization_id: string;
+  name: string | null;
+  address: string | null;
+  notes: string | null;
+  cover_photo_url?: string | null;
+};
+
+type TurnoverJob = {
+  id: string;
+  property_id: string;
+  status: string | null;
+  notes: string | null;
+  created_at?: string | null;
+  scheduled_for?: string | null;
+};
+
+type BookingEvent = {
+  id: string;
+  property_id: string;
+  source: string | null;
+  summary: string | null;
+  guest_count?: number | null;
+  checkin_date: string;
+  checkout_date: string;
+  created_at?: string | null;
+};
+
+type GroundsJob = {
+  id: string;
+  property_id: string;
+  status: string | null;
+  notes: string | null;
+  created_at?: string | null;
+  scheduled_for?: string | null;
+  job_type?: string | null;
+};
+
+type GroundsRecurringRule = {
+  id: string;
+  property_id: string;
+  task_type: string;
+  label: string | null;
+  notes: string | null;
+  frequency_type: string;
+  interval_days: number | null;
+  day_of_week: number | null;
+  day_of_month: number | null;
+  semi_monthly_day_1: number | null;
+  semi_monthly_day_2: number | null;
+  anchor_date: string | null;
+  start_date: string;
+  end_date: string | null;
+  next_run_date: string | null;
+  active: boolean;
+};
+
+type OwnerInvoiceLineItem = {
+  id: string;
+  description: string;
+  category?: string;
+  quantity: number;
+  rate: number;
+  receipt_urls?: string[];
+  receipt_names?: string[];
+};
+
+type OwnerInvoice = {
+  id: string;
+  owner_account_id: string;
+  property_id: string | null;
+  invoice_number: string;
+  status: "sent" | "paid";
+  issue_date: string;
+  due_date: string | null;
+  company_name: string | null;
+  logo_url: string | null;
+  header_text: string | null;
+  notes: string | null;
+  payment_instructions: string | null;
+  currency_code?: CurrencyCode | null;
+  corrected_invoice_number?: string | null;
+  tax_lines?: Array<{ id?: string; label: string; rate: number; amount?: number }> | null;
+  line_items: OwnerInvoiceLineItem[];
+  invoice_source?: "generated" | "uploaded" | null;
+  uploaded_invoice_url?: string | null;
+  uploaded_invoice_name?: string | null;
+  uploaded_invoice_content_type?: string | null;
+  subtotal: number;
+  tax_total: number;
+  total: number;
+  sent_at?: string | null;
+  owner_viewed_at?: string | null;
+};
+
+type OwnerInvoiceHiddenItem = {
+  id: string;
+  invoice_id: string;
+  owner_account_id: string;
+  hidden_at?: string | null;
+};
+
+type MaintenanceFlagImage = {
+  id: string;
+  flag_id: string;
+  image_url: string;
+  caption?: string | null;
+  sort_order: number;
+};
+
+type MaintenanceFlag = {
+  id: string;
+  property_id?: string | null;
+  source?: string | null;
+  category?: string | null;
+  urgency?: string | null;
+  status?: string | null;
+  notes?: string | null;
+  owner_visible_at?: string | null;
+  owner_notified_at?: string | null;
+  created_at?: string | null;
+  flagged_at?: string | null;
+  resolved_at?: string | null;
+};
+
+type TimelineItem = {
+  id: string;
+  type: "cleaning" | "grounds" | "booking" | "issue";
+  title: string;
+  date: string | null;
+  subtitle?: string | null;
+  tone?: "gold" | "emerald" | "sky" | "rose";
+};
+
+type OwnerTab = "overview" | "calendar" | "insights" | "invoices" | "chat";
+const OWNER_FEATURE_LABELS: Record<OwnerTab, string> = {
+  overview: "Owner Overview",
+  calendar: "Owner Calendar",
+  insights: "Booking Insights",
+  invoices: "Owner Invoices",
+  chat: "Owner Chat",
+};
+
+type OwnerChatParticipantRow = {
+  id: string;
+  conversation_id: string;
+  participant_owner_account_id?: string | null;
+  participant_profile_id?: string | null;
+  last_read_at?: string | null;
+};
+
+type OwnerChatMessageRow = {
+  id: string;
+  conversation_id: string;
+  sender_profile_id?: string | null;
+  created_at?: string | null;
+};
+
+type BookingInsight = {
+  id: string;
+  sourceLabel: string | null;
+  guest: string | null;
+  checkinDate: string;
+  checkoutDate: string;
+  nights: number;
+};
+
+type OwnerInsightRange = "365" | "180" | "90" | "30";
+
+const OWNER_INSIGHT_RANGE_OPTIONS: Array<{ value: OwnerInsightRange; label: string; months: number }> = [
+  { value: "365", label: "12 months", months: 12 },
+  { value: "180", label: "6 months", months: 6 },
+  { value: "90", label: "3 months", months: 3 },
+  { value: "30", label: "30 days", months: 1 },
+];
+
+type CurrentBooking = {
+  id: string;
+  sourceLabel: string | null;
+  guest: string | null;
+  summary: string | null;
+  checkinDate: string;
+  checkoutDate: string;
+};
+
+const ISSUE_CATEGORIES = [
+  "General concern",
+  "Damage",
+  "Cleaning issue",
+  "Supplies",
+  "Lock / access",
+  "Plumbing",
+  "Electrical",
+  "Lawn / exterior",
+  "Pest issue",
+  "Safety issue",
+  "Other",
+] as const;
+
+function getIssueCategoryLabel(category: string, t: ReturnType<typeof useI18n>["t"]) {
+  switch (category) {
+    case "General concern":
+      return t("ownerPortal.issue.categories.general");
+    case "Damage":
+      return t("ownerPortal.issue.categories.damage");
+    case "Cleaning issue":
+      return t("ownerPortal.issue.categories.cleaning");
+    case "Supplies":
+      return t("ownerPortal.issue.categories.supplies");
+    case "Lock / access":
+      return t("ownerPortal.issue.categories.access");
+    case "Plumbing":
+      return t("ownerPortal.issue.categories.plumbing");
+    case "Electrical":
+      return t("ownerPortal.issue.categories.electrical");
+    case "Lawn / exterior":
+      return t("ownerPortal.issue.categories.exterior");
+    case "Pest issue":
+      return t("ownerPortal.issue.categories.pest");
+    case "Safety issue":
+      return t("ownerPortal.issue.categories.safety");
+    default:
+      return t("ownerPortal.issue.categories.other");
+  }
+}
+
+function getCityFromAddress(address?: string | null) {
+  if (!address) return "";
+  const parts = address.split(",");
+  if (parts.length >= 2) return parts[1].trim();
+  return address;
+}
+
+function formatDateLabel(dateString: string | null | undefined, locale?: string, fallback = "Not scheduled") {
+  if (!dateString) return fallback;
+  const hasTime = dateString.includes("T");
+  const d = hasTime ? new Date(dateString) : new Date(`${dateString}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return dateString;
+
+  return d.toLocaleDateString(locale, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function normalizeYmd(value?: string | null) {
+  if (!value) return null;
+  return value.slice(0, 10);
+}
+
+function getTodayYmd() {
+  const today = new Date();
+  return [
+    today.getFullYear(),
+    `${today.getMonth() + 1}`.padStart(2, "0"),
+    `${today.getDate()}`.padStart(2, "0"),
+  ].join("-");
+}
+
+function toYmd(date: Date) {
+  return [
+    date.getFullYear(),
+    `${date.getMonth() + 1}`.padStart(2, "0"),
+    `${date.getDate()}`.padStart(2, "0"),
+  ].join("-");
+}
+
+function getMonthGrid(date: Date) {
+  const first = new Date(date.getFullYear(), date.getMonth(), 1);
+  const start = new Date(first);
+  start.setDate(first.getDate() - first.getDay());
+
+  return Array.from({ length: 42 }, (_, index) => {
+    const day = new Date(start);
+    day.setDate(start.getDate() + index);
+    return day;
+  });
+}
+
+function getMonthLongLabel(date: Date, locale?: string) {
+  return date.toLocaleDateString(locale, {
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function getSourceTone(source?: string | null) {
+  const normalized = String(source || "").trim().toLowerCase();
+  if (normalized === "airbnb") return "border-[#ff8a7a]/35 bg-[#ff5a5f]/18 text-[#ffd1cc]";
+  if (normalized === "vrbo") return "border-[#5cc8ff]/35 bg-[#1d78c1]/20 text-[#c9edff]";
+  if (normalized === "booking" || normalized === "booking.com") return "border-[#7da7ff]/35 bg-[#3057b7]/20 text-[#d9e4ff]";
+  return "border-[#b08b47]/35 bg-[#b08b47]/16 text-[#f1d9a5]";
+}
+
+function getGuestNameFromSummary(summary?: string | null) {
+  const cleaned = String(summary || "")
+    .replace(/\s+/g, " ")
+    .replace(/^(reserved|reservation|booking|booked)\s*[-:]\s*/i, "")
+    .trim();
+
+  if (!cleaned) return null;
+  if (/^(reserved|reservation|booking|booked|blocked|busy|not available|unavailable)$/i.test(cleaned)) return null;
+
+  return cleaned;
+}
+
+function parseBookingFromNotes(notes: string | null) {
+  if (!notes) {
+    return {
+      sourceLabel: null as string | null,
+      guest: null as string | null,
+      checkinDate: null as string | null,
+      checkoutDate: null as string | null,
+    };
+  }
+
+  const normalized = notes.replace(/\r\n/g, "\n");
+  const sourceMatch = normalized.match(/\[AUTO_SYNC\s*:\s*([^:\]]+)/i);
+  const rawSource = sourceMatch?.[1]?.trim().toLowerCase() || null;
+
+  const sourceLabel =
+    rawSource === "airbnb"
+      ? "Airbnb"
+      : rawSource === "vrbo"
+        ? "VRBO"
+        : rawSource === "booking" || rawSource === "booking.com"
+          ? "Booking.com"
+          : rawSource
+            ? rawSource.toUpperCase()
+            : null;
+
+  const guestMatch = normalized.match(/Guest\s*\/\s*reservation\s*:\s*(.+)/i);
+  const checkinMatch = normalized.match(/Check-in date\s*:\s*(\d{4}-\d{2}-\d{2})/i);
+  const checkoutMatch = normalized.match(/Checkout date\s*:\s*(\d{4}-\d{2}-\d{2})/i);
+
+  return {
+    sourceLabel,
+    guest: guestMatch?.[1]?.trim() || null,
+    checkinDate: checkinMatch?.[1] || null,
+    checkoutDate: checkoutMatch?.[1] || null,
+  };
+}
+
+function isResolved(flag: MaintenanceFlag) {
+  if (flag.resolved_at) return true;
+  const state = String(flag.status || "").toLowerCase().trim();
+  return state === "resolved" || state === "closed" || state === "done";
+}
+
+function isFutureOrToday(dateYmd: string | null) {
+  if (!dateYmd) return false;
+  const today = new Date();
+  const todayYmd = [
+    today.getFullYear(),
+    `${today.getMonth() + 1}`.padStart(2, "0"),
+    `${today.getDate()}`.padStart(2, "0"),
+  ].join("-");
+  return dateYmd >= todayYmd;
+}
+
+function getBookingSourceLabel(source: string | null | undefined) {
+  const normalized = (source || "").trim().toLowerCase();
+  if (normalized === "airbnb") return "Airbnb";
+  if (normalized === "vrbo") return "VRBO";
+  if (normalized === "booking" || normalized === "booking.com") return "Booking.com";
+  return normalized ? normalized.toUpperCase() : null;
+}
+
+function getMonthKey(date: Date) {
+  return `${date.getFullYear()}-${`${date.getMonth() + 1}`.padStart(2, "0")}`;
+}
+
+function getMonthLabel(monthKey: string, locale?: string) {
+  const [year, month] = monthKey.split("-").map(Number);
+  return new Date(year, month - 1, 1).toLocaleDateString(locale, {
+    month: "short",
+  });
+}
+
+function formatCurrency(value: number | null | undefined, currencyCode: CurrencyCode = DEFAULT_CURRENCY_CODE) {
+  return formatDocumentCurrency(value, currencyCode);
+}
+
+function getOwnerInvoiceTaxLines(invoice: OwnerInvoice) {
+  const subtotal = Number(invoice.subtotal || 0);
+  const lines = Array.isArray(invoice.tax_lines) ? invoice.tax_lines : [];
+  const normalized = lines
+    .map((line, index) => {
+      const rawLabel = String(line.label || "").trim();
+      const rate = Math.max(Number(line.rate || 0), 0);
+      return {
+        id: line.id || `tax-${index + 1}`,
+        label: rawLabel || "Tax",
+        rate,
+        amount: typeof line.amount === "number"
+          ? Number(line.amount)
+          : Math.round(subtotal * (rate / 100) * 100) / 100,
+        hasValue: !!rawLabel || rate > 0,
+      };
+    })
+    .filter((line) => line.hasValue)
+    .map(({ hasValue, ...line }) => line);
+
+  if (normalized.length > 0) return normalized;
+
+  return [];
+}
+
+function getDaysInMonth(monthKey: string) {
+  const [year, month] = monthKey.split("-").map(Number);
+  return new Date(year, month, 0).getDate();
+}
+
+function getLastMonthKeys(count: number) {
+  const today = new Date();
+  const keys: string[] = [];
+
+  for (let i = count - 1; i >= 0; i -= 1) {
+    keys.push(getMonthKey(new Date(today.getFullYear(), today.getMonth() - i, 1)));
+  }
+
+  return keys;
+}
+
+function getDateRangeNights(startYmd: string, endYmd: string) {
+  const start = new Date(`${startYmd}T12:00:00`);
+  const end = new Date(`${endYmd}T12:00:00`);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0;
+
+  return Math.max(0, Math.round((end.getTime() - start.getTime()) / 86400000));
+}
+
+function countBookedNightsInMonth(booking: BookingInsight, monthKey: string) {
+  const [year, month] = monthKey.split("-").map(Number);
+  const monthStart = new Date(year, month - 1, 1);
+  const monthEnd = new Date(year, month, 1);
+  const bookingStart = new Date(`${booking.checkinDate}T12:00:00`);
+  const bookingEnd = new Date(`${booking.checkoutDate}T12:00:00`);
+
+  if (Number.isNaN(bookingStart.getTime()) || Number.isNaN(bookingEnd.getTime())) return 0;
+
+  const overlapStart = bookingStart > monthStart ? bookingStart : monthStart;
+  const overlapEnd = bookingEnd < monthEnd ? bookingEnd : monthEnd;
+  const nights = Math.round((overlapEnd.getTime() - overlapStart.getTime()) / 86400000);
+
+  return Math.max(0, nights);
+}
+
+function countBookedNightsInWindow(bookings: BookingInsight[], days: number) {
+  const today = new Date();
+  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const end = new Date(start);
+  end.setDate(start.getDate() + days);
+
+  return bookings.reduce((total, booking) => {
+    const bookingStart = new Date(`${booking.checkinDate}T12:00:00`);
+    const bookingEnd = new Date(`${booking.checkoutDate}T12:00:00`);
+
+    if (Number.isNaN(bookingStart.getTime()) || Number.isNaN(bookingEnd.getTime())) {
+      return total;
+    }
+
+    const overlapStart = bookingStart > start ? bookingStart : start;
+    const overlapEnd = bookingEnd < end ? bookingEnd : end;
+    const nights = Math.round((overlapEnd.getTime() - overlapStart.getTime()) / 86400000);
+
+    return total + Math.max(0, nights);
+  }, 0);
+}
+
+function bookingTouchesDay(booking: BookingInsight, dayYmd: string) {
+  return booking.checkinDate <= dayYmd && booking.checkoutDate > dayYmd;
+}
+
+function bookingTouchesMonth(booking: BookingInsight, monthDate: Date) {
+  const monthKey = getMonthKey(monthDate);
+  return countBookedNightsInMonth(booking, monthKey) > 0;
+}
+
+function bookingTouchesRecentWindow(booking: BookingInsight, days: number) {
+  const today = new Date();
+  const end = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+  const start = new Date(end);
+  start.setDate(end.getDate() - days);
+
+  const bookingStart = new Date(`${booking.checkinDate}T12:00:00`);
+  const bookingEnd = new Date(`${booking.checkoutDate}T12:00:00`);
+
+  if (Number.isNaN(bookingStart.getTime()) || Number.isNaN(bookingEnd.getTime())) return false;
+
+  return bookingEnd > start && bookingStart < end;
+}
+
+type OwnerTranslator = (path: TranslationPath) => string;
+
+function getGroundsLabel(jobType?: string | null, t?: OwnerTranslator) {
+  const service = t?.("ownerPortal.grounds.service") ?? "Grounds service";
+  const withService = (path: TranslationPath, fallback: string) => `${service} | ${t?.(path) ?? fallback}`;
+
+  switch ((jobType || "").toLowerCase()) {
+    case "lawn_cut":
+      return withService("ownerPortal.grounds.lawnCut", "Lawn cut");
+    case "yard_cleanup":
+      return withService("ownerPortal.grounds.yardCleanup", "Yard cleanup");
+    case "snow_clear":
+      return withService("ownerPortal.grounds.snowClearing", "Snow clearing");
+    case "salt":
+      return withService("ownerPortal.grounds.saltIce", "Salt / ice");
+    case "garbage_out":
+      return withService("ownerPortal.grounds.garbageOut", "Garbage out");
+    case "recycling_out":
+      return withService("ownerPortal.grounds.recyclingOut", "Recycling out");
+    case "bulk_pickup_out":
+      return withService("ownerPortal.grounds.bulkPickup", "Bulk pickup");
+    default:
+      return service;
+  }
+}
+
+function formatRecurringGroundsLabel(rule: GroundsRecurringRule, t?: OwnerTranslator) {
+  if (rule.label?.trim()) return rule.label.trim();
+  return getGroundsLabel(rule.task_type || "grounds", t);
+}
+
+function getNextRecurringDate(rule: GroundsRecurringRule) {
+  if (!rule.active) return null;
+
+  const today = new Date();
+  const todayYmd = normalizeYmd(today.toISOString()) || "";
+  const nextRun = normalizeYmd(rule.next_run_date);
+  if (nextRun && isFutureOrToday(nextRun)) return nextRun;
+
+  const startDate = normalizeYmd(rule.start_date);
+  if (startDate && isFutureOrToday(startDate)) return startDate;
+
+  if (rule.end_date) {
+    const endDate = normalizeYmd(rule.end_date);
+    if (endDate && endDate < todayYmd) return null;
+  }
+
+  if (rule.frequency_type === "weekly" || rule.frequency_type === "biweekly") {
+    const intervalDays =
+      rule.frequency_type === "biweekly"
+        ? 14
+        : Math.max(rule.interval_days || 7, 7);
+
+    const anchor = rule.anchor_date || rule.start_date;
+    if (!anchor) return null;
+
+    const cursor = new Date(`${anchor}T12:00:00`);
+    if (Number.isNaN(cursor.getTime())) return null;
+
+    while ((normalizeYmd(cursor.toISOString()) || "") < todayYmd) {
+      cursor.setDate(cursor.getDate() + intervalDays);
+    }
+
+    return normalizeYmd(cursor.toISOString());
+  }
+
+  if (rule.frequency_type === "monthly") {
+    const base = new Date();
+    const startDateValue = new Date(`${rule.start_date}T12:00:00`);
+    const fallbackDay = Number.isNaN(startDateValue.getTime()) ? 1 : startDateValue.getDate();
+    const targetDay = Math.max(1, Math.min(rule.day_of_month || fallbackDay || 1, 28));
+
+    let candidate = new Date(base.getFullYear(), base.getMonth(), targetDay);
+    if ((normalizeYmd(candidate.toISOString()) || "") < todayYmd) {
+      candidate = new Date(base.getFullYear(), base.getMonth() + 1, targetDay);
+    }
+    return normalizeYmd(candidate.toISOString());
+  }
+
+  if (rule.frequency_type === "semi_monthly") {
+    const d1 = Math.max(1, Math.min(rule.semi_monthly_day_1 || 1, 28));
+    const d2 = Math.max(1, Math.min(rule.semi_monthly_day_2 || 15, 28));
+    const base = new Date();
+    const candidates = [
+      new Date(base.getFullYear(), base.getMonth(), d1),
+      new Date(base.getFullYear(), base.getMonth(), d2),
+      new Date(base.getFullYear(), base.getMonth() + 1, d1),
+      new Date(base.getFullYear(), base.getMonth() + 1, d2),
+    ];
+
+    for (const candidate of candidates) {
+      const ymd = normalizeYmd(candidate.toISOString());
+      if (ymd && ymd >= todayYmd) return ymd;
+    }
+  }
+
+  return null;
+}
+
+function StatCard({
+  label,
+  value,
+  subtext,
+}: {
+  label: string;
+  value: string;
+  subtext?: string | null;
+}) {
+  return (
+    <div className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5 backdrop-blur-sm">
+      <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">{label}</div>
+      <div className="mt-3 text-2xl font-semibold text-[#f7f1e8]">{value}</div>
+      {subtext ? <div className="mt-2 text-sm text-[#e6d8bf]">{subtext}</div> : null}
+    </div>
+  );
+}
+
+function TimelineRow({ item }: { item: TimelineItem }) {
+  const toneClass =
+    item.tone === "emerald"
+      ? "bg-emerald-400"
+      : item.tone === "sky"
+        ? "bg-sky-400"
+        : item.tone === "rose"
+          ? "bg-rose-400"
+          : "bg-[#b08b47]";
+
+  return (
+    <div className="flex gap-4 rounded-2xl border border-white/7 bg-white/[0.02] px-4 py-4">
+      <div className="flex flex-col items-center">
+        <div className={`mt-1 h-2.5 w-2.5 rounded-full ${toneClass}`} />
+        <div className="mt-2 h-full w-px bg-white/10" />
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <div className="text-sm font-semibold text-[#f7f1e8]">{item.title}</div>
+          <div className="text-xs uppercase tracking-[0.18em] text-[#e7c98a]">
+            {formatDateLabel(item.date)}
+          </div>
+        </div>
+
+        {item.subtitle ? (
+          <div className="mt-1 text-sm leading-relaxed text-[#e6d8bf]">{item.subtitle}</div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function ReportIssueModal({
+  open,
+  onClose,
+  propertyId,
+  organizationId,
+  onSubmitted,
+}: {
+  open: boolean;
+  onClose: () => void;
+  propertyId: string;
+  organizationId: string;
+  onSubmitted: () => void;
+}) {
+  const { t } = useI18n();
+  const [category, setCategory] = useState<string>("General concern");
+  const [urgency, setUrgency] = useState<string>("normal");
+  const [notes, setNotes] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const libraryInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const timeout = window.setTimeout(() => {
+      setCategory("General concern");
+      setUrgency("normal");
+      setNotes("");
+      setFiles([]);
+      setSaving(false);
+      setError("");
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
+  }, [open]);
+
+  if (!open) return null;
+
+  function appendFiles(newFiles: FileList | null) {
+    if (!newFiles?.length) return;
+    setFiles((prev) => [...prev, ...Array.from(newFiles)]);
+  }
+
+  async function handleSubmit() {
+    if (!propertyId) {
+      setError(t("ownerPortal.issue.propertyNotFound"));
+      return;
+    }
+
+    if (!organizationId) {
+      setError(t("ownerPortal.issue.organizationNotFound"));
+      return;
+    }
+
+    if (!notes.trim()) {
+      setError(t("ownerPortal.issue.describeIssue"));
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+
+    const { data: flag, error: insertError } = await supabase
+      .from("property_maintenance_flags")
+      .insert({
+        organization_id: organizationId,
+        property_id: propertyId,
+        source: "owner",
+        category,
+        urgency,
+        status: "open",
+        notes: notes.trim(),
+        flagged_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (insertError || !flag) {
+      setError(insertError?.message || t("ownerPortal.issue.submitError"));
+      setSaving(false);
+      return;
+    }
+
+    if (files.length > 0) {
+      const uploads: Array<{ flag_id: string; image_url: string; sort_order: number }> = [];
+
+      for (let i = 0; i < files.length; i += 1) {
+        const file = files[i];
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const filePath = `${flag.id}/${Date.now()}-${i}-${safeName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from("maintenance-flag-images")
+          .upload(filePath, file);
+
+        if (uploadError) {
+          console.error(uploadError);
+          continue;
+        }
+
+        const { data } = supabase.storage
+          .from("maintenance-flag-images")
+          .getPublicUrl(filePath);
+
+        uploads.push({
+          flag_id: flag.id,
+          image_url: data.publicUrl,
+          sort_order: i,
+        });
+      }
+
+      if (uploads.length > 0) {
+        const { error: imageInsertError } = await supabase
+          .from("property_maintenance_flag_images")
+          .insert(uploads);
+
+        if (imageInsertError) {
+          console.error(imageInsertError);
+        }
+      }
+    }
+
+    setSaving(false);
+    onSubmitted();
+    onClose();
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] overflow-y-auto bg-black/70 px-4 py-4 sm:py-6">
+      <div className="flex min-h-full items-start justify-center">
+        <div className="my-auto w-full max-w-xl rounded-[28px] border border-white/10 bg-[#17120d] shadow-[0_30px_90px_rgba(0,0,0,0.45)] max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-h-[calc(100vh-3rem)]">
+          <div className="border-b border-white/8 px-5 py-4 sm:px-6">
+            <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">{t("ownerPortal.hero.kicker")}</div>
+            <h3 className="mt-2 text-xl font-semibold text-[#f7f1e8]">{t("ownerPortal.issue.title")}</h3>
+            <p className="mt-1 text-sm text-[#e6d8bf]">
+              {t("ownerPortal.issue.body")}
+            </p>
+          </div>
+
+          <div className="space-y-5 px-5 py-5 sm:px-6">
+            <div>
+              <label className="text-xs uppercase tracking-[0.18em] text-[#e7c98a]">{t("ownerPortal.issue.category")}</label>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                {ISSUE_CATEGORIES.map((item) => {
+                  const selected = item === category;
+                  return (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => setCategory(item)}
+                      className={`rounded-2xl border px-4 py-3 text-sm font-medium transition ${selected
+                        ? "border-[#e7c98a] bg-[#b08b47]/20 text-[#f7f1e8]"
+                        : "border-white/8 bg-white/[0.03] text-[#e8ddca] hover:bg-white/[0.05]"
+                        }`}
+                    >
+                      {getIssueCategoryLabel(item, t)}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs uppercase tracking-[0.18em] text-[#e7c98a]">{t("ownerPortal.issue.priority")}</label>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {[
+                  { value: "low", label: t("ownerPortal.issue.low") },
+                  { value: "normal", label: t("ownerPortal.issue.normal") },
+                  { value: "urgent", label: t("ownerPortal.issue.urgent") },
+                ].map((item) => (
+                  <button
+                    key={item.value}
+                    type="button"
+                    onClick={() => setUrgency(item.value)}
+                    className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${urgency === item.value
+                      ? item.value === "urgent"
+                        ? "border-red-400/70 bg-red-500 text-white"
+                        : "border-[#e7c98a] bg-[#b08b47]/20 text-[#f7f1e8]"
+                      : "border-white/8 bg-white/[0.03] text-[#e8ddca] hover:bg-white/[0.05]"
+                      }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs uppercase tracking-[0.18em] text-[#e7c98a]">{t("ownerPortal.issue.details")}</label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder={t("ownerPortal.issue.detailsPlaceholder")}
+                className="mt-2 min-h-[130px] w-full rounded-2xl border border-white/8 bg-[#100c08] px-4 py-3 text-sm text-[#f7f1e8] outline-none transition focus:border-[#b08b47]"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs uppercase tracking-[0.18em] text-[#e7c98a]">{t("ownerPortal.issue.photos")}</label>
+
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={(e) => appendFiles(e.target.files)}
+                className="hidden"
+              />
+
+              <input
+                ref={libraryInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={(e) => appendFiles(e.target.files)}
+                className="hidden"
+              />
+
+              <div className="mt-2 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => cameraInputRef.current?.click()}
+                  className="rounded-full bg-[#b08b47] px-4 py-2.5 text-sm font-semibold text-[#17120d]"
+                >
+                  {t("ownerPortal.issue.takePhoto")}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => libraryInputRef.current?.click()}
+                  className="rounded-full border border-white/12 px-4 py-2.5 text-sm font-semibold text-[#f7f1e8] transition hover:bg-white/[0.05]"
+                >
+                  {t("ownerPortal.issue.addPhotos")}
+                </button>
+              </div>
+
+              <div className="mt-2 text-xs text-[#ccb99a]">
+                {t("ownerPortal.issue.photoHelp")}
+              </div>
+
+              {files.length > 0 ? (
+                <div className="mt-3 space-y-2">
+                  <div className="text-sm text-[#e6d8bf]">
+                    {files.length === 1
+                      ? t("ownerPortal.issue.onePhotoSelected")
+                      : t("ownerPortal.issue.photosSelected").replace("{count}", String(files.length))}
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {files.map((file, index) => (
+                      <div
+                        key={`${file.name}-${index}`}
+                        className="rounded-full border border-white/8 bg-white/[0.03] px-3 py-1 text-xs text-[#e6d8bf]"
+                      >
+                        {file.name}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            {error ? (
+              <div className="rounded-2xl border border-red-500/25 bg-red-950/20 px-4 py-3 text-sm text-red-200">
+                {error}
+              </div>
+            ) : null}
+
+            <div className="sticky bottom-0 flex flex-wrap gap-3 border-t border-white/8 bg-[#17120d] pt-4">
+              <button
+                type="button"
+                onClick={() => void handleSubmit()}
+                disabled={saving}
+                className="rounded-full bg-[#b08b47] px-5 py-2.5 text-sm font-semibold text-[#17120d] transition hover:brightness-110 disabled:opacity-60"
+              >
+                {saving ? t("ownerPortal.issue.submitting") : t("ownerPortal.issue.submit")}
+              </button>
+
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={saving}
+                className="rounded-full border border-white/12 px-5 py-2.5 text-sm font-semibold text-[#f7f1e8] transition hover:bg-white/[0.05]"
+              >
+                {t("ownerPortal.issue.cancel")}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export type OwnerPreviewDashboard = {
+  account: OwnerAccountRow;
+  properties: Property[];
+  turnoverJobs: TurnoverJob[];
+  bookingEvents: BookingEvent[];
+  groundsJobs: GroundsJob[];
+  groundsRecurringRules: GroundsRecurringRule[];
+  ownerInvoices: OwnerInvoice[];
+  ownerInvoiceHiddenItems: OwnerInvoiceHiddenItem[];
+  flags: MaintenanceFlag[];
+  flagImages: MaintenanceFlagImage[];
+};
+
+export default function OwnerPortal({ preview }: { preview?: OwnerPreviewDashboard }) {
+  const { t, locale } = useI18n();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [ownerAccount, setOwnerAccount] = useState<OwnerAccountRow | null>(null);
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [turnoverJobs, setTurnoverJobs] = useState<TurnoverJob[]>([]);
+  const [bookingEvents, setBookingEvents] = useState<BookingEvent[]>([]);
+  const [groundsJobs, setGroundsJobs] = useState<GroundsJob[]>([]);
+  const [groundsRecurringRules, setGroundsRecurringRules] = useState<GroundsRecurringRule[]>([]);
+  const [ownerInvoices, setOwnerInvoices] = useState<OwnerInvoice[]>([]);
+  const getStorageAssetUrl = useStorageAssetUrls(
+    supabase.storage,
+    [
+      ...properties.map((property) => property.cover_photo_url),
+      ...ownerInvoices.flatMap((invoice) => [
+        invoice.logo_url,
+        invoice.uploaded_invoice_url,
+        ...(invoice.line_items || []).flatMap((item) => item.receipt_urls || []),
+      ]),
+    ]
+  );
+  const [ownerInvoiceHiddenItems, setOwnerInvoiceHiddenItems] = useState<OwnerInvoiceHiddenItem[]>([]);
+  const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
+  const [flags, setFlags] = useState<MaintenanceFlag[]>([]);
+  const [flagImages, setFlagImages] = useState<MaintenanceFlagImage[]>([]);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportSuccess, setReportSuccess] = useState("");
+  const [downloadingInvoiceId, setDownloadingInvoiceId] = useState<string | null>(null);
+  const [selectedPropertyId, setSelectedPropertyId] = useState("");
+  const [activeOwnerTab, setActiveOwnerTab] = useState<OwnerTab>("overview");
+  const [ownerCalendarMonth, setOwnerCalendarMonth] = useState(() => {
+    const today = new Date();
+    return new Date(today.getFullYear(), today.getMonth(), 1);
+  });
+  const [ownerChatParticipants, setOwnerChatParticipants] = useState<OwnerChatParticipantRow[]>([]);
+  const [ownerChatMessages, setOwnerChatMessages] = useState<OwnerChatMessageRow[]>([]);
+  const [ownerChatUnreadCount, setOwnerChatUnreadCount] = useState(0);
+  const [targetChatConversationId, setTargetChatConversationId] = useState("");
+  const [targetInvoiceId, setTargetInvoiceId] = useState("");
+  const [showPaidInvoiceHistory, setShowPaidInvoiceHistory] = useState(false);
+  const [ownerInsightRange, setOwnerInsightRange] = useState<OwnerInsightRange>("365");
+
+  const formatOwnerDateLabel = (dateString: string | null | undefined) =>
+    formatDateLabel(dateString, locale, t("ownerPortal.overview.notScheduled"));
+  const formatOwnerCurrency = (
+    value: number | null | undefined,
+    currencyCode: CurrencyCode = DEFAULT_CURRENCY_CODE
+  ) => formatCurrency(value, currencyCode);
+  const getOwnerGroundsLabel = (jobType?: string | null) => getGroundsLabel(jobType, t);
+  const formatOwnerRecurringGroundsLabel = (rule: GroundsRecurringRule) => formatRecurringGroundsLabel(rule, t);
+  const getOwnerUrgencyLabel = (urgency?: string | null) => {
+    switch ((urgency || "").toLowerCase()) {
+      case "low":
+        return t("ownerPortal.issue.low");
+      case "urgent":
+        return t("ownerPortal.issue.urgent");
+      case "normal":
+        return t("ownerPortal.issue.normal");
+      default:
+        return t("ownerPortal.issue.open");
+    }
+  };
+
+  async function signOutOwner() {
+    if (preview) return;
+    await supabase.auth.signOut();
+    window.location.href = "/owner/login";
+  }
+
+  function escapeCsvCell(value: string | number | null | undefined) {
+    const text = String(value ?? "");
+    if (/[",\n\r]/.test(text)) {
+      return `"${text.replace(/"/g, '""')}"`;
+    }
+    return text;
+  }
+
+  function downloadBlob(filename: string, blob: Blob) {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function loadOwnerPreviewData(email: string) {
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    const nextWeek = new Date(today);
+    nextWeek.setDate(today.getDate() + 7);
+    const property: Property = {
+      id: "preview-owner-property",
+      organization_id: "preview-organization",
+      name: "Preview Lake House",
+      address: "18 Maple Dock Road, Preview Bay",
+      notes: "Preview property used by the SaaS Control Tower.",
+      cover_photo_url: null,
+    };
+    const owner: OwnerAccountRow = {
+      id: "preview-owner-account",
+      email,
+      full_name: "Preview Owner",
+      profile_id: null,
+      invite_sent_at: today.toISOString(),
+      invite_accepted_at: today.toISOString(),
+      is_active: true,
+    };
+
+    setOwnerAccount(owner);
+    setProperties([property]);
+    setTurnoverJobs([
+      {
+        id: "preview-owner-turnover",
+        property_id: property.id,
+        status: "completed",
+        notes: "Guest / reservation: Preview guest\nCheckout date: " + toYmd(today) + "\nCleaner completed turnover and reported no damage.",
+        created_at: today.toISOString(),
+        scheduled_for: toYmd(today),
+      },
+    ]);
+    setBookingEvents([
+      {
+        id: "preview-owner-booking",
+        property_id: property.id,
+        source: "Airbnb",
+        summary: "Preview guest stay",
+        guest_count: 4,
+        checkin_date: toYmd(tomorrow),
+        checkout_date: toYmd(nextWeek),
+        created_at: today.toISOString(),
+      },
+    ]);
+    setGroundsJobs([
+      {
+        id: "preview-owner-grounds",
+        property_id: property.id,
+        status: "scheduled",
+        notes: "Weekly lawn service and exterior check.",
+        created_at: today.toISOString(),
+        scheduled_for: toYmd(nextWeek),
+        job_type: "weekly_service",
+      },
+    ]);
+    setGroundsRecurringRules([
+      {
+        id: "preview-owner-grounds-rule",
+        property_id: property.id,
+        task_type: "weekly_service",
+        label: "Weekly grounds check",
+        notes: "Mow lawn, edge walkway, check bins.",
+        frequency_type: "weekly",
+        interval_days: null,
+        day_of_week: 2,
+        day_of_month: null,
+        semi_monthly_day_1: null,
+        semi_monthly_day_2: null,
+        anchor_date: null,
+        start_date: toYmd(today),
+        end_date: null,
+        next_run_date: toYmd(nextWeek),
+        active: true,
+      },
+    ]);
+    setOwnerInvoices([
+      {
+        id: "preview-owner-invoice",
+        owner_account_id: owner.id,
+        property_id: property.id,
+        invoice_number: "PREVIEW-1001",
+        status: "sent",
+        issue_date: toYmd(today),
+        due_date: toYmd(nextWeek),
+        company_name: "Estate of Mind Property Management",
+        logo_url: null,
+        header_text: "Owner statement preview",
+        notes: "This is sample preview data for the live owner portal UI.",
+        payment_instructions: "Preview only - no payment is due.",
+        tax_lines: [],
+        line_items: [
+          {
+            id: "preview-owner-line-cleaning",
+            description: "Turnover cleaning",
+            category: "Cleaning",
+            quantity: 1,
+            rate: 185,
+          },
+          {
+            id: "preview-owner-line-supplies",
+            description: "Restock supplies",
+            category: "Supplies",
+            quantity: 1,
+            rate: 42,
+          },
+        ],
+        subtotal: 227,
+        tax_total: 0,
+        total: 227,
+        sent_at: today.toISOString(),
+        owner_viewed_at: null,
+      },
+    ]);
+    setOwnerInvoiceHiddenItems([]);
+    setFlags([
+      {
+        id: "preview-owner-flag",
+        property_id: property.id,
+        source: "owner",
+        category: "Maintenance",
+        urgency: "normal",
+        status: "open",
+        notes: "Preview issue: owner noticed a loose patio chair.",
+        owner_visible_at: today.toISOString(),
+        owner_notified_at: today.toISOString(),
+        created_at: today.toISOString(),
+        flagged_at: today.toISOString(),
+        resolved_at: null,
+      },
+    ]);
+    setFlagImages([]);
+    setSelectedPropertyId(property.id);
+    setOwnerChatParticipants([]);
+    setOwnerChatMessages([]);
+    setOwnerChatUnreadCount(0);
+    setLoading(false);
+  }
+
+  async function downloadOwnerInvoicePdf(invoice: OwnerInvoice) {
+    if (preview) return;
+    setDownloadingInvoiceId(invoice.id);
+    setError("");
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("Could not verify your owner session.");
+      }
+
+      const response = await fetch("/api/owner/invoice-pdf", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ invoiceId: invoice.id }),
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || "Could not download invoice PDF.");
+      }
+
+      downloadBlob(`${invoice.invoice_number}.pdf`, await response.blob());
+    } catch (downloadError) {
+      setError(downloadError instanceof Error ? downloadError.message : "Could not download invoice PDF.");
+    } finally {
+      setDownloadingInvoiceId(null);
+    }
+  }
+
+  function downloadOwnerInvoiceCsv(invoice: OwnerInvoice, property: Property | null | undefined) {
+    const invoiceCurrencyCode = normalizeCurrencyCode(invoice.currency_code, DEFAULT_CURRENCY_CODE);
+    const rows = [
+      [
+        "InvoiceNo",
+        "InvoiceDate",
+        "DueDate",
+        "Status",
+        "Property",
+        "Currency",
+        "Description",
+        "Qty",
+        "Rate",
+        "Amount",
+        "TaxLines",
+        "TaxTotal",
+        "Total",
+        "ReceiptUrls",
+      ],
+      ...invoice.line_items.map((item) => {
+        const quantity = Number(item.quantity || 0);
+        const rate = Number(item.rate || 0);
+        return [
+          invoice.invoice_number,
+          invoice.issue_date,
+          invoice.due_date || "",
+          invoice.status,
+          property?.name || property?.address || t("ownerPortal.invoices.allLinkedProperties"),
+          invoiceCurrencyCode,
+          item.description,
+          quantity,
+          rate.toFixed(2),
+          (quantity * rate).toFixed(2),
+          getOwnerInvoiceTaxLines(invoice).map((line) => `${line.label} ${line.rate}% ${formatOwnerCurrency(line.amount, invoiceCurrencyCode)}`).join("; "),
+          Number(invoice.tax_total || 0).toFixed(2),
+          Number(invoice.total || 0).toFixed(2),
+          (item.receipt_urls || []).join(" "),
+        ];
+      }),
+    ];
+
+    const csv = rows.map((row) => row.map(escapeCsvCell).join(",")).join("\r\n");
+    downloadBlob(`${invoice.invoice_number}.csv`, new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  }
+
+  function downloadOwnerInvoiceJson(invoice: OwnerInvoice, property: Property | null | undefined) {
+    const payload = {
+      ...invoice,
+      property: property ? { id: property.id, name: property.name, address: property.address } : null,
+    };
+
+    downloadBlob(
+      `${invoice.invoice_number}.json`,
+      new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" })
+    );
+  }
+
+  async function hideOwnerInvoice(invoice: OwnerInvoice) {
+    if (preview) return;
+    if (preview || !ownerAccount) return;
+
+    const confirmed = window.confirm(
+      t("ownerPortal.invoices.deleteConfirm").replace("{invoice}", invoice.invoice_number)
+    );
+    if (!confirmed) return;
+
+    const hiddenItem: OwnerInvoiceHiddenItem = {
+      id: `local-${invoice.id}`,
+      invoice_id: invoice.id,
+      owner_account_id: ownerAccount.id,
+      hidden_at: new Date().toISOString(),
+    };
+
+    setDeletingInvoiceId(invoice.id);
+    setOwnerInvoiceHiddenItems((items) =>
+      items.some((item) => item.invoice_id === invoice.id) ? items : [...items, hiddenItem]
+    );
+    setError("");
+
+    try {
+      const { error: hideError } = await supabase.from("owner_invoice_hidden_items").insert({
+        invoice_id: invoice.id,
+        owner_account_id: ownerAccount.id,
+      });
+
+      if (hideError && hideError.code !== "23505") throw hideError;
+    } catch (hideError) {
+      setOwnerInvoiceHiddenItems((items) => items.filter((item) => item.id !== hiddenItem.id));
+      setError(hideError instanceof Error ? hideError.message : "Could not delete invoice from your view.");
+    } finally {
+      setDeletingInvoiceId(null);
+    }
+  }
+
+  const flagImagesByFlagId = useMemo(() => {
+    const map = new Map<string, MaintenanceFlagImage[]>();
+    for (const image of flagImages) {
+      const list = map.get(image.flag_id) || [];
+      list.push(image);
+      map.set(image.flag_id, list);
+    }
+    return map;
+  }, [flagImages]);
+
+  async function loadData() {
+    if (preview) {
+      setOwnerAccount(preview.account);
+      setProperties(preview.properties);
+      setTurnoverJobs(preview.turnoverJobs);
+      setBookingEvents(preview.bookingEvents);
+      setGroundsJobs(preview.groundsJobs);
+      setGroundsRecurringRules(preview.groundsRecurringRules);
+      setOwnerInvoices(preview.ownerInvoices);
+      setOwnerInvoiceHiddenItems(preview.ownerInvoiceHiddenItems);
+      setFlags(preview.flags);
+      setFlagImages(preview.flagImages);
+      setSelectedPropertyId(current => preview.properties.some(p => p.id === current) ? current : preview.properties[0]?.id || "");
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError("");
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user?.email) {
+      window.location.href = "/owner/login";
+      return;
+    }
+
+    const portalPreview =
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("portalPreview") === "1";
+    const email = user.email.trim().toLowerCase();
+
+    const { data: ownerRes, error: ownerError } = await supabase
+      .from("owner_accounts")
+      .select("*")
+      .eq("email", email)
+      .maybeSingle<OwnerAccountRow>();
+
+    if (ownerError) {
+      setError(ownerError.message);
+      setLoading(false);
+      return;
+    }
+
+    if (!ownerRes) {
+      if (portalPreview) {
+        loadOwnerPreviewData(email);
+        return;
+      }
+      setError(t("ownerPortal.empty.noAccount"));
+      setLoading(false);
+      return;
+    }
+
+    setOwnerAccount(ownerRes);
+    void loadOwnerChatBadge(ownerRes);
+
+    const { data: accessRows, error: accessError } = (await supabase
+      .from("owner_property_access")
+      .select("*")
+      .eq("owner_account_id", ownerRes.id)) as {
+        data: OwnerPropertyAccessRow[] | null;
+        error: { message: string } | null;
+      };
+
+    if (accessError) {
+      setError(accessError.message);
+      setLoading(false);
+      return;
+    }
+
+    const propertyIds = (accessRows ?? []).map((row) => row.property_id);
+    const bookingWindowStart = new Date();
+    bookingWindowStart.setDate(bookingWindowStart.getDate() - 400);
+    const bookingWindowEnd = new Date();
+    bookingWindowEnd.setDate(bookingWindowEnd.getDate() + 540);
+    const bookingWindowStartYmd = bookingWindowStart.toISOString().slice(0, 10);
+    const bookingWindowEndYmd = bookingWindowEnd.toISOString().slice(0, 10);
+
+    if (propertyIds.length === 0) {
+      setProperties([]);
+      setTurnoverJobs([]);
+      setBookingEvents([]);
+      setGroundsJobs([]);
+      setGroundsRecurringRules([]);
+      setOwnerInvoices([]);
+      setFlags([]);
+      setFlagImages([]);
+      setLoading(false);
+      return;
+    }
+
+    const [
+      propertiesRes,
+      turnoverRes,
+      bookingEventsRes,
+      groundsRes,
+      groundsRecurringRulesRes,
+      ownerInvoicesRes,
+      ownerInvoiceHiddenItemsRes,
+      flagsRes,
+    ] = await Promise.all([
+      supabase
+        .from("properties")
+        .select("*")
+        .in("id", propertyIds)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("turnover_jobs")
+        .select("id,property_id,status,notes,created_at,scheduled_for")
+        .in("property_id", propertyIds)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("property_booking_events")
+        .select("id,property_id,source,summary,guest_count,checkin_date,checkout_date,created_at")
+        .in("property_id", propertyIds)
+        .gte("checkout_date", bookingWindowStartYmd)
+        .lte("checkin_date", bookingWindowEndYmd)
+        .order("checkin_date", { ascending: false }),
+      supabase
+        .from("grounds_jobs")
+        .select("id,property_id,status,notes,created_at,scheduled_for,job_type")
+        .in("property_id", propertyIds)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("property_grounds_recurring_rules")
+        .select("id,property_id,task_type,label,notes,frequency_type,interval_days,day_of_week,day_of_month,semi_monthly_day_1,semi_monthly_day_2,anchor_date,start_date,end_date,next_run_date,active")
+        .in("property_id", propertyIds)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("owner_invoices")
+        .select("id,owner_account_id,property_id,invoice_number,status,issue_date,due_date,company_name,logo_url,header_text,notes,payment_instructions,currency_code,corrected_invoice_number,tax_lines,line_items,subtotal,tax_total,total,sent_at,owner_viewed_at")
+        .eq("owner_account_id", ownerRes.id)
+        .in("status", ["sent", "paid"])
+        .order("issue_date", { ascending: false }),
+      supabase
+        .from("owner_invoice_hidden_items")
+        .select("*")
+        .eq("owner_account_id", ownerRes.id),
+      supabase
+        .from("property_maintenance_flags")
+        .select("id,property_id,source,category,urgency,status,notes,owner_visible_at,owner_notified_at,created_at,flagged_at,resolved_at")
+        .in("property_id", propertyIds)
+        .or("source.eq.owner,owner_visible_at.not.is.null")
+        .order("created_at", { ascending: false }),
+    ]);
+
+    for (const res of [
+      propertiesRes,
+      turnoverRes,
+      bookingEventsRes,
+      groundsRes,
+      groundsRecurringRulesRes,
+      ownerInvoicesRes,
+      ownerInvoiceHiddenItemsRes,
+      flagsRes,
+    ]) {
+      if (res.error) {
+        if (
+          res === bookingEventsRes &&
+          ((res.error as any).code === "PGRST205" ||
+            String(res.error.message || "").includes("property_booking_events"))
+        ) {
+          continue;
+        }
+
+        if (
+          res === ownerInvoiceHiddenItemsRes &&
+          ((res.error as any).code === "PGRST205" ||
+            String(res.error.message || "").includes("owner_invoice_hidden_items"))
+        ) {
+          continue;
+        }
+
+        setError(res.error.message);
+        setLoading(false);
+        return;
+      }
+    }
+
+    const flagIds = (flagsRes.data ?? []).map((flag) => flag.id);
+    const flagImagesRes = flagIds.length > 0
+      ? await supabase
+          .from("property_maintenance_flag_images")
+          .select("id,flag_id,image_url,caption,sort_order")
+          .in("flag_id", flagIds)
+          .order("sort_order", { ascending: true })
+      : { data: [], error: null };
+
+    const loadedProperties = (propertiesRes.data ?? []) as Property[];
+    setProperties(loadedProperties);
+    setTurnoverJobs((turnoverRes.data ?? []) as TurnoverJob[]);
+    setBookingEvents(bookingEventsRes.error ? [] : ((bookingEventsRes.data ?? []) as BookingEvent[]));
+    setGroundsJobs((groundsRes.data ?? []) as GroundsJob[]);
+    setGroundsRecurringRules((groundsRecurringRulesRes.data ?? []) as GroundsRecurringRule[]);
+    setOwnerInvoices((ownerInvoicesRes.data ?? []) as OwnerInvoice[]);
+    setOwnerInvoiceHiddenItems(
+      ownerInvoiceHiddenItemsRes.error ? [] : ((ownerInvoiceHiddenItemsRes.data ?? []) as OwnerInvoiceHiddenItem[])
+    );
+    setFlags((flagsRes.data ?? []) as MaintenanceFlag[]);
+    // Images are supplemental; an unavailable image table must not block the owner dashboard.
+    setFlagImages(flagImagesRes.error ? [] : ((flagImagesRes.data ?? []) as MaintenanceFlagImage[]));
+    setSelectedPropertyId((currentPropertyId) => {
+      if (loadedProperties.some((property) => property.id === currentPropertyId)) {
+        return currentPropertyId;
+      }
+
+      if (typeof window !== "undefined") {
+        const params = new URLSearchParams(window.location.search);
+        const propertyFromUrl = params.get("property") || "";
+        if (loadedProperties.some((property) => property.id === propertyFromUrl)) {
+          return propertyFromUrl;
+        }
+      }
+
+      return loadedProperties[0]?.id || "";
+    });
+    setLoading(false);
+  }
+
+  async function loadOwnerChatBadge(owner: OwnerAccountRow) {
+    const { data: participantRows, error: participantError } = await supabase
+      .from("chat_participants")
+      .select("id,conversation_id,participant_owner_account_id,participant_profile_id,last_read_at")
+      .eq("participant_owner_account_id", owner.id);
+
+    if (participantError) {
+      console.warn("Could not load owner chat badge", participantError);
+      return;
+    }
+
+    const loadedParticipants = (participantRows ?? []) as OwnerChatParticipantRow[];
+    setOwnerChatParticipants(loadedParticipants);
+
+    const conversationIds = loadedParticipants.map((row) => row.conversation_id).filter(Boolean);
+    if (conversationIds.length === 0) {
+      setOwnerChatMessages([]);
+      setOwnerChatUnreadCount(0);
+      return;
+    }
+
+    const { data: messageRows, error: messageError } = await supabase
+      .from("chat_messages")
+      .select("id,conversation_id,sender_profile_id,created_at")
+      .in("conversation_id", conversationIds);
+
+    if (messageError) {
+      console.warn("Could not load owner chat unread messages", messageError);
+      return;
+    }
+
+    setOwnerChatMessages((messageRows ?? []) as OwnerChatMessageRow[]);
+  }
+
+  useEffect(() => {
+    void loadData();
+  }, []);
+
+  useEffect(() => {
+    if (preview || !ownerAccount) return;
+
+    const channel = supabase
+      .channel(`owner-chat-badge-${ownerAccount.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "chat_participants",
+          filter: `participant_owner_account_id=eq.${ownerAccount.id}`,
+        },
+        () => {
+          void loadOwnerChatBadge(ownerAccount);
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "chat_messages",
+        },
+        (payload) => {
+          const incoming = payload.new as OwnerChatMessageRow;
+          const conversationIds = new Set(ownerChatParticipants.map((row) => row.conversation_id));
+          if (!conversationIds.has(incoming.conversation_id)) return;
+          setOwnerChatMessages((messages) =>
+            messages.some((message) => message.id === incoming.id) ? messages : [...messages, incoming]
+          );
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "chat_participants",
+          filter: `participant_owner_account_id=eq.${ownerAccount.id}`,
+        },
+        (payload) => {
+          const updated = payload.new as OwnerChatParticipantRow;
+          setOwnerChatParticipants((participants) =>
+            participants.map((participant) =>
+              participant.id === updated.id ? { ...participant, last_read_at: updated.last_read_at } : participant
+            )
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [ownerAccount, ownerChatParticipants]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    const tabFromUrl = params.get("tab");
+    const conversationId = params.get("conversationId")?.trim() || "";
+    const invoiceId = params.get("invoiceId")?.trim() || "";
+    if (tabFromUrl === "overview" || tabFromUrl === "calendar" || tabFromUrl === "insights" || tabFromUrl === "invoices" || tabFromUrl === "chat") {
+      setActiveOwnerTab(tabFromUrl);
+    }
+    if (conversationId) {
+      setTargetChatConversationId(conversationId);
+    }
+    if (invoiceId) {
+      setTargetInvoiceId(invoiceId);
+      setActiveOwnerTab("invoices");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!ownerAccount) {
+      setOwnerChatUnreadCount(0);
+      return;
+    }
+
+    const profileId = ownerAccount.profile_id || "";
+    const unread = ownerChatParticipants.reduce((total, participant) => {
+      const lastReadAt = participant.last_read_at ? new Date(participant.last_read_at).getTime() : 0;
+      if (Number.isNaN(lastReadAt)) return total;
+
+      return (
+        total +
+        ownerChatMessages.filter((message) => {
+          if (message.conversation_id !== participant.conversation_id) return false;
+          if (profileId && message.sender_profile_id === profileId) return false;
+          const createdAt = message.created_at ? new Date(message.created_at).getTime() : 0;
+          return createdAt > lastReadAt;
+        }).length
+      );
+    }, 0);
+
+    setOwnerChatUnreadCount(unread);
+  }, [ownerAccount, ownerChatMessages, ownerChatParticipants]);
+
+  const selectedProperty =
+    properties.find((property) => property.id === selectedPropertyId) || properties[0] || null;
+
+  useEffect(() => {
+    const organizationId = selectedProperty?.organization_id || properties[0]?.organization_id || null;
+    if (preview || !ownerAccount || !organizationId) return;
+
+    trackFeatureUsage({
+      organizationId,
+      portal: "owner",
+      area: "navigation",
+      featureKey: `owner.${activeOwnerTab}`,
+      featureLabel: OWNER_FEATURE_LABELS[activeOwnerTab] || activeOwnerTab,
+      action: "open",
+    });
+  }, [activeOwnerTab, ownerAccount, properties, selectedProperty]);
+
+  function handleOwnerTabChange(tab: OwnerTab) {
+    setActiveOwnerTab(tab);
+
+    if (typeof window === "undefined") return;
+
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", tab);
+    if (tab !== "invoices") {
+      url.searchParams.delete("invoiceId");
+    }
+    window.history.replaceState(null, "", url.toString());
+  }
+
+  function handleOwnerPropertyChange(propertyId: string) {
+    setSelectedPropertyId(propertyId);
+
+    if (typeof window === "undefined") return;
+
+    const url = new URL(window.location.href);
+    if (propertyId) {
+      url.searchParams.set("property", propertyId);
+    } else {
+      url.searchParams.delete("property");
+    }
+    window.history.replaceState(null, "", url.toString());
+  }
+
+  function handleOwnerChatConversationRead(conversationId: string, readAt: string) {
+    setOwnerChatParticipants((participants) =>
+      participants.map((participant) =>
+        participant.conversation_id === conversationId ? { ...participant, last_read_at: readAt } : participant
+      )
+    );
+  }
+
+  const propertyTurnoverJobs = useMemo(() => {
+    if (!selectedProperty) return [];
+    return turnoverJobs.filter((job) => job.property_id === selectedProperty.id);
+  }, [selectedProperty, turnoverJobs]);
+
+  const propertyBookingEvents = useMemo(() => {
+    if (!selectedProperty) return [];
+    return bookingEvents.filter((event) => event.property_id === selectedProperty.id);
+  }, [selectedProperty, bookingEvents]);
+
+  const propertyGroundsJobs = useMemo(() => {
+    if (!selectedProperty) return [];
+    return groundsJobs.filter((job) => job.property_id === selectedProperty.id);
+  }, [selectedProperty, groundsJobs]);
+
+  const propertyGroundsRecurringRules = useMemo(() => {
+    if (!selectedProperty) return [];
+    return groundsRecurringRules.filter((rule) => rule.property_id === selectedProperty.id && rule.active);
+  }, [selectedProperty, groundsRecurringRules]);
+
+  const propertyOwnerInvoices = useMemo(() => {
+    const visibleInvoices = ownerInvoices.filter(
+      (invoice) => !ownerInvoiceHiddenItems.some((item) => item.invoice_id === invoice.id)
+    );
+    if (!selectedProperty) return visibleInvoices;
+    return visibleInvoices.filter(
+      (invoice) => !invoice.property_id || invoice.property_id === selectedProperty.id
+    );
+  }, [ownerInvoiceHiddenItems, selectedProperty, ownerInvoices]);
+  const openPropertyOwnerInvoices = useMemo(
+    () => propertyOwnerInvoices.filter((invoice) => invoice.status !== "paid"),
+    [propertyOwnerInvoices]
+  );
+  const paidPropertyOwnerInvoices = useMemo(
+    () => propertyOwnerInvoices.filter((invoice) => invoice.status === "paid"),
+    [propertyOwnerInvoices]
+  );
+  const displayedPropertyOwnerInvoices = useMemo(
+    () => showPaidInvoiceHistory ? propertyOwnerInvoices : openPropertyOwnerInvoices,
+    [openPropertyOwnerInvoices, propertyOwnerInvoices, showPaidInvoiceHistory]
+  );
+  const unreadOwnerInvoices = useMemo(
+    () =>
+      ownerInvoices.filter(
+        (invoice) =>
+          !invoice.owner_viewed_at &&
+          !ownerInvoiceHiddenItems.some((item) => item.invoice_id === invoice.id)
+      ),
+    [ownerInvoiceHiddenItems, ownerInvoices]
+  );
+  const unreadPropertyOwnerInvoices = useMemo(
+    () => propertyOwnerInvoices.filter((invoice) => !invoice.owner_viewed_at),
+    [propertyOwnerInvoices]
+  );
+
+  useEffect(() => {
+    if (!targetInvoiceId || ownerInvoices.length === 0) return;
+
+    const invoice = ownerInvoices.find((item) => item.id === targetInvoiceId);
+    if (!invoice) return;
+
+    if (invoice.property_id && selectedPropertyId !== invoice.property_id) {
+      setSelectedPropertyId(invoice.property_id);
+      return;
+    }
+
+    if (invoice.status === "paid") {
+      setShowPaidInvoiceHistory(true);
+    }
+
+    window.setTimeout(() => {
+      document.getElementById(`owner-invoice-${targetInvoiceId}`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 150);
+  }, [ownerInvoices, selectedPropertyId, targetInvoiceId]);
+
+  const propertyFlags = useMemo(() => {
+    if (!selectedProperty) return [];
+    return flags.filter((flag) => flag.property_id === selectedProperty.id);
+  }, [selectedProperty, flags]);
+
+  useEffect(() => {
+    if (preview || activeOwnerTab !== "invoices" || unreadPropertyOwnerInvoices.length === 0) return;
+
+    const invoiceIds = unreadPropertyOwnerInvoices.map((invoice) => invoice.id);
+
+    setOwnerInvoices((invoices) =>
+      invoices.map((invoice) =>
+        invoiceIds.includes(invoice.id)
+          ? { ...invoice, owner_viewed_at: invoice.owner_viewed_at || new Date().toISOString() }
+          : invoice
+      )
+    );
+
+    async function markInvoicesRead() {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) return;
+
+      const response = await fetch("/api/owner/mark-invoices-read", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ invoiceIds }),
+      });
+
+      if (!response.ok) {
+        await loadData();
+      }
+    }
+
+    void markInvoicesRead();
+  }, [activeOwnerTab, unreadPropertyOwnerInvoices]);
+
+  const openFlags = useMemo(() => propertyFlags.filter((flag) => !isResolved(flag)), [propertyFlags]);
+
+  const nextCleaning = useMemo(() => {
+    return propertyTurnoverJobs
+      .filter((job) => isFutureOrToday(normalizeYmd(job.scheduled_for)))
+      .sort((a, b) => (normalizeYmd(a.scheduled_for) || "").localeCompare(normalizeYmd(b.scheduled_for) || ""))[0] || null;
+  }, [propertyTurnoverJobs]);
+
+  const nextGroundsJob = useMemo(() => {
+    return propertyGroundsJobs
+      .filter((job) => isFutureOrToday(normalizeYmd(job.scheduled_for)))
+      .sort((a, b) => (normalizeYmd(a.scheduled_for) || "").localeCompare(normalizeYmd(b.scheduled_for) || ""))[0] || null;
+  }, [propertyGroundsJobs]);
+
+  const nextRecurringGroundsRule = useMemo(() => {
+    return propertyGroundsRecurringRules
+      .map((rule) => ({ rule, nextDate: getNextRecurringDate(rule) }))
+      .filter((item) => !!item.nextDate)
+      .sort((a, b) => (a.nextDate || "").localeCompare(b.nextDate || ""))[0] || null;
+  }, [propertyGroundsRecurringRules]);
+
+  const nextGrounds = nextGroundsJob
+    ? {
+      date: nextGroundsJob.scheduled_for,
+      label: getOwnerGroundsLabel(nextGroundsJob.job_type),
+      subtext: t("ownerPortal.overview.upcomingExteriorService"),
+    }
+    : nextRecurringGroundsRule
+      ? {
+        date: nextRecurringGroundsRule.nextDate,
+        label: formatOwnerRecurringGroundsLabel(nextRecurringGroundsRule.rule),
+        subtext: t("ownerPortal.overview.recurringGroundsSchedule"),
+      }
+      : null;
+
+  const upcomingBooking = useMemo(() => {
+    const eventBooking =
+      propertyBookingEvents
+        .filter((event) => isFutureOrToday(event.checkin_date))
+        .sort((a, b) => a.checkin_date.localeCompare(b.checkin_date))[0] || null;
+
+    if (eventBooking) {
+      return {
+        job: null,
+        booking: {
+          sourceLabel: getBookingSourceLabel(eventBooking.source),
+          guest: eventBooking.summary,
+          checkinDate: eventBooking.checkin_date,
+          checkoutDate: eventBooking.checkout_date,
+        },
+      };
+    }
+
+    return propertyTurnoverJobs
+      .map((job) => {
+        const booking = parseBookingFromNotes(job.notes);
+        return { job, booking };
+      })
+      .filter((item) => !!item.booking.checkinDate && isFutureOrToday(item.booking.checkinDate))
+      .sort((a, b) => (a.booking.checkinDate || "").localeCompare(b.booking.checkinDate || ""))[0] || null;
+  }, [propertyBookingEvents, propertyTurnoverJobs]);
+
+  const currentBooking = useMemo<CurrentBooking | null>(() => {
+    const todayYmd = getTodayYmd();
+    const eventBooking =
+      propertyBookingEvents
+        .filter((event) => event.checkin_date <= todayYmd && event.checkout_date > todayYmd)
+        .sort((a, b) => a.checkout_date.localeCompare(b.checkout_date))[0] || null;
+
+    if (eventBooking) {
+      return {
+        id: eventBooking.id,
+        sourceLabel: getBookingSourceLabel(eventBooking.source),
+        guest: getGuestNameFromSummary(eventBooking.summary),
+        summary: eventBooking.summary,
+        checkinDate: eventBooking.checkin_date,
+        checkoutDate: eventBooking.checkout_date,
+      };
+    }
+
+    const jobBooking =
+      propertyTurnoverJobs
+        .map((job) => ({ job, booking: parseBookingFromNotes(job.notes) }))
+        .filter(
+          (item) =>
+            !!item.booking.checkinDate &&
+            !!item.booking.checkoutDate &&
+            item.booking.checkinDate <= todayYmd &&
+            item.booking.checkoutDate > todayYmd
+        )
+        .sort((a, b) => (a.booking.checkoutDate || "").localeCompare(b.booking.checkoutDate || ""))[0] || null;
+
+    if (!jobBooking) return null;
+
+    return {
+      id: jobBooking.job.id,
+      sourceLabel: jobBooking.booking.sourceLabel,
+      guest: getGuestNameFromSummary(jobBooking.booking.guest),
+      summary: jobBooking.booking.guest,
+      checkinDate: jobBooking.booking.checkinDate || "",
+      checkoutDate: jobBooking.booking.checkoutDate || "",
+    };
+  }, [propertyBookingEvents, propertyTurnoverJobs]);
+
+  const timelineItems = useMemo<TimelineItem[]>(() => {
+    const items: TimelineItem[] = [];
+
+    for (const job of propertyTurnoverJobs) {
+      const booking = parseBookingFromNotes(job.notes);
+
+      if (isFutureOrToday(normalizeYmd(job.scheduled_for))) {
+        items.push({
+          id: `cleaning-${job.id}`,
+          type: "cleaning",
+          title: t("ownerPortal.timeline.scheduledCleaning"),
+          date: normalizeYmd(job.scheduled_for),
+          subtitle: booking.guest
+            ? t("ownerPortal.timeline.preparedFor").replace("{guest}", booking.guest).replace("{source}", booking.sourceLabel ? ` | ${booking.sourceLabel}` : "")
+            : t("ownerPortal.timeline.upcomingCleaningVisit"),
+          tone: "gold",
+        });
+      }
+
+      if (propertyBookingEvents.length === 0 && booking.checkinDate && isFutureOrToday(booking.checkinDate)) {
+        items.push({
+          id: `booking-${job.id}`,
+          type: "booking",
+          title: t("ownerPortal.timeline.upcomingBooking"),
+          date: booking.checkinDate,
+          subtitle:
+            booking.guest || booking.sourceLabel
+              ? [booking.guest, booking.sourceLabel].filter(Boolean).join(" | ")
+              : t("ownerPortal.timeline.upcomingReservationActivity"),
+          tone: "sky",
+        });
+      }
+    }
+
+    if (propertyBookingEvents.length > 0) {
+      for (const event of propertyBookingEvents) {
+        if (!isFutureOrToday(event.checkin_date)) continue;
+
+        const sourceLabel = getBookingSourceLabel(event.source);
+
+        items.push({
+          id: `booking-event-${event.id}`,
+          type: "booking",
+          title: t("ownerPortal.timeline.upcomingBooking"),
+          date: event.checkin_date,
+          subtitle:
+            event.summary || sourceLabel
+              ? [event.summary, sourceLabel].filter(Boolean).join(" | ")
+              : t("ownerPortal.timeline.upcomingReservationActivity"),
+          tone: "sky",
+        });
+      }
+    }
+
+    for (const job of propertyGroundsJobs) {
+      if (!isFutureOrToday(normalizeYmd(job.scheduled_for))) continue;
+
+      items.push({
+        id: `grounds-${job.id}`,
+        type: "grounds",
+        title: getOwnerGroundsLabel(job.job_type),
+        date: normalizeYmd(job.scheduled_for),
+        subtitle: job.notes?.trim() || t("ownerPortal.overview.upcomingExteriorService"),
+        tone: "emerald",
+      });
+    }
+
+    for (const rule of propertyGroundsRecurringRules) {
+      const nextDate = getNextRecurringDate(rule);
+      if (!nextDate) continue;
+
+      items.push({
+        id: `grounds-rule-${rule.id}`,
+        type: "grounds",
+        title: `${formatOwnerRecurringGroundsLabel(rule)} | ${t("ownerPortal.timeline.recurring")}`,
+        date: nextDate,
+        subtitle: rule.notes?.trim() || t("ownerPortal.overview.recurringGroundsSchedule"),
+        tone: "emerald",
+      });
+    }
+
+    for (const flag of openFlags) {
+      items.push({
+        id: `issue-${flag.id}`,
+        type: "issue",
+        title: `${t("ownerPortal.timeline.openIssue")}${flag.category ? ` | ${flag.category}` : ""}`,
+        date: flag.flagged_at || flag.created_at || null,
+        subtitle: flag.notes || t("ownerPortal.timeline.issueReported"),
+        tone: "rose",
+      });
+    }
+
+    return items
+      .sort((a, b) => {
+        const aDate = a.date || "9999-12-31";
+        const bDate = b.date || "9999-12-31";
+        return aDate.localeCompare(bDate);
+      })
+      .slice(0, 8);
+  }, [propertyTurnoverJobs, propertyBookingEvents, propertyGroundsJobs, propertyGroundsRecurringRules, openFlags, t]);
+
+  const bookingInsights = useMemo<BookingInsight[]>(() => {
+    if (propertyBookingEvents.length > 0) {
+      return propertyBookingEvents
+        .map((event) => {
+          const nights = getDateRangeNights(event.checkin_date, event.checkout_date);
+          if (nights <= 0) return null;
+
+          return {
+            id: event.id,
+            sourceLabel: getBookingSourceLabel(event.source),
+            guest: event.summary,
+            checkinDate: event.checkin_date,
+            checkoutDate: event.checkout_date,
+            nights,
+          } satisfies BookingInsight;
+        })
+        .filter((booking): booking is BookingInsight => !!booking)
+        .sort((a, b) => a.checkinDate.localeCompare(b.checkinDate));
+    }
+
+    return propertyTurnoverJobs
+      .map((job) => {
+        const booking = parseBookingFromNotes(job.notes);
+        if (!booking.checkinDate || !booking.checkoutDate) return null;
+
+        const nights = getDateRangeNights(booking.checkinDate, booking.checkoutDate);
+        if (nights <= 0) return null;
+
+        return {
+          id: job.id,
+          sourceLabel: booking.sourceLabel,
+          guest: booking.guest,
+          checkinDate: booking.checkinDate,
+          checkoutDate: booking.checkoutDate,
+          nights,
+        } satisfies BookingInsight;
+      })
+      .filter((booking): booking is BookingInsight => !!booking)
+      .sort((a, b) => a.checkinDate.localeCompare(b.checkinDate));
+  }, [propertyBookingEvents, propertyTurnoverJobs]);
+
+  const ownerInsightRangeOption = OWNER_INSIGHT_RANGE_OPTIONS.find((option) => option.value === ownerInsightRange) || OWNER_INSIGHT_RANGE_OPTIONS[0];
+  const rangedBookingInsights = useMemo(
+    () => bookingInsights.filter((booking) => bookingTouchesRecentWindow(booking, Number(ownerInsightRange))),
+    [bookingInsights, ownerInsightRange]
+  );
+
+  const bookingInsightStats = useMemo(() => {
+    const monthKeys = getLastMonthKeys(ownerInsightRangeOption.months);
+    const monthly = monthKeys.map((monthKey) => {
+      const bookedNights = rangedBookingInsights.reduce(
+        (total, booking) => total + countBookedNightsInMonth(booking, monthKey),
+        0
+      );
+      const bookings = rangedBookingInsights.filter((booking) => booking.checkinDate.slice(0, 7) === monthKey);
+      const daysInMonth = getDaysInMonth(monthKey);
+
+      return {
+        monthKey,
+        label: getMonthLabel(monthKey, locale),
+        bookedNights,
+        bookingCount: bookings.length,
+        occupancyRate: daysInMonth > 0 ? Math.round((bookedNights / daysInMonth) * 100) : 0,
+      };
+    });
+
+    const totalBookedNights = monthly.reduce((total, month) => total + month.bookedNights, 0);
+    const totalBookingCount = monthly.reduce((total, month) => total + month.bookingCount, 0);
+    const averageStay =
+      rangedBookingInsights.length > 0
+        ? rangedBookingInsights.reduce((total, booking) => total + booking.nights, 0) / rangedBookingInsights.length
+        : 0;
+    const averageOccupancy =
+      monthly.length > 0
+        ? Math.round(monthly.reduce((total, month) => total + month.occupancyRate, 0) / monthly.length)
+        : 0;
+    const bestMonth = [...monthly].sort((a, b) => b.occupancyRate - a.occupancyRate)[0] || null;
+    const maxBookedNights = Math.max(1, ...monthly.map((month) => month.bookedNights));
+    const maxBookingCount = Math.max(1, ...monthly.map((month) => month.bookingCount));
+    const next30 = countBookedNightsInWindow(bookingInsights, 30);
+    const next60 = countBookedNightsInWindow(bookingInsights, 60);
+    const next90 = countBookedNightsInWindow(bookingInsights, 90);
+
+    const sourceCounts = rangedBookingInsights.reduce<Record<string, number>>((counts, booking) => {
+      const label = booking.sourceLabel || "Other";
+      counts[label] = (counts[label] || 0) + booking.nights;
+      return counts;
+    }, {});
+
+    const sourceMix = Object.entries(sourceCounts)
+      .map(([label, nights]) => ({
+        label,
+        nights,
+        percentage: totalBookedNights > 0 ? Math.round((nights / totalBookedNights) * 100) : 0,
+      }))
+      .sort((a, b) => b.nights - a.nights);
+
+    const gapBuckets = {
+      oneNight: 0,
+      twoNight: 0,
+      threeNight: 0,
+      fourPlus: 0,
+    };
+
+    for (let i = 1; i < rangedBookingInsights.length; i += 1) {
+      const gap = getDateRangeNights(rangedBookingInsights[i - 1].checkoutDate, rangedBookingInsights[i].checkinDate);
+      if (gap <= 0) continue;
+      if (gap === 1) gapBuckets.oneNight += 1;
+      else if (gap === 2) gapBuckets.twoNight += 1;
+      else if (gap === 3) gapBuckets.threeNight += 1;
+      else gapBuckets.fourPlus += 1;
+    }
+
+    return {
+      monthly,
+      totalBookedNights,
+      totalBookingCount,
+      averageStay,
+      averageOccupancy,
+      bestMonth,
+      maxBookedNights,
+      maxBookingCount,
+      bookingPace: [
+        { label: t("ownerPortal.insights.next30"), days: 30, bookedNights: next30, percentage: Math.round((next30 / 30) * 100) },
+        { label: t("ownerPortal.insights.next60"), days: 60, bookedNights: next60, percentage: Math.round((next60 / 60) * 100) },
+        { label: t("ownerPortal.insights.next90"), days: 90, bookedNights: next90, percentage: Math.round((next90 / 90) * 100) },
+      ],
+      sourceMix,
+      gapBuckets,
+      recentBookings: [...rangedBookingInsights].reverse().slice(0, 6),
+    };
+  }, [bookingInsights, locale, ownerInsightRangeOption.months, rangedBookingInsights, t]);
+
+  const ownerCalendarDays = useMemo(() => getMonthGrid(ownerCalendarMonth), [ownerCalendarMonth]);
+  const ownerCalendarMonthBookings = useMemo(
+    () => bookingInsights.filter((booking) => bookingTouchesMonth(booking, ownerCalendarMonth)),
+    [bookingInsights, ownerCalendarMonth]
+  );
+  const ownerCalendarBookedNights = useMemo(
+    () =>
+      ownerCalendarMonthBookings.reduce(
+        (total, booking) => total + countBookedNightsInMonth(booking, getMonthKey(ownerCalendarMonth)),
+        0
+      ),
+    [ownerCalendarMonthBookings, ownerCalendarMonth]
+  );
+  const ownerCalendarOccupancy = useMemo(() => {
+    const days = getDaysInMonth(getMonthKey(ownerCalendarMonth));
+    return days > 0 ? Math.round((ownerCalendarBookedNights / days) * 100) : 0;
+  }, [ownerCalendarBookedNights, ownerCalendarMonth]);
+  const ownerCalendarSourceMix = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const booking of ownerCalendarMonthBookings) {
+      const label = booking.sourceLabel || "Source unavailable";
+      counts.set(label, (counts.get(label) || 0) + 1);
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  }, [ownerCalendarMonthBookings]);
+
+  if (loading) {
+    return (
+      <main className="owner-shell min-h-screen bg-[#0f0d0a] px-4 py-6 text-[#241c15] md:px-6">
+        <div className="mx-auto max-w-7xl">
+          <PortalLoadingScene
+            eyebrow="Owner portal"
+            title="Rolling into the owner dashboard."
+            body={t("ownerPortal.loading")}
+            badge="Loading updates"
+          />
+        </div>
+      </main>
+    );
+  }
+
+  if (error) {
+    return (
+    <main className="owner-shell min-h-screen bg-[#0f0d0a] px-4 py-10 text-[#f7f1e8]">
+        <div className="mx-auto max-w-2xl rounded-[32px] border border-red-500/20 bg-red-950/20 p-8">
+          <div className="text-[11px] uppercase tracking-[0.22em] text-red-200">
+            {t("ownerPortal.empty.ownerAccess")}
+          </div>
+          <h1 className="mt-3 text-2xl font-semibold text-[#f7f1e8]">
+            {t("ownerPortal.empty.couldNotOpen")}
+          </h1>
+          <p className="mt-3 text-sm leading-6 text-red-100">
+            {error}
+          </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <button
+              type="button"
+              disabled={Boolean(preview)}
+              onClick={() => void signOutOwner()}
+              className="rounded-full bg-[#b08b47] px-5 py-2.5 text-sm font-semibold text-[#17120d] transition hover:brightness-110"
+            >
+              {t("ownerPortal.empty.switchAccount")}
+            </button>
+            <button
+              type="button"
+              onClick={() => void loadData()}
+              className="rounded-full border border-white/12 px-5 py-2.5 text-sm font-semibold text-[#f7f1e8] transition hover:bg-white/[0.05]"
+            >
+              {t("ownerPortal.empty.tryAgain")}
+            </button>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (!selectedProperty) {
+    return (
+    <main className="owner-shell min-h-screen bg-[#0f0d0a] px-4 py-10 text-[#f7f1e8]">
+        <div className="mx-auto max-w-2xl rounded-[32px] border border-white/8 bg-[#15110d] p-8">
+          <h1 className="text-2xl font-semibold text-[#f7f1e8]">{t("ownerPortal.empty.noPropertyTitle")}</h1>
+          <p className="mt-3 text-sm leading-6 text-[#e6d8bf]">
+            {t("ownerPortal.empty.noPropertyBody")}
+          </p>
+          <button
+            type="button"
+            disabled={Boolean(preview)}
+              onClick={() => void signOutOwner()}
+            className="mt-6 rounded-full bg-[#b08b47] px-5 py-2.5 text-sm font-semibold text-[#17120d] transition hover:brightness-110"
+          >
+            {t("ownerPortal.empty.switchAccount")}
+          </button>
+        </div>
+      </main>
+    );
+  }
+
+  const bookingInfo = upcomingBooking?.booking || null;
+
+  return (
+    <main className="owner-shell min-h-screen px-4 py-6 text-[#f7f1e8] sm:px-6 sm:py-8">
+      <div className="mx-auto max-w-6xl space-y-6">
+        <section className="overflow-hidden rounded-[32px] border border-white/8 bg-[linear-gradient(180deg,rgba(23,18,13,0.98)_0%,rgba(14,11,8,1)_100%)] shadow-[0_24px_80px_rgba(0,0,0,0.36)]">
+          {selectedProperty.cover_photo_url ? (
+            <div className="relative h-64 overflow-hidden sm:h-80">
+              <img
+                src={getStorageAssetUrl(selectedProperty.cover_photo_url)}
+                alt={selectedProperty.name || t("ownerPortal.hero.coverPhoto")}
+                className="h-full w-full object-cover"
+              />
+              <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(15,13,10,0.12)_0%,rgba(15,13,10,0.78)_100%)]" />
+              <div className="absolute inset-x-0 bottom-0 px-6 py-6 sm:px-8">
+                <div className="max-w-2xl">
+                  <div className="text-[11px] uppercase tracking-[0.24em] text-[#ead7b8]">
+                    {t("ownerPortal.hero.kicker")}
+                  </div>
+                  <h1 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-5xl">
+                    {selectedProperty.name || t("ownerPortal.hero.propertyOverview")}
+                  </h1>
+                  <p className="mt-2 text-base text-[#f2e5d0]">
+                    {getCityFromAddress(selectedProperty.address) || selectedProperty.address || t("ownerPortal.hero.locationUnavailable")}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="flex flex-col gap-6 px-6 py-7 sm:px-8 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              {!selectedProperty.cover_photo_url ? (
+                <>
+                  <div className="text-[11px] uppercase tracking-[0.24em] text-[#e7c98a]">
+                    {t("ownerPortal.hero.kicker")}
+                  </div>
+                  <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[#f7f1e8] sm:text-4xl">
+                    {selectedProperty.name || t("ownerPortal.hero.propertyOverview")}
+                  </h1>
+                  <p className="mt-2 text-base text-[#e6d8bf]">
+                    {getCityFromAddress(selectedProperty.address) || selectedProperty.address || t("ownerPortal.hero.locationUnavailable")}
+                  </p>
+                </>
+              ) : (
+                <div className="text-sm text-[#e6d8bf]">
+                  {getCityFromAddress(selectedProperty.address) || selectedProperty.address || t("ownerPortal.hero.locationUnavailable")}
+                </div>
+              )}
+
+              {ownerAccount?.email ? (
+                <div className="mt-3 text-sm text-[#ccb99a]">{ownerAccount.email}</div>
+              ) : null}
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              {properties.length > 1 ? (
+                <select
+                  value={selectedProperty.id}
+                  onChange={(e) => handleOwnerPropertyChange(e.target.value)}
+                  className="min-w-[220px] rounded-full border border-white/12 bg-[#15110d] px-5 py-3 text-sm font-semibold text-[#f7f1e8] outline-none transition hover:bg-white/[0.05] focus:border-[#b08b47]"
+                >
+                  {properties.map((property) => (
+                    <option key={property.id} value={property.id}>
+                      {property.name || property.address || t("ownerPortal.hero.unnamedProperty")}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+
+              <button
+                type="button"
+                disabled={Boolean(preview)}
+                onClick={() => setReportOpen(true)}
+                className="rounded-full bg-[#b08b47] px-5 py-3 text-sm font-semibold text-[#17120d] transition hover:brightness-110"
+              >
+                {t("ownerPortal.issue.title")}
+              </button>
+
+              <button
+                type="button"
+                disabled={Boolean(preview)}
+                onClick={() => void signOutOwner()}
+                className="rounded-full border border-white/12 px-5 py-3 text-sm font-semibold text-[#f7f1e8] transition hover:bg-white/[0.05]"
+              >
+                {t("ownerPortal.hero.logout")}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-[26px] border border-white/8 bg-[#15110d] p-2">
+          <div className="grid gap-2 lg:grid-cols-5">
+            {[
+              { key: "overview" as OwnerTab, label: t("ownerPortal.tabs.overview.label"), subtext: t("ownerPortal.tabs.overview.subtext") },
+              { key: "calendar" as OwnerTab, label: "Calendar", subtext: "Monthly booked dates by source" },
+              { key: "insights" as OwnerTab, label: t("ownerPortal.tabs.insights.label"), subtext: t("ownerPortal.tabs.insights.subtext") },
+              { key: "invoices" as OwnerTab, label: t("ownerPortal.tabs.invoices.label"), subtext: t("ownerPortal.tabs.invoices.subtext") },
+              { key: "chat" as OwnerTab, label: t("ownerPortal.tabs.chat.label"), subtext: t("ownerPortal.tabs.chat.subtext") },
+            ].map((tab) => {
+              const isActive = activeOwnerTab === tab.key;
+              const unreadCount =
+                tab.key === "invoices" ? unreadOwnerInvoices.length : tab.key === "chat" ? ownerChatUnreadCount : 0;
+
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => handleOwnerTabChange(tab.key)}
+                  className={`relative rounded-[22px] px-5 py-4 text-left transition ${isActive
+                    ? "bg-[linear-gradient(135deg,#b08b47,#e3c177)] text-[#17120d] shadow-[0_16px_40px_rgba(176,139,71,0.22)]"
+                    : unreadCount > 0
+                      ? "border border-[#e3c177]/60 bg-[#b08b47]/18 text-[#f7f1e8] shadow-[0_0_0_1px_rgba(227,193,119,0.18)] hover:bg-[#b08b47]/24"
+                      : "bg-white/[0.03] text-[#f7f1e8] hover:bg-white/[0.06]"
+                    }`}
+                >
+                  <div className="flex items-center gap-2 text-base font-semibold">
+                    <span>{tab.label}</span>
+                    {unreadCount > 0 ? (
+                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${isActive ? "bg-[#17120d]/12 text-[#17120d]" : "bg-[#e3c177] text-[#17120d]"}`}>
+                        {t("ownerPortal.common.unreadCount").replace("{count}", String(unreadCount))}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className={`mt-1 text-sm ${isActive ? "text-[#382511]" : "text-[#ccb99a]"}`}>
+                    {tab.subtext}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        {activeOwnerTab === "overview" ? (
+          <>
+        {properties.length > 1 ? (
+          <section className="rounded-[28px] border border-white/8 bg-[#15110d] p-4 sm:p-5">
+            <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">
+                  {t("ownerPortal.properties.title")}
+                </div>
+                <h2 className="mt-2 text-xl font-semibold text-[#f7f1e8]">
+                  {t("ownerPortal.properties.switchByPhoto")}
+                </h2>
+              </div>
+              <div className="text-sm text-[#ccb99a]">
+                {t("ownerPortal.properties.linkedCount").replace("{count}", String(properties.length))}
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {properties.map((property) => {
+                const isSelected = property.id === selectedProperty.id;
+
+                return (
+                  <button
+                    key={property.id}
+                    type="button"
+                    onClick={() => handleOwnerPropertyChange(property.id)}
+                    className={`overflow-hidden rounded-[22px] border text-left transition ${isSelected
+                      ? "border-[#b08b47] bg-[#201911] shadow-[0_0_0_1px_rgba(176,139,71,0.35)]"
+                      : "border-white/8 bg-white/[0.02] hover:border-white/18 hover:bg-white/[0.04]"
+                      }`}
+                  >
+                    {property.cover_photo_url ? (
+                      <img
+                        src={getStorageAssetUrl(property.cover_photo_url)}
+                        alt={property.name || t("ownerPortal.hero.coverPhoto")}
+                        className="h-32 w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-32 items-center justify-center bg-[radial-gradient(circle_at_top,rgba(176,139,71,0.32),transparent_36%),linear-gradient(135deg,#2a2119,#14100c)] px-4 text-center text-xs uppercase tracking-[0.2em] text-[#e7c98a]">
+                        {t("ownerPortal.properties.noPhoto")}
+                      </div>
+                    )}
+
+                    <div className="px-4 py-3">
+                      <div className="truncate text-sm font-semibold text-[#f7f1e8]">
+                        {property.name || t("ownerPortal.hero.unnamedProperty")}
+                      </div>
+                      <div className="mt-1 truncate text-xs text-[#ccb99a]">
+                        {getCityFromAddress(property.address) || property.address || t("ownerPortal.hero.locationUnavailable")}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
+
+        {reportSuccess ? (
+          <div className="rounded-2xl border border-emerald-500/25 bg-emerald-950/20 px-4 py-3 text-sm text-emerald-200">
+            {reportSuccess}
+          </div>
+        ) : null}
+
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+          <StatCard
+            label={t("ownerPortal.overview.nextCleaning")}
+            value={nextCleaning ? formatOwnerDateLabel(nextCleaning.scheduled_for) : t("ownerPortal.overview.notScheduled")}
+            subtext={t("ownerPortal.overview.upcomingInteriorTurnover")}
+          />
+          <StatCard
+            label={t("ownerPortal.overview.nextGroundsService")}
+            value={nextGrounds ? formatOwnerDateLabel(nextGrounds.date) : t("ownerPortal.overview.notScheduled")}
+            subtext={
+              nextGrounds
+                ? `${nextGrounds.label}${nextGrounds.subtext ? ` | ${nextGrounds.subtext}` : ""}`
+                : t("ownerPortal.overview.noExteriorService")
+            }
+          />
+          <StatCard
+            label={t("ownerPortal.overview.currentBooking")}
+            value={
+              currentBooking
+                ? currentBooking.guest
+                  ? t("ownerPortal.overview.currentGuest").replace("{guest}", currentBooking.guest)
+                  : t("ownerPortal.overview.currentGuestUnknown")
+                : t("ownerPortal.overview.notCurrentlyBooked")
+            }
+            subtext={
+              currentBooking
+                ? t("ownerPortal.overview.currentStayDates")
+                    .replace("{source}", currentBooking.sourceLabel || t("ownerPortal.insights.sourceUnavailable"))
+                    .replace("{start}", formatOwnerDateLabel(currentBooking.checkinDate))
+                    .replace("{end}", formatOwnerDateLabel(currentBooking.checkoutDate))
+                : t("ownerPortal.overview.noActiveStay")
+            }
+          />
+          <StatCard
+            label={t("ownerPortal.overview.upcomingBooking")}
+            value={bookingInfo?.checkinDate ? formatOwnerDateLabel(bookingInfo.checkinDate) : t("ownerPortal.overview.notAvailable")}
+            subtext={
+              bookingInfo
+                ? [bookingInfo.guest, bookingInfo.sourceLabel].filter(Boolean).join(" | ") || t("ownerPortal.overview.bookingFound")
+                : t("ownerPortal.overview.noUpcomingBooking")
+            }
+          />
+          <StatCard
+            label={t("ownerPortal.overview.activeIssues")}
+            value={String(openFlags.length)}
+            subtext={openFlags.length > 0 ? t("ownerPortal.overview.openMaintenanceItems") : t("ownerPortal.overview.noActiveIssues")}
+          />
+        </section>
+
+        <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+          <div className="rounded-[28px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">
+                  {t("ownerPortal.overview.todayAtGlance")}
+                </div>
+                <h2 className="mt-2 text-xl font-semibold text-[#f7f1e8]">{t("ownerPortal.overview.upcomingActivity")}</h2>
+              </div>
+              <div className="rounded-full border border-white/8 bg-white/[0.03] px-3 py-1 text-xs uppercase tracking-[0.18em] text-[#e7c98a]">
+                {t("ownerPortal.common.shownCount").replace("{count}", String(Math.min(timelineItems.length, 4)))}
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              {timelineItems.length > 0 ? (
+                timelineItems.slice(0, 4).map((item) => (
+                  <div
+                    key={item.id}
+                    className="rounded-2xl border border-white/7 bg-white/[0.02] px-4 py-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-[#f7f1e8]">{item.title}</div>
+                        {item.subtitle ? (
+                          <div className="mt-1 line-clamp-2 text-sm text-[#e6d8bf]">{item.subtitle}</div>
+                        ) : null}
+                      </div>
+                      <div
+                        className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${item.tone === "emerald"
+                          ? "bg-emerald-400"
+                          : item.tone === "sky"
+                            ? "bg-sky-400"
+                            : item.tone === "rose"
+                              ? "bg-rose-400"
+                              : "bg-[#b08b47]"
+                          }`}
+                      />
+                    </div>
+                    <div className="mt-3 text-xs uppercase tracking-[0.18em] text-[#e7c98a]">
+                      {formatOwnerDateLabel(item.date)}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-2xl border border-white/7 bg-white/[0.02] px-4 py-5 text-sm text-[#e6d8bf] sm:col-span-2">
+                  {t("ownerPortal.overview.nothingUpcoming")}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-[28px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
+            <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">{t("ownerPortal.overview.activeIssues")}</div>
+            <h2 className="mt-2 text-xl font-semibold text-[#f7f1e8]">{t("ownerPortal.overview.maintenanceStatus")}</h2>
+
+            <div className="mt-5 space-y-3">
+              {openFlags.length > 0 ? (
+                openFlags.slice(0, 6).map((flag) => (
+                  <div
+                    key={flag.id}
+                    className="rounded-2xl border border-red-500/20 bg-red-950/15 px-4 py-4"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-sm font-semibold text-[#f7f1e8]">
+                        {flag.category || t("ownerPortal.timeline.openIssue")}
+                      </div>
+                      <div className="rounded-full border border-red-400/30 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-red-200">
+                        {getOwnerUrgencyLabel(flag.urgency)}
+                      </div>
+                    </div>
+
+                    <div className="mt-2 text-sm leading-relaxed text-[#d8c7ab]">
+                      {flag.notes || t("ownerPortal.timeline.issueReported")}
+                    </div>
+
+                    {(flagImagesByFlagId.get(flag.id) || []).length > 0 ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {(flagImagesByFlagId.get(flag.id) || []).slice(0, 4).map((image) => (
+                          <img
+                            key={image.id}
+                            src={image.image_url}
+                            alt={t("ownerPortal.issue.attachmentAlt")}
+                            className="h-16 w-16 rounded-xl object-cover"
+                          />
+                        ))}
+                      </div>
+                    ) : null}
+
+                    <div className="mt-3 text-xs uppercase tracking-[0.18em] text-[#e7c98a]">
+                      {t("ownerPortal.overview.reportedDate").replace("{date}", formatOwnerDateLabel(flag.flagged_at || flag.created_at))}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-950/15 px-4 py-5 text-sm text-emerald-200">
+                  {t("ownerPortal.overview.noActiveIssuesMoment")}
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+          </>
+        ) : activeOwnerTab === "calendar" ? (
+          <section className="rounded-[30px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">
+                  Owner Calendar
+                </div>
+                <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#f7f1e8]">
+                  {getMonthLongLabel(ownerCalendarMonth, locale)}
+                </h2>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-[#e6d8bf]">
+                  Synced bookings for {selectedProperty.name || t("ownerPortal.hero.thisProperty")}, grouped by source.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setOwnerCalendarMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}
+                  className="rounded-full border border-[#b08b47]/35 bg-[#100d0a] px-4 py-2 text-sm font-semibold text-[#f7f1e8] transition hover:bg-[#1d1711]"
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const today = new Date();
+                    setOwnerCalendarMonth(new Date(today.getFullYear(), today.getMonth(), 1));
+                  }}
+                  className="rounded-full border border-[#b08b47]/35 bg-[#b08b47]/15 px-4 py-2 text-sm font-semibold text-[#f1d9a5] transition hover:bg-[#b08b47]/24"
+                >
+                  Today
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOwnerCalendarMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}
+                  className="rounded-full border border-[#b08b47]/35 bg-[#100d0a] px-4 py-2 text-sm font-semibold text-[#f7f1e8] transition hover:bg-[#1d1711]"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-3 md:grid-cols-3">
+              <StatCard label="Booked nights" value={String(ownerCalendarBookedNights)} subtext="Occupied nights in this month" />
+              <StatCard label="Reservations" value={String(ownerCalendarMonthBookings.length)} subtext="Synced stays touching this month" />
+              <StatCard label="Occupancy" value={`${ownerCalendarOccupancy}%`} subtext="Booked-night coverage" />
+            </div>
+
+            <div className="mt-5 flex flex-wrap gap-2">
+              {ownerCalendarSourceMix.length > 0 ? (
+                ownerCalendarSourceMix.map(([source, count]) => (
+                  <span
+                    key={source}
+                    className={`rounded-full border px-3 py-1 text-xs font-semibold ${getSourceTone(source)}`}
+                  >
+                    {source}: {count}
+                  </span>
+                ))
+              ) : (
+                <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-xs text-[#ccb99a]">
+                  No bookings in this month
+                </span>
+              )}
+            </div>
+
+            <div className="mt-6 hidden overflow-hidden rounded-[24px] border border-white/8 md:block">
+              <div className="grid grid-cols-7 border-b border-white/8 bg-black/20">
+                {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+                  <div key={day} className="px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.18em] text-[#ccb99a]">
+                    {day}
+                  </div>
+                ))}
+              </div>
+              <div className="grid grid-cols-7">
+                {ownerCalendarDays.map((day) => {
+                  const ymd = toYmd(day);
+                  const dayBookings = bookingInsights.filter((booking) => bookingTouchesDay(booking, ymd));
+                  const isCurrentMonth = day.getMonth() === ownerCalendarMonth.getMonth();
+                  const isToday = ymd === getTodayYmd();
+
+                  return (
+                    <div
+                      key={ymd}
+                      className={`min-h-[132px] border-b border-r border-white/7 p-3 ${
+                        isCurrentMonth ? "bg-[#120f0b]" : "bg-black/25 opacity-55"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className={`text-sm font-semibold ${isToday ? "text-[#f1d9a5]" : "text-[#f7f1e8]"}`}>
+                          {day.getDate()}
+                        </span>
+                        {dayBookings.length > 0 ? (
+                          <span className="rounded-full bg-[#b08b47]/20 px-2 py-0.5 text-[10px] font-semibold text-[#f1d9a5]">
+                            {dayBookings.length}
+                          </span>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-3 space-y-1.5">
+                        {dayBookings.slice(0, 3).map((booking) => (
+                          <div
+                            key={`${ymd}-${booking.id}`}
+                            className={`truncate rounded-lg border px-2 py-1 text-[11px] font-semibold ${getSourceTone(booking.sourceLabel)}`}
+                            title={`${booking.sourceLabel || "Booking"}: ${booking.checkinDate} to ${booking.checkoutDate}`}
+                          >
+                            {booking.sourceLabel || "Booking"}
+                          </div>
+                        ))}
+                        {dayBookings.length > 3 ? (
+                          <div className="text-[11px] text-[#ccb99a]">+{dayBookings.length - 3} more</div>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="mt-6 space-y-3 md:hidden">
+              {ownerCalendarMonthBookings.length > 0 ? (
+                ownerCalendarMonthBookings.map((booking) => (
+                  <div key={booking.id} className="rounded-2xl border border-white/8 bg-black/20 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-[#f7f1e8]">
+                          {formatOwnerDateLabel(booking.checkinDate)} to {formatOwnerDateLabel(booking.checkoutDate)}
+                        </div>
+                        <div className="mt-1 text-sm text-[#ccb99a]">
+                          {booking.nights} night{booking.nights === 1 ? "" : "s"}
+                        </div>
+                      </div>
+                      <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${getSourceTone(booking.sourceLabel)}`}>
+                        {booking.sourceLabel || "Booking"}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-2xl border border-white/8 bg-black/20 p-4 text-sm text-[#e6d8bf]">
+                  No synced bookings touch this month.
+                </div>
+              )}
+            </div>
+          </section>
+        ) : activeOwnerTab === "insights" ? (
+          <>
+            <section className="overflow-hidden rounded-[32px] border border-white/8 bg-[radial-gradient(circle_at_top_left,rgba(176,139,71,0.22),transparent_30%),linear-gradient(180deg,#18130f_0%,#100d0a_100%)] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.26)] sm:p-6">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.24em] text-[#e7c98a]">
+                    {t("ownerPortal.insights.bookingPerformance")}
+                  </div>
+                  <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#f7f1e8] sm:text-3xl">
+                    {t("ownerPortal.insights.occupancyStory").replace("{property}", selectedProperty.name || t("ownerPortal.hero.thisProperty"))}
+                  </h2>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-[#e6d8bf]">
+                    {t("ownerPortal.insights.body")}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="sr-only" htmlFor="owner-insight-range">Insights range</label>
+                  <select
+                    id="owner-insight-range"
+                    value={ownerInsightRange}
+                    onChange={(event) => setOwnerInsightRange(event.target.value as OwnerInsightRange)}
+                    className="rounded-full border border-[#b08b47]/30 bg-[#211812] px-4 py-2 text-sm font-semibold text-[#f1d9a5] outline-none transition focus:border-[#e3c177]"
+                  >
+                    {OWNER_INSIGHT_RANGE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <StatCard
+                  label={t("ownerPortal.insights.avgOccupancy")}
+                  value={`${bookingInsightStats.averageOccupancy}%`}
+                  subtext={t("ownerPortal.insights.avgOccupancySubtext")}
+                />
+                <StatCard
+                  label={t("ownerPortal.insights.bookedNights")}
+                  value={String(bookingInsightStats.totalBookedNights)}
+                  subtext={t("ownerPortal.insights.bookedNightsSubtext")}
+                />
+                <StatCard
+                  label={t("ownerPortal.insights.reservations")}
+                  value={String(bookingInsightStats.totalBookingCount)}
+                  subtext={t("ownerPortal.insights.reservationsSubtext")}
+                />
+                <StatCard
+                  label={t("ownerPortal.insights.avgStay")}
+                  value={t("ownerPortal.insights.nightsCount").replace("{count}", bookingInsightStats.averageStay.toFixed(1))}
+                  subtext={bookingInsightStats.bestMonth ? t("ownerPortal.insights.bestMonth").replace("{month}", bookingInsightStats.bestMonth.label) : t("ownerPortal.insights.basedOnSyncedStays")}
+                />
+              </div>
+            </section>
+
+            <section className="grid gap-6 xl:grid-cols-[1.35fr_0.85fr]">
+              <div className="rounded-[30px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">
+                      {t("ownerPortal.insights.occupancyTrend")}
+                    </div>
+                    <h3 className="mt-2 text-xl font-semibold text-[#f7f1e8]">
+                      {t("ownerPortal.insights.monthlyBookedNights")}
+                    </h3>
+                  </div>
+                  <div className="text-sm text-[#ccb99a]">
+                    {t("ownerPortal.insights.barsHelp")}
+                  </div>
+                </div>
+
+                <div className="mt-6 grid h-72 grid-cols-12 items-end gap-2 rounded-[24px] border border-white/7 bg-black/20 px-4 pb-5 pt-6">
+                  {bookingInsightStats.monthly.map((month) => (
+                    <div key={month.monthKey} className="flex h-full min-w-0 flex-col items-center justify-end gap-2">
+                      <div className="text-[10px] font-semibold text-[#ead7b8]">
+                        {month.occupancyRate}%
+                      </div>
+                      <div className="flex h-48 w-full items-end justify-center">
+                        <div
+                          className="w-full max-w-9 rounded-t-full bg-[linear-gradient(180deg,#f2d48a_0%,#b08b47_58%,#67491e_100%)] shadow-[0_0_24px_rgba(176,139,71,0.24)]"
+                          style={{
+                            height: `${Math.max(6, (month.bookedNights / bookingInsightStats.maxBookedNights) * 100)}%`,
+                          }}
+                        />
+                      </div>
+                      <div className="text-[10px] uppercase tracking-[0.16em] text-[#ccb99a]">
+                        {month.label}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-[30px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">
+                  {t("ownerPortal.insights.bookingPace")}
+                </div>
+                <h3 className="mt-2 text-xl font-semibold text-[#f7f1e8]">
+                  {t("ownerPortal.insights.futureDemand")}
+                </h3>
+
+                <div className="mt-6 space-y-5">
+                  {bookingInsightStats.bookingPace.map((pace) => (
+                    <div key={pace.label}>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-sm font-semibold text-[#f7f1e8]">{t("ownerPortal.insights.daysLabel").replace("{label}", pace.label)}</div>
+                        <div className="text-sm text-[#e6d8bf]">
+                          {t("ownerPortal.insights.nightsRatio").replace("{booked}", String(pace.bookedNights)).replace("{days}", String(pace.days))}
+                        </div>
+                      </div>
+                      <div className="mt-2 h-3 overflow-hidden rounded-full bg-white/8">
+                        <div
+                          className="h-full rounded-full bg-[linear-gradient(90deg,#b08b47,#f0d28b)]"
+                          style={{ width: `${Math.min(100, pace.percentage)}%` }}
+                        />
+                      </div>
+                      <div className="mt-1 text-xs text-[#ccb99a]">{t("ownerPortal.insights.percentBooked").replace("{percent}", String(pace.percentage))}</div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-7 rounded-[22px] border border-[#b08b47]/20 bg-[#b08b47]/10 p-4">
+                  <div className="text-sm font-semibold text-[#f7f1e8]">{t("ownerPortal.insights.readPaceTitle")}</div>
+                  <p className="mt-2 text-sm leading-6 text-[#e6d8bf]">
+                    {t("ownerPortal.insights.readPaceBody")}
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            <section className="grid gap-6 xl:grid-cols-3">
+              <div className="rounded-[30px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">
+                  {t("ownerPortal.insights.sourceMix")}
+                </div>
+                <h3 className="mt-2 text-xl font-semibold text-[#f7f1e8]">{t("ownerPortal.insights.bookedNightsBySource")}</h3>
+
+                <div className="mt-6 space-y-4">
+                  {bookingInsightStats.sourceMix.length > 0 ? (
+                    bookingInsightStats.sourceMix.map((source) => (
+                      <div key={source.label}>
+                        <div className="flex items-center justify-between gap-3 text-sm">
+                          <span className="font-semibold text-[#f7f1e8]">{source.label}</span>
+                          <span className="text-[#e6d8bf]">{t("ownerPortal.insights.nightsCount").replace("{count}", String(source.nights))}</span>
+                        </div>
+                        <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-white/8">
+                          <div
+                            className="h-full rounded-full bg-[linear-gradient(90deg,#f0d28b,#b08b47)]"
+                            style={{ width: `${Math.max(4, source.percentage)}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-2xl border border-white/7 bg-white/[0.02] px-4 py-5 text-sm text-[#e6d8bf]">
+                      {t("ownerPortal.insights.noSourceData")}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-[30px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">
+                  {t("ownerPortal.insights.gapOpportunities")}
+                </div>
+                <h3 className="mt-2 text-xl font-semibold text-[#f7f1e8]">{t("ownerPortal.insights.emptyWindows")}</h3>
+
+                <div className="mt-6 grid grid-cols-4 gap-3">
+                  {[
+                    { label: t("ownerPortal.insights.oneNight"), value: bookingInsightStats.gapBuckets.oneNight },
+                    { label: t("ownerPortal.insights.twoNights"), value: bookingInsightStats.gapBuckets.twoNight },
+                    { label: t("ownerPortal.insights.threeNights"), value: bookingInsightStats.gapBuckets.threeNight },
+                    { label: t("ownerPortal.insights.fourPlusNights"), value: bookingInsightStats.gapBuckets.fourPlus },
+                  ].map((bucket) => {
+                    const maxGap = Math.max(
+                      1,
+                      bookingInsightStats.gapBuckets.oneNight,
+                      bookingInsightStats.gapBuckets.twoNight,
+                      bookingInsightStats.gapBuckets.threeNight,
+                      bookingInsightStats.gapBuckets.fourPlus
+                    );
+
+                    return (
+                      <div key={bucket.label} className="flex h-44 flex-col items-center justify-end rounded-2xl border border-white/7 bg-black/20 px-3 py-4">
+                        <div className="text-lg font-semibold text-[#f7f1e8]">{bucket.value}</div>
+                        <div className="mt-3 flex h-24 w-full items-end justify-center">
+                          <div
+                            className="w-7 rounded-t-full bg-[linear-gradient(180deg,#c5f2d0,#45a36f)]"
+                            style={{ height: `${Math.max(8, (bucket.value / maxGap) * 100)}%` }}
+                          />
+                        </div>
+                        <div className="mt-3 text-center text-[10px] uppercase tracking-[0.14em] text-[#ccb99a]">
+                          {bucket.label}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="rounded-[30px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">
+                  {t("ownerPortal.insights.reservationVolume")}
+                </div>
+                <h3 className="mt-2 text-xl font-semibold text-[#f7f1e8]">{t("ownerPortal.insights.bookingsByMonth")}</h3>
+
+                <div className="mt-6 space-y-3">
+                  {bookingInsightStats.monthly.map((month) => (
+                    <div key={month.monthKey} className="grid grid-cols-[42px_1fr_32px] items-center gap-3">
+                      <div className="text-xs uppercase tracking-[0.14em] text-[#ccb99a]">{month.label}</div>
+                      <div className="h-3 overflow-hidden rounded-full bg-white/8">
+                        <div
+                          className="h-full rounded-full bg-[linear-gradient(90deg,#7dd3fc,#2563eb)]"
+                          style={{ width: `${Math.max(3, (month.bookingCount / bookingInsightStats.maxBookingCount) * 100)}%` }}
+                        />
+                      </div>
+                      <div className="text-right text-sm font-semibold text-[#f7f1e8]">{month.bookingCount}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-[30px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">
+                    {t("ownerPortal.insights.bookingHistory")}
+                  </div>
+                  <h3 className="mt-2 text-xl font-semibold text-[#f7f1e8]">{t("ownerPortal.insights.recentSyncedStays")}</h3>
+                </div>
+                <div className="text-sm text-[#ccb99a]">
+                  {t("ownerPortal.insights.staysFound").replace("{count}", String(rangedBookingInsights.length))}
+                </div>
+              </div>
+
+              <div className="mt-5 grid gap-3 md:grid-cols-2">
+                {bookingInsightStats.recentBookings.length > 0 ? (
+                  bookingInsightStats.recentBookings.map((booking) => (
+                    <div key={booking.id} className="rounded-2xl border border-white/7 bg-white/[0.02] px-4 py-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold text-[#f7f1e8]">
+                            {booking.guest || t("ownerPortal.insights.guestStay")}
+                          </div>
+                          <div className="mt-1 text-sm text-[#e6d8bf]">
+                            {t("ownerPortal.insights.dateRange").replace("{start}", formatOwnerDateLabel(booking.checkinDate)).replace("{end}", formatOwnerDateLabel(booking.checkoutDate))}
+                          </div>
+                        </div>
+                        <div className="rounded-full border border-[#b08b47]/25 bg-[#b08b47]/10 px-3 py-1 text-xs font-semibold text-[#f1d9a5]">
+                          {t("ownerPortal.insights.nightsCount").replace("{count}", String(booking.nights))}
+                        </div>
+                      </div>
+                      <div className="mt-3 text-xs uppercase tracking-[0.18em] text-[#ccb99a]">
+                        {booking.sourceLabel || t("ownerPortal.insights.sourceUnavailable")}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-2xl border border-white/7 bg-white/[0.02] px-4 py-5 text-sm text-[#e6d8bf] md:col-span-2">
+                    {t("ownerPortal.insights.noBookingHistory")}
+                  </div>
+                )}
+              </div>
+            </section>
+          </>
+        ) : activeOwnerTab === "invoices" ? (
+          <section className="rounded-[30px] border border-white/8 bg-[#15110d] p-5 sm:p-6">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#e7c98a]">
+                  {t("ownerPortal.invoices.title")}
+                </div>
+                <h2 className="mt-2 text-xl font-semibold text-[#f7f1e8]">
+                  {t("ownerPortal.invoices.statementsFor").replace("{property}", selectedProperty.name || t("ownerPortal.hero.thisProperty"))}
+                </h2>
+              </div>
+              <div className="rounded-full border border-[#b08b47]/30 bg-[#b08b47]/10 px-4 py-2 text-sm font-semibold text-[#f1d9a5]">
+                {unreadPropertyOwnerInvoices.length > 0
+                  ? t("ownerPortal.common.unreadCount").replace("{count}", String(unreadPropertyOwnerInvoices.length))
+                  : t(propertyOwnerInvoices.length === 1 ? "ownerPortal.invoices.oneInvoice" : "ownerPortal.invoices.invoiceCount").replace("{count}", String(propertyOwnerInvoices.length))}
+              </div>
+            </div>
+
+            {paidPropertyOwnerInvoices.length > 0 ? (
+              <div className="mt-5 flex flex-col gap-3 rounded-[22px] border border-white/8 bg-black/20 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-sm font-semibold text-[#f7f1e8]">
+                    Paid invoice history
+                  </div>
+                  <div className="mt-1 text-sm text-[#ccb99a]">
+                    {paidPropertyOwnerInvoices.length} paid invoice{paidPropertyOwnerInvoices.length === 1 ? "" : "s"} {showPaidInvoiceHistory ? "shown below" : "collapsed"}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPaidInvoiceHistory((value) => !value)}
+                  className="rounded-full border border-[#b08b47]/35 bg-[#b08b47]/10 px-4 py-2 text-sm font-semibold text-[#f1d9a5] transition hover:bg-[#b08b47]/18"
+                >
+                  {showPaidInvoiceHistory ? "Hide history" : "Show history"}
+                </button>
+              </div>
+            ) : null}
+
+            <div className="mt-5 space-y-4">
+              {displayedPropertyOwnerInvoices.length > 0 ? (
+                displayedPropertyOwnerInvoices.map((invoice) => {
+                  const invoiceProperty = properties.find((property) => property.id === invoice.property_id);
+                  const invoiceCurrencyCode = normalizeCurrencyCode(invoice.currency_code, DEFAULT_CURRENCY_CODE);
+                  const lineItems = Array.isArray(invoice.line_items) ? invoice.line_items : [];
+                  const taxLines = getOwnerInvoiceTaxLines(invoice);
+                  const isPaidInvoice = invoice.status === "paid";
+
+                  return (
+                    <div
+                      key={invoice.id}
+                      id={`owner-invoice-${invoice.id}`}
+                      className={`overflow-hidden rounded-[24px] border ${
+                        isPaidInvoice
+                          ? "border-emerald-400/45 bg-emerald-950/20 shadow-[0_0_0_1px_rgba(16,185,129,0.14)]"
+                          : "border-red-400/45 bg-red-950/20 shadow-[0_0_0_1px_rgba(248,113,113,0.14)]"
+                      } ${!invoice.owner_viewed_at || targetInvoiceId === invoice.id ? "ring-1 ring-[#e3c177]/45" : ""}`}
+                    >
+                      <div className="border-b border-white/8 px-5 py-4">
+                        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                          <div>
+                            {invoice.logo_url ? (
+                              <img src={getStorageAssetUrl(invoice.logo_url)} alt="" className="mb-3 max-h-14 max-w-[180px] object-contain" />
+                            ) : null}
+                            <div className="text-lg font-semibold text-[#f7f1e8]">
+                              {invoice.company_name || t("ownerPortal.invoices.propertyInvoice")}
+                              {!invoice.owner_viewed_at ? (
+                                <span className="ml-2 rounded-full bg-[#e3c177] px-2 py-0.5 align-middle text-[11px] font-bold uppercase tracking-[0.08em] text-[#17120d]">
+                                  {t("ownerPortal.invoices.new")}
+                                </span>
+                              ) : null}
+                              {invoice.invoice_source === "uploaded" ? (
+                                <span className="ml-2 rounded-full border border-[#e3c177]/30 bg-[#e3c177]/10 px-2 py-0.5 align-middle text-[11px] font-bold uppercase tracking-[0.08em] text-[#f1d9a5]">
+                                  {t("ownerPortal.invoices.uploaded")}
+                                </span>
+                              ) : null}
+                              {invoice.corrected_invoice_number ? (
+                                <span className="ml-2 rounded-full border border-[#fed7aa] bg-[#fff7ed] px-2 py-0.5 align-middle text-[11px] font-bold text-[#9a3412]">
+                                  Corrected version of {invoice.corrected_invoice_number}
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="mt-1 text-sm text-[#ccb99a]">
+                              {invoice.invoice_number} - {invoiceProperty?.name || invoiceProperty?.address || t("ownerPortal.invoices.allLinkedProperties")}
+                            </div>
+                          </div>
+                          <div className="text-left md:text-right">
+                            <div className="text-2xl font-semibold text-[#f7f1e8]">{formatOwnerCurrency(invoice.total, invoiceCurrencyCode)}</div>
+                            <div className="mt-1 text-sm text-[#e6d8bf]">
+                              {invoice.status === "paid" ? t("ownerPortal.invoices.paid") : t("ownerPortal.invoices.due")} {invoice.due_date ? formatOwnerDateLabel(invoice.due_date) : t("ownerPortal.invoices.onReceipt")}
+                            </div>
+                            <div className="mt-3 md:text-right">
+                              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#ccb99a]">
+                                {t("ownerPortal.invoices.downloadAs")}
+                              </div>
+                              <div className="mt-2 flex flex-wrap gap-2 md:justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() => void downloadOwnerInvoicePdf(invoice)}
+                                  disabled={Boolean(preview) || downloadingInvoiceId === invoice.id}
+                                  className="rounded-full border border-[#b08b47]/35 bg-[#b08b47]/10 px-3 py-1.5 text-xs font-semibold text-[#f1d9a5] transition hover:bg-[#b08b47]/18 disabled:opacity-60"
+                                >
+                                  {downloadingInvoiceId === invoice.id
+                                    ? t("ownerPortal.invoices.downloading")
+                                    : invoice.invoice_source === "uploaded"
+                                      ? t("ownerPortal.invoices.file")
+                                      : t("ownerPortal.invoices.pdf")}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => downloadOwnerInvoiceCsv(invoice, invoiceProperty)}
+                                  className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-semibold text-[#f7f1e8] transition hover:bg-white/[0.06]"
+                                >
+                                  {t("ownerPortal.invoices.csv")}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => downloadOwnerInvoiceJson(invoice, invoiceProperty)}
+                                  className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-semibold text-[#f7f1e8] transition hover:bg-white/[0.06]"
+                                >
+                                  {t("ownerPortal.invoices.json")}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void hideOwnerInvoice(invoice)}
+                                  disabled={Boolean(preview) || deletingInvoiceId === invoice.id}
+                                  className="rounded-full border border-red-300/30 bg-red-950/20 px-3 py-1.5 text-xs font-semibold text-red-100 transition hover:bg-red-950/30 disabled:opacity-60"
+                                >
+                                  {deletingInvoiceId === invoice.id ? t("ownerPortal.invoices.deleting") : t("ownerPortal.invoices.delete")}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        {invoice.header_text ? (
+                          <p className="mt-4 text-sm leading-6 text-[#e6d8bf]">{invoice.header_text}</p>
+                        ) : null}
+                      </div>
+
+                      {invoice.invoice_source === "uploaded" && invoice.uploaded_invoice_name ? (
+                        <div className="border-b border-white/8 px-5 py-4 text-sm leading-6 text-[#e6d8bf]">
+                          {t("ownerPortal.invoices.originalFile")} <span className="font-semibold text-[#f7f1e8]">{invoice.uploaded_invoice_name}</span>
+                        </div>
+                      ) : null}
+
+                      {lineItems.length > 0 ? (
+                      <div className="divide-y divide-white/8">
+                        {lineItems.map((item, index) => {
+                          const quantity = Number(item.quantity || 0);
+                          const rate = Number(item.rate || 0);
+                          return (
+                            <div key={item.id || `${invoice.id}-${index}`} className="grid gap-2 px-5 py-3 text-sm md:grid-cols-[1fr_90px_110px_120px] md:items-center">
+                              <div className="font-medium text-[#f7f1e8]">
+                                {item.description}
+                                {(item.receipt_urls || []).length > 0 ? (
+                                  <div className="mt-2 flex flex-wrap gap-2">
+                                    {(item.receipt_urls || []).map((url, receiptIndex) => (
+                                      <a
+                                        key={`${url}-${receiptIndex}`}
+                                        href={getStorageAssetUrl(url)}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="rounded-full border border-[#b08b47]/25 bg-[#b08b47]/10 px-3 py-1 text-xs font-semibold text-[#f1d9a5]"
+                                      >
+                                        {item.receipt_names?.[receiptIndex] || t("ownerPortal.invoices.receipt").replace("{number}", String(receiptIndex + 1))}
+                                      </a>
+                                    ))}
+                                  </div>
+                                ) : null}
+                              </div>
+                              <div className="text-[#ccb99a] md:text-right">{t("ownerPortal.invoices.qty").replace("{count}", String(quantity))}</div>
+                              <div className="text-[#ccb99a] md:text-right">{formatOwnerCurrency(rate, invoiceCurrencyCode)}</div>
+                              <div className="font-semibold text-[#f7f1e8] md:text-right">{formatOwnerCurrency(quantity * rate, invoiceCurrencyCode)}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      ) : null}
+
+                      <div className="border-t border-white/8 px-5 py-4 text-sm text-[#e6d8bf]">
+                        <div className="ml-auto max-w-xs space-y-2">
+                          <div className="flex justify-between">
+                            <span>{t("ownerPortal.invoices.subtotal")}</span>
+                            <span>{formatOwnerCurrency(invoice.subtotal, invoiceCurrencyCode)}</span>
+                          </div>
+                          {taxLines.map((taxLine) => (
+                            <div key={taxLine.id || taxLine.label} className="flex justify-between">
+                              <span>{taxLine.label} ({taxLine.rate}%)</span>
+                              <span>{formatOwnerCurrency(taxLine.amount, invoiceCurrencyCode)}</span>
+                            </div>
+                          ))}
+                          <div className="flex justify-between border-t border-white/8 pt-2 text-base font-semibold text-[#f7f1e8]">
+                            <span>{t("ownerPortal.invoices.total")}</span>
+                            <span>{formatOwnerCurrency(invoice.total, invoiceCurrencyCode)}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {(invoice.notes || invoice.payment_instructions) ? (
+                        <div className="border-t border-white/8 px-5 py-4 text-sm leading-6 text-[#e6d8bf]">
+                          {invoice.notes ? <p>{invoice.notes}</p> : null}
+                          {invoice.payment_instructions ? (
+                            <p className="mt-2">
+                              <span className="font-semibold text-[#f7f1e8]">{t("ownerPortal.invoices.payment")}</span> {invoice.payment_instructions}
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="rounded-2xl border border-white/7 bg-white/[0.02] px-4 py-5 text-sm text-[#e6d8bf]">
+                  {propertyOwnerInvoices.length > 0
+                    ? "No open invoices. Paid invoices are available in history."
+                    : t("ownerPortal.invoices.none")}
+                </div>
+              )}
+            </div>
+          </section>
+        ) : preview ? (
+          <p className="rounded-2xl border border-white/10 p-6 text-[#e6d8bf]">Chat is unavailable in read-only preview.</p>
+        ) : (
+          <PortalChat
+            participant={
+              ownerAccount
+                ? {
+                    type: "owner",
+                    ownerAccountId: ownerAccount.id,
+                    profileId: ownerAccount.profile_id,
+                    displayName: ownerAccount.full_name,
+                    email: ownerAccount.email,
+                    role: "owner",
+                  }
+                : null
+            }
+            title={t("ownerPortal.chat.title")}
+            subtitle={t("ownerPortal.chat.subtitle")}
+            targetConversationId={targetChatConversationId}
+            allowStartConversation
+            onUnreadCountChange={setOwnerChatUnreadCount}
+            onConversationRead={handleOwnerChatConversationRead}
+          />
+        )}
+      </div>
+
+      <ReportIssueModal
+        open={reportOpen && !preview}
+        onClose={() => setReportOpen(false)}
+        propertyId={selectedProperty.id}
+        organizationId={selectedProperty.organization_id}
+        onSubmitted={() => {
+          setReportSuccess(t("ownerPortal.issue.success"));
+          setTimeout(() => setReportSuccess(""), 3500);
+          void loadData();
+        }}
+      />
+      {ownerAccount && !preview ? <PortalInstallControl portal="owner" enablePush /> : null}
+    </main>
+  );
+}
+

@@ -146,6 +146,7 @@ export type ParsedJobNotes = {
   detailLines: string[];
 };
 export type CleanerViewProps = {
+  readOnly: boolean;
   loading: boolean;
   parseJobNotes: (notes: string | null) => ParsedJobNotes;
   signingOut: boolean;
@@ -235,10 +236,11 @@ export type CleanerViewProps = {
 };
 
 type CleanerShellProps = {
+  preview?: CleanerDashboardPayload;
   mode: "desktop" | "mobile";
 };
 
-type CleanerDashboardPayload = {
+export type CleanerDashboardPayload = {
   profile: Profile;
   account: CleanerAccount | null;
   warning: string | null;
@@ -717,7 +719,7 @@ function getTeamMessage(item: CleanerJob) {
   return `Team clean • ${needed} cleaner slots`;
 }
 
-export default function CleanerShell({ mode }: CleanerShellProps) {
+export default function CleanerShell({ mode, preview }: CleanerShellProps) {
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
@@ -768,7 +770,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
   } = useTeamBulletinSummary({
     portal: "cleaner",
     organizationId: cleanerAccount?.organization_id || "",
-    enabled: Boolean(profile?.id && cleanerAccount?.organization_id),
+    enabled: !preview && Boolean(profile?.id && cleanerAccount?.organization_id),
   });
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -786,6 +788,18 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
         setLoading(true);
         setPageError(null);
 
+        if (preview) {
+          setProfile(preview.profile);
+          setCleanerAccount(preview.account);
+          setAccountWarning(preview.warning);
+          setCleanerJobs(preview.jobs);
+          setProperties(preview.properties);
+          setAccessRows(preview.accessRows);
+          setSops(preview.sops);
+          setSopImages(preview.sopImages);
+          setChecklistItems(preview.checklistItems);
+          return;
+        }
         const {
           data: { session },
         } = await supabase.auth.getSession();
@@ -848,7 +862,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     return () => {
       mounted = false;
     };
-  }, [router]);
+  }, [router, preview]);
 
   async function loadCleanerDashboardFromServer(accessToken: string): Promise<CleanerDashboardPayload> {
     const response = await fetch("/api/staff-dashboard?portal=cleaner", {
@@ -876,7 +890,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
   }
 
   useEffect(() => {
-    if (!cleanerAccount?.id) return;
+    if (preview || !cleanerAccount?.id) return;
 
     const slotChannel = supabase
       .channel(`cleaner-slot-live-${cleanerAccount.id}`)
@@ -929,7 +943,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
   }, [cleanerAccount?.id, profile?.id]);
 
   useEffect(() => {
-    if (!cleanerAccount?.id) return;
+    if (preview || !cleanerAccount?.id) return;
 
     const interval = window.setInterval(() => {
       if (document.visibilityState !== "visible") return;
@@ -1172,6 +1186,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
   }
 
   async function performCleanerRefresh() {
+    if (preview) return;
     const {
       data: { session },
     } = await supabase.auth.getSession();
@@ -1223,6 +1238,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
   }
 
   async function handleAcceptJob() {
+    if (preview) return;
     if (!selectedCleanerJob || !profile?.id) return;
 
     const acceptedSlotId = selectedCleanerJob.slot.id;
@@ -1282,6 +1298,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
   }
 
   async function handleDeclineJob() {
+    if (preview) return;
     if (!selectedCleanerJob || !profile?.id) return;
 
     setJobsWarning(null);
@@ -1330,6 +1347,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
   }
 
   async function handleProgressAction(action: "arrive" | "start" | "finish", slotIdOverride?: string) {
+    if (preview) return;
     const targetSlotId = slotIdOverride || selectedCleanerJob?.slot.id;
     if (!targetSlotId || !profile?.id) return;
 
@@ -1409,6 +1427,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
   }
 
   async function handleToggleChecklistItem(itemId: string, completed: boolean) {
+    if (preview) return;
     const previousItems = checklistItems;
     const completedAt = completed ? new Date().toISOString() : null;
 
@@ -1459,6 +1478,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
   }
 
   async function handleReleaseJob() {
+    if (preview) return;
     if (!selectedCleanerJob || !profile?.id) return;
     if (!canReleaseCleanerJob(selectedCleanerJob)) {
       setJobsWarning("Only today's or future accepted jobs can be released to a backup cleaner.");
@@ -1538,7 +1558,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
     let active = true;
 
     async function loadGroundsSummary() {
-      if (!profile?.id) {
+      if (preview || !profile?.id) {
         if (active) {
           setCanSwitchToGrounds(false);
           setGroundsWaitingCount(0);
@@ -1589,12 +1609,13 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
   }, [profile?.id]);
 
   function handleSwitchToGrounds() {
+    if (preview) return;
     router.push("/grounds");
   }
 
   useEffect(() => {
     const organizationId = properties.find((property) => property.organization_id)?.organization_id || null;
-    if (!profile?.id || !organizationId) return;
+    if (preview || !profile?.id || !organizationId) return;
 
     trackFeatureUsage({
       organizationId,
@@ -1610,6 +1631,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
   }, [mode, profile?.id, properties]);
 
   async function handleSignOut() {
+    if (preview) return;
     try {
       setSigningOut(true);
       await supabase.auth.signOut();
@@ -1900,6 +1922,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
   }, []);
 
   const viewProps: CleanerViewProps = {
+    readOnly: Boolean(preview),
     loading,
     signingOut,
     actionLoading,
@@ -1982,7 +2005,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
   return (
     <>
       {shellView}
-      {profile ? <PushNotificationControl /> : null}
+      {profile && !preview ? <PushNotificationControl /> : null}
       {profile && chatUnreadCount > 0 ? (
         <button
           type="button"
@@ -2001,7 +2024,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
           Bulletin {bulletinUnreadCount > 99 ? "99+" : bulletinUnreadCount}
         </button>
       ) : null}
-      {profile ? (
+      {profile && !preview ? (
         <div ref={chatSectionRef} className="bg-[#100d0a] px-3 pb-[35vh] sm:px-6">
           <div className="mx-auto max-w-7xl">
             <PortalChat
@@ -2020,7 +2043,7 @@ export default function CleanerShell({ mode }: CleanerShellProps) {
           </div>
         </div>
       ) : null}
-      {profile && cleanerAccount?.organization_id ? (
+      {profile && !preview && cleanerAccount?.organization_id ? (
         <div ref={bulletinSectionRef} className="bg-[#100d0a] px-3 pb-[35vh] sm:px-6">
           <div className="mx-auto max-w-7xl">
             {bulletinOpen ? (

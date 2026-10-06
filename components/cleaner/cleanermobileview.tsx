@@ -327,6 +327,7 @@ function ScheduleConflictBanner({ recommended }: { recommended?: boolean | null 
 }
 
 export default function CleanerMobileView({
+  readOnly,
   activeJobs,
   activeScheduleConflictJobIds,
   historyJobs,
@@ -496,6 +497,7 @@ export default function CleanerMobileView({
   }
 
   useEffect(() => {
+    if (readOnly) return;
     if (typeof navigator === "undefined" || !("geolocation" in navigator)) {
       setNearbyGpsStatus("blocked");
       setNearbyGpsError("Location is not available on this device.");
@@ -646,6 +648,7 @@ export default function CleanerMobileView({
   }
 
   async function downloadCalendar(jobId: string) {
+    if (readOnly) return;
     setCalendarDownloadingJobId(jobId);
     setCalendarError("");
 
@@ -978,6 +981,7 @@ export default function CleanerMobileView({
                             <input
                               type="checkbox"
                               checked={completed}
+                              disabled={readOnly}
                               onChange={(event) => void handleToggleChecklistItem(check.id, event.target.checked)}
                               className="mt-1 h-4 w-4 accent-emerald-500"
                             />
@@ -1003,7 +1007,7 @@ export default function CleanerMobileView({
                     <button
                       type="button"
                       onClick={() => void onAcceptClick()}
-                      disabled={actionLoading !== null}
+                      disabled={readOnly || actionLoading !== null}
                       className="min-h-[46px] rounded-full border border-emerald-500/40 bg-emerald-500/20 px-4 py-3 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-500/30 disabled:opacity-50"
                     >
                       {actionLoading === "accept" ? "Accepting..." : "Accept Job"}
@@ -1012,7 +1016,7 @@ export default function CleanerMobileView({
                     <button
                       type="button"
                       onClick={() => void onDeclineAndReturn()}
-                      disabled={actionLoading !== null}
+                      disabled={readOnly || actionLoading !== null}
                       className="min-h-[46px] rounded-full border border-red-500/40 bg-red-500/20 px-4 py-3 text-sm font-semibold text-red-200 transition hover:bg-red-500/30 disabled:opacity-50"
                     >
                       {actionLoading === "decline" ? "Declining..." : "Decline Job"}
@@ -1026,7 +1030,7 @@ export default function CleanerMobileView({
                       <button
                         type="button"
                         onClick={() => void handleReleaseJob()}
-                        disabled={actionLoading !== null}
+                        disabled={readOnly || actionLoading !== null}
                         className="min-h-[46px] rounded-full border border-rose-400/40 bg-rose-500/20 px-4 py-3 text-sm font-semibold text-rose-100 transition hover:bg-rose-500/30 disabled:opacity-50"
                       >
                         {actionLoading === "release" ? "Releasing..." : "Release to Backup"}
@@ -1036,7 +1040,7 @@ export default function CleanerMobileView({
                     <button
                       type="button"
                       onClick={() => void handleStartJob()}
-                      disabled={actionLoading !== null}
+                      disabled={readOnly || actionLoading !== null}
                       className="min-h-[46px] rounded-full border border-amber-500/40 bg-amber-500/20 px-4 py-3 text-sm font-semibold text-amber-100 transition hover:bg-amber-500/30 disabled:opacity-50"
                     >
                       {actionLoading === "start" ? "Starting..." : "Start Job"}
@@ -1048,7 +1052,7 @@ export default function CleanerMobileView({
                   <button
                     type="button"
                     onClick={() => void handleFinishJob()}
-                    disabled={actionLoading !== null}
+                    disabled={readOnly || actionLoading !== null}
                     className="min-h-[46px] rounded-full border border-sky-500/40 bg-sky-500/20 px-4 py-3 text-sm font-semibold text-sky-100 transition hover:bg-sky-500/30 disabled:opacity-50"
                   >
                     {actionLoading === "finish" ? "Finishing..." : "Finish Job"}
@@ -1065,7 +1069,7 @@ export default function CleanerMobileView({
                   <button
                     type="button"
                     onClick={() => void downloadCalendar(selectedCleanerJob.job.id)}
-                    disabled={calendarDownloadingJobId === selectedCleanerJob.job.id}
+                    disabled={readOnly || calendarDownloadingJobId === selectedCleanerJob.job.id}
                     className="min-h-[46px] rounded-full border border-[#b08b47]/40 bg-[#b08b47]/15 px-4 py-3 text-sm font-semibold text-[#f5efe4] transition hover:bg-[#b08b47]/25"
                   >
                     {calendarDownloadingJobId === selectedCleanerJob.job.id
@@ -1079,7 +1083,8 @@ export default function CleanerMobileView({
 
                 <button
                   type="button"
-                  onClick={() => setReportOpen(true)}
+                  disabled={readOnly}
+              onClick={() => setReportOpen(true)}
                   className="min-h-[46px] rounded-full border border-[#b08b47]/45 bg-[#b08b47]/10 px-4 py-3 text-sm font-semibold text-[#f5efe4] transition hover:bg-[#b08b47]/20"
                 >
                   Report Issue
@@ -1101,7 +1106,7 @@ export default function CleanerMobileView({
               ) : null}
 
               <ReportIssueModal
-                open={reportOpen}
+                open={reportOpen && !readOnly}
                 onClose={() => setReportOpen(false)}
                 availableProperties={reportableProperties}
                 defaultPropertyId={selectedJobProperty?.id || selectedCleanerJob.job.property_id}
@@ -1144,7 +1149,7 @@ export default function CleanerMobileView({
               <button
                 type="button"
                 onClick={() => void handleSignOut()}
-                disabled={signingOut}
+                disabled={readOnly || signingOut}
                 className="rounded-full border border-[#b08b47]/60 px-3 py-2 text-xs font-semibold text-[#f5efe4] transition hover:bg-[#b08b47] hover:text-[#120f0b] disabled:opacity-50"
               >
                 {signingOut ? "Signing out..." : "Logout"}
@@ -1223,7 +1228,7 @@ export default function CleanerMobileView({
                   }
                   void openNearbyAccess();
                 }}
-                disabled={arrivingSlotIds.has(nearbyAssignedJob.item.slot.id)}
+                disabled={readOnly || arrivingSlotIds.has(nearbyAssignedJob.item.slot.id)}
                 className="w-full rounded-full border border-[#7fb685]/60 bg-[#173022] px-4 py-3 text-sm font-semibold text-[#eef7ef] transition hover:bg-[#20432d] disabled:opacity-60"
               >
                 {nearbyAccessOpen

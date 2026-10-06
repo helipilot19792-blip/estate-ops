@@ -343,6 +343,7 @@ function JobCard({
   currentProfileId,
   canReleaseSelectedJob,
   hasActiveScheduleConflict,
+  readOnly,
 }: {
   item: CleanerJob;
   isSelected: boolean;
@@ -374,6 +375,7 @@ function JobCard({
   currentProfileId: string | null;
   canReleaseSelectedJob: boolean;
   hasActiveScheduleConflict: boolean;
+  readOnly: boolean;
 }) {
   const [reportOpen, setReportOpen] = useState(false);
   const [reportSubmittedMessage, setReportSubmittedMessage] = useState("");
@@ -564,7 +566,7 @@ function JobCard({
                 <button
                   type="button"
                   onClick={() => void handleAcceptJob()}
-                  disabled={actionLoading !== null}
+                  disabled={readOnly || actionLoading !== null}
                   className="rounded-full bg-emerald-500 px-5 py-2 text-sm font-medium text-[#08110c] transition hover:bg-emerald-400 disabled:opacity-50"
                 >
                   {actionLoading === "accept" ? "Accepting..." : "Accept Job"}
@@ -573,7 +575,7 @@ function JobCard({
                 <button
                   type="button"
                   onClick={() => void handleDeclineJob()}
-                  disabled={actionLoading !== null}
+                  disabled={readOnly || actionLoading !== null}
                   className="rounded-full bg-red-500 px-5 py-2 text-sm font-medium text-white transition hover:bg-red-400 disabled:opacity-50"
                 >
                   {actionLoading === "decline" ? "Declining..." : "Decline Job"}
@@ -587,7 +589,7 @@ function JobCard({
                   <button
                     type="button"
                     onClick={() => void handleReleaseJob()}
-                    disabled={actionLoading !== null}
+                    disabled={readOnly || actionLoading !== null}
                     className="rounded-full border border-rose-400/45 bg-rose-500/15 px-5 py-2 text-sm font-medium text-rose-100 transition hover:bg-rose-500/25 disabled:opacity-50"
                   >
                     {actionLoading === "release" ? "Releasing..." : "Release to Backup"}
@@ -597,7 +599,7 @@ function JobCard({
                 <button
                   type="button"
                   onClick={() => void handleStartJob()}
-                  disabled={actionLoading !== null}
+                  disabled={readOnly || actionLoading !== null}
                   className="rounded-full border border-amber-500/45 bg-amber-500/15 px-5 py-2 text-sm font-medium text-amber-100 transition hover:bg-amber-500/25 disabled:opacity-50"
                 >
                   {actionLoading === "start" ? "Starting..." : "Start Job"}
@@ -609,7 +611,7 @@ function JobCard({
               <button
                 type="button"
                 onClick={() => void handleFinishJob()}
-                disabled={actionLoading !== null}
+                disabled={readOnly || actionLoading !== null}
                 className="rounded-full border border-sky-500/45 bg-sky-500/15 px-5 py-2 text-sm font-medium text-sky-100 transition hover:bg-sky-500/25 disabled:opacity-50"
               >
                 {actionLoading === "finish" ? "Finishing..." : "Finish Job"}
@@ -624,6 +626,7 @@ function JobCard({
 
             <button
               type="button"
+              disabled={readOnly}
               onClick={() => setReportOpen(true)}
               className="rounded-full border border-[#b08b47]/45 bg-[#b08b47]/10 px-5 py-2 text-sm font-medium text-[#f5efe4] transition hover:bg-[#b08b47]/20"
             >
@@ -646,7 +649,7 @@ function JobCard({
           ) : null}
 
           <ReportIssueModal
-            open={reportOpen}
+            open={reportOpen && !readOnly}
             onClose={() => setReportOpen(false)}
             availableProperties={availableProperties}
             defaultPropertyId={selectedJobProperty?.id || item.job.property_id}
@@ -749,6 +752,7 @@ function JobCard({
 }
 
 export default function CleanerDesktopView({
+  readOnly,
   loading,
   signingOut,
   actionLoading,
@@ -896,6 +900,7 @@ export default function CleanerDesktopView({
                 selectedCleanerJob?.slot.id === item.slot.id ? selectedJobSops : []
               }
               sopImagesBySopId={sopImagesBySopId}
+              readOnly={readOnly}
               actionLoading={actionLoading}
               handleAcceptJob={handleAcceptJob}
               handleDeclineJob={handleDeclineJob}
@@ -1003,7 +1008,7 @@ export default function CleanerDesktopView({
 
                 <button
                   onClick={handleSignOut}
-                  disabled={signingOut}
+                  disabled={readOnly || signingOut}
                   className="rounded-full border border-[#b08b47]/70 px-5 py-2 text-sm font-medium text-[#f5efe4] transition hover:bg-[#b08b47] hover:text-[#120f0b] disabled:opacity-50"
                 >
                   {signingOut ? "Signing out..." : "Sign out"}
@@ -1429,7 +1434,8 @@ export default function CleanerDesktopView({
                           selectedCleanerJob?.slot.id === collapsedPreviewJob.slot.id ? selectedJobSops : []
                         }
                         sopImagesBySopId={sopImagesBySopId}
-                        actionLoading={actionLoading}
+                        readOnly={readOnly}
+              actionLoading={actionLoading}
                         handleAcceptJob={handleAcceptJob}
                         handleDeclineJob={handleDeclineJob}
                         handleReleaseJob={handleReleaseJob}

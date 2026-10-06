@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "npm run test:database-workload && npm run test:admin-whiteboard && npm run test:ai-supervisor && npm run test:ai-turnover-rescue && npm run test:booking-gap-watch && npm run test:cleaner-offer-deadlines && npm run test:cleaner-offer-history && npm run test:cleaner-offer-countdown && npm run test:cleaner-offer-eligibility && npm run test:cleaner-offer-transitions && npm run test:cleaner-offer-holds && npm run test:synced-cleaner-schedule && npm run test:job-email-signatures && npm run test:workspace-billing && npm run test:storage-references && npm run test:property-details-update && npm run test:security-boundaries",
+    "test": "npm run test:database-workload && npm run test:admin-whiteboard && npm run test:ai-supervisor && npm run test:ai-turnover-rescue && npm run test:booking-gap-watch && npm run test:cleaner-offer-deadlines && npm run test:cleaner-offer-history && npm run test:cleaner-offer-countdown && npm run test:cleaner-offer-eligibility && npm run test:cleaner-offer-transitions && npm run test:cleaner-offer-holds && npm run test:synced-cleaner-schedule && npm run test:job-email-signatures && npm run test:workspace-billing && npm run test:storage-references && npm run test:property-details-update && npm run test:security-boundaries && npm run test:portal-preview",
     "test:database-workload": "node scripts/test-database-workload.mjs",
     "test:invoice-balances": "node scripts/test-invoice-balances.mjs",
     "test:lint-glob": "node scripts/test-lint-glob.mjs",
@@ -27,7 +27,8 @@
     "test:workspace-billing": "node --experimental-strip-types scripts/test-workspace-billing.mjs",
     "test:storage-references": "node --experimental-strip-types scripts/test-storage-references.mjs",
     "test:property-details-update": "node --experimental-strip-types scripts/test-property-details-update.mjs",
-    "test:security-boundaries": "node --experimental-strip-types scripts/test-security-boundaries.mjs"
+    "test:security-boundaries": "node --experimental-strip-types scripts/test-security-boundaries.mjs",
+    "test:portal-preview": "node scripts/test-portal-preview.mjs"
   },
   "overrides": {
     "@next/eslint-plugin-next": {

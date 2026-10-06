@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import PortalPreviewPicker from "@/components/admin/portal-preview-picker";
 import Image from "next/image";
 import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -22667,6 +22668,8 @@ This removes its linked members and deletes the grounds account.`
             ))}
           </div>
         </section>
+
+        {currentOrganizationId ? <PortalPreviewPicker key={currentOrganizationId} organizationId={currentOrganizationId} /> : null}
 
         {teamWorkflowTab === "invites" ? renderInvitesSection() : null}
         {teamWorkflowTab === "users" ? renderUsersSection() : null}
