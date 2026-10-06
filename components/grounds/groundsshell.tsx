@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import PortalSwitcher from "@/components/portal/portal-switcher";
 import { trackFeatureUsage } from "@/lib/feature-usage";
 import PortalInstallControl from "@/components/pwa/portalinstallcontrol";
 import { useTeamBulletinSummary } from "@/lib/use-team-bulletin-summary";
@@ -1641,6 +1642,7 @@ export default function GroundsShell({ mode }: GroundsShellProps) {
 
   return (
     <>
+      {profile && (typeof window === "undefined" || new URLSearchParams(window.location.search).get("portalPreview") !== "1") ? <PortalSwitcher current="grounds" /> : null}
       {shellView}
       {profile ? <PortalInstallControl portal="grounds" enablePush /> : null}
       {profile && chatUnreadCount > 0 ? (

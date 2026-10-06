@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { ensureInviteProfile } from "@/lib/server/invite-profile";
+import { ensureInviteProfile, shouldUpdateInviteMembership } from "@/lib/server/invite-profile";
 import { validatePassword } from "@/lib/password-policy";
 
 type InviteRow = {
@@ -76,12 +76,13 @@ async function upsertInviteLinks(service: any, invite: InviteRow, userId: string
       });
 
     if (insertMembershipError) throw new Error(insertMembershipError.message);
-  } else if (existingOrgMembership.role !== invite.role) {
+  } else if (shouldUpdateInviteMembership(existingOrgMembership.role, invite.role)) {
     const { error: updateMembershipError } = await service
       .from("organization_members")
       .update({ role: invite.role })
       .eq("organization_id", invite.organization_id)
-      .eq("profile_id", userId);
+      .eq("profile_id", userId)
+      .eq("role", existingOrgMembership.role);
 
     if (updateMembershipError) throw new Error(updateMembershipError.message);
   }

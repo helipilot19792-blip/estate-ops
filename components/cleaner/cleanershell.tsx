@@ -9,6 +9,7 @@ import { trackFeatureUsage } from "@/lib/feature-usage";
 import { getCleanerOfferTimeRemainingMs } from "@/lib/cleaner-offer-countdown";
 import PushNotificationControl from "@/components/cleaner/pushnotificationcontrol";
 import { useTeamBulletinSummary } from "@/lib/use-team-bulletin-summary";
+import PortalSwitcher from "@/components/portal/portal-switcher";
 
 const PortalChat = dynamic(() => import("@/components/chat/portalchat"));
 const CleanerDesktopView = dynamic(() => import("@/components/cleaner/cleanerdesktopview"));
@@ -2004,6 +2005,7 @@ export default function CleanerShell({ mode, preview }: CleanerShellProps) {
 
   return (
     <>
+      {profile && !preview ? <PortalSwitcher current="cleaner" /> : null}
       {shellView}
       {profile && !preview ? <PushNotificationControl /> : null}
       {profile && chatUnreadCount > 0 ? (

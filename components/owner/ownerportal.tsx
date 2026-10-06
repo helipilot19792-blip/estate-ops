@@ -8,6 +8,7 @@ import PortalInstallControl from "@/components/pwa/portalinstallcontrol";
 import { trackFeatureUsage } from "@/lib/feature-usage";
 import { useI18n } from "@/components/i18n-provider";
 import PortalLoadingScene from "@/components/portal/portal-loading-scene";
+import PortalSwitcher from "@/components/portal/portal-switcher";
 import type { TranslationPath } from "@/lib/i18n";
 import { useStorageAssetUrls } from "@/lib/use-storage-asset-urls";
 
@@ -2270,6 +2271,7 @@ export default function OwnerPortal({ preview }: { preview?: OwnerPreviewDashboa
   if (error) {
     return (
     <main className="owner-shell min-h-screen bg-[#0f0d0a] px-4 py-10 text-[#f7f1e8]">
+      {!preview ? <PortalSwitcher current="owner" /> : null}
         <div className="mx-auto max-w-2xl rounded-[32px] border border-red-500/20 bg-red-950/20 p-8">
           <div className="text-[11px] uppercase tracking-[0.22em] text-red-200">
             {t("ownerPortal.empty.ownerAccess")}
@@ -2305,6 +2307,7 @@ export default function OwnerPortal({ preview }: { preview?: OwnerPreviewDashboa
   if (!selectedProperty) {
     return (
     <main className="owner-shell min-h-screen bg-[#0f0d0a] px-4 py-10 text-[#f7f1e8]">
+      {!preview ? <PortalSwitcher current="owner" /> : null}
         <div className="mx-auto max-w-2xl rounded-[32px] border border-white/8 bg-[#15110d] p-8">
           <h1 className="text-2xl font-semibold text-[#f7f1e8]">{t("ownerPortal.empty.noPropertyTitle")}</h1>
           <p className="mt-3 text-sm leading-6 text-[#e6d8bf]">
@@ -2327,6 +2330,7 @@ export default function OwnerPortal({ preview }: { preview?: OwnerPreviewDashboa
 
   return (
     <main className="owner-shell min-h-screen px-4 py-6 text-[#f7f1e8] sm:px-6 sm:py-8">
+      {!preview ? <PortalSwitcher current="owner" /> : null}
       <div className="mx-auto max-w-6xl space-y-6">
         <section className="overflow-hidden rounded-[32px] border border-white/8 bg-[linear-gradient(180deg,rgba(23,18,13,0.98)_0%,rgba(14,11,8,1)_100%)] shadow-[0_24px_80px_rgba(0,0,0,0.36)]">
           {selectedProperty.cover_photo_url ? (

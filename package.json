@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "npm run test:database-workload && npm run test:admin-whiteboard && npm run test:ai-supervisor && npm run test:ai-turnover-rescue && npm run test:booking-gap-watch && npm run test:cleaner-offer-deadlines && npm run test:cleaner-offer-history && npm run test:cleaner-offer-countdown && npm run test:cleaner-offer-eligibility && npm run test:cleaner-offer-transitions && npm run test:cleaner-offer-holds && npm run test:synced-cleaner-schedule && npm run test:job-email-signatures && npm run test:workspace-billing && npm run test:storage-references && npm run test:property-details-update && npm run test:security-boundaries && npm run test:portal-preview",
+    "test": "npm run test:database-workload && npm run test:admin-whiteboard && npm run test:ai-supervisor && npm run test:ai-turnover-rescue && npm run test:booking-gap-watch && npm run test:cleaner-offer-deadlines && npm run test:cleaner-offer-history && npm run test:cleaner-offer-countdown && npm run test:cleaner-offer-eligibility && npm run test:cleaner-offer-transitions && npm run test:cleaner-offer-holds && npm run test:synced-cleaner-schedule && npm run test:job-email-signatures && npm run test:workspace-billing && npm run test:storage-references && npm run test:property-details-update && npm run test:security-boundaries && npm run test:portal-preview && npm run test:website-publishing && npm run test:website-publishing:database && npm run test:website-approval-workflow && npm run test:company-announcements && npm run test:owner-cleaner-portals && npm run test:communications-center",
     "test:database-workload": "node scripts/test-database-workload.mjs",
     "test:invoice-balances": "node scripts/test-invoice-balances.mjs",
     "test:lint-glob": "node scripts/test-lint-glob.mjs",
@@ -28,7 +28,13 @@
     "test:storage-references": "node --experimental-strip-types scripts/test-storage-references.mjs",
     "test:property-details-update": "node --experimental-strip-types scripts/test-property-details-update.mjs",
     "test:security-boundaries": "node --experimental-strip-types scripts/test-security-boundaries.mjs",
-    "test:portal-preview": "node scripts/test-portal-preview.mjs"
+    "test:portal-preview": "node scripts/test-portal-preview.mjs",
+    "test:website-publishing": "node --experimental-strip-types scripts/test-website-publishing.mjs",
+    "test:website-publishing:database": "node --experimental-strip-types scripts/test-website-publishing-database.mjs",
+    "test:website-approval-workflow": "node --experimental-strip-types scripts/test-website-approval-workflow.mjs",
+    "test:company-announcements": "node --experimental-strip-types scripts/test-company-announcements.mjs",
+    "test:communications-center": "node --experimental-strip-types scripts/test-company-announcements.mjs --communications",
+    "test:owner-cleaner-portals": "node --experimental-strip-types scripts/test-owner-cleaner-portals.mjs"
   },
   "overrides": {
     "@next/eslint-plugin-next": {
@@ -49,6 +55,7 @@
     "web-push": "^3.6.7"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import ts from "typescript";
-import { ensureInviteProfile } from "../lib/server/invite-profile.ts";
+import { ensureInviteProfile,shouldUpdateInviteMembership } from "../lib/server/invite-profile.ts";
 import { validatePassword } from "../lib/password-policy.ts";
 import { createSupportEmailHandler } from "../supabase/functions/send-support-email/handler.ts";
 
@@ -16,7 +16,7 @@ function loadRoute(path, service) {
     "next/server": { NextResponse: { json: (body, options) => Response.json(body, options) } },
     "@supabase/supabase-js": { createClient: () => service },
     "@/lib/server/audit-log": { writeAuditLog: async () => {} },
-    "@/lib/server/invite-profile": { ensureInviteProfile },
+    "@/lib/server/invite-profile": { ensureInviteProfile,shouldUpdateInviteMembership },
     "@/lib/password-policy": { validatePassword },
   };
   const env = {
@@ -132,10 +132,10 @@ for (const role of ["cleaner", "grounds"]) {
   assert.equal((await deniedRoute(request({ organizationId: "A", role, email: "a_b@example.test" }))).status, 403);
 }
 
-for (const role of ["admin", "platform_admin", "cleaner"]) {
+for (const role of ["admin", "platform_admin", "cleaner", "owner", "grounds"]) {
   const rows = { profiles: [{ id: "person", role, full_name: "Original" }] };
   await ensureInviteProfile(database(rows), { id: "person", role: "grounds", full_name: "Replacement" });
-  assert.equal(rows.profiles[0].role, role === "cleaner" ? "grounds" : role);
+  assert.equal(rows.profiles[0].role, role, "Adding a portal must preserve the existing primary role");
   assert.equal(rows.profiles[0].full_name, "Original");
 }
 const newProfiles = { profiles: [] };

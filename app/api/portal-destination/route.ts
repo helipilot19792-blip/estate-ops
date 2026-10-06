@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import {portalDestination} from "@/lib/portal-access";
 
 export const dynamic = "force-dynamic";
 
@@ -68,14 +69,12 @@ export async function GET(request: Request) {
       await Promise.all([
         serviceClient
           .from("cleaner_account_members")
-          .select("id")
-          .eq("profile_id", user.id)
-          .limit(1),
+          .select("cleaner_account_id")
+          .eq("profile_id", user.id),
         serviceClient
           .from("grounds_account_members")
-          .select("id")
-          .eq("profile_id", user.id)
-          .limit(1),
+          .select("grounds_account_id")
+          .eq("profile_id", user.id),
         serviceClient
           .from("owner_accounts")
           .select("id")
@@ -98,22 +97,16 @@ export async function GET(request: Request) {
       );
     }
 
-    const hasCleaner = !!cleanerMemberships?.length;
-    const hasGrounds = !!groundsMemberships?.length;
+    const cleanerIds=(cleanerMemberships||[]).map(m=>m.cleaner_account_id),groundsIds=(groundsMemberships||[]).map(m=>m.grounds_account_id);
+    const [cleanerAccounts,groundsAccounts]=await Promise.all([
+      cleanerIds.length?serviceClient.from("cleaner_accounts").select("id").in("id",cleanerIds).eq("active",true).limit(1):Promise.resolve({data:[],error:null}),
+      groundsIds.length?serviceClient.from("grounds_accounts").select("id").in("id",groundsIds).eq("active",true).limit(1):Promise.resolve({data:[],error:null}),
+    ]);
+    if(cleanerAccounts.error||groundsAccounts.error)return Response.json({ok:false,error:"Could not check active portal accounts."},{status:500});
+    const hasCleaner = !!cleanerAccounts.data?.length;
+    const hasGrounds = !!groundsAccounts.data?.length;
     const hasOwner = !!ownerAccounts?.length;
-    let destination = "/login";
-
-    if (profile.role === "platform_admin" || profile.role === "admin") {
-      destination = "/admin";
-    } else if (hasCleaner && hasGrounds) {
-      destination = "/choose-portal";
-    } else if (hasCleaner) {
-      destination = "/cleaner";
-    } else if (hasGrounds) {
-      destination = "/grounds";
-    } else if (hasOwner || profile.role === "owner") {
-      destination = "/owner";
-    }
+    const destination=portalDestination(profile.role,{cleaner:hasCleaner,grounds:hasGrounds,owner:hasOwner});
 
     return Response.json({
       ok: true,
@@ -124,7 +117,7 @@ export async function GET(request: Request) {
         grounds: hasGrounds,
         owner: hasOwner,
       },
-    });
+    },{headers:{"Cache-Control":"private, no-store"}});
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not resolve portal access.";
     return Response.json({ ok: false, error: message }, { status: 500 });

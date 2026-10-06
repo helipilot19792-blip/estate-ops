@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { ensureInviteProfile } from "@/lib/server/invite-profile";
+import { ensureInviteProfile, shouldUpdateInviteMembership } from "@/lib/server/invite-profile";
 
 type InviteRow = {
   id: string;
@@ -159,12 +159,13 @@ export async function POST(req: NextRequest) {
           userId: user.id,
         });
       }
-    } else if (existingOrgMembership && existingOrgMembership.role !== invite.role) {
+    } else if (shouldUpdateInviteMembership(existingOrgMembership.role, invite.role)) {
       const { error: updateMembershipError } = await service
         .from("organization_members")
         .update({ role: invite.role })
         .eq("organization_id", invite.organization_id)
-        .eq("profile_id", user.id);
+        .eq("profile_id", user.id)
+        .eq("role", existingOrgMembership.role);
 
       if (updateMembershipError) {
         return jsonError(updateMembershipError.message, 500, {

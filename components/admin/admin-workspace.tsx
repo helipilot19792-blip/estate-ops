@@ -41,6 +41,8 @@ const AdminAiActionsPanel = dynamic(() => import("@/components/admin/admin-ai-ac
 const AdminBillingBanner = dynamic(() => import("@/components/admin/admin-billing-banner"), { ssr: false });
 const AdminOperationsAlerts = dynamic(() => import("@/components/admin/admin-operations-alerts"), { ssr: false });
 const BookingGapWatch = dynamic(() => import("@/components/admin/booking-gap-watch"), { ssr: false });
+const WebsitePublishing = dynamic(() => import("@/components/admin/website-publishing"), { ssr: false });
+const CompanyAnnouncements = dynamic(() => import("@/components/admin/company-announcements"), { ssr: false });
 
 function getCityFromAddress(address?: string | null) {
   if (!address) return "";
@@ -786,11 +788,11 @@ function getDashboardDataScope(section: AdminSection): DashboardDataScope {
 
 type PropertyEntryMode = "manual" | "airbnb";
 type PropertyWorkflowTab = "add" | "setup" | "directory" | "health";
-type PropertySetupTab = "overview" | "guestDevice" | "access" | "calendars" | "knowledge" | "vendors" | "sops" | "checklists";
+type PropertySetupTab = "overview" | "website" | "guestDevice" | "access" | "calendars" | "knowledge" | "vendors" | "sops" | "checklists";
 type JobWorkflowTab = "cleaning" | "grounds" | "active" | "reliability" | "notifications" | "exceptions";
 type InvoiceWorkflowTab = "create" | "running" | "existing" | "defaults" | "history";
 type InvoiceDocumentKind = "invoice" | "statement" | "quote";
-type TeamWorkflowTab = "invites" | "users" | "cleaners" | "grounds";
+type TeamWorkflowTab = "invites" | "users" | "cleaners" | "grounds" | "announcements";
 type TeamInviteRole = "admin" | "cleaner" | "grounds";
 type InvoiceHistoryFilter = "all" | "unpaid" | "paid" | "draft" | "void" | "quotes";
 const DEFAULT_INVOICE_WORKFLOW_TAB: InvoiceWorkflowTab = "history";
@@ -2168,6 +2170,9 @@ export default function AdminPage() {
   const [selectedPropertyId, setSelectedPropertyId] = useState("");
   const [propertyWorkflowTab, setPropertyWorkflowTab] = useState<PropertyWorkflowTab>("directory");
   const [propertySetupTab, setPropertySetupTab] = useState<PropertySetupTab>("overview");
+  const [websiteDraftDirty, setWebsiteDraftDirty] = useState(false);
+  const [websiteSettingsDirty, setWebsiteSettingsDirty] = useState(false);
+  const [announcementDraftDirty, setAnnouncementDraftDirty] = useState(false);
   const [selectedPropertyName, setSelectedPropertyName] = useState("");
   const [propertyNameDirty, setPropertyNameDirty] = useState(false);
   const [savingSelectedPropertyName, setSavingSelectedPropertyName] = useState(false);
@@ -2427,6 +2432,9 @@ export default function AdminPage() {
     (currentTrialStatus === "active" || currentTrialStatus === "past_due");
   const propertyInvoiceRatesDirty = dirtyPropertyInvoiceRateIds.size > 0;
   const adminDraftDirty =
+    announcementDraftDirty ||
+    websiteDraftDirty ||
+    websiteSettingsDirty ||
     selectedPropertyOwnerDirty ||
     accessDirty ||
     calendarDraftDirty ||
@@ -10126,8 +10134,8 @@ This removes its linked members and deletes the grounds account.`
   }, [groundsAccountMembers, groundsAccounts]);
 
   const eligibleCleanerProfiles = useMemo(
-    () => profiles.filter((profile) => profile.role === "cleaner"),
-    [profiles]
+    () => profiles.filter((profile) => profile.role === "cleaner" || cleanerAccountMembers.some(member => member.profile_id === profile.id && cleanerAccounts.some(account => account.id === member.cleaner_account_id && account.active !== false))),
+    [profiles, cleanerAccountMembers, cleanerAccounts]
   );
 
   const assignableCleanerAccounts = useMemo(
@@ -10155,8 +10163,8 @@ This removes its linked members and deletes the grounds account.`
   );
 
   const eligibleGroundsProfiles = useMemo(
-    () => profiles.filter((profile) => profile.role === "grounds" || profile.role === "cleaner"),
-    [profiles]
+    () => profiles.filter((profile) => profile.role === "grounds" || profile.role === "cleaner" || groundsAccountMembers.some(member => member.profile_id === profile.id && groundsAccounts.some(account => account.id === member.grounds_account_id && account.active !== false))),
+    [profiles, groundsAccountMembers, groundsAccounts]
   );
 
   const teamAvailabilityRows = useMemo(() => {
@@ -13412,6 +13420,10 @@ This removes its linked members and deletes the grounds account.`
   }
 
   function selectAdminSection(section: AdminSection) {
+    if ((websiteDraftDirty || websiteSettingsDirty || announcementDraftDirty) && !window.confirm("Leave and discard unsaved changes?")) return;
+    if (section !== activeSection) setAnnouncementDraftDirty(false);
+    setWebsiteDraftDirty(false);
+    if (section !== activeSection) setWebsiteSettingsDirty(false);
     if (activeSection === "whiteboard" && section !== "whiteboard" && whiteboardDrawingDirty &&
       !window.confirm("Leave Whiteboard and discard unsaved drawing changes? Use Save drawing to keep your sketch.")) return;
     if (isCleaningCompanyMode && !allowedAdminSectionKeys.includes(section)) {
@@ -21677,7 +21689,12 @@ This removes its linked members and deletes the grounds account.`
               <button
                 key={card.key}
                 type="button"
-                onClick={() => setPropertyWorkflowTab(card.key)}
+                onClick={() => {
+                  if (card.key === propertyWorkflowTab) return;
+                  if (websiteDraftDirty && card.key !== propertyWorkflowTab && !window.confirm("Discard unsaved marketing changes?")) return;
+                  setWebsiteDraftDirty(false);
+                  setPropertyWorkflowTab(card.key);
+                }}
                 className={`group relative min-h-[154px] overflow-hidden rounded-[20px] border p-4 pl-5 text-left transition hover:-translate-y-0.5 ${
                   active ? card.activeClass : card.idleClass
                 }`}
@@ -22629,6 +22646,7 @@ This removes its linked members and deletes the grounds account.`
       { key: "users", label: "Users", count: profiles.length },
       { key: "cleaners", label: "Cleaner Accounts", count: cleanerAccounts.length },
       { key: "grounds", label: "Grounds Accounts", count: groundsAccounts.length },
+      { key: "announcements", label: "Company announcements", count: ownerAccounts.length + cleanerAccounts.length + groundsAccounts.length },
     ];
 
     return (
@@ -22651,7 +22669,12 @@ This removes its linked members and deletes the grounds account.`
               <button
                 key={tab.key}
                 type="button"
-                onClick={() => setTeamWorkflowTab(tab.key)}
+                onClick={() => {
+                  if (tab.key === teamWorkflowTab) return;
+                  if (announcementDraftDirty && tab.key !== teamWorkflowTab && !window.confirm("Discard unsaved announcement changes?")) return;
+                  setAnnouncementDraftDirty(false);
+                  setTeamWorkflowTab(tab.key);
+                }}
                 className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
                   teamWorkflowTab === tab.key
                     ? "border-[#241c15] bg-[#241c15] text-[#f8f2e8]"
@@ -22675,6 +22698,7 @@ This removes its linked members and deletes the grounds account.`
         {teamWorkflowTab === "users" ? renderUsersSection() : null}
         {teamWorkflowTab === "cleaners" ? renderCleanerAccountsSection() : null}
         {teamWorkflowTab === "grounds" ? renderGroundsAccountsSection() : null}
+        {teamWorkflowTab === "announcements" && currentOrganizationId ? <CompanyAnnouncements key={currentOrganizationId} organizationId={currentOrganizationId} onDirtyChange={setAnnouncementDraftDirty} /> : null}
       </div>
     );
   }
@@ -26027,6 +26051,7 @@ This removes its linked members and deletes the grounds account.`
     );
     const propertySetupTabs: Array<{ id: PropertySetupTab; label: string }> = [
       { id: "overview", label: "Overview" },
+      { id: "website", label: "Website / Marketing" },
       { id: "guestDevice", label: "Guest Device" },
       { id: "access", label: "Access" },
       { id: "calendars", label: "Calendars" },
@@ -26036,6 +26061,11 @@ This removes its linked members and deletes the grounds account.`
       { id: "checklists", label: "Checklists" },
     ];
     const propertySetupTabStyles: Record<PropertySetupTab, { dot: string; idle: string; active: string }> = {
+      website: {
+        dot: "bg-[#b48d4e]",
+        idle: "border-[#d8c7ab] bg-[#fffaf3] text-[#6f6255] hover:bg-white",
+        active: "border-[#b48d4e] bg-[#b48d4e] text-white",
+      },
       overview: {
         dot: "bg-[#2f6fed]",
         idle: "border-[#b9d0ff] bg-[#f4f8ff] text-[#2454a6] hover:bg-white",
@@ -26088,6 +26118,8 @@ This removes its linked members and deletes the grounds account.`
             className="w-full rounded-[20px] border border-[#d9ccbb] bg-[#fcfaf7] px-4 py-3 text-sm outline-none focus:border-[#b48d4e]"
             value={selectedPropertyId}
             onChange={(e) => {
+              if (websiteDraftDirty && !window.confirm("Switch properties and discard unsaved marketing changes?")) return;
+              setWebsiteDraftDirty(false);
               setPropertyNameDirty(false);
               setSelectedPropertyId(e.target.value);
             }}
@@ -26178,7 +26210,12 @@ This removes its linked members and deletes the grounds account.`
                       <button
                         key={tab.id}
                         type="button"
-                        onClick={() => setPropertySetupTab(tab.id)}
+                        onClick={() => {
+                          if (tab.id === propertySetupTab) return;
+                          if (websiteDraftDirty && tab.id !== propertySetupTab && !window.confirm("Discard unsaved marketing changes?")) return;
+                          setWebsiteDraftDirty(false);
+                          setPropertySetupTab(tab.id);
+                        }}
                         className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition hover:-translate-y-0.5 ${
                           selected ? style.active : style.idle
                         }`}
@@ -26192,6 +26229,9 @@ This removes its linked members and deletes the grounds account.`
               </div>
             </div>
 
+            {propertySetupTab === "website" && currentOrganizationId ? (
+              <WebsitePublishing key={`${currentOrganizationId}:${selectedPropertyId}`} organizationId={currentOrganizationId} propertyId={selectedPropertyId} onDirtyChange={setWebsiteDraftDirty} />
+            ) : null}
             {propertySetupTab === "overview" ? (
               <div className="mt-6 grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
                 <div className="space-y-6">
@@ -29373,6 +29413,7 @@ This removes its linked members and deletes the grounds account.`
         return (
           <div className="space-y-6">
             {renderPropertyWorkflowCards()}
+            {currentOrganizationId ? <details className="rounded-[24px] border border-[#eadfce] bg-white p-4"><summary className="cursor-pointer font-semibold">Settings → Website &amp; Publishing</summary><WebsitePublishing key={currentOrganizationId} organizationId={currentOrganizationId} onDirtyChange={setWebsiteSettingsDirty} /></details> : null}
             {propertyWorkflowTab === "add" ? renderAddPropertySection() : null}
             {propertyWorkflowTab === "setup" ? renderPropertySetupSection() : null}
             {propertyWorkflowTab === "directory" ? renderPropertiesSection() : null}
@@ -29966,6 +30007,10 @@ This removes its linked members and deletes the grounds account.`
                     onChange={(event) => {
                       const nextOrganizationId = event.target.value;
                       if (!nextOrganizationId) return;
+                      if ((websiteDraftDirty || websiteSettingsDirty || announcementDraftDirty) && !window.confirm("Switch organizations and discard unsaved changes?")) return;
+                      setAnnouncementDraftDirty(false);
+                      setWebsiteDraftDirty(false);
+                      setWebsiteSettingsDirty(false);
                       if (whiteboardDrawingDirty && !window.confirm("Switch organizations and discard unsaved drawing changes? Save your drawing first to keep it.")) return;
                       if (typeof window !== "undefined") {
                         window.localStorage.setItem(ADMIN_SELECTED_ORGANIZATION_KEY, nextOrganizationId);

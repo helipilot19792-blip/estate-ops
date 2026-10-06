@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import {availablePortals,type PortalAccess} from "@/lib/portal-access";
 
 type ProfileRow = {
   id: string;
@@ -25,7 +26,7 @@ async function loadPortalDestination(accessToken: string) {
   return result as {
     destination: string;
     profile: ProfileRow | null;
-    access: { cleaner: boolean; grounds: boolean };
+    access: PortalAccess;
   };
 }
 
@@ -33,8 +34,7 @@ export default function ChoosePortalPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [displayName, setDisplayName] = useState("there");
-  const [canUseCleaner, setCanUseCleaner] = useState(false);
-  const [canUseGrounds, setCanUseGrounds] = useState(false);
+  const [access, setAccess] = useState<PortalAccess>({cleaner:false,grounds:false,owner:false});
   const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
@@ -59,29 +59,10 @@ export default function ChoosePortalPage() {
           return;
         }
 
-        const hasCleaner = portal.access.cleaner;
-        const hasGrounds = portal.access.grounds;
-
-        if (!hasCleaner && !hasGrounds) {
-          router.replace("/login");
-          return;
-        }
-
-        if (hasCleaner && !hasGrounds) {
-          router.replace("/cleaner");
-          return;
-        }
-
-        if (hasGrounds && !hasCleaner) {
-          router.replace("/grounds");
-          return;
-        }
-
         if (!active) return;
 
         setDisplayName(profile?.full_name || "there");
-        setCanUseCleaner(hasCleaner);
-        setCanUseGrounds(hasGrounds);
+        setAccess(portal.access);
         setLoading(false);
       } catch {
         router.replace("/login");
@@ -110,7 +91,7 @@ export default function ChoosePortalPage() {
             Loading your portals…
           </h1>
           <p className="mt-4 text-[#c7d7ca]">
-            Checking your linked cleaner and grounds access.
+            Checking your linked owner, cleaner, and grounds access.
           </p>
         </div>
       </main>
@@ -127,7 +108,7 @@ export default function ChoosePortalPage() {
               Choose your portal
             </h1>
             <p className="mt-4 max-w-xl text-[#c7d7ca]">
-              Welcome, {displayName}. Your account is linked to more than one work lane.
+              Welcome, {displayName}. Your login has access to more than one portal.
               Pick the portal you want to use right now.
             </p>
           </div>
@@ -143,31 +124,7 @@ export default function ChoosePortalPage() {
         </div>
 
         <div className="mt-8 grid gap-4 md:grid-cols-2">
-          <button
-            type="button"
-            onClick={() => router.push("/cleaner")}
-            disabled={!canUseCleaner}
-            className="rounded-[28px] border border-[#3c3225] bg-[linear-gradient(135deg,#18120e_0%,#211913_100%)] p-6 text-left transition hover:-translate-y-[1px] hover:border-[#b48d4e] disabled:opacity-40"
-          >
-            <div className="text-xs uppercase tracking-[0.28em] text-[#d8c7ab]">Cleaner</div>
-            <div className="mt-3 text-3xl font-semibold text-[#f8f2e8]">Cleaner Portal</div>
-            <p className="mt-3 text-sm leading-6 text-[#dbcdbd]">
-              Turnover jobs, property access, SOPs, and your cleaner job queue.
-            </p>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => router.push("/grounds")}
-            disabled={!canUseGrounds}
-            className="rounded-[28px] border border-[#35543f] bg-[linear-gradient(135deg,#08110d_0%,#0f1b15_100%)] p-6 text-left transition hover:-translate-y-[1px] hover:border-[#7fb685] disabled:opacity-40"
-          >
-            <div className="text-xs uppercase tracking-[0.28em] text-[#7fb685]">Grounds</div>
-            <div className="mt-3 text-3xl font-semibold text-[#eef7ef]">Grounds Portal</div>
-            <p className="mt-3 text-sm leading-6 text-[#c7d7ca]">
-              Lawn, bins, snow, exterior work, and your grounds job queue.
-            </p>
-          </button>
+          {availablePortals(access).map(portal=><button key={portal.key} type="button" onClick={()=>router.push(portal.path)} className="rounded-[28px] border border-[#35543f] bg-[#0f1b15] p-6 text-left transition hover:-translate-y-[1px] hover:border-[#7fb685]"><div className="text-xs uppercase tracking-[0.28em] text-[#d8c7ab]">{portal.key}</div><div className="mt-3 text-3xl font-semibold text-[#eef7ef]">{portal.label}</div><p className="mt-3 text-sm leading-6 text-[#c7d7ca]">{portal.description}</p></button>)}
         </div>
       </div>
     </main>

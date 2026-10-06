@@ -177,7 +177,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: targetProfileError.message }, { status: 500 });
       }
 
-      if (!targetProfile || !roleCanBeAssigned(kind, targetProfile.role)) {
+      if (!targetProfile) {
         return NextResponse.json({ error: "Selected user is not eligible for this assignment." }, { status: 400 });
       }
 
@@ -217,6 +217,7 @@ export async function POST(request: NextRequest) {
           .from(tables.accountTable)
           .select("id")
           .eq("organization_id", organizationId)
+          .eq("active", true)
           .in("id", existingAccountIds)
           .limit(1)
           .maybeSingle();
@@ -229,6 +230,11 @@ export async function POST(request: NextRequest) {
       }
 
       if (!accountId) {
+        // Linked account capability permits an owner to clean. A primary owner
+        // role alone must never create staff access implicitly.
+        if (!roleCanBeAssigned(kind, targetProfile.role)) {
+          return NextResponse.json({error:"Invite this person to the staff account before assigning them."},{status:400});
+        }
         const { data: insertedAccount, error: insertedAccountError } = await serviceClient
           .from(tables.accountTable)
           .insert({
