@@ -24,6 +24,7 @@ import { useTeamBulletinSummary } from "@/lib/use-team-bulletin-summary";
 import { useI18n } from "@/components/i18n-provider";
 import { createStorageReference } from "@/lib/storage-reference";
 import { useStorageAssetUrls } from "@/lib/use-storage-asset-urls";
+import { ReceiptLink } from "@/components/receipt-link";
 import {
   formatCleanerOfferMove,
   getUnrepresentedCleanerDeclines,
@@ -18845,16 +18846,15 @@ This removes its linked members and deletes the grounds account.`
                 <ul className="mt-2 flex flex-wrap gap-2">
                   {attachments.map((attachment, index) => (
                     <li key={`${attachment.url}-${index}`} className="min-w-0 max-w-full">
-                      <a
-                        href={getStorageAssetUrl(attachment.url)}
-                        target="_blank"
-                        rel="noreferrer"
+                      <ReceiptLink
+                        storage={supabase.storage}
+                        value={attachment.url}
                         className="block rounded-xl border border-[#d8c7ab] bg-white px-3 py-2 hover:bg-[#f7f1e8] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#5f4c3b]"
                         aria-label={`Open ${attachment.name} in a new tab`}
                       >
                         <span className="block break-all font-semibold underline">{attachment.name}</span>
                         <span className="mt-0.5 block break-words">{attachment.description}</span>
-                      </a>
+                      </ReceiptLink>
                     </li>
                   ))}
                 </ul>
@@ -20599,9 +20599,9 @@ This removes its linked members and deletes the grounds account.`
                               </label>
                               {(item.receipt_urls || []).map((url, receiptIndex) => (
                                 <span key={`${url}-${receiptIndex}`} className="inline-flex items-center gap-2 rounded-full border border-[#d8c7ab] bg-[#fffdf8] px-3 py-1.5 text-xs text-[#5f4c3b]">
-                                  <a href={getStorageAssetUrl(url)} target="_blank" rel="noreferrer" className="underline">
+                                  <ReceiptLink storage={supabase.storage} value={url} className="underline">
                                     {item.receipt_names?.[receiptIndex] || `Receipt ${receiptIndex + 1}`}
-                                  </a>
+                                  </ReceiptLink>
                                   <button
                                     type="button"
                                     onClick={() => removeInvoiceReceipt(item.id, receiptIndex)}
