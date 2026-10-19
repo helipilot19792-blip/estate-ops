@@ -11,6 +11,7 @@ import PortalLoadingScene from "@/components/portal/portal-loading-scene";
 import PortalSwitcher from "@/components/portal/portal-switcher";
 import type { TranslationPath } from "@/lib/i18n";
 import { useStorageAssetUrls } from "@/lib/use-storage-asset-urls";
+import { ReceiptLink } from "@/components/receipt-link";
 
 const PortalChat = dynamic(() => import("@/components/chat/portalchat"));
 
@@ -3246,15 +3247,14 @@ export default function OwnerPortal({ preview }: { preview?: OwnerPreviewDashboa
                                 {(item.receipt_urls || []).length > 0 ? (
                                   <div className="mt-2 flex flex-wrap gap-2">
                                     {(item.receipt_urls || []).map((url, receiptIndex) => (
-                                      <a
+                                      <ReceiptLink
                                         key={`${url}-${receiptIndex}`}
-                                        href={getStorageAssetUrl(url)}
-                                        target="_blank"
-                                        rel="noreferrer"
+                                        storage={supabase.storage}
+                                        value={url}
                                         className="rounded-full border border-[#b08b47]/25 bg-[#b08b47]/10 px-3 py-1 text-xs font-semibold text-[#f1d9a5]"
                                       >
                                         {item.receipt_names?.[receiptIndex] || t("ownerPortal.invoices.receipt").replace("{number}", String(receiptIndex + 1))}
-                                      </a>
+                                      </ReceiptLink>
                                     ))}
                                   </div>
                                 ) : null}
