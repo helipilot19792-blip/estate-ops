@@ -26,7 +26,7 @@
     "test:job-email-signatures": "node --experimental-strip-types scripts/test-job-email-signatures.mjs",
     "test:workspace-billing": "node --experimental-strip-types scripts/test-workspace-billing.mjs",
     "test:storage-references": "node --experimental-strip-types scripts/test-storage-references.mjs",
-    "test:receipt-links": "node scripts/test-receipt-links.mjs",
+    "test:receipt-links": "node scripts/test-receipt-links.mjs && node scripts/test-owner-receipt-access.mjs",
     "test:property-details-update": "node --experimental-strip-types scripts/test-property-details-update.mjs",
     "test:security-boundaries": "node --experimental-strip-types scripts/test-security-boundaries.mjs",
     "test:portal-preview": "node scripts/test-portal-preview.mjs",

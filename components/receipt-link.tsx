@@ -6,12 +6,14 @@ import { getFreshReceiptUrl } from "@/lib/receipt-asset-url";
 export function ReceiptLink({
   storage,
   value,
+  resolveUrl,
   children,
   className,
   "aria-label": ariaLabel,
 }: {
   storage: Parameters<typeof getFreshReceiptUrl>[0];
   value: string;
+  resolveUrl?: () => Promise<string>;
   children: ReactNode;
   className?: string;
   "aria-label"?: string;
@@ -33,11 +35,11 @@ export function ReceiptLink({
     setOpening(true);
     setError("");
     try {
-      const url = await getFreshReceiptUrl(storage, value);
+      const url = await (resolveUrl ? resolveUrl() : getFreshReceiptUrl(storage, value));
       if (!tab.closed) tab.location.replace(url);
-    } catch {
+    } catch (openError) {
       tab.close();
-      setError("Could not open the receipt. Please try again or contact support.");
+      setError(openError instanceof Error ? openError.message : "Could not open the receipt. Please try again or contact support.");
     } finally {
       pending.current = false;
       setOpening(false);

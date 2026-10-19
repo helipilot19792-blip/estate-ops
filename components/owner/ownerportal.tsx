@@ -12,6 +12,7 @@ import PortalSwitcher from "@/components/portal/portal-switcher";
 import type { TranslationPath } from "@/lib/i18n";
 import { useStorageAssetUrls } from "@/lib/use-storage-asset-urls";
 import { ReceiptLink } from "@/components/receipt-link";
+import { getOwnerReceiptUrl } from "@/lib/owner-receipt-url";
 
 const PortalChat = dynamic(() => import("@/components/chat/portalchat"));
 
@@ -1004,7 +1005,6 @@ export default function OwnerPortal({ preview }: { preview?: OwnerPreviewDashboa
       ...ownerInvoices.flatMap((invoice) => [
         invoice.logo_url,
         invoice.uploaded_invoice_url,
-        ...(invoice.line_items || []).flatMap((item) => item.receipt_urls || []),
       ]),
     ]
   );
@@ -3251,6 +3251,7 @@ export default function OwnerPortal({ preview }: { preview?: OwnerPreviewDashboa
                                         key={`${url}-${receiptIndex}`}
                                         storage={supabase.storage}
                                         value={url}
+                                        resolveUrl={() => getOwnerReceiptUrl(supabase, invoice.id, index, receiptIndex)}
                                         className="rounded-full border border-[#b08b47]/25 bg-[#b08b47]/10 px-3 py-1 text-xs font-semibold text-[#f1d9a5]"
                                       >
                                         {item.receipt_names?.[receiptIndex] || t("ownerPortal.invoices.receipt").replace("{number}", String(receiptIndex + 1))}

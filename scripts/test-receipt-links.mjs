@@ -52,9 +52,9 @@ const component = load("../components/receipt-link.tsx", {
   tabs.push(tab);
   return tab;
 } } });
-function click() {
+function click(overrides = {}) {
   signing = false;
-  const tree = component.ReceiptLink({ storage, value: expired, children: "Receipt" });
+  const tree = component.ReceiptLink({ storage, value: expired, children: "Receipt", ...overrides });
   tree.props.children[0].props.onClick();
 }
 const settle = () => new Promise((resolve) => setImmediate(resolve));
@@ -73,4 +73,14 @@ popupBlocked = true;
 click();
 await settle();
 assert.ok(states.some((value) => typeof value === "string" && value.includes("Allow pop-ups")));
+popupBlocked = false;
+fail = true;
+const callsBeforeOwnerOpen = calls.length;
+click({ resolveUrl: async () => "https://storage.example/owner-authorized.pdf" });
+await settle();
+assert.equal(tabs.at(-1).url, "https://storage.example/owner-authorized.pdf");
+assert.equal(calls.length, callsBeforeOwnerOpen, "Owner receipts must use the invoice resolver even when direct storage signing is denied");
+click({ resolveUrl: async () => { throw new Error("Please sign in again to open this receipt."); } });
+await settle();
+assert.ok(states.includes("Please sign in again to open this receipt."));
 console.log("Receipt link regression tests passed (offline).");
