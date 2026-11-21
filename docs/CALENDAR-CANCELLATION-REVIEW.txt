@@ -1,0 +1,15 @@
+CALENDAR CANCELLATION RECONCILIATION — REVIEW BRANCH ONLY
+
+This branch contains the seven focused fix/test files from the existing local application, plus this handoff and a branch-specific Vercel deployment prohibition. Main and production are unchanged.
+
+DEPENDENCY BLOCKER: GitHub main does not contain the existing calendar safety foundation (including calendar-sync-safe.ts, calendar-snapshot.ts, the snapshot/internal cancellation RPC migrations, calendar notification outbox and scheduler modules). The local tests ran against that existing foundation. This is not a standalone merge-ready application release; do not merge or deploy this branch until the verified foundation is represented in the target source. Unrelated local changes and unpublished Stay in Niagara commits are deliberately excluded.
+
+Behavior: confirmed cancellations no longer block overlaps. Ordinary missing reservations can be retired after at least three eligible fresh observations, fifteen minutes between counted observations and at least thirty minutes total. Failed, empty, stale, discontinuous or mass-disappearance downloads reset evidence. Paid/started work and unresolved assignment identities remain protected. Existing atomic cancellation archive and deduplicated notification outbox are reused. A replacement booking and checkout cleaning can then import in the same transaction.
+
+Local evidence: 116 database assertions; 58 scheduler/parser assertions; 91 notification assertions; security-boundary tests, TypeScript and focused lint passed. No branch CI/build/hosted acceptance claim is made.
+
+SQL files remain LOCAL drafts. Order: overlap correction, then additive absence reconciliation, inside one reviewed transaction after baseline/recovery verification. Neither SQL file has been applied to production.
+
+Rollback: stop/reconcile in-flight calendar processing and restore the previous application release using the original snapshot RPC. Retain evidence and operational history; do not drop audit/business tables or reset jobs. New automatic cancellation requires the new observed RPC; the old entry point cannot authorize it.
+
+No credentials, customer records, calendar URLs, Central Niagara runner/state, photos or private recovery artifacts are included. No production mutation, deployment, notification dispatch or transfer was performed.

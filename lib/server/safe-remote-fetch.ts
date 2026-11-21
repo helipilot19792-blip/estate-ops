@@ -15,6 +15,8 @@ type SafeFetchResult = {
   contentType: string;
   finalUrl: string;
   status: number;
+  responseDate: string | null;
+  responseAge: string | null;
 };
 
 const MAX_REDIRECTS = 3;
@@ -141,6 +143,8 @@ export async function fetchPublicBytes(
       contentType: response.headers.get("content-type") || "",
       finalUrl: url.toString(),
       status: response.status,
+      responseDate: response.headers.get("date"),
+      responseAge: response.headers.get("age"),
     };
   }
 
