@@ -1,3 +1,4 @@
+import { classifyCalendarEntry } from "./calendar-reservation-evidence";
 export type CalendarEvent = { uid: string; summary: string; checkin_date: string; checkout_date: string; notes: string; lead_days: number; eligible_at: string | null };
 
 // Transport freshness permits counting an observation, never a one-download cancellation.
@@ -12,7 +13,7 @@ export function calendarDownloadIsFresh(response: { status: number; contentType:
 
 // Deliberately fail the entire snapshot on malformed/unsupported reservation data.
 // A successful HTTP download is not proof of a complete or current calendar.
-export function parseCalendarSnapshot(text: string, leadDays = 90): CalendarEvent[] {
+export function parseCalendarSnapshot(text: string, leadDays = 90, options: { source?: string; classification?: { blocked: number; unknown: number } } = {}): CalendarEvent[] {
   const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").replace(/\n[ \t]/g, "").trim().split("\n");
   if (lines[0] !== "BEGIN:VCALENDAR" || lines.at(-1) !== "END:VCALENDAR") throw new Error("invalid_calendar_envelope");
   const events: CalendarEvent[] = [], seen = new Set<string>();
@@ -37,7 +38,11 @@ export function parseCalendarSnapshot(text: string, leadDays = 90): CalendarEven
       const checkin = date(e.DTSTART), checkout = date(e.DTEND);
       if (checkout <= checkin) throw new Error("invalid_calendar_interval");
       const summary = (e.SUMMARY || "Reservation").replace(/\\[nN]/g, " ").replace(/\\([,;\\])/g, "$1").slice(0, 500);
-      if (/not available|blocked|maintenance|unavailable/i.test(summary)) continue;
+      const kind = classifyCalendarEntry(e, options.source);
+      if (kind !== "reservation") {
+        if (options.classification) options.classification[kind] += 1;
+        continue;
+      }
       const eligible = new Date(`${checkout}T12:00:00Z`); eligible.setUTCDate(eligible.getUTCDate() - leadDays);
       events.push({ uid: e.UID, summary, checkin_date: checkin, checkout_date: checkout, lead_days: leadDays,
         eligible_at: leadDays > 0 ? eligible.toISOString().slice(0, 10) : null, notes: `[AUTO_SYNC:${e.SOURCE || "calendar"}:${e.UID}]\nCheckout date: ${checkout}` });
@@ -46,7 +51,7 @@ export function parseCalendarSnapshot(text: string, leadDays = 90): CalendarEven
     }
     if (current) {
       const colon = line.indexOf(":"); if (colon < 1) throw new Error("malformed_calendar_line");
-      const key = line.slice(0, colon).split(";")[0].replace("-", "_").toUpperCase();
+      const key = line.slice(0, colon).split(";")[0].replaceAll("-", "_").toUpperCase();
       if (["UID", "DTSTART", "DTEND", "STATUS", "RRULE", "RECURRENCE_ID"].includes(key) && key in current) throw new Error("duplicate_calendar_field");
       current[key] = line.slice(colon + 1).trim();
     }
